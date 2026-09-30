@@ -100,7 +100,7 @@ return baseclass.extend({
 		if (!r || typeof r !== 'object') return null;
 		var std = this.rateStd(r), mhz = num(r.mhz) || null, rate = num(r.rate) || null;
 		var parts = [ fmt.phyRate(rate) ];
-		if (mhz) parts.push(fmt.mhz(mhz));
+		if (mhz) parts.push(_('%s MHz').format(mhz));
 		parts.push(std === 'legacy' ? _('legacy') : std);
 		var detail = [];
 		if (r.mcs != null && isFinite(+r.mcs)) detail.push(_('MCS %d').format(+r.mcs));

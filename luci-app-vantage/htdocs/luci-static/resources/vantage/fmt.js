@@ -128,6 +128,6 @@ return baseclass.extend({
 	/* frequency MHz -> '5975 MHz' / '5.975 GHz' is less readable; keep MHz */
 	mhz: function(v) {
 		v = num(v);
-		return v ? _('%d MHz').format(v) : DASH;
+		return v ? _('%s MHz').format(v) : DASH;
 	}
 });
