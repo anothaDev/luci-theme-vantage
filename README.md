@@ -212,10 +212,8 @@ node security-tests/test_acl_policy.js
 
 ## Languages
 
-Vantage speaks English so far, and translations are very welcome.
-Simplified Chinese is in progress in
-[#1](https://github.com/anothaDev/luci-theme-vantage/pull/1), thanks to
-[@ntbowen](https://github.com/ntbowen).
+Available: English and Simplified Chinese (dashboard, thanks to
+[@ntbowen](https://github.com/ntbowen)). Translations are very welcome.
 
 To add a language: fork the repository, run
 `dev/i18n/update.sh --add <lang>` (a LuCI language code such as `de` or
