@@ -474,7 +474,7 @@ html[data-darkmode="true"] .vt-app {
 
 /* -------------------------------------------------- 5. hero: network path */
 
-.vt-app .vt-hero { container: vthero / inline-size; overflow: hidden; display: flex; flex-direction: column; }
+.vt-app .vt-hero { container: vthero / inline-size; overflow-x: clip; display: flex; flex-direction: column; }
 
 .vt-app .vt-kpis {
 	position: relative; z-index: 1;
@@ -615,6 +615,11 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-branch { display: grid; grid-template-columns: minmax(136px, 172px) minmax(0, 1fr); column-gap: 34px; align-items: center; min-width: 0; }
 .vt-app .vt-branch-ssids { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .vt-app .vt-branch-ssids .vt-node { max-width: 260px; }
+/* peer-branches already consume the right column of peer-group; stack radio→ssid vertically */
+.vt-app .vt-peer-branches .vt-branch { grid-template-columns: minmax(0, 1fr); row-gap: 8px; }
+.vt-app .vt-peer-branches .vt-branch > .vt-node { justify-self: start; min-width: 200px; }
+.vt-app .vt-peer-branches .vt-branch-ssids { padding-left: 34px; }
+.vt-app .vt-peer-branches .vt-branch-ssids .vt-node { max-width: none; align-self: stretch; }
 
 @container vthero (max-width: 700px) {
 	.vt-app .vt-path { grid-template-columns: minmax(0, 1fr); gap: 12px; min-height: 0; }
