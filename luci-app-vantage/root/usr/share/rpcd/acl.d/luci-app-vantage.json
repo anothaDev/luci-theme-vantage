@@ -11,7 +11,7 @@
 				"network.interface": [ "dump" ],
 				"network.device": [ "status" ],
 				"luci-rpc": [ "getHostHints" ],
-				"luci.vantage": [ "wireless" ],
+				"luci.vantage": [ "wireless", "peer_status", "peers" ],
 				"iwinfo": [ "assoclist", "info" ],
 				"hostapd.*": [ "get_clients", "get_status" ],
 				"umdns": [ "hosts" ],

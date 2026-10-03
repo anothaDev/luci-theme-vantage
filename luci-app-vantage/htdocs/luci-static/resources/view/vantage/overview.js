@@ -40,6 +40,7 @@ var callMdns = rpc.declare({ object: 'umdns', method: 'hosts' });
 var callUciGet = rpc.declare({ object: 'uci', method: 'get', params: [ 'config' ], expect: { values: {} } });
 var callSetAlias = rpc.declare({ object: 'luci.vantage', method: 'set_alias', params: [ 'mac', 'name', 'icon' ] });
 var callAccess = rpc.declare({ object: 'session', method: 'access', params: [ 'scope', 'object', 'function' ], expect: { access: false } });
+var callPeers = rpc.declare({ object: 'luci.vantage', method: 'peers', expect: { '': {} } });
 
 var hostapdCalls = {};
 function hostapd(ifname, method) {
@@ -362,7 +363,8 @@ return view.extend({
 			L.resolveDefault(callIfDump(), []),
 			L.resolveDefault(callDevs(), {}),
 			L.resolveDefault(callWifi(), {}),
-			L.resolveDefault(callHints(), {})
+			L.resolveDefault(callHints(), {}),
+			L.resolveDefault(callPeers(), {})
 		]).then(function(r) {
 			var wifiDevs = (r[4] && typeof r[4] === 'object') ? r[4] : {};
 			var ifnames = [];
@@ -391,7 +393,8 @@ return view.extend({
 					else iwinfo[p[1]] = p[2];
 				});
 				return { info: r[0] || {}, stat: r[1] || '', ifaces: r[2] || [], devs: r[3] || {}, wifi: wifiDevs, hints: r[5] || {},
-					assoc: assoc, hapd: hapd, hapdStatus: hapdStatus, iwinfo: iwinfo, at: Date.now(), started: started };
+					assoc: assoc, hapd: hapd, hapdStatus: hapdStatus, iwinfo: iwinfo, at: Date.now(), started: started,
+					peers: r[6] || {} };
 			});
 		});
 	},
@@ -425,6 +428,7 @@ return view.extend({
 			oui: null, ouiLoading: false,
 			lastOk: 0, lastErr: null, paused: false
 		};
+		this.st.peerMeta = {};
 		this.ui = { sort: 'live', dir: -1, filter: '', chip: 'all', chart: 'down', drawer: null, editing: null, hover: null };
 		this.folds = readFolds();
 		this.foldEls = {};
@@ -455,12 +459,15 @@ return view.extend({
 			if (!st.stat || stat.all.total !== st.stat.all.total) st.stat = stat;
 		}
 
+		this.mergePeers(raw);
 		var m = model.build({
 			board: this.board, info: raw.info, ifaces: raw.ifaces, devs: raw.devs, wifi: raw.wifi, iwinfo: raw.iwinfo,
 			assoc: raw.assoc, hapd: raw.hapd, hapdStatus: raw.hapdStatus, hints: raw.hints,
 			aliases: this.aliases, rdns: st.rdns, mdns: st.mdns,
 			vendor: st.oui ? function(k) { return k ? st.oui.lookup(k) : null; } : null
 		});
+		this.st.peerMeta = raw.peerMeta || {};
+		this.tagPeers(m);
 		if (m.device.memory) series.push(st.hist.mem, [ at, m.device.memory.usedPct ], WINDOW_MS, HIST_MAX);
 
 		/* interface counters */
@@ -592,6 +599,7 @@ return view.extend({
 			aliases: this.aliases, rdns: st.rdns, mdns: st.mdns,
 			vendor: st.oui ? function(k) { return k ? st.oui.lookup(k) : null; } : null
 		});
+		this.tagPeers(m);
 		this.stickyGen(m);
 		m.clients.forEach(function(c) { c.exp = insight.experience(c); c.firstSeen = st.presence && st.presence.firstSeen[c.mac]; c.isNew = !!st.isNew[c.mac]; });
 		st.talkers = insight.topTalkers(m.clients, st.staRates, 5);
@@ -599,6 +607,63 @@ return view.extend({
 		st.summary = insight.summary(st.health);
 		this.m = m;
 		this.paint();
+	},
+
+	/* Merge peer AP data into the raw object so model.build sees all
+	   radios/clients. Interface names are prefixed with the peer ID to
+	   avoid collisions with local names. */
+	mergePeers: function(raw) {
+		var peers = raw.peers, meta = {};
+		if (!peers || typeof peers !== 'object') return;
+		Object.keys(peers).forEach(function(pid) {
+			var p = peers[pid];
+			if (!p || p.error || !p.wireless) return;
+			meta[pid] = { name: p.name || pid, hostname: p.hostname, model: p.model };
+
+			Object.keys(p.wireless).forEach(function(rname) {
+				var radio = p.wireless[rname];
+				if (!radio) return;
+				var prefixedRadio = pid + ':' + rname;
+
+				var ifs = Array.isArray(radio.interfaces) ? radio.interfaces : [];
+				ifs.forEach(function(iface) {
+					if (!iface || !iface.ifname) return;
+					var orig = iface.ifname;
+					var prefixed = pid + ':' + orig;
+					iface.ifname = prefixed;
+
+					if (p.assoc && Array.isArray(p.assoc[orig]))
+						raw.assoc[prefixed] = p.assoc[orig];
+					if (p.iwinfo && p.iwinfo[orig])
+						raw.iwinfo[prefixed] = p.iwinfo[orig];
+					if (p.hapd && p.hapd[orig])
+						raw.hapd[prefixed] = p.hapd[orig];
+					if (p.hapd_status && p.hapd_status[orig])
+						raw.hapdStatus[prefixed] = p.hapd_status[orig];
+				});
+
+				raw.wifi[prefixedRadio] = radio;
+			});
+		});
+		raw.peerMeta = meta;
+	},
+
+	/* Tag radios, SSIDs and clients that came from a peer AP */
+	tagPeers: function(m) {
+		var meta = this.st.peerMeta;
+		if (!meta) return;
+		m.radios.forEach(function(r) {
+			var pm = r.id.match(/^([^:]+):/);
+			if (pm && meta[pm[1]]) r.peer = meta[pm[1]];
+		});
+		m.ssids.forEach(function(s) {
+			var pm = s.radio && s.radio.match(/^([^:]+):/);
+			if (pm && meta[pm[1]]) s.peer = meta[pm[1]];
+		});
+		m.clients.forEach(function(c) {
+			var pm = c.radio && c.radio.match(/^([^:]+):/);
+			if (pm && meta[pm[1]]) c.peer = meta[pm[1]];
+		});
 	},
 
 	refresh: function() {

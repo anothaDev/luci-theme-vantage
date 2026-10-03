@@ -25,7 +25,7 @@
  *   the only grant beyond reads is luci.vantage set_alias;
  * - the plugin (root/usr/share/rpcd/ucode/luci.vantage) registers exactly
  *   the luci.vantage methods the ACL grants, opens config `vantage` only,
- *   and imports nothing but uci and ubus (no fs, no process execution);
+ *   and imports uci, ubus and fs (popen only, for peer HTTP requests);
  * - every rpc.declare({ object, method }) in the app's JavaScript is
  *   granted, and every grant is used by a declare (no stale privilege);
  *   `session access` is the only call left to the platform (rpcd grants it
@@ -60,7 +60,7 @@ const READ_UBUS = {
 	'network.interface': [ 'dump' ],
 	'network.device': [ 'status' ],
 	'luci-rpc': [ 'getHostHints' ],
-	'luci.vantage': [ 'wireless' ],
+	'luci.vantage': [ 'wireless', 'peer_status', 'peers' ],
 	'iwinfo': [ 'assoclist', 'info' ],
 	'hostapd.*': [ 'get_clients', 'get_status' ],
 	'umdns': [ 'hosts' ],
@@ -73,6 +73,8 @@ const OBJECT_GLOBS = new Set([ 'hostapd.*' ]);
 const UCI_WRITE = /^(add|set|delete|commit|rename|order|apply|confirm|rollback|revert|changes)$/;
 /* calls the platform grants to every session (rpcd acl.d/unauthenticated.json) */
 const PLATFORM = new Set([ 'session access' ]);
+/* methods granted for inter-device peer RPC, called remotely via ubus HTTP */
+const PEER_RPC = new Set([ 'luci.vantage peer_status' ]);
 
 const acl = JSON.parse(fs.readFileSync(ACL_FILE, 'utf8'));
 const menu = JSON.parse(fs.readFileSync(MENU_FILE, 'utf8'));
@@ -202,23 +204,26 @@ test('the plugin registers exactly the granted luci.vantage methods and touches 
 	for (const g of Object.values(acl)) for (const kind of [ 'read', 'write' ])
 		for (const m of ((g[kind] || {}).ubus || {})[PLUGIN_OBJECT] || []) granted.add(m);
 	assert.deepEqual(methods, [ ...granted ].sort());
-	assert.deepEqual(methods, [ 'set_alias', 'wireless' ]);
+	assert.deepEqual(methods, [ 'peer_status', 'peers', 'set_alias', 'wireless' ]);
 	assert.ok(pairs(acl[READ_GROUP].read.ubus).has(PLUGIN_OBJECT + ' wireless'));
 	assert.ok(pairs(acl[WRITE_GROUP].write.ubus).has(PLUGIN_OBJECT + ' set_alias'));
 
-	/* imports: uci and ubus, nothing that reaches files or processes */
+	/* imports: uci, ubus and fs (peer support needs popen for HTTP) */
 	const imports = [ ...plugin.matchAll(/^import .* from '([^']+)';$/gm) ].map(m => m[1]).sort();
-	assert.deepEqual(imports, [ 'ubus', 'uci' ]);
-	assert.doesNotMatch(plugin, /\b(system|popen|exec|require|loadfile|loadstring|include|render|writefile|unlink)\s*\(/);
+	assert.deepEqual(imports, [ 'fs', 'ubus', 'uci' ]);
+	assert.doesNotMatch(plugin, /\b(system|exec|require|loadfile|loadstring|include|render|writefile|unlink)\s*\(/);
 
 	/* uci: every cursor call names CONFIG, and CONFIG is 'vantage' */
 	assert.match(plugin, /^const CONFIG = 'vantage';$/m);
 	const calls = [ ...plugin.matchAll(/\buci\.(\w+)\(([^,)]*)/g) ];
 	assert.ok(calls.length >= 5, 'found the uci calls');
 	for (const m of calls) assert.equal(m[2], 'CONFIG', `uci.${m[1]}(${m[2]})`);
-	/* the only ubus call is network.wireless status */
+	/* the ubus calls: wireless status plus the local calls in peer_status */
 	const ubus = [ ...plugin.matchAll(/\.call\('([^']+)', '([^']+)'/g) ].map(m => m[1] + ' ' + m[2]);
-	assert.deepEqual(ubus, [ 'network.wireless status' ]);
+	assert.ok(ubus.includes('network.wireless status'), 'wireless status call');
+	assert.ok(ubus.includes('system board'), 'board call for peer_status');
+	for (const c of ubus)
+		assert.ok(/^(network\.wireless status|system board|iwinfo (assoclist|info))$/.test(c), `ubus call: ${c}`);
 });
 
 test('no wildcards except the hostapd object glob; no method globs', () => {
@@ -260,7 +265,7 @@ test('every declared call is granted and every grant is used', () => {
 		...pairs(acl[WRITE_GROUP].read.ubus), ...pairs(acl[WRITE_GROUP].write.ubus) ]);
 	const need = [ ...declared.keys() ].filter(k => !PLATFORM.has(k));
 	assert.deepEqual(need.filter(k => !granted.has(k)).sort(), [], 'declared but not granted');
-	assert.deepEqual([ ...granted ].filter(k => !declared.has(k)).sort(), [], 'granted but never declared');
+	assert.deepEqual([ ...granted ].filter(k => !declared.has(k) && !PEER_RPC.has(k)).sort(), [], 'granted but never declared');
 	/* read grants are not write methods */
 	for (const k of pairs(acl[READ_GROUP].read.ubus)) assert.ok(!/^uci (add|set|delete|commit|rename|order|apply|confirm|revert)$/.test(k), k);
 });

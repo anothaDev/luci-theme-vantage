@@ -19,6 +19,7 @@
 
 import { cursor } from 'uci';
 import { connect } from 'ubus';
+import { popen } from 'fs';
 
 const CONFIG = 'vantage';
 const NAME_MAX = 48;              // code points, after collapsing spaces
@@ -302,6 +303,112 @@ function set_alias(args) {
 	return { ok: true, op, mac };
 }
 
+/* ------------------------------------------------------- peer support */
+
+const PEER_TIMEOUT = 3;
+const PEER_MAX = 4;
+
+// ponytail: session cache lives in rpcd process memory; lost on rpcd restart
+const peer_tokens = {};
+
+function http_post(url, body_str) {
+	let safe_body = replace(body_str, /'/g, "'\\''");
+	let safe_url = replace(url, /'/g, "'\\''");
+	let p = popen(sprintf("exec wget -qO- -T %d --no-check-certificate --post-data='%s' '%s' 2>/dev/null",
+		PEER_TIMEOUT, safe_body, safe_url));
+	if (!p) return null;
+	let out = p.read('all');
+	p.close();
+	return (out && length(out)) ? json(out) : null;
+}
+
+function peer_rpc(rpc_url, token, obj, method, params) {
+	return http_post(rpc_url, sprintf('%J', {
+		jsonrpc: '2.0', id: 1, method: 'call',
+		params: [ token, obj, method, params || {} ]
+	}));
+}
+
+function peer_login(rpc_url, username, password) {
+	let resp = http_post(rpc_url, sprintf('%J', {
+		jsonrpc: '2.0', id: 1, method: 'call',
+		params: [ '00000000000000000000000000000000', 'session', 'login',
+		          { username, password } ]
+	}));
+	if (type(resp) != 'object' || type(resp.result) != 'array' ||
+	    resp.result[0] != 0 || type(resp.result[1]) != 'object')
+		return null;
+	let s = resp.result[1];
+	if (type(s.ubus_rpc_session) != 'string')
+		return null;
+	return { token: s.ubus_rpc_session, timeout: +s.timeout || 300 };
+}
+
+function peer_call(url, username, password, obj, method, params) {
+	let rpc_url = replace(url, /\/+$/, '') + '/ubus';
+	let cached = peer_tokens[url];
+	let token = (cached && cached.expires > time()) ? cached.token : null;
+
+	if (!token) {
+		let login = peer_login(rpc_url, username, password);
+		if (!login) return null;
+		token = login.token;
+		peer_tokens[url] = { token, expires: time() + login.timeout - 30 };
+	}
+
+	let resp = peer_rpc(rpc_url, token, obj, method, params);
+	if (type(resp) != 'object') return null;
+
+	// token expired: re-login once
+	if (type(resp.result) == 'array' && resp.result[0] == 6) {
+		peer_tokens[url] = null;
+		let login = peer_login(rpc_url, username, password);
+		if (!login) return null;
+		token = login.token;
+		peer_tokens[url] = { token, expires: time() + login.timeout - 30 };
+		resp = peer_rpc(rpc_url, token, obj, method, params);
+		if (type(resp) != 'object') return null;
+	}
+
+	return (type(resp.result) == 'array' && resp.result[0] == 0) ? resp.result[1] : null;
+}
+
+function gather_peer_status() {
+	let bus = connect();
+	if (!bus) return {};
+
+	let board = bus.call('system', 'board') || {};
+	let ws = bus.call('network.wireless', 'status') || {};
+	let wireless = {}, ifnames = [];
+
+	for (let rname, r in ws) {
+		if (type(r) != 'object' || !match(rname, /^[A-Za-z0-9_.-]{1,64}$/))
+			continue;
+		wireless[rname] = reduce_radio(r);
+		for (let i in (type(r.interfaces) == 'array' ? r.interfaces : []))
+			if (type(i) == 'object' && type(i.ifname) == 'string' &&
+			    match(i.ifname, /^[A-Za-z0-9_.-]{1,64}$/) && index(ifnames, i.ifname) < 0)
+				push(ifnames, i.ifname);
+	}
+
+	let assoc_out = {}, iw = {}, hapd_out = {}, hapd_st = {};
+	for (let ifn in ifnames) {
+		let a = bus.call('iwinfo', 'assoclist', { device: ifn });
+		if (type(a) == 'object' && type(a.results) == 'array')
+			assoc_out[ifn] = a.results;
+		iw[ifn] = bus.call('iwinfo', 'info', { device: ifn }) || {};
+		hapd_out[ifn] = bus.call('hostapd.' + ifn, 'get_clients') || {};
+		hapd_st[ifn] = bus.call('hostapd.' + ifn, 'get_status') || {};
+	}
+
+	return {
+		hostname: short_string(board.hostname, 64),
+		model: short_string(board.model, 128),
+		board_name: short_string(board.board_name, 128),
+		wireless, assoc: assoc_out, iwinfo: iw, hapd: hapd_out, hapd_status: hapd_st
+	};
+}
+
 /* ------------------------------------------------------------ methods */
 
 const methods = {
@@ -325,6 +432,51 @@ const methods = {
 		args: { mac: 'mac', name: 'name', icon: 'icon' },
 		call: function(request) {
 			return set_alias(request.args);
+		}
+	},
+
+	peer_status: {
+		call: function() {
+			return gather_peer_status();
+		}
+	},
+
+	peers: {
+		call: function() {
+			let uci = cursor();
+			uci.load(CONFIG);
+
+			let peers = [];
+			uci.foreach(CONFIG, 'peer', (s) => {
+				if (length(peers) >= PEER_MAX || s.enabled == '0')
+					return;
+				let url = trim(s.url || '');
+				if (!url || !match(url, /^https?:\/\/.{1,200}$/))
+					return;
+				push(peers, {
+					id: s['.name'],
+					name: short_string(s.name, 64) || url,
+					url,
+					username: s.username || 'root',
+					password: s.password || ''
+				});
+			});
+
+			let out = {};
+			for (let p in peers) {
+				let data = peer_call(p.url, p.username, p.password,
+					'luci.vantage', 'peer_status', {});
+				out[p.id] = data
+					? { name: p.name, hostname: data.hostname, model: data.model,
+					    board_name: data.board_name,
+					    wireless: data.wireless || {},
+					    assoc: data.assoc || {},
+					    iwinfo: data.iwinfo || {},
+					    hapd: data.hapd || {},
+					    hapd_status: data.hapd_status || {} }
+					: { name: p.name, error: true };
+			}
+			return out;
 		}
 	}
 };
