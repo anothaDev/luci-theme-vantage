@@ -393,12 +393,39 @@ function gather_peer_status() {
 
 	let assoc_out = {}, iw = {}, hapd_out = {}, hapd_st = {};
 	for (let ifn in ifnames) {
-		let a = bus.call('iwinfo', 'assoclist', { device: ifn });
-		if (type(a) == 'object' && type(a.results) == 'array')
-			assoc_out[ifn] = a.results;
-		iw[ifn] = bus.call('iwinfo', 'info', { device: ifn }) || {};
-		hapd_out[ifn] = bus.call('hostapd.' + ifn, 'get_clients') || {};
-		hapd_st[ifn] = bus.call('hostapd.' + ifn, 'get_status') || {};
+		let hc = bus.call('hostapd.' + ifn, 'get_clients') || {};
+		let hst = bus.call('hostapd.' + ifn, 'get_status') || {};
+		hapd_out[ifn] = hc;
+		hapd_st[ifn] = hst;
+
+		iw[ifn] = {
+			bssid: hst.bssid,
+			ssid: hst.ssid,
+			channel: hst.channel,
+			frequency: hst.freq
+		};
+
+		let stations = [];
+		for (let mac, cl in (hc.clients || {})) {
+			push(stations, {
+				mac: mac,
+				signal: cl.signal,
+				authorized: cl.authorized !== false,
+				wme: cl.wmm !== false,
+				mfp: !!cl.mfp,
+				rx: {
+					bytes: cl.bytes?.rx || 0,
+					packets: cl.packets?.rx || 0,
+					rate: int((cl.rate?.rx || 0) / 1000)
+				},
+				tx: {
+					bytes: cl.bytes?.tx || 0,
+					packets: cl.packets?.tx || 0,
+					rate: int((cl.rate?.tx || 0) / 1000)
+				}
+			});
+		}
+		assoc_out[ifn] = stations;
 	}
 
 	return {

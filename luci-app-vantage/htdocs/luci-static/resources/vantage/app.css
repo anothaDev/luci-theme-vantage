@@ -536,6 +536,10 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-node-ap { justify-self: stretch; align-self: center; padding: 12px 13px; border-color: color-mix(in oklab, var(--vt-accent-line) 40%, var(--vt-line)); }
 .vt-app .vt-node-ap .vt-node-ico { background: var(--vt-accent); color: var(--vt-accent-ink); }
 .vt-app .vt-node-ap .vt-node-title { font-size: 14.5px; }
+.vt-app .vt-node-peer { justify-self: stretch; align-self: center; padding: 10px 12px; border-color: color-mix(in oklab, var(--vt-accent-line) 30%, var(--vt-line)); }
+.vt-app .vt-node-peer .vt-node-ico { background: color-mix(in oklab, var(--vt-accent) 20%, var(--vt-surface-3)); color: var(--vt-accent-text); }
+.vt-app .vt-peer-group { display: grid; grid-template-columns: minmax(136px, 172px) minmax(0, 1fr); column-gap: 34px; align-items: center; min-width: 0; }
+.vt-app .vt-peer-branches { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .vt-app .vt-node-gen { text-transform: none; letter-spacing: 0; font-weight: 560; }
 .vt-app .vt-node-radio { padding: 8px 11px; }
 .vt-app .vt-node-ssid { padding: 7px 10px; }
@@ -581,10 +585,12 @@ html[data-darkmode="true"] .vt-app {
 
 @container vthero (max-width: 700px) {
 	.vt-app .vt-path { grid-template-columns: minmax(0, 1fr); gap: 12px; min-height: 0; }
-	.vt-app .vt-node-gw, .vt-app .vt-node-ap { justify-self: start; min-width: 220px; }
+	.vt-app .vt-node-gw, .vt-app .vt-node-ap, .vt-app .vt-node-peer { justify-self: start; min-width: 220px; }
 	.vt-app .vt-link-label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; justify-content: flex-start; padding: 0 0 0 44px; }
 	.vt-app .vt-link-label > * { align-self: center; }
 	.vt-app .vt-branches { padding-left: 34px; gap: 12px; }
+	.vt-app .vt-peer-group { grid-template-columns: minmax(0, 1fr); row-gap: 8px; }
+	.vt-app .vt-peer-branches { padding-left: 34px; }
 	.vt-app .vt-branch { grid-template-columns: minmax(0, 1fr); row-gap: 8px; }
 	.vt-app .vt-branch > .vt-node { justify-self: start; min-width: 200px; }
 	.vt-app .vt-branch-ssids { padding-left: 34px; }

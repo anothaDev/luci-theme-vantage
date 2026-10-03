@@ -871,10 +871,11 @@ return view.extend({
 		]);
 
 		var d = m.device;
+		var isRouter = up && up.isWan;
 		var ap = E('button', { 'type': 'button', 'class': 'vt-node vt-node-ap', 'click': function() { self.openDrawer('device', 'device'); } }, [
-			E('span', { 'class': 'vt-node-ico' }, [ icon('ap') ]),
+			E('span', { 'class': 'vt-node-ico' }, [ icon(isRouter ? 'router' : 'ap') ]),
 			E('span', { 'class': 'vt-node-body' }, [
-				E('span', { 'class': 'vt-node-kicker' }, [ _('This access point') ]),
+				E('span', { 'class': 'vt-node-kicker' }, [ isRouter ? _('This router') : _('This access point') ]),
 				E('span', { 'class': 'vt-node-title' }, [ d.model ]),
 				E('span', { 'class': 'vt-node-sub vt-mono' }, [ up && up.ipv4[0] ? up.ipv4[0].split('/')[0] : fmt.DASH ]),
 				E('span', { 'class': 'vt-node-sub' }, [ d.uptime != null ? _('up %s').format(fmt.duration(d.uptime)) : '' ])
@@ -884,7 +885,21 @@ return view.extend({
 
 		var branches = E('div', { 'class': 'vt-branches' });
 		this.nodes.radios = [];
+		this.nodes.peers = {};
+
+		var localRadios = [], peerRadios = {};
 		m.radios.forEach(function(r) {
+			var pm = r.id.match(/^([^:]+):/);
+			if (pm && r.peer) {
+				var pid = pm[1];
+				if (!peerRadios[pid]) peerRadios[pid] = { meta: r.peer, radios: [] };
+				peerRadios[pid].radios.push(r);
+			} else {
+				localRadios.push(r);
+			}
+		});
+
+		function buildRadioBranch(r) {
 			var rr = st.radioRates[r.id];
 			var rnode = E('button', { 'type': 'button', 'class': 'vt-node vt-node-radio' + (r.up ? '' : ' vt-node-off'), 'click': function() { self.openDrawer('radio', r.id); } }, [
 				E('span', { 'class': 'vt-node-body' }, [
@@ -912,9 +927,35 @@ return view.extend({
 				ssidCol.appendChild(sn);
 			});
 			if (!ssNodes.length) ssidCol.appendChild(E('span', { 'class': 'vt-empty-inline' }, [ _('No SSIDs') ]));
-			self.nodes.radios.push({ el: rnode, ssids: ssNodes, active: !!(rr && rr.rx + rr.tx > 50e3), rate: rr ? rr.rx + rr.tx : 0 });
-			branches.appendChild(E('div', { 'class': 'vt-branch' }, [ rnode, ssidCol ]));
+			self.nodes.radios.push({ el: rnode, ssids: ssNodes, active: !!(rr && rr.rx + rr.tx > 50e3), rate: rr ? rr.rx + rr.tx : 0, peerId: r.peer ? r.id.split(':')[0] : null });
+			return E('div', { 'class': 'vt-branch' }, [ rnode, ssidCol ]);
+		}
+
+		localRadios.forEach(function(r) {
+			branches.appendChild(buildRadioBranch(r));
 		});
+
+		Object.keys(peerRadios).forEach(function(pid) {
+			var p = peerRadios[pid];
+			var peerNode = E('div', { 'class': 'vt-node vt-node-peer', 'title': p.meta.name }, [
+				E('span', { 'class': 'vt-node-ico' }, [ icon('ap') ]),
+				E('span', { 'class': 'vt-node-body' }, [
+					E('span', { 'class': 'vt-node-kicker' }, [ _('Access point') ]),
+					E('span', { 'class': 'vt-node-title' }, [ p.meta.name ]),
+					E('span', { 'class': 'vt-node-sub' }, [ p.meta.model || p.meta.hostname || '' ])
+				])
+			]);
+			var peerBranches = E('div', { 'class': 'vt-peer-branches' });
+			var pRate = 0, pActive = false;
+			p.radios.forEach(function(r) {
+				peerBranches.appendChild(buildRadioBranch(r));
+				var rr = st.radioRates[r.id];
+				if (rr) { pRate += rr.rx + rr.tx; if (rr.rx + rr.tx > 50e3) pActive = true; }
+			});
+			self.nodes.peers[pid] = { el: peerNode, active: pActive, rate: pRate };
+			branches.appendChild(E('div', { 'class': 'vt-peer-group' }, [ peerNode, peerBranches ]));
+		});
+
 		if (!m.radios.length) branches.appendChild(E('div', { 'class': 'vt-empty-inline' }, [ _('No radios reported') ]));
 
 		this.nodes.upActive = !!(up_r && up_r.rx + up_r.tx > 50e3);
@@ -992,9 +1033,18 @@ return view.extend({
 
 		var want = [];
 		want.push({ key: 'gw', d: curve(rect(n.gw), rect(n.ap)), active: n.upActive, speed: speed(n.upRate), main: true });
+
+		/* wires from router to peer APs */
+		Object.keys(n.peers || {}).forEach(function(pid) {
+			var p = n.peers[pid];
+			want.push({ key: 'p_' + pid, d: curve(rect(n.ap), rect(p.el)), active: p.active, speed: speed(p.rate), main: true });
+		});
+
+		/* wires to radios (from their peer AP or from local router) */
 		n.radios.forEach(function(r, i) {
 			var rr = rect(r.el);
-			want.push({ key: 'r' + i, d: curve(rect(n.ap), rr), active: r.active, speed: speed(r.rate) });
+			var srcNode = (r.peerId && n.peers && n.peers[r.peerId]) ? n.peers[r.peerId].el : n.ap;
+			want.push({ key: 'r' + i, d: curve(rect(srcNode), rr), active: r.active, speed: speed(r.rate) });
 			r.ssids.forEach(function(s, j) { want.push({ key: 'r' + i + 's' + j, d: curve(rr, rect(s.el)), active: s.active, speed: 1 }); });
 		});
 
@@ -1337,7 +1387,7 @@ return view.extend({
 			return E('article', { 'class': 'vt-tile vt-radio vt-radio-' + (r.band || 'x') + (r.up ? '' : ' vt-radio-off') + (ins.busiest ? ' vt-radio-busiest' : '') }, [
 				E('header', { 'class': 'vt-radio-head' }, [
 					bandBadge(r.band),
-					E('span', { 'class': 'vt-radio-name' }, [ r.gen || r.id ]),
+					E('span', { 'class': 'vt-radio-name' }, [ r.peer ? r.peer.name + ' · ' + (r.gen || r.id) : (r.gen || r.id) ]),
 					E('span', { 'class': 'vt-status vt-status-' + (r.disabled ? 'warn' : r.up ? 'ok' : 'err') }, [ r.disabled ? _('Disabled') : r.up ? _('Up') : _('Down') ]),
 					E('button', { 'type': 'button', 'class': 'vt-icon-action', 'title': _('Radio details'), 'aria-label': _('Radio details'),
 						'click': function() { self.openDrawer('radio', r.id); } }, [ icon('chevron') ])
@@ -1543,7 +1593,7 @@ return view.extend({
 				E('span', { 'class': 'vt-signal', 'title': c.level.word }, [ signalGlyph(c.level), E('span', { 'class': 'vt-tn' }, [ fmt.dbm(c.signal) ]) ])
 			]),
 			E('td', { 'class': 'vt-td-net', 'data-title': _('Network') }, [
-				E('div', { 'class': 'vt-net' }, [ E('span', { 'class': 'vt-net-ssid' }, [ c.ssid ]), E('span', { 'class': 'vt-net-badges' }, [ bandBadge(c.band), c.gen ? E('span', { 'class': 'vt-gen' }, [ c.gen ]) : '' ]) ])
+				E('div', { 'class': 'vt-net' }, [ E('span', { 'class': 'vt-net-ssid' }, [ c.ssid ]), E('span', { 'class': 'vt-net-badges' }, [ bandBadge(c.band), c.gen ? E('span', { 'class': 'vt-gen' }, [ c.gen ]) : '', c.peer ? pill(c.peer.name, 'accent') : '' ]) ])
 			]),
 			E('td', { 'class': 'vt-td-rate', 'data-title': _('Link rate'),
 				'title': _('To device: %s').format(c.tx ? c.tx.label : fmt.DASH) + '\n' + _('From device: %s').format(c.rx ? c.rx.label : fmt.DASH) }, [

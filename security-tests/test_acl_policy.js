@@ -223,7 +223,7 @@ test('the plugin registers exactly the granted luci.vantage methods and touches 
 	assert.ok(ubus.includes('network.wireless status'), 'wireless status call');
 	assert.ok(ubus.includes('system board'), 'board call for peer_status');
 	for (const c of ubus)
-		assert.ok(/^(network\.wireless status|system board|iwinfo (assoclist|info))$/.test(c), `ubus call: ${c}`);
+		assert.ok(/^(network\.wireless status|system board)$/.test(c), `ubus call: ${c}`);
 });
 
 test('no wildcards except the hostapd object glob; no method globs', () => {
