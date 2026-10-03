@@ -36,7 +36,7 @@ var callHints = rpc.declare({ object: 'luci-rpc', method: 'getHostHints', expect
 var callIwInfo = rpc.declare({ object: 'iwinfo', method: 'info', params: [ 'device' ], expect: { '': {} } });
 var callAssoc = rpc.declare({ object: 'iwinfo', method: 'assoclist', params: [ 'device' ], expect: { results: [] } });
 var callRrdns = rpc.declare({ object: 'network.rrdns', method: 'lookup', params: [ 'addrs', 'timeout', 'limit' ], expect: { '': {} } });
-var callMdns = rpc.declare({ object: 'umdns', method: 'hosts' });
+var callMdns = rpc.declare({ object: 'umdns', method: 'hosts', expect: { '': {} } });
 var callUciGet = rpc.declare({ object: 'uci', method: 'get', params: [ 'config' ], expect: { values: {} } });
 var callSetAlias = rpc.declare({ object: 'luci.vantage', method: 'set_alias', params: [ 'mac', 'name', 'icon' ] });
 var callAccess = rpc.declare({ object: 'session', method: 'access', params: [ 'scope', 'object', 'function' ], expect: { access: false } });
@@ -252,6 +252,20 @@ function pill(text, tone, title) {
 	return el;
 }
 
+function peerColorClass(color) {
+	if (!color || typeof color !== 'string') return '';
+	var c = color.toLowerCase().trim();
+	if (c === '#8b5cf6' || c === 'purple' || c === 'violet') return ' vt-color-purple';
+	if (c === '#3b82f6' || c === 'blue') return ' vt-color-blue';
+	if (c === '#10b981' || c === 'green' || c === 'emerald') return ' vt-color-green';
+	if (c === '#f59e0b' || c === 'amber' || c === 'yellow') return ' vt-color-amber';
+	if (c === '#f97316' || c === 'orange') return ' vt-color-orange';
+	if (c === '#ef4444' || c === 'red') return ' vt-color-red';
+	if (c === '#06b6d4' || c === 'cyan' || c === 'teal') return ' vt-color-cyan';
+	if (c === '#ec4899' || c === 'pink' || c === 'rose') return ' vt-color-pink';
+	return '';
+}
+
 function rateLine(down, up, cls) {
 	return E('span', { 'class': 'vt-rates' + (cls ? ' ' + cls : '') }, [
 		E('span', { 'class': 'vt-rate vt-rate-down', 'title': _('Download (to clients)') }, [ icon('down'), fmt.bits(down) ]),
@@ -336,7 +350,7 @@ return view.extend({
 			L.resolveDefault(callBoard(), {}),
 			L.resolveDefault(callAccess('access-group', 'luci-app-vantage-names', 'write'), false),
 			this.loadAliases(),
-			L.resolveDefault(callMdns(), null),
+			rpc.list('umdns').then(function(res) { return (res && res.umdns) ? callMdns() : null; }).catch(function() { return null; }),
 			this.fetch(),
 			/* reverse DNS is an optional grant: without it, skip it quietly */
 			L.resolveDefault(callAccess('access-group', 'luci-app-vantage-rdns', 'read'), false)
@@ -480,22 +494,6 @@ return view.extend({
 		st.devPrev = dr.next;
 		if (Object.keys(dr.rates).length || !Object.keys(devCounters).length) st.devRates = dr.rates;
 
-		function sum(list) {
-			var rx = 0, tx = 0, ok = false;
-			list.forEach(function(n) { var r = st.devRates[n]; if (r) { rx += r.rx; tx += r.tx; ok = true; } });
-			return ok ? { rx: rx, tx: tx } : null;
-		}
-		st.radioRates = Object.create(null);
-		m.radios.forEach(function(r) { var v = sum(r.ifnames); if (v) st.radioRates[r.id] = v; });
-		st.ssidRates = Object.create(null);
-		m.ssids.forEach(function(s) { var v = s.ifname ? sum([ s.ifname ]) : null; if (v) st.ssidRates[s.id] = v; });
-		var upRate = m.uplink ? st.devRates[m.uplink.statsDev] : null;
-		st.uplinkRate = upRate || null;
-
-		/* throughput history (only for ticks that produced a rate) */
-		if (upRate) this.pushNet('uplink', at, upRate);
-		m.radios.forEach(function(r) { if (st.radioRates[r.id]) self.pushNet(r.id, at, st.radioRates[r.id]); });
-
 		/* station counters, per-station history */
 		var staCounters = Object.create(null);
 		m.clients.forEach(function(c) { staCounters[c.mac] = { rx: c.rxBytes, tx: c.txBytes }; });
@@ -507,6 +505,48 @@ return view.extend({
 			var r = st.staRates[c.mac];
 			series.push(h, [ at, c.signal != null ? -c.signal : NaN, r ? r.tx : NaN, r ? r.rx : NaN ], 10 * 60 * 1000, 150);
 		});
+
+		function sum(list) {
+			var rx = 0, tx = 0, ok = false;
+			list.forEach(function(n) { var r = st.devRates[n]; if (r) { rx += r.rx; tx += r.tx; ok = true; } });
+			return ok ? { rx: rx, tx: tx } : null;
+		}
+		st.radioRates = Object.create(null);
+		m.radios.forEach(function(r) {
+			var v = sum(r.ifnames);
+			if (!v && r.peer && r.up) {
+				var rx = 0, tx = 0;
+				m.clients.forEach(function(c) {
+					if (c.radio === r.id) {
+						var cr = st.staRates[c.mac];
+						if (cr) { rx += cr.rx; tx += cr.tx; }
+					}
+				});
+				v = { rx: rx, tx: tx };
+			}
+			if (v) st.radioRates[r.id] = v;
+		});
+		st.ssidRates = Object.create(null);
+		m.ssids.forEach(function(s) {
+			var v = s.ifname ? sum([ s.ifname ]) : null;
+			if (!v && s.peer && s.up) {
+				var rx = 0, tx = 0;
+				m.clients.forEach(function(c) {
+					if (c.ssidId === s.id) {
+						var cr = st.staRates[c.mac];
+						if (cr) { rx += cr.rx; tx += cr.tx; }
+					}
+				});
+				v = { rx: rx, tx: tx };
+			}
+			if (v) st.ssidRates[s.id] = v;
+		});
+		var upRate = m.uplink ? st.devRates[m.uplink.statsDev] : null;
+		st.uplinkRate = upRate || null;
+
+		/* throughput history (only for ticks that produced a rate) */
+		if (upRate) this.pushNet('uplink', at, upRate);
+		m.radios.forEach(function(r) { if (st.radioRates[r.id]) self.pushNet(r.id, at, st.radioRates[r.id]); });
 
 		/* presence: new since the page opened, recently gone */
 		var p = insight.presence(st.presence, m.clients, now, GONE_KEEP_MS);
@@ -618,7 +658,7 @@ return view.extend({
 		Object.keys(peers).forEach(function(pid) {
 			var p = peers[pid];
 			if (!p || p.error || !p.wireless) return;
-			meta[pid] = { name: p.name || pid, hostname: p.hostname, model: p.model };
+			meta[pid] = { name: p.name || pid, hostname: p.hostname, model: p.model, icon: p.icon, color: p.color };
 
 			Object.keys(p.wireless).forEach(function(rname) {
 				var radio = p.wireless[rname];
@@ -937,8 +977,9 @@ return view.extend({
 
 		Object.keys(peerRadios).forEach(function(pid) {
 			var p = peerRadios[pid];
-			var peerNode = E('div', { 'class': 'vt-node vt-node-peer', 'title': p.meta.name }, [
-				E('span', { 'class': 'vt-node-ico' }, [ icon('ap') ]),
+			var colorCls = peerColorClass(p.meta.color);
+			var peerNode = E('div', { 'class': 'vt-node vt-node-peer' + colorCls, 'title': p.meta.name }, [
+				E('span', { 'class': 'vt-node-ico vt-node-ico-peer' + colorCls }, [ icon(names.validIcon(p.meta.icon) || 'ap') ]),
 				E('span', { 'class': 'vt-node-body' }, [
 					E('span', { 'class': 'vt-node-kicker' }, [ _('Access point') ]),
 					E('span', { 'class': 'vt-node-title' }, [ p.meta.name ]),
@@ -946,13 +987,16 @@ return view.extend({
 				])
 			]);
 			var peerBranches = E('div', { 'class': 'vt-peer-branches' });
-			var pRate = 0, pActive = false;
+			var pRate = 0;
 			p.radios.forEach(function(r) {
 				peerBranches.appendChild(buildRadioBranch(r));
 				var rr = st.radioRates[r.id];
-				if (rr) { pRate += rr.rx + rr.tx; if (rr.rx + rr.tx > 50e3) pActive = true; }
+				if (rr) pRate += rr.rx + rr.tx;
 			});
-			self.nodes.peers[pid] = { el: peerNode, active: pActive, rate: pRate };
+			m.clients.forEach(function(c) {
+				if (c.peer === p.meta) { var cr = st.staRates[c.mac]; if (cr) pRate += cr.rx + cr.tx; }
+			});
+			self.nodes.peers[pid] = { el: peerNode, active: true, rate: pRate };
 			branches.appendChild(E('div', { 'class': 'vt-peer-group' }, [ peerNode, peerBranches ]));
 		});
 
@@ -1037,7 +1081,7 @@ return view.extend({
 		/* wires from router to peer APs */
 		Object.keys(n.peers || {}).forEach(function(pid) {
 			var p = n.peers[pid];
-			want.push({ key: 'p_' + pid, d: curve(rect(n.ap), rect(p.el)), active: p.active, speed: speed(p.rate), main: true });
+			want.push({ key: 'p_' + pid, d: curve(rect(n.ap), rect(p.el)), active: true, speed: speed(p.rate), main: true });
 		});
 
 		/* wires to radios (from their peer AP or from local router) */
@@ -1399,7 +1443,7 @@ return view.extend({
 				spec,
 				E('dl', { 'class': 'vt-stats' }, [
 					kv(_('Clients'), E('span', { 'class': 'vt-tn' }, [ String(r.clients) ])),
-					kv(_('Tx power'), E('span', { 'class': 'vt-tn' }, [ r.txpower != null ? _('%s dBm').format(r.txpower) : fmt.DASH ])),
+					kv(_('Tx power'), E('span', { 'class': 'vt-tn' }, [ (r.txpower != null ? r.txpower : r.txpowerCfg) != null ? _('%s dBm').format(r.txpower != null ? r.txpower : r.txpowerCfg) : fmt.DASH ])),
 					kv(_('Noise'), r.noise != null ? E('span', { 'class': 'vt-tn' }, [ fmt.dbm(r.noise) ]) : E('span', { 'class': 'vt-muted', 'title': _('The driver reports a placeholder value, so no noise floor or SNR is shown') }, [ _('not reported') ])),
 					kv(_('Airtime'), r.airtime != null ? E('span', { 'class': 'vt-tn' }, [ fmt.pct(r.airtime) ]) : E('span', { 'class': 'vt-muted' }, [ _('not reported') ]))
 				]),
@@ -1593,7 +1637,7 @@ return view.extend({
 				E('span', { 'class': 'vt-signal', 'title': c.level.word }, [ signalGlyph(c.level), E('span', { 'class': 'vt-tn' }, [ fmt.dbm(c.signal) ]) ])
 			]),
 			E('td', { 'class': 'vt-td-net', 'data-title': _('Network') }, [
-				E('div', { 'class': 'vt-net' }, [ E('span', { 'class': 'vt-net-ssid' }, [ c.ssid ]), E('span', { 'class': 'vt-net-badges' }, [ bandBadge(c.band), c.gen ? E('span', { 'class': 'vt-gen' }, [ c.gen ]) : '', c.peer ? pill(c.peer.name, 'accent') : '' ]) ])
+				E('div', { 'class': 'vt-net' }, [ E('span', { 'class': 'vt-net-ssid' }, [ c.ssid ]), E('span', { 'class': 'vt-net-badges' }, [ bandBadge(c.band), c.gen ? E('span', { 'class': 'vt-gen' }, [ c.gen ]) : '', c.peer ? pill(c.peer.name, 'peer' + peerColorClass(c.peer.color)) : '' ]) ])
 			]),
 			E('td', { 'class': 'vt-td-rate', 'data-title': _('Link rate'),
 				'title': _('To device: %s').format(c.tx ? c.tx.label : fmt.DASH) + '\n' + _('From device: %s').format(c.rx ? c.rx.label : fmt.DASH) }, [
@@ -1987,7 +2031,7 @@ return view.extend({
 					kv(_('Status'), r.disabled ? _('Disabled') : r.up ? _('Up') : _('Down')),
 					kv(_('Mode'), [ r.htmode || fmt.DASH, r.hwmodes ? E('small', {}, [ r.hwmodes ]) : '' ]),
 					kv(_('Centre frequency'), r.spectrum ? _('%d MHz (%d–%d MHz)').format(r.spectrum.centre, r.spectrum.lo, r.spectrum.hi) : fmt.DASH),
-					kv(_('Tx power'), r.txpower != null ? _('%s dBm').format(r.txpower) + (r.txpowerCfg != null && r.txpowerCfg !== r.txpower ? ' ' + _('(configured %d dBm, limited by regulatory rules)').format(r.txpowerCfg) : '') : fmt.DASH),
+					kv(_('Tx power'), (r.txpower != null || r.txpowerCfg != null) ? _('%s dBm').format(r.txpower != null ? r.txpower : r.txpowerCfg) + (r.txpower != null && r.txpowerCfg != null && r.txpowerCfg !== r.txpower ? ' ' + _('(configured %d dBm, limited by regulatory rules)').format(r.txpowerCfg) : '') : fmt.DASH),
 					kv(_('Noise floor'), r.noise != null ? fmt.dbm(r.noise) : E('span', { 'class': 'vt-muted' }, [ r.noiseRaw != null ? _('not reported (driver placeholder %s)').format(fmt.dbm(r.noiseRaw)) : _('not reported') ])),
 					kv(_('Country'), r.country || fmt.DASH)
 				]) ]),

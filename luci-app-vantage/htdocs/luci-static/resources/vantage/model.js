@@ -318,7 +318,7 @@ return baseclass.extend({
 				std: ht.std,
 				gen: wifi.genName(ht.std, band),
 				htmode: info0.htmode || cfg.htmode || null,
-				txpower: finite(info0.txpower) ? info0.txpower : (finite(rIw.txpower) ? rIw.txpower : null),
+				txpower: finite(info0.txpower) ? info0.txpower : (info0.txpower != null && isFinite(+info0.txpower) ? +info0.txpower : (finite(rIw.txpower) ? rIw.txpower : (rIw.txpower != null && isFinite(+rIw.txpower) ? +rIw.txpower : (cfg.txpower != null && isFinite(+cfg.txpower) ? +cfg.txpower : null)))),
 				txpowerCfg: cfg.txpower != null && isFinite(+cfg.txpower) ? +cfg.txpower : null,
 				noise: wifi.noise(finite(info0.noise) ? info0.noise : rIw.noise),
 				noiseRaw: finite(info0.noise) ? info0.noise : (finite(rIw.noise) ? rIw.noise : null),

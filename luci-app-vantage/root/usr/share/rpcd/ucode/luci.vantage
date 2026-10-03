@@ -359,8 +359,8 @@ function peer_call(url, username, password, obj, method, params) {
 	let resp = peer_rpc(rpc_url, token, obj, method, params);
 	if (type(resp) != 'object') return null;
 
-	// token expired: re-login once
-	if (type(resp.result) == 'array' && resp.result[0] == 6) {
+	// token expired or error: re-login once
+	if (type(resp.result) != 'array' || resp.result[0] != 0) {
 		peer_tokens[url] = null;
 		let login = peer_login(rpc_url, username, password);
 		if (!login) return null;
@@ -391,6 +391,20 @@ function gather_peer_status() {
 				push(ifnames, i.ifname);
 	}
 
+	let txpowers = {};
+	let p = popen("exec iw dev 2>/dev/null");
+	if (p) {
+		let out = p.read('all');
+		p.close();
+		let cur_if = null;
+		for (let line in split(out || '', '\n')) {
+			let m_if = match(line, /Interface\s+([A-Za-z0-9_.-]+)/);
+			if (m_if) cur_if = m_if[1];
+			let m_tx = match(line, /txpower\s+([0-9]+)/);
+			if (m_tx && cur_if) txpowers[cur_if] = int(m_tx[1]);
+		}
+	}
+
 	let assoc_out = {}, iw = {}, hapd_out = {}, hapd_st = {};
 	for (let ifn in ifnames) {
 		let hc = bus.call('hostapd.' + ifn, 'get_clients') || {};
@@ -402,7 +416,8 @@ function gather_peer_status() {
 			bssid: hst.bssid,
 			ssid: hst.ssid,
 			channel: hst.channel,
-			frequency: hst.freq
+			frequency: hst.freq,
+			txpower: txpowers[ifn]
 		};
 
 		let stations = [];
@@ -485,7 +500,9 @@ const methods = {
 					name: short_string(s.name, 64) || url,
 					url,
 					username: s.username || 'root',
-					password: s.password || ''
+					password: s.password || '',
+					icon: short_string(s.icon, 32),
+					color: short_string(s.color, 32)
 				});
 			});
 
@@ -496,6 +513,8 @@ const methods = {
 				out[p.id] = data
 					? { name: p.name, hostname: data.hostname, model: data.model,
 					    board_name: data.board_name,
+					    icon: p.icon,
+					    color: p.color,
 					    wireless: data.wireless || {},
 					    assoc: data.assoc || {},
 					    iwinfo: data.iwinfo || {},

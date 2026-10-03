@@ -57,6 +57,9 @@
 	--vt-chart-grid: var(--v-chart-grid, color-mix(in srgb, var(--vt-text) 8%, transparent));
 	--vt-chart-axis: var(--v-chart-axis, var(--vt-text-3));
 	--vt-fill-op: var(--v-chart-fill-opacity, .22);
+	--vt-peer: var(--v-peer, #8b5cf6);
+	--vt-peer-ink: var(--v-peer-ink, #ffffff);
+	--vt-peer-soft: var(--v-peer-soft, rgba(139, 92, 246, .14));
 	/* bands: identity colours, the same everywhere (badges, tiles, charts) */
 	--vt-b2: var(--vt-chart-2);
 	--vt-b5: var(--vt-chart-3);
@@ -104,6 +107,9 @@ html[data-darkmode="true"] .vt-app {
 	--vt-chart-6: var(--v-chart-6, #d9588c);
 	--vt-chart-grid: var(--v-chart-grid, color-mix(in srgb, var(--vt-text) 7%, transparent));
 	--vt-fill-op: var(--v-chart-fill-opacity, .2);
+	--vt-peer: var(--v-peer, #a78bfa);
+	--vt-peer-ink: var(--v-peer-ink, #0b1020);
+	--vt-peer-soft: var(--v-peer-soft, rgba(167, 139, 250, .16));
 	--vt-av-l: 24%;
 	--vt-av-s: 30%;
 	--vt-av-ink-l: 76%;
@@ -198,6 +204,15 @@ html[data-darkmode="true"] .vt-app {
 	background: var(--vt-surface-3); color: var(--vt-text-2);
 }
 .vt-app .vt-pill-accent { background: var(--vt-accent); color: var(--vt-accent-ink); }
+.vt-app .vt-pill-peer { background: var(--vt-peer-soft); color: var(--vt-peer); }
+.vt-app .vt-pill.vt-color-purple { background: rgba(139, 92, 246, .14); color: #8b5cf6; }
+.vt-app .vt-pill.vt-color-blue   { background: rgba(59, 130, 246, .14); color: #3b82f6; }
+.vt-app .vt-pill.vt-color-green  { background: rgba(16, 185, 129, .14); color: #10b981; }
+.vt-app .vt-pill.vt-color-amber  { background: rgba(245, 158, 11, .14); color: #b45309; }
+.vt-app .vt-pill.vt-color-orange { background: rgba(249, 115, 22, .14); color: #ea580c; }
+.vt-app .vt-pill.vt-color-red    { background: rgba(239, 68, 68, .14); color: #ef4444; }
+.vt-app .vt-pill.vt-color-cyan   { background: rgba(6, 182, 212, .14); color: #0891b2; }
+.vt-app .vt-pill.vt-color-pink   { background: rgba(236, 72, 153, .14); color: #db2777; }
 .vt-app .vt-pill-warn { background: var(--vt-warn-soft); color: var(--vt-warn); }
 
 .vt-app .vt-band {
@@ -536,8 +551,26 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-node-ap { justify-self: stretch; align-self: center; padding: 12px 13px; border-color: color-mix(in oklab, var(--vt-accent-line) 40%, var(--vt-line)); }
 .vt-app .vt-node-ap .vt-node-ico { background: var(--vt-accent); color: var(--vt-accent-ink); }
 .vt-app .vt-node-ap .vt-node-title { font-size: 14.5px; }
-.vt-app .vt-node-peer { justify-self: stretch; align-self: center; padding: 10px 12px; border-color: color-mix(in oklab, var(--vt-accent-line) 30%, var(--vt-line)); }
-.vt-app .vt-node-peer .vt-node-ico { background: color-mix(in oklab, var(--vt-accent) 20%, var(--vt-surface-3)); color: var(--vt-accent-text); }
+.vt-app .vt-node-peer { justify-self: stretch; align-self: center; padding: 10px 12px; border-color: color-mix(in oklab, var(--vt-peer) 35%, var(--vt-line)); }
+.vt-app .vt-node-peer .vt-node-ico,
+.vt-app .vt-node-ico-peer { background: var(--vt-peer); color: var(--vt-peer-ink); }
+.vt-app .vt-node-ico.vt-color-purple { background: #8b5cf6; color: #ffffff; }
+.vt-app .vt-node-ico.vt-color-blue   { background: #3b82f6; color: #ffffff; }
+.vt-app .vt-node-ico.vt-color-green  { background: #10b981; color: #ffffff; }
+.vt-app .vt-node-ico.vt-color-amber  { background: #f59e0b; color: #1c1402; }
+.vt-app .vt-node-ico.vt-color-orange { background: #f97316; color: #ffffff; }
+.vt-app .vt-node-ico.vt-color-red    { background: #ef4444; color: #ffffff; }
+.vt-app .vt-node-ico.vt-color-cyan   { background: #06b6d4; color: #ffffff; }
+.vt-app .vt-node-ico.vt-color-pink   { background: #ec4899; color: #ffffff; }
+
+.vt-app .vt-node-peer.vt-color-purple { border-color: color-mix(in oklab, #8b5cf6 35%, var(--vt-line)); }
+.vt-app .vt-node-peer.vt-color-blue   { border-color: color-mix(in oklab, #3b82f6 35%, var(--vt-line)); }
+.vt-app .vt-node-peer.vt-color-green  { border-color: color-mix(in oklab, #10b981 35%, var(--vt-line)); }
+.vt-app .vt-node-peer.vt-color-amber  { border-color: color-mix(in oklab, #f59e0b 35%, var(--vt-line)); }
+.vt-app .vt-node-peer.vt-color-orange { border-color: color-mix(in oklab, #f97316 35%, var(--vt-line)); }
+.vt-app .vt-node-peer.vt-color-red    { border-color: color-mix(in oklab, #ef4444 35%, var(--vt-line)); }
+.vt-app .vt-node-peer.vt-color-cyan   { border-color: color-mix(in oklab, #06b6d4 35%, var(--vt-line)); }
+.vt-app .vt-node-peer.vt-color-pink   { border-color: color-mix(in oklab, #ec4899 35%, var(--vt-line)); }
 .vt-app .vt-peer-group { display: grid; grid-template-columns: minmax(136px, 172px) minmax(0, 1fr); column-gap: 34px; align-items: center; min-width: 0; }
 .vt-app .vt-peer-branches { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .vt-app .vt-node-gen { text-transform: none; letter-spacing: 0; font-weight: 560; }
