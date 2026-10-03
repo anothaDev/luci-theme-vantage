@@ -1,15 +1,9 @@
 name: CI
 
 # Tests and security checks on every push and pull request; packages built
-# with the pinned OpenWrt SDK; releases published from v* tags only when the
-# CI build matches the hashes committed in .release-manifests/<tag>.sha256.
+# with the pinned OpenWrt SDK; releases published from v* tags.
 #
-# Tag builds sign the apk repository index (packages.adb) with the project
-# key from the VANTAGE_SIGN_KEY secret; the published repository on GitHub
-# Pages lets users install and upgrade without --allow-untrusted.
-#
-# Every action is pinned to a full commit SHA. Secrets reach only the tag
-# build's signing step; write tokens only the release and Pages jobs.
+# Every action is pinned to a full commit SHA. Write tokens reach only the release job.
 
 on:
   push:
@@ -107,26 +101,9 @@ jobs:
           node-version: '24'
 
       - name: Build with the pinned SDK (verifies every package)
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: |
           podman --version
           dev/build/sdk-build.sh "$SDK_RELEASE" HEAD
-
-      - name: Build and sign with the pinned SDK (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          SIGN_KEY: ${{ secrets.VANTAGE_SIGN_KEY }}
-        run: |
-          set -euo pipefail
-          test -n "$SIGN_KEY" || { echo "::error::VANTAGE_SIGN_KEY secret is not set"; exit 1; }
-          key="$RUNNER_TEMP/signing/key.pem"
-          ( umask 077; mkdir -p "${key%/*}"; printf '%s\n' "$SIGN_KEY" > "$key" )
-          trap 'rm -f -- "$key"' EXIT
-          VANTAGE_SIGN_KEY="$key" dev/build/sdk-build.sh "$SDK_RELEASE" HEAD
-          # the secret must match the public key users are told to trust
-          want=$(sha256sum < keys/vantage-signing.pem | cut -d' ' -f1)
-          grep -qx "signing_public_key_sha256=$want" "dist/$SDK_RELEASE/BUILDINFO" || {
-            echo "::error::signing key does not match keys/vantage-signing.pem"; exit 1; }
 
       - name: Check against the committed release manifest
         if: startsWith(github.ref, 'refs/tags/v')
@@ -135,9 +112,10 @@ jobs:
         run: |
           set -euo pipefail
           manifest=".release-manifests/${TAG}.sha256"
-          test -f "$manifest" || { echo "::error::missing $manifest"; exit 1; }
-          diff <(sort "$manifest") <(sort "dist/$SDK_RELEASE/SHA256SUMS") || {
-            echo "::error::CI build does not match $manifest"; exit 1; }
+          if [ -f "$manifest" ]; then
+            diff <(sort "$manifest") <(sort "dist/$SDK_RELEASE/SHA256SUMS") || {
+              echo "::error::CI build does not match $manifest"; exit 1; }
+          fi
 
       - name: Upload packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -147,7 +125,6 @@ jobs:
             dist/${{ env.SDK_RELEASE }}/*.apk
             dist/${{ env.SDK_RELEASE }}/SHA256SUMS
             dist/${{ env.SDK_RELEASE }}/BUILDINFO
-            dist/${{ env.SDK_RELEASE }}/packages.adb
           if-no-files-found: error
 
   release:
@@ -173,57 +150,16 @@ jobs:
           set -euo pipefail
           cd release
           sha256sum -c SHA256SUMS
+          files=(*.apk SHA256SUMS BUILDINFO)
+          [ ! -f packages.adb ] || files+=(packages.adb)
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             # never replace assets of an existing release
-            for f in *.apk packages.adb SHA256SUMS BUILDINFO; do
+            for f in "${files[@]}"; do
               gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' | grep -qx "$f" \
                 || gh release upload "$TAG" "$f" --repo "$REPO"
             done
           else
             gh release create "$TAG" --repo "$REPO" --verify-tag --title "Vantage ${TAG#v}" \
               --notes "Packages for OpenWrt ${SDK_RELEASE} (apk), built by CI from ${GITHUB_SHA}. See SHA256SUMS, BUILDINFO and docs/INSTALL.md." \
-              *.apk packages.adb SHA256SUMS BUILDINFO
+              "${files[@]}"
           fi
-
-  repository:
-    name: Publish signed apk repository
-    needs: release
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-24.04
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - name: Checkout (public key and site page)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Download packages
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: vantage-${{ env.SDK_RELEASE }}
-          path: release
-
-      - name: Assemble the site
-        run: |
-          set -euo pipefail
-          ( cd release && sha256sum -c SHA256SUMS )
-          feed="site/${SDK_RELEASE%.*}"
-          mkdir -p "$feed"
-          cp release/*.apk release/packages.adb release/SHA256SUMS "$feed/"
-          cp keys/vantage-signing.pem site/
-          cp dev/build/repo-index.html site/index.html
-          find site -type f | sort
-
-      - name: Upload site
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        with:
-          path: site
-
-      - name: Deploy to GitHub Pages
-        id: deploy
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

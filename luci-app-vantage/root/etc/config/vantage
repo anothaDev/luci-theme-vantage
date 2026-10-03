@@ -9,3 +9,16 @@
 #   	option icon 'tv'
 
 config vantage 'main'
+
+# Peer access points: the dashboard fetches wireless client data from
+# each enabled peer via the LuCI HTTP API (luci.vantage peer_status).
+# Install luci-app-vantage on the peer first.
+#
+#   config peer 'ap1'
+#   	option name 'Living room AP'
+#   	option url 'http://192.0.2.2'
+#   	option username 'root'
+#   	option password 'secret'
+#   	option enabled '1'
+#   	option icon 'ap'
+#   	option color '#8b5cf6'

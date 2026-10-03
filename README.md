@@ -52,6 +52,8 @@ without the app.
   retries; rename a device in place
 - Top talkers, wireless networks, system tile (CPU per core, memory,
   storage, firmware)
+- Multi-AP support: polls remote OpenWrt access points and shows their
+  radios, SSIDs and connected stations directly on the main router's dashboard
 
 ## Screenshots
 
@@ -117,6 +119,30 @@ switches LuCI back to Bootstrap.
 the packages, installing only one of them, upgrades, uninstalling,
 building Vantage into your own firmware, troubleshooting, and a
 ready-made prompt for installing with a coding agent.
+
+## Access Points (Multi-AP)
+
+If your Wi-Fi is provided by standalone OpenWrt access points connected to a
+wired router, install `luci-app-vantage` on both devices. The main router
+will query each AP's wireless interfaces and clients over LuCI's JSON-RPC API
+and include them in its dashboard:
+
+1. Install `luci-app-vantage` on the access point.
+2. On the main router, add a `peer` section to `/etc/config/vantage`:
+
+```uci
+config peer 'ap1'
+	option name 'Living room AP'
+	option url 'http://192.0.2.2'
+	option username 'root'
+	option password 'secret'
+	option enabled '1'
+```
+
+3. Restart `rpcd` on the main router: `/etc/init.d/rpcd restart`.
+
+The access point will appear as a dedicated node in the **Network path**, and
+its connected stations will appear in the **Clients** list with an AP badge.
 
 ## Build
 

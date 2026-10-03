@@ -21,3 +21,5 @@ key-build*
 private-key*
 *.key
 *.sec
+direct_push_guide.md
+push-dev.sh

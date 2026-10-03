@@ -156,6 +156,9 @@ html[data-darkmode="true"] {
 	--v-chart-grid: color-mix(in srgb, var(--text) 8%, transparent);
 	--v-chart-axis: var(--text-3);
 	--v-chart-fill-opacity: .22;
+	--v-peer: #8b5cf6;
+	--v-peer-ink: #ffffff;
+	--v-peer-soft: rgba(139, 92, 246, .14);
 }
 html[data-darkmode="true"] {
 	--v-accent: var(--accent);           /* lime signal */
@@ -171,6 +174,9 @@ html[data-darkmode="true"] {
 	--v-chart-grid: color-mix(in srgb, var(--text) 7%, transparent);
 	--v-chart-axis: var(--text-3);
 	--v-chart-fill-opacity: .2;
+	--v-peer: #a78bfa;
+	--v-peer-ink: #0b1020;
+	--v-peer-soft: rgba(167, 139, 250, .16);
 }
 
 /* -------------------------------------------------------------- 2. base */
