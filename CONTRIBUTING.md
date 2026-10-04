@@ -184,14 +184,28 @@ your catalogues; there is nothing else to set up.
 - No dependencies, CDNs or web fonts.
 - Short comments that explain why.
 
-## Commits and pull requests
+## Pull requests
+
+Coherent AI-assisted pull requests are welcome, as long as you have read
+and understood every change and can explain it.
+
+- One feature or fix per pull request; keep unrelated changes out.
+- Don't touch `.github/workflows/`, `security-tests/`, `keys/`,
+  `dev/build/` or `.release-manifests/` unless that is what the pull
+  request is about, and say why.
+- Never weaken a test or check to make it pass; fix the code instead.
+- Don't bump `PKG_VERSION` or `PKG_RELEASE`; the maintainer cuts releases.
+- Run the [checks](#checks) first. Screenshots only from the replay's
+  `--demo` mode, never with real addresses, MACs or SSIDs.
+- Mention anything that changes the ACL, the templates or the install
+  scripts.
+
+## Commits
 
 - Imperative subject line (e.g. "Show uplink rate in the path view"), a
   blank line, then a body that says what changed and why.
 - No AI attribution: no `Co-Authored-By` lines or "Generated with ..."
-  notes for AI tools, in commits or pull requests.
-- One topic per pull request. Mention anything that changes the ACL,
-  the templates or the install scripts.
+  notes for AI tools.
 
 CI (`.github/workflows/ci.yml`) runs the tests and security checks on
 every push and pull request, then builds the packages with the pinned
