@@ -305,11 +305,17 @@ html[data-darkmode="true"] .vt-app {
 @container vt (min-width: 1100px) {
 	.vt-app .vt-grid {
 		grid-template-columns: repeat(4, minmax(0, 1fr));
+		/* the path takes the full width at its natural height; System
+		   heads the right column, and the last row soaks up the space
+		   when Clients is the taller side */
+		grid-template-rows: auto auto auto 1fr;
 		grid-template-areas:
-			"hero hero hero sys"
+			"hero hero hero hero"
 			"chart chart radios radios"
+			"clients clients clients sys"
 			"clients clients clients side";
 	}
+	.vt-app .vt-clients { align-self: start; }
 }
 
 /* wired-only devices: no Wi-Fi tiles; path, chart and system remain */
@@ -319,7 +325,7 @@ html[data-darkmode="true"] .vt-app {
 	.vt-app.vt-wired .vt-grid { grid-template-areas: "hero hero" "chart chart" "sys sys"; }
 }
 @container vt (min-width: 1100px) {
-	.vt-app.vt-wired .vt-grid { grid-template-areas: "hero hero hero sys" "chart chart chart chart"; }
+	.vt-app.vt-wired .vt-grid { grid-template-rows: none; grid-template-areas: "hero hero hero hero" "chart chart chart sys"; }
 }
 
 .vt-app .vt-tile {
@@ -607,10 +613,12 @@ html[data-darkmode="true"] .vt-app {
 
 /* ------------------------------------------------------------ 6. system */
 
-.vt-app .vt-sys { display: flex; flex-direction: column; gap: 16px; }
+.vt-app .vt-sys { container: vtsys / inline-size; display: flex; flex-direction: column; gap: 16px; }
 .vt-app .vt-sys .vt-tile-head { margin-bottom: 0; }
 .vt-app .vt-sys-cpu { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: end; }
 .vt-app .vt-sys-cpu-l { display: flex; flex-direction: column; gap: 3px; }
+/* a narrow System column puts the sparkline under the load figures */
+@container vtsys (max-width: 330px) { .vt-app .vt-sys-cpu { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
 .vt-app .vt-sys-cpu-r { display: flex; align-items: flex-end; gap: 10px; min-width: 0; }
 .vt-app .vt-spark-box { flex: 1; min-width: 0; padding-top: 12px; }
 .vt-app .vt-spark-box .vt-spark { height: 38px; }
