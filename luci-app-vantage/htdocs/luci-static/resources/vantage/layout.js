@@ -183,11 +183,14 @@ return baseclass.extend({
 		var bottoms = [], last = [], rects = Object.create(null), c, i;
 		for (c = 0; c < cols; c++) { bottoms.push(0); last.push(null); }
 
+		/* only a tile with nothing under it in any of its columns, or it
+		   would grow over that tile */
 		function stretch(col, top) {
 			var id = last[col], r = id && rects[id];
 			if (!r) return;
 			var g = top - bottoms[col];
 			if (g <= 0 || !(FLEX[id] || g <= SNAP)) return;
+			for (var j = r.c; j < r.c + r.w; j++) if (last[j] !== id) return;
 			r.h += g;
 			for (var k = r.c; k < r.c + r.w; k++)
 				if (last[k] === id) bottoms[k] = r.top + r.h + gap;

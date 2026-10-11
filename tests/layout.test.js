@@ -130,3 +130,21 @@ test('pack: small gaps snap, large ones only for the chart', () => {
 	assert.equal(wired.rects.chart.h, 520, 'the chart fills the row beside System');
 	assert.equal(wired.height, 360 + 14 + 520);
 });
+
+test('pack: a tile never stretches over a tile placed under it', () => {
+	/* the chart widened to three columns, the radio cards under its
+	   last column, Clients after them: the chart must not grow down to
+	   Clients, it would cover the radio cards */
+	const h = { hero: 360, chart: 400, radios: 418, clients: 420, sys: 500, talk: 120, ssids: 260 };
+	let l = layout.resize(layout.defaults('wide', false), 'chart', 1, 'wide');
+	const p = layout.pack(l.filter(e => !e.hide).map(e => ({ id: e.id, c: e.c, w: e.w, h: h[e.id] })), 4, 14).rects;
+	assert.deepEqual([ p.chart.c, p.chart.w, p.radios.c ], [ 0, 3, 2 ]);
+	assert.equal(p.radios.top, p.chart.top + p.chart.h + 14, 'radio cards start under the chart');
+	assert.equal(p.chart.h, 400);
+	for (const a of Object.keys(p)) for (const b of Object.keys(p)) {
+		if (a >= b) continue;
+		const x = p[a], y = p[b];
+		const cols = x.c < y.c + y.w && y.c < x.c + x.w, rows = x.top < y.top + y.h && y.top < x.top + x.h;
+		assert.ok(!(cols && rows), a + ' overlaps ' + b);
+	}
+});
