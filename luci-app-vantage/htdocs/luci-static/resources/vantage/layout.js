@@ -175,6 +175,18 @@ return baseclass.extend({
 		return out;
 	},
 
+	/* a tile's height between polls: it grows at once but shrinks only
+	   after its content stayed smaller for HOLD_MS, so a talker or a
+	   client dropping out for one poll doesn't move the page. prev is
+	   the last { h, since } (or null); returns the next one */
+	HOLD_MS: 30000,
+	settle: function(prev, natural, now) {
+		if (!prev || natural >= prev.h) return { h: natural, since: null };
+		var since = prev.since == null ? now : prev.since;
+		if (now - since >= this.HOLD_MS) return { h: natural, since: null };
+		return { h: prev.h, since: since };
+	},
+
 	/* where shown tiles go. items: [{ id, c, w, h }] in order, h measured;
 	   returns { rects: { id: { c, w, top, h } }, height }. A tile that
 	   ends a little above the next one in its columns stretches to meet

@@ -758,6 +758,7 @@ return view.extend({
 		this.folds[key] = !this.folds[key];
 		writeFolds(this.folds);
 		this.applyFold(key);
+		if (this.held) delete this.held[key];
 		if (key === 'hero') this.scheduleWires();
 		if (key === 'chart') this.paintChart();
 	},
@@ -828,11 +829,19 @@ return view.extend({
 			t.style.setProperty('--w', Math.min(e.w, cols).toFixed(0));
 			t.style.minHeight = '';
 		});
-		var items = shown.map(function(e) { return { id: e.id, c: e.c, w: e.w, h: tiles[e.id].getBoundingClientRect().height }; });
+		/* live content changes hold a tile's height for a while; a new
+		   width or an edit shows true sizes at once */
+		if (this.heldWidth !== width || this.drag) { this.held = Object.create(null); this.heldWidth = width; }
+		var held = this.held, now = Date.now();
+		var items = shown.map(function(e) {
+			var nat = tiles[e.id].getBoundingClientRect().height;
+			held[e.id] = layout.settle(held[e.id], nat, now);
+			return { id: e.id, c: e.c, w: e.w, h: held[e.id].h, nat: nat };
+		});
 		var p = layout.pack(items, cols, gap);
 		items.forEach(function(it) {
 			var r = p.rects[it.id], t = tiles[it.id];
-			if (r.h > it.h + 0.5) t.style.minHeight = r.h.toFixed(1) + 'px';
+			if (r.h > it.nat + 0.5) t.style.minHeight = r.h.toFixed(1) + 'px';
 			t.style.setProperty('--y', r.top.toFixed(1) + 'px');
 		});
 		grid.style.height = p.height.toFixed(1) + 'px';
@@ -872,6 +881,7 @@ return view.extend({
 		if (layout.same(list, layout.defaults(l.tier, l.wired))) delete this.layouts[k];
 		else this.layouts[k] = layout.compact(list);
 		writeLayouts(this.layouts);
+		this.held = Object.create(null);
 		this.doLayout();
 	},
 
@@ -916,6 +926,7 @@ return view.extend({
 					if (!l) return;
 					delete self.layouts[layout.key(l.tier, l.wired)];
 					writeLayouts(self.layouts);
+					self.held = Object.create(null);
 					self.doLayout();
 					self.announce(_('Layout reset'));
 				} }, [ _('Reset') ]),

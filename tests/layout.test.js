@@ -148,3 +148,17 @@ test('pack: a tile never stretches over a tile placed under it', () => {
 		assert.ok(!(cols && rows), a + ' overlaps ' + b);
 	}
 });
+
+test('settle: tiles grow at once and shrink only after holding for a while', () => {
+	let s = layout.settle(null, 300, 0);
+	assert.deepEqual(s, { h: 300, since: null });
+	s = layout.settle(s, 360, 5000);
+	assert.deepEqual(s, { h: 360, since: null }, 'grows immediately');
+	s = layout.settle(s, 320, 10000);
+	assert.deepEqual(s, { h: 360, since: 10000 }, 'holds when the content shrinks');
+	s = layout.settle(s, 300, 20000);
+	assert.deepEqual(s, { h: 360, since: 10000 }, 'still holding, the clock keeps running');
+	assert.deepEqual(layout.settle(s, 380, 25000), { h: 380, since: null }, 'growing again clears the clock');
+	s = layout.settle(s, 300, 10000 + layout.HOLD_MS);
+	assert.deepEqual(s, { h: 300, since: null }, 'shrinks once held long enough');
+});
