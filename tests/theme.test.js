@@ -90,4 +90,19 @@ test('channel analysis: a row or hump is ours by BSSID only', () => {
 	assert.match(src, /const mine = mineByColour\.has\(colour\);/);
 	/* own BSSIDs come from this device's interfaces */
 	assert.match(src, /\[ i\.iwinfo && i\.iwinfo\.bssid, i\.config && i\.config\.macaddr \]/);
+	/* the view's own row has no colour dot: its colour is rebuilt with the
+	   view's derive_color from the BSSID as printed, not upper-cased */
+	assert.match(src, /L\.require\('tools\.prng'\)/);
+	assert.match(src, /if \(mine && colourOf\) \{\s*const derived = hexRgb\(colourOf\(printed\)\);/);
+});
+
+test('channel analysis: a derived colour reads back like element.style', () => {
+	const start = src.indexOf('function hexRgb(');
+	assert.ok(start > 0, 'found hexRgb');
+	const end = src.indexOf('\n}\n', start) + 3;
+	const hexRgb = new Function(src.slice(start, end) + '\nreturn hexRgb;')();
+	assert.equal(hexRgb('#89cdb4'), 'rgb(137, 205, 180)');
+	assert.equal(hexRgb('#FFFFFF'), 'rgb(255, 255, 255)');
+	for (const bad of [ '#fff', 'red', '', null, undefined, '#89cdb4 ', 'rgb(1, 2, 3)' ])
+		assert.equal(hexRgb(bad), null, String(bad));
 });

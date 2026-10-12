@@ -416,11 +416,18 @@ function humpPath(points) {
 	return 'M' + r(x0) + ',' + r(base) + 'C' + r(x0 + k) + ',' + r(cy) + ' ' + r(x3 - k) + ',' + r(cy) + ' ' + r(x3) + ',' + r(base) + 'Z';
 }
 
+/* "#89cdb4" -> "rgb(137, 205, 180)", the form element.style reads back */
+function hexRgb(hex) {
+	const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex));
+	return m ? 'rgb(' + [ m[1], m[2], m[3] ].map(h => parseInt(h, 16)).join(', ') + ')' : null;
+}
+
 function setupChannelAnalysis() {
 	const view = document.getElementById('view');
 	const own = new Set();
 	const slots = new Map();
 	let next = 0;
+	let colourOf = null;
 	/* slot 1 (the accent) is the AP itself; neighbours take 2..6 in the order
 	   they first appear (the view sorts by channel, so neighbours differ) */
 	const slotFor = (colour, mine) => {
@@ -461,9 +468,17 @@ function setupChannelAnalysis() {
 				const dot = tr.querySelector('span[style*="color"]');
 				const cells = tr.querySelectorAll(':scope > td, :scope > .td');
 				if (!cells.length) return;
-				const bssid = cells[cells.length - 1].textContent.trim().toUpperCase();
+				const printed = cells[cells.length - 1].textContent.trim();
+				const bssid = printed.toUpperCase();
 				const mine = own.has(bssid);
 				if (tr.classList.contains('v-ca-own') !== mine) tr.classList.toggle('v-ca-own', mine);
+				/* the view prints its own interface's row without the colour
+				   dot, so rebuild that colour the way the view made it: from
+				   the BSSID as printed (the derivation is case-sensitive) */
+				if (mine && colourOf) {
+					const derived = hexRgb(colourOf(printed));
+					if (derived) mineByColour.set(derived, true);
+				}
 				if (!dot) return;
 				const colour = dot.style.color;
 				if (mine) mineByColour.set(colour, true);
@@ -537,7 +552,15 @@ function setupChannelAnalysis() {
 		busy = false;
 	};
 
-	L.resolveDefault(callWirelessDevices(), {}).then(devs => {
+	/* tools.prng is what the view colours networks with (it is loaded
+	   already); derive_color reseeds on every call, so calling it here
+	   leaves the view's colours as they are */
+	Promise.all([
+		L.resolveDefault(callWirelessDevices(), {}),
+		L.resolveDefault(L.require('tools.prng'), null)
+	]).then(([ devs, prng ]) => {
+		if (prng && typeof prng.derive_color === 'function')
+			colourOf = b => prng.derive_color(b);
 		for (const r of Object.values(devs || {}))
 			for (const i of (r && Array.isArray(r.interfaces)) ? r.interfaces : [])
 				[ i.iwinfo && i.iwinfo.bssid, i.config && i.config.macaddr ].forEach(b => {
