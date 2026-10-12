@@ -1311,9 +1311,8 @@ return baseclass.extend({
 	   still get it as a heading. Headings that hold a control (Overview's
 	   Hide/Show label) always stay. */
 	markRepeats() {
-		const view = document.getElementById('view');
-		if (!view) return;
-		view.querySelectorAll('h2, .cbi-section > h3:first-child').forEach(h => {
+		/* template pages (Status -> Overview) print their title before #view */
+		document.querySelectorAll('#maincontent > h2, #view h2, #view .cbi-section > h3:first-child').forEach(h => {
 			if (h.closest('.vt-app') || h.querySelector('a, button, input, select, [data-clickable], [tabindex]')) return;
 			const key = headingKey(h.textContent);
 			let repeat = this.trailKeys.has(key);
