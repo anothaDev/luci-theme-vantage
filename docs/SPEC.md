@@ -57,8 +57,10 @@ for Vantage. Names used everywhere: theme dir `vantage`, media URL
 - **Theme toggle**: auto / light / dark, stored in `localStorage`, applied
   in `<head>` before CSS (no flash), exposed as `html[data-darkmode]`.
 - **Tabs** (depth ≥ 3) under the top bar, underlined. Each tab level
-  inside a page has one look: map-level tabs on a page are its sub-pages
-  and share the underline; the first level inside a form or modal is a
+  inside a page has one look, and a page has one underline strip: on a
+  page without menu tabs, tabs standing at page level (Interfaces /
+  Devices / ..., Channel Analysis's radios) are its sub-pages and take
+  the underline; the first level inside a page, form or modal is a
   segmented control; tabs inside a tab are a side list where the pane is
   wide enough and chips where it is not, and at any deeper level.
 - **Mobile** (≤ 720 px): rail becomes a drawer/bottom bar, tables become

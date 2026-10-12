@@ -1391,10 +1391,13 @@ div.right, div.left { display: block; }
 div.right { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-4); }
 div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; }
 
-/* Tabs inside a form (ui.tabs), one look per level:
-   - map-level tabs on a page are the page's sub-pages: the page-tab
-     underline, like .vt-tabs (Interfaces / Devices / ...);
-   - the first level inside a form or modal: a segmented control;
+/* Tabs inside a page (ui.tabs), one look per level:
+   - tabs standing at page level (not inside a form section or another
+     tab) are the page's sub-pages when the menu shows no page tabs: they
+     take the page-tab underline, like .vt-tabs (Interfaces / Devices /
+     ..., DHCP's Leases / dnsmasq, Channel Analysis's radios). Under
+     .vt-tabs they are the first level inside the page instead;
+   - the first level inside a page, form or modal: a segmented control;
    - tabs inside a tab: a side list where the pane is wide enough
      (container query on the pane, so modals and pages alike), chips
      where it is not and at every deeper level.
@@ -1425,14 +1428,14 @@ div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; 
 .cbi-tabmenu > li > a:hover { color: var(--text); }
 .cbi-tabmenu > li.cbi-tab > a { background: var(--seg-on); color: var(--text); font-weight: 600; box-shadow: var(--seg-on-ring); }
 
-#view .cbi-map > .cbi-tabmenu {
+html:not(:has(.vt-tabs:not([hidden]))) #view .cbi-tabmenu:not(.cbi-section *, [data-tab-title] *) {
 	gap: var(--sp-1);
 	width: auto; padding: 0;
 	background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
 }
-#view .cbi-map > .cbi-tabmenu > li > a { height: var(--ctl-h); border-radius: 0; }
-#view .cbi-map > .cbi-tabmenu > li.cbi-tab > a { background: none; box-shadow: none; }
-#view .cbi-map > .cbi-tabmenu > li.cbi-tab::after {
+html:not(:has(.vt-tabs:not([hidden]))) #view .cbi-tabmenu:not(.cbi-section *, [data-tab-title] *) > li > a { height: var(--ctl-h); border-radius: 0; }
+html:not(:has(.vt-tabs:not([hidden]))) #view .cbi-tabmenu:not(.cbi-section *, [data-tab-title] *) > li.cbi-tab > a { background: none; box-shadow: none; }
+html:not(:has(.vt-tabs:not([hidden]))) #view .cbi-tabmenu:not(.cbi-section *, [data-tab-title] *) > li.cbi-tab::after {
 	content: ""; position: absolute; left: var(--sp-3); right: var(--sp-3); bottom: 0;
 	height: 2px; background: var(--accent-text); border-radius: 2px 2px 0 0;
 }
@@ -2074,6 +2077,8 @@ body[data-page^="admin-status-realtime"] #view #settings-row input { max-width: 
 /* channel analysis: each tab is one card (graph over table) */
 body[data-page^="admin-status-channel_analysis"] #view .cbi-title-section { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-4); }
 body[data-page^="admin-status-channel_analysis"] #view .cbi-title-section > h2 { margin: 0; }
+/* the buttons keep the right edge when the title repeats the breadcrumb and is hidden */
+body[data-page^="admin-status-channel_analysis"] #view .cbi-title-section > .cbi-title-buttons { margin-left: auto; }
 body[data-page^="admin-status-channel_analysis"] #view [data-tab-title]:not(.cbi-section) {
 	padding: var(--card-py) var(--card-px) 0;
 	background: var(--s1);
@@ -2459,9 +2464,13 @@ html:not([data-darkmode="true"]) .vt-login-page {
 	.cbi-value:has(> .cbi-value-field > .cbi-checkbox) > .vt-help { grid-row: 1; grid-column: 3; }
 	.cbi-value:has(> .cbi-value-field > .cbi-checkbox) > .cbi-value-field > :not(.cbi-checkbox) { grid-column: 1 / -1; }
 	/* a segmented control wraps its segments instead of hiding them */
-	.cbi-tabmenu:not(#view .cbi-map > *):not(.cbi-section-node-tabbed > [data-tab-title] *) { flex-wrap: wrap; width: auto; }
-	.cbi-tabmenu:not(#view .cbi-map > *):not(.cbi-section-node-tabbed > [data-tab-title] *) > li { flex: 1 1 auto; }
-	.cbi-tabmenu:not(#view .cbi-map > *):not(.cbi-section-node-tabbed > [data-tab-title] *) > li > a { justify-content: center; }
+	.cbi-tabmenu:not(.cbi-section-node-tabbed > [data-tab-title] *) { flex-wrap: wrap; width: auto; }
+	.cbi-tabmenu:not(.cbi-section-node-tabbed > [data-tab-title] *) > li { flex: 1 1 auto; }
+	.cbi-tabmenu:not(.cbi-section-node-tabbed > [data-tab-title] *) > li > a { justify-content: center; }
+	/* ... while an underline strip scrolls, like the page tabs */
+	html:not(:has(.vt-tabs:not([hidden]))) #view .cbi-tabmenu:not(.cbi-section *, [data-tab-title] *) { flex-wrap: nowrap; }
+	html:not(:has(.vt-tabs:not([hidden]))) #view .cbi-tabmenu:not(.cbi-section *, [data-tab-title] *) > li { flex: none; }
+	html:not(:has(.vt-tabs:not([hidden]))) #view .cbi-tabmenu:not(.cbi-section *, [data-tab-title] *) > li > a { justify-content: normal; }
 	.cbi-dropdown, .vt-main input, .vt-main select, .control-group, .cbi-dynlist { max-width: none; }
 
 	/* tables become cards */
