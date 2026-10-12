@@ -46,7 +46,8 @@ const ICONS = {
 	moon: [ [ 'path', { d: 'M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z' } ] ],
 	auto: [ [ 'circle', { cx: '12', cy: '12', r: '8' } ], [ 'path', { d: 'M12 4a8 8 0 0 1 0 16z', 'class': 'vt-fill' } ] ],
 	logout: [ [ 'path', { d: 'M14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14' } ], [ 'path', { d: 'M10 8l-4 4 4 4M6 12h10' } ] ],
-	pin: [ [ 'path', { d: 'M4 5v14M9 12h11M15 7l5 5-5 5' } ] ]
+	pin: [ [ 'path', { d: 'M4 5v14M9 12h11M15 7l5 5-5 5' } ] ],
+	info: [ [ 'circle', { cx: '12', cy: '12', r: '8.5' } ], [ 'path', { d: 'M12 11v5.5' } ], [ 'circle', { cx: '12', cy: '7.75', r: '.6' } ] ]
 };
 
 function iconFor(name) {
@@ -178,6 +179,11 @@ function technical(text) {
 	if (!t || t.length > 120 || !/\d/.test(t)) return false;
 	const rest = t.replace(UNITS, '');
 	return /\d/.test(rest) && /^[\s0-9a-fA-F.:,\/%()+\-x[\]~=]*$/.test(rest);
+}
+
+/* heading text as compared for repeats: case, spacing and a trailing colon don't count */
+function headingKey(text) {
+	return String(text || '').replace(/\s+/g, ' ').replace(/[\s:]+$/, '').trim().toLowerCase();
 }
 
 /* ---------------------------------------------------------------------------
@@ -558,10 +564,12 @@ return baseclass.extend({
 		this.closeTimer = null;
 		this.openTimer = null;
 		this.entries = [];
+		this.trailKeys = new Set();
 
 		this.setupTheme();
 		this.setupIndicators();
 		this.setupNumerals();
+		this.setupForms();
 		setupStockEnhancers();
 		setupCharts();
 		this.setupKeys();
@@ -605,6 +613,7 @@ return baseclass.extend({
 		this.renderCrumbs();
 		this.renderTabs();
 		this.buildIndex();
+		this.queueForms();
 	},
 
 	isPinned() {
@@ -861,6 +870,7 @@ return baseclass.extend({
 		});
 
 		this.pageTitle = parts[parts.length - 1].title;
+		parts.forEach(p => this.trailKeys.add(headingKey(p.title)));
 		this.updateTitle();
 	},
 
@@ -1194,5 +1204,99 @@ return baseclass.extend({
 			window.requestAnimationFrame(scan);
 		}).observe(main, { childList: true, subtree: true, characterData: true });
 		scan();
+	},
+
+	/* ---------------------------------------------------- form chrome */
+
+	/* LuCI renders forms into #view and the modal, and renders them again
+	   after a save: watch the body and decorate what is new. This appends a
+	   button and sets classes and attributes; LuCI's text and node order
+	   stay as they are. */
+	setupForms() {
+		this.formsQueued = false;
+		this.helpSeq = 0;
+		this.helpSizes = window.ResizeObserver ? new ResizeObserver(entries => entries.forEach(e => this.fitHelp(e.target))) : null;
+		if (window.MutationObserver)
+			new MutationObserver(() => this.queueForms()).observe(document.body, { childList: true, subtree: true });
+		this.decorateForms();
+	},
+
+	queueForms() {
+		if (this.formsQueued) return;
+		this.formsQueued = true;
+		window.requestAnimationFrame(() => {
+			this.formsQueued = false;
+			this.decorateForms();
+		});
+	},
+
+	decorateForms() {
+		document.querySelectorAll('.cbi-value > .cbi-value-title + .cbi-value-field > .cbi-value-description:not(.vt-help-text)')
+			.forEach(desc => this.addHelpToggle(desc));
+		this.markRepeats();
+	},
+
+	/* A description shows its first line; (i) unfolds the rest. LuCI also
+	   puts warnings here, so none is hidden whole: its start stays visible.
+	   The button sits in the label column, after the field, because LuCI's
+	   label click handler finds the widget through nextElementSibling. */
+	addHelpToggle(desc) {
+		const row = desc.parentNode.parentNode;
+		const title = row.querySelector(':scope > .cbi-value-title');
+		desc.classList.add('vt-help-text');
+		if (!desc.id) desc.id = 'vt-help-' + (++this.helpSeq);
+		const btn = E('button', {
+			'class': 'vt-help', 'type': 'button', 'hidden': '',
+			'aria-expanded': 'false', 'aria-controls': desc.id,
+			'aria-label': _('Show full help: %s').format(title.textContent.trim()),
+			'title': _('Show full help'),
+			'click': () => {
+				const open = row.getAttribute('data-v-help') !== 'open';
+				row.setAttribute('data-v-help', open ? 'open' : 'closed');
+				btn.setAttribute('aria-expanded', String(open));
+				this.fitHelp(desc);
+			}
+		}, [ svg('info', 16) ]);
+		row.setAttribute('data-v-help', 'closed');
+		row.appendChild(btn);
+		if (this.helpSizes) this.helpSizes.observe(desc);
+		else btn.hidden = false;
+	},
+
+	/* (i) shows only while the one-line clamp cuts the text. A row that is
+	   not displayed (another tab, an unmet dependency) measures 0 and waits
+	   for the next resize notification. */
+	fitHelp(desc) {
+		if (!desc.isConnected) {
+			if (this.helpSizes) this.helpSizes.unobserve(desc);
+			return;
+		}
+		const row = desc.closest('.cbi-value');
+		const btn = row && row.querySelector(':scope > .vt-help');
+		if (!btn || !desc.clientHeight) return;
+		const cut = desc.scrollHeight > desc.clientHeight + 1;
+		btn.hidden = !cut && row.getAttribute('data-v-help') !== 'open';
+	},
+
+	/* A page title or card heading that only repeats the breadcrumb, the
+	   map title or its own tab's name is hidden visually; screen readers
+	   still get it as a heading. Headings that hold a control (Overview's
+	   Hide/Show label) always stay. */
+	markRepeats() {
+		const view = document.getElementById('view');
+		if (!view) return;
+		view.querySelectorAll('h2, .cbi-section > h3:first-child').forEach(h => {
+			if (h.closest('.vt-app') || h.querySelector('a, button, input, select, [data-clickable], [tabindex]')) return;
+			const key = headingKey(h.textContent);
+			let repeat = this.trailKeys.has(key);
+			if (!repeat && h.tagName === 'H3') {
+				const map = h.closest('.cbi-map');
+				const mapTitle = map && map.querySelector(':scope > h2');
+				const pane = h.closest('[data-tab-title]');
+				repeat = (mapTitle && headingKey(mapTitle.textContent) === key) ||
+					(pane && headingKey(pane.getAttribute('data-tab-title')) === key);
+			}
+			h.classList.toggle('vt-repeat', !!(key && repeat));
+		});
 	}
 });

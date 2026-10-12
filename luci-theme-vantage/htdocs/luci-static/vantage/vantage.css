@@ -39,7 +39,9 @@
 	--rail-w: 56px;
 	--rail-w-pinned: 224px;
 	--top-h: 52px;
-	--ctl-h: 32px;
+	--ctl-h: 36px;              /* every control: inputs, selects, buttons, tabs, chips */
+	--label-w: 180px;           /* form label column */
+	--field-max: 360px;         /* widest single-line field */
 	--content-max: 1320px;
 
 	/* light: cool paper grey, olive accent text */
@@ -72,6 +74,9 @@
 	--scrim: rgba(20, 23, 26, .38);
 	--shadow-pop: 0 12px 32px rgba(20, 23, 26, .16), 0 2px 6px rgba(20, 23, 26, .08);
 	--zone-mix: .22;
+	--seg-bg: var(--s3);        /* segmented control: track, selected segment */
+	--seg-on: var(--s2);
+	--seg-on-ring: 0 0 0 1px var(--line), var(--v-shadow);
 }
 
 html[data-darkmode="true"] {
@@ -107,6 +112,14 @@ html[data-darkmode="true"] {
 	--scrim: rgba(0, 0, 0, .58);
 	--shadow-pop: 0 16px 40px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .02);
 	--zone-mix: .2;
+	--seg-bg: var(--bg);
+	--seg-on: var(--s3);
+	--seg-on-ring: 0 0 0 1px var(--line-2);
+}
+
+/* touch: controls are sized by the pointer, not the screen width */
+@media (pointer: coarse) {
+	:root { --ctl-h: 44px; }
 }
 
 /* Shared Vantage tokens (--v-*): the stable contract other Vantage views
@@ -575,7 +588,7 @@ a.vt-crumb:hover { color: var(--text); }
 .vt-tab {
 	position: relative;
 	display: inline-flex; align-items: center;
-	height: 40px; padding: 0 var(--sp-3);
+	height: var(--ctl-h); padding: 0 var(--sp-3);
 	color: var(--text-2);
 	font-weight: 500;
 	white-space: nowrap;
@@ -691,7 +704,7 @@ a.vt-crumb:hover { color: var(--text); }
 /* page = title block + a stack of cards. Cards carry a full-bleed header
    row (h3) and full-bleed tables; nested sections lose their chrome. */
 :root { --card-px: 20px; --card-py: 16px; --stick-top: var(--top-h); }
-html:has(.vt-tabs:not([hidden])) { --stick-top: calc(var(--top-h) + 41px); }
+html:has(.vt-tabs:not([hidden])) { --stick-top: calc(var(--top-h) + var(--ctl-h) + 1px); }
 
 .cbi-map { margin-bottom: var(--sp-6); }
 .cbi-map > h2, .vt-main > h2, #view > h2, #view > div > h2:first-child, .cbi-map > h2:first-child {
@@ -708,14 +721,14 @@ html:has(.vt-tabs:not([hidden])) { --stick-top: calc(var(--top-h) + 41px); }
 }
 .cbi-section-descr { max-width: 80ch; margin: 0 0 var(--sp-4); color: var(--text-2); }
 .cbi-map-descr:empty, .cbi-section-descr:empty { display: none; }
-.cbi-map > h2 + .cbi-tabmenu, .cbi-map > h2 + .cbi-map-descr:empty + .cbi-tabmenu { margin-top: var(--sp-4); }
+.cbi-map > h2:not(.vt-repeat) + .cbi-tabmenu, .cbi-map > h2:not(.vt-repeat) + .cbi-map-descr:empty + .cbi-tabmenu { margin-top: var(--sp-4); }
 
 .cbi-section, .cbi-map > fieldset {
 	margin: 0 0 var(--sp-4);
 	padding: var(--card-py) var(--card-px);
 	background: var(--s1);
 	border: 1px solid var(--line);
-	border-radius: 10px;
+	border-radius: var(--r-lg);
 	box-shadow: var(--v-shadow);
 	min-width: 0;
 }
@@ -748,22 +761,27 @@ html:has(.vt-tabs:not([hidden])) { --stick-top: calc(var(--top-h) + 41px); }
 }
 .cbi-section .cbi-section > h3:first-child { margin: 0 0 var(--sp-3); padding: 0; min-height: 0; border: 0; }
 .cbi-section .cbi-section + .cbi-section { margin-top: var(--sp-5); padding-top: var(--sp-5); border-top: 1px solid var(--line); }
+/* a nested table section scrolls its own table, so it takes the card bleed
+   itself (out by --card-px, padded back in): the table's bleed then stays
+   inside the scroll box instead of overflowing it by --card-px */
+.cbi-section .cbi-section.cbi-tblsection {
+	margin-left: calc(-1 * var(--card-px)); margin-right: calc(-1 * var(--card-px));
+	padding-left: var(--card-px); padding-right: var(--card-px);
+}
 
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 legend { font-size: var(--fs-md); font-weight: 600; padding: 0; margin-bottom: var(--sp-3); }
 
-/* option rows: two aligned columns on desktop */
+/* option rows: label column + field, no rules between rows */
 .cbi-value {
 	display: grid;
-	grid-template-columns: minmax(160px, 260px) minmax(0, 1fr);
-	column-gap: var(--sp-8);
+	grid-template-columns: var(--label-w) minmax(0, 1fr);
+	column-gap: var(--sp-5);
 	align-items: start;
-	padding: 14px 0;
-	border-bottom: 1px solid var(--line);
+	padding: 6px 0;
 }
-.cbi-value:last-child, .cbi-value.cbi-value-last { border-bottom: 0; }
 .cbi-value > .cbi-value-title {
-	padding-top: 7px;
+	padding-top: calc((var(--ctl-h) - 1.5em) / 2);   /* 1.5em: one line at line-height 1.5 */
 	color: var(--text);
 	font-weight: 500;
 	overflow-wrap: anywhere;
@@ -784,6 +802,43 @@ legend { font-size: var(--fs-md); font-weight: 600; padding: 0; margin-bottom: v
 	line-height: 1.5;
 }
 .cbi-value-helpicon img { width: 14px; height: 14px; opacity: .6; }
+
+/* folding help (menu-vantage.js): one line until (i) unfolds it; the
+   button shares the label cell, so both are placed explicitly */
+.cbi-value[data-v-help="closed"] .vt-help-text {
+	display: -webkit-box; -webkit-box-orient: vertical;
+	-webkit-line-clamp: 1; line-clamp: 1;
+	max-height: 1.5em;
+	overflow: hidden;
+}
+.cbi-value[data-v-help] > .cbi-value-title { grid-row: 1; grid-column: 1; }
+.cbi-value[data-v-help] > .cbi-value-field { grid-row: 1; }
+.cbi-value:has(> .vt-help:not([hidden])) > .cbi-value-title { padding-right: 32px; }
+.cbi-value > .vt-help {
+	grid-row: 1; grid-column: 1;
+	justify-self: end;
+	display: grid; place-items: center;
+	width: 28px; height: var(--ctl-h);
+	padding: 0;
+	background: none; border: 0; border-radius: var(--r);
+	color: var(--text-3);
+	cursor: pointer;
+}
+.cbi-value > .vt-help svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.cbi-value > .vt-help:hover { color: var(--text); background: var(--s3); }
+.cbi-value > .vt-help[aria-expanded="true"] { color: var(--accent-text); }
+/* a title that opens with <br> (Wireless "Operating frequency", lined up
+   with captioned selects) has its text on the second line: so has (i) */
+.cbi-value:has(> .cbi-value-title > br:first-child) > .vt-help { margin-top: 1.5em; }
+
+/* a heading that repeats the breadcrumb or its tab (menu-vantage.js):
+   gone from view, still a heading for screen readers */
+.vt-repeat {
+	position: absolute !important;
+	width: 1px; height: 1px; min-height: 0 !important;
+	margin: -1px !important; padding: 0 !important; border: 0 !important;
+	overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
 .cbi-value.cbi-value-error .cbi-value-title,
 .cbi-value-field .cbi-input-invalid + .cbi-value-description { color: var(--err); }
 
@@ -806,7 +861,7 @@ legend { font-size: var(--fs-md); font-weight: 600; padding: 0; margin-bottom: v
 	backdrop-filter: saturate(1.3) blur(14px);
 	-webkit-backdrop-filter: saturate(1.3) blur(14px);
 	border: 1px solid var(--line-2);
-	border-radius: 12px;
+	border-radius: var(--r-lg);
 	box-shadow: var(--shadow-pop);
 }
 .cbi-page-actions > * { margin: 0 !important; }
@@ -827,7 +882,7 @@ input, select, textarea, button { font: inherit; color: inherit; }
 .vt-main input[type="date"], .vt-main input[type="time"], .vt-main input[type="datetime-local"],
 .vt-main input:not([type]), .modal input[type="text"], .modal input[type="password"], .modal input:not([type]), .modal select, .modal textarea {
 	width: 100%;
-	max-width: 440px;
+	max-width: var(--field-max);
 	min-height: var(--ctl-h);
 	padding: 5px 10px;
 	background: var(--s2);
@@ -838,7 +893,7 @@ input, select, textarea, button { font: inherit; color: inherit; }
 	line-height: 20px;
 	transition: border-color .12s, box-shadow .12s;
 }
-.vt-main textarea, .cbi-input-textarea, .modal textarea { max-width: none; min-height: 88px; font-family: var(--mono); font-size: var(--fs-sm); resize: vertical; }
+.vt-main textarea, .cbi-input-textarea, .modal textarea { max-width: calc(2 * var(--field-max)); min-height: 88px; font-family: var(--mono); font-size: var(--fs-sm); resize: vertical; }
 .vt-main select, .cbi-input-select, .modal select {
 	appearance: none; -webkit-appearance: none;
 	padding-right: 30px;
@@ -846,6 +901,13 @@ input, select, textarea, button { font: inherit; color: inherit; }
 	background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
 	background-size: 5px 5px, 5px 5px;
 	background-repeat: no-repeat;
+}
+/* a native select in a form row cuts a long choice off without an
+   ellipsis: let it grow past --field-max to fit (field-sizing: the chosen
+   value; elsewhere the widest option), never past its column */
+.cbi-value > .cbi-value-field > select:not([multiple]), .cbi-value > .cbi-value-field > div > select:not([multiple]) {
+	field-sizing: content;
+	width: auto; min-width: min(100%, var(--field-max)); max-width: 100%;
 }
 .vt-main select[multiple] { background-image: none; padding-right: 10px; }
 input::placeholder, textarea::placeholder { color: var(--text-3); opacity: 1; }
@@ -870,7 +932,7 @@ input[readonly] { cursor: default; }
 /* password + reveal and other control groups */
 .control-group {
 	display: flex; align-items: stretch; flex-wrap: nowrap;
-	max-width: 440px;
+	max-width: var(--field-max);
 }
 .control-group > * { margin: 0 !important; }
 .control-group > :not(:first-child) { margin-left: -1px !important; }
@@ -907,7 +969,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 input[type="checkbox"][disabled]:checked { opacity: .5; }
 
 /* range slider */
-.cbi-range-slider { display: flex; align-items: center; gap: var(--sp-3); max-width: 440px; min-height: var(--ctl-h); flex-wrap: wrap; }
+.cbi-range-slider { display: flex; align-items: center; gap: var(--sp-3); max-width: var(--field-max); min-height: var(--ctl-h); flex-wrap: wrap; }
 .cbi-range-slider input[type="range"] { flex: 1 1 160px; accent-color: var(--accent-text); }
 .cbi-range-slider-value, .cbi-range-slider-calc { font-family: var(--mono); color: var(--text-2); font-size: var(--fs-sm); }
 
@@ -936,7 +998,7 @@ input[type="button"], input[type="reset"], input[type="submit"]) {
 	opacity: .45; cursor: not-allowed; pointer-events: none;
 }
 
-.cbi-button-up, .cbi-button-down { min-width: 28px; padding: 0 6px; }
+.cbi-button-up, .cbi-button-down { min-width: var(--ctl-h); padding: 0 6px; }
 
 .button-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); }
 .right > .btn, .right > .cbi-button, .right > button { margin-left: var(--sp-2); }
@@ -945,7 +1007,7 @@ input[type="button"], input[type="reset"], input[type="submit"]) {
 .cbi-dropdown {
 	position: relative;
 	display: inline-flex; align-items: stretch;
-	width: 100%; max-width: 440px;
+	width: 100%; max-width: var(--field-max);
 	min-height: var(--ctl-h);
 	padding: 0;
 	background: var(--s2);
@@ -1038,8 +1100,8 @@ input[type="button"], input[type="reset"], input[type="submit"]) {
 }
 .cbi-dropdown[open] > ul.dropdown[style*="bottom"] { top: auto; }
 .cbi-dropdown[open] > ul.dropdown > li {
-	display: flex;
-	min-height: 30px;
+	display: flex; align-items: center;
+	min-height: calc(var(--ctl-h) - 4px);
 	padding: 4px 8px;
 	border-radius: var(--r-sm);
 	white-space: normal;
@@ -1056,6 +1118,18 @@ input[type="button"], input[type="reset"], input[type="submit"]) {
 .cbi-dropdown[multiple][open] > ul.dropdown > li > form { display: inline-flex; }
 .cbi-dropdown[open] > ul.dropdown > li input.create-item-input { max-width: none; min-height: 28px; }
 .cbi-dropdown[open] > .open { color: var(--accent-text); }
+/* one arrow for every field: the select's triangle, drawn where LuCI puts
+   its "▾" glyph (ComboButtons keep theirs) */
+.cbi-dropdown:not(.btn, .cbi-button) > .open {
+	--arrow: var(--text-3);
+	width: 30px; padding: 0;
+	font-size: 0;
+	background-image: linear-gradient(45deg, transparent 50%, var(--arrow) 50%), linear-gradient(135deg, var(--arrow) 50%, transparent 50%);
+	background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+	background-size: 5px 5px, 5px 5px;
+	background-repeat: no-repeat;
+}
+.cbi-dropdown:not(.btn, .cbi-button)[open] > .open { --arrow: var(--accent-text); }
 
 /* ComboButton: dropdown dressed as a split button */
 .cbi-dropdown.btn, .cbi-dropdown.cbi-button {
@@ -1133,12 +1207,12 @@ input[type="button"], input[type="reset"], input[type="submit"]) {
 :is(.btn, .cbi-button).cbi-button-reset:hover { color: var(--text); }
 
 /* dynamic list */
-.cbi-dynlist { display: flex; flex-direction: column; gap: 6px; max-width: 440px; }
+.cbi-dynlist { display: flex; flex-direction: column; gap: 6px; max-width: var(--field-max); }
 .cbi-dynlist > .item {
 	position: relative;
 	display: flex; align-items: center;
-	min-height: 30px;
-	padding: 4px 34px 4px 10px;
+	min-height: var(--ctl-h);
+	padding: 4px calc(var(--ctl-h) + 4px) 4px 10px;
 	background: var(--s2);
 	border: 1px solid var(--line);
 	border-radius: var(--r);
@@ -1149,7 +1223,7 @@ input[type="button"], input[type="reset"], input[type="submit"]) {
 .cbi-dynlist > .item::after {
 	content: "\00d7";
 	position: absolute; top: 0; right: 0; bottom: 0;
-	width: 30px;
+	width: var(--ctl-h);
 	display: flex; align-items: center; justify-content: center;
 	border-left: 1px solid var(--line);
 	color: var(--text-3);
@@ -1162,7 +1236,7 @@ input[type="button"], input[type="reset"], input[type="submit"]) {
 .cbi-dynlist[disabled] > .item::after { display: none; }
 .cbi-dynlist > .add-item { max-width: none; }
 .cbi-dynlist > .add-item > .cbi-dropdown { max-width: none; }
-.cbi-dynlist > .add-item > .cbi-button-add { min-width: 34px; font-family: var(--mono); font-size: var(--fs-md); }
+.cbi-dynlist > .add-item > .cbi-button-add { min-width: var(--ctl-h); font-family: var(--mono); font-size: var(--fs-md); }
 /* add rows built without .control-group (e.g. System → SSH-Keys): input and button side by side */
 .cbi-dynlist > .add-item:not(.control-group) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); max-width: 720px; }
 .cbi-dynlist > .add-item:not(.control-group) > input { flex: 1 1 320px; min-width: 0; margin: 0; }
@@ -1267,7 +1341,7 @@ table { border-collapse: separate; border-spacing: 0; width: 100%; }
 .td.cbi-value-field.inactive { visibility: hidden; }
 .td.cbi-section-actions, .th.cbi-section-actions { text-align: right; white-space: nowrap; width: 1%; }
 .td.cbi-section-actions > div { display: inline-flex; gap: 4px; flex-wrap: nowrap; align-items: center; }
-.td.cbi-section-actions .btn, .td.cbi-section-actions .cbi-button { min-height: 28px; padding: 0 10px; font-size: var(--fs-sm); }
+.td.cbi-section-actions .btn, .td.cbi-section-actions .cbi-button { padding: 0 10px; }
 .drag-handle { cursor: grab; color: var(--text-3); padding: 0 6px; font-family: var(--mono); }
 .drag-over-above > .td, .drag-over-above > td { box-shadow: inset 0 2px 0 var(--accent-text); }
 .drag-over-below > .td, .drag-over-below > td { box-shadow: inset 0 -2px 0 var(--accent-text); }
@@ -1288,30 +1362,109 @@ div.right, div.left { display: block; }
 div.right { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-4); }
 div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; }
 
-/* in-map section tabs (ui.tabs) */
+/* Tabs inside a form (ui.tabs), one look per level:
+   - map-level tabs on a page are the page's sub-pages: the page-tab
+     underline, like .vt-tabs (Interfaces / Devices / ...);
+   - the first level inside a form or modal: a segmented control;
+   - tabs inside a tab: a side list where the pane is wide enough
+     (container query on the pane, so modals and pages alike), chips
+     where it is not and at every deeper level.
+   A level is a pane of a section's option tabs (.cbi-section-node-tabbed);
+   map-level panes are not counted, so a page's sub-pages add no level. */
 .cbi-tabmenu {
-	display: flex; flex-wrap: nowrap; gap: var(--sp-1);
-	margin: 0 0 var(--sp-4); padding: 0;
+	display: flex; flex-wrap: nowrap; align-items: center; gap: 2px;
+	width: fit-content; max-width: 100%; min-height: var(--ctl-h);
+	margin: 0 0 var(--sp-5); padding: 2px;
 	list-style: none;
-	border-bottom: 1px solid var(--line);
+	background: var(--seg-bg);
+	border: 1px solid var(--line);
+	border-radius: var(--r-lg);
 	overflow-x: auto;
 	scrollbar-width: none;
 }
 .cbi-tabmenu::-webkit-scrollbar { display: none; }
 .cbi-tabmenu > li { position: relative; flex: none; }
 .cbi-tabmenu > li > a {
-	display: inline-flex; align-items: center; gap: 6px;
-	height: 36px; padding: 0 var(--sp-3);
+	display: flex; align-items: center; gap: 6px;
+	height: calc(var(--ctl-h) - 6px); padding: 0 var(--sp-3);
+	border-radius: var(--r);
 	color: var(--text-2);
 	font-weight: 500;
 	white-space: nowrap;
 	text-decoration: none !important;
 }
 .cbi-tabmenu > li > a:hover { color: var(--text); }
-.cbi-tabmenu > li.cbi-tab > a { color: var(--text); font-weight: 600; }
-.cbi-tabmenu > li.cbi-tab::after {
-	content: ""; position: absolute; left: var(--sp-3); right: var(--sp-3); bottom: -1px;
+.cbi-tabmenu > li.cbi-tab > a { background: var(--seg-on); color: var(--text); font-weight: 600; box-shadow: var(--seg-on-ring); }
+
+#view .cbi-map > .cbi-tabmenu {
+	gap: var(--sp-1);
+	width: auto; padding: 0;
+	background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+}
+#view .cbi-map > .cbi-tabmenu > li > a { height: var(--ctl-h); border-radius: 0; }
+#view .cbi-map > .cbi-tabmenu > li.cbi-tab > a { background: none; box-shadow: none; }
+#view .cbi-map > .cbi-tabmenu > li.cbi-tab::after {
+	content: ""; position: absolute; left: var(--sp-3); right: var(--sp-3); bottom: 0;
 	height: 2px; background: var(--accent-text); border-radius: 2px 2px 0 0;
+}
+
+.cbi-section-node-tabbed > [data-tab-title] { container-type: inline-size; }
+.cbi-section-node-tabbed > [data-tab-title] .cbi-tabmenu {
+	flex-wrap: wrap; gap: var(--sp-2);
+	width: auto; margin-bottom: var(--sp-4); padding: 0;
+	background: none; border: 0; border-radius: 0;
+	overflow: visible;
+}
+.cbi-section-node-tabbed > [data-tab-title] .cbi-tabmenu > li > a {
+	height: var(--ctl-h); padding: 0 14px;
+	border: 1px solid var(--line-2); border-radius: 999px;
+}
+.cbi-section-node-tabbed > [data-tab-title] .cbi-tabmenu > li.cbi-tab > a {
+	background: var(--accent-soft); border-color: var(--accent-line);
+	color: var(--accent-text); box-shadow: none;
+}
+@container (min-width: 640px) {
+	.cbi-section-node-tabbed > [data-tab-title] :has(> .cbi-tabmenu) {
+		display: grid;
+		grid-template-columns: 168px minmax(0, 1fr);
+		column-gap: var(--sp-6);
+		align-items: start;
+	}
+	.cbi-section-node-tabbed > [data-tab-title] :has(> .cbi-tabmenu) > * { grid-column: 1 / -1; }
+	.cbi-section-node-tabbed > [data-tab-title] :has(> .cbi-tabmenu) > .cbi-tabmenu + * { grid-column: 2; }
+	.cbi-section-node-tabbed > [data-tab-title] .cbi-tabmenu {
+		grid-column: 1;
+		flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 2px;
+		margin: 0;
+	}
+	.cbi-section-node-tabbed > [data-tab-title] .cbi-tabmenu > li > a {
+		justify-content: space-between;
+		padding: 0 var(--sp-3);
+		border: 0; border-radius: var(--r);
+		white-space: normal; line-height: 1.25;
+	}
+	.cbi-section-node-tabbed > [data-tab-title] .cbi-tabmenu > li > a:hover { background: var(--s3); }
+	.cbi-section-node-tabbed > [data-tab-title] .cbi-tabmenu > li.cbi-tab > a { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent-line); }
+	/* beside the list there is no card edge to bleed to: table sections and
+	   tables fit the column */
+	.cbi-section-node-tabbed > [data-tab-title] :has(> .cbi-tabmenu) > .cbi-tabmenu + * .cbi-tblsection { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+	.cbi-section-node-tabbed > [data-tab-title] :has(> .cbi-tabmenu) > .cbi-tabmenu + * .table { width: 100% !important; margin-left: 0; margin-right: 0; }
+	.cbi-section-node-tabbed > [data-tab-title] :has(> .cbi-tabmenu) > .cbi-tabmenu + * .table .tr > :is(.th, .td):first-child { padding-left: 0; }
+	.cbi-section-node-tabbed > [data-tab-title] :has(> .cbi-tabmenu) > .cbi-tabmenu + * .table .tr > :is(.th, .td):last-child { padding-right: 0; }
+	/* deeper levels: back to the chips above */
+	.cbi-section-node-tabbed > [data-tab-title] .cbi-section-node-tabbed > [data-tab-title] :has(> .cbi-tabmenu) { display: block; }
+	.cbi-section-node-tabbed > [data-tab-title] .cbi-section-node-tabbed > [data-tab-title] .cbi-tabmenu {
+		flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
+		margin: 0 0 var(--sp-4);
+	}
+	.cbi-section-node-tabbed > [data-tab-title] .cbi-section-node-tabbed > [data-tab-title] .cbi-tabmenu > li > a {
+		justify-content: normal;
+		padding: 0 14px;
+		border: 1px solid var(--line-2); border-radius: 999px;
+		white-space: nowrap; line-height: inherit;
+	}
+	.cbi-section-node-tabbed > [data-tab-title] .cbi-section-node-tabbed > [data-tab-title] .cbi-tabmenu > li > a:hover { background: none; }
+	.cbi-section-node-tabbed > [data-tab-title] .cbi-section-node-tabbed > [data-tab-title] .cbi-tabmenu > li.cbi-tab > a { border-color: var(--accent-line); box-shadow: none; }
 }
 .cbi-tabmenu > li[data-errors] > a::after {
 	content: attr(data-errors);
@@ -1545,7 +1698,6 @@ div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; 
 .alert-message.success { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok-soft) 60%, var(--s1)); }
 .alert-message.warning { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn-soft) 70%, var(--s1)); }
 .alert-message.error, .alert-message.danger { border-left-color: var(--err); background: color-mix(in srgb, var(--err-soft) 70%, var(--s1)); }
-.alert-message .btn { min-height: 28px; }
 
 /* spinners */
 .spinning { position: relative; }
@@ -1737,7 +1889,7 @@ body.modal-overlay-active #modal_overlay { display: block; }
 	margin: 0 0 var(--sp-4);
 	background: var(--s1);
 	border: 1px solid var(--line);
-	border-radius: 10px;
+	border-radius: var(--r-lg);
 	box-shadow: var(--v-shadow);
 	overflow: clip;
 }
@@ -1749,7 +1901,8 @@ body.modal-overlay-active #modal_overlay { display: block; }
 .includes { margin-top: var(--sp-4); }
 #view > .cbi-section:first-child { margin-top: 0; }
 .cbi-section > div[style*="display: none"] + div { display: block; }
-.wifi-qr-code-content, .qr-code { background: #fff; padding: var(--sp-2); border-radius: var(--r); }
+/* the QR image gets a white tile; the "Generate QR" button (also .qr-code) stays a button */
+.wifi-qr-code-content, div.qr-code { background: #fff; padding: var(--sp-2); border-radius: var(--r); }
 iframe { border: 1px solid var(--line); border-radius: var(--r); }
 
 /* ------------------------------------------------------ 7b. stock charts
@@ -1896,7 +2049,7 @@ body[data-page^="admin-status-channel_analysis"] #view [data-tab-title]:not(.cbi
 	padding: var(--card-py) var(--card-px) 0;
 	background: var(--s1);
 	border: 1px solid var(--line);
-	border-radius: 10px;
+	border-radius: var(--r-lg);
 	box-shadow: var(--v-shadow);
 	overflow: clip;
 }
@@ -2259,7 +2412,27 @@ html:not([data-darkmode="true"]) .vt-login-page {
 	.cbi-value { grid-template-columns: minmax(0, 1fr); row-gap: 6px; }
 	.cbi-value > .cbi-value-title { padding-top: 0; }
 	.cbi-value > .cbi-value-field { grid-column: 1; }
-	.vt-main input, .vt-main select, .vt-main textarea, .cbi-dropdown, .modal input, .modal select { font-size: 16px !important; }
+	.cbi-value[data-v-help] > .cbi-value-field { grid-row: 2; }
+	.cbi-value:has(> .vt-help:not([hidden])) > .cbi-value-title { align-self: center; }
+	/* stacked, there is nothing beside the title to line up with */
+	.cbi-value > .cbi-value-title > br:first-child { display: none; }
+	.cbi-value:has(> .cbi-value-title > br:first-child) > .vt-help { margin-top: 0; }
+	/* checkbox rows: box, label and (i) on one line, help below. The field
+	   box dissolves so its children join the row grid; LuCI's nodes stay put. */
+	.cbi-value:has(> .cbi-value-field > .cbi-checkbox) {
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		column-gap: var(--sp-3);
+		align-items: center;
+	}
+	.cbi-value:has(> .cbi-value-field > .cbi-checkbox) > .cbi-value-field { display: contents; }
+	.cbi-value:has(> .cbi-value-field > .cbi-checkbox) > .cbi-value-field > .cbi-checkbox { grid-row: 1; grid-column: 1; }
+	.cbi-value:has(> .cbi-value-field > .cbi-checkbox) > .cbi-value-title { grid-row: 1; grid-column: 2; padding: 0; }
+	.cbi-value:has(> .cbi-value-field > .cbi-checkbox) > .vt-help { grid-row: 1; grid-column: 3; }
+	.cbi-value:has(> .cbi-value-field > .cbi-checkbox) > .cbi-value-field > :not(.cbi-checkbox) { grid-column: 1 / -1; }
+	/* a segmented control wraps its segments instead of hiding them */
+	.cbi-tabmenu:not(#view .cbi-map > *):not(.cbi-section-node-tabbed > [data-tab-title] *) { flex-wrap: wrap; width: auto; }
+	.cbi-tabmenu:not(#view .cbi-map > *):not(.cbi-section-node-tabbed > [data-tab-title] *) > li { flex: 1 1 auto; }
+	.cbi-tabmenu:not(#view .cbi-map > *):not(.cbi-section-node-tabbed > [data-tab-title] *) > li > a { justify-content: center; }
 	.cbi-dropdown, .vt-main input, .vt-main select, .control-group, .cbi-dynlist { max-width: none; }
 
 	/* tables become cards */
@@ -2316,6 +2489,16 @@ html:not([data-darkmode="true"]) .vt-login-page {
 	.vt-pal-overlay { padding: var(--sp-3); align-items: flex-start; }
 	.vt-pal { max-height: 80vh; }
 	.vt-pal-foot > span:not(.vt-pal-count) { display: none; }
+}
+
+/* touch, at any width: 16px text in fields (iOS zooms below that),
+   bigger check marks, a little more air between rows */
+@media (pointer: coarse), (max-width: 720px) {
+	.vt-main input, .vt-main select, .vt-main textarea, .cbi-dropdown:not(.btn, .cbi-button), .modal input, .modal select { font-size: 16px !important; }
+}
+@media (pointer: coarse) {
+	input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; }
+	.cbi-value { padding: 8px 0; }
 }
 
 /* ----------------------------------------------------------- motion */

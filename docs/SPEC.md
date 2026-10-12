@@ -56,7 +56,11 @@ for Vantage. Names used everywhere: theme dir `vantage`, media URL
   placeholder), from `system board` via rpc in the menu script.
 - **Theme toggle**: auto / light / dark, stored in `localStorage`, applied
   in `<head>` before CSS (no flash), exposed as `html[data-darkmode]`.
-- **Tabs** (depth ≥ 3) under the top bar.
+- **Tabs** (depth ≥ 3) under the top bar, underlined. Each tab level
+  inside a page has one look: map-level tabs on a page are its sub-pages
+  and share the underline; the first level inside a form or modal is a
+  segmented control; tabs inside a tab are a side list where the pane is
+  wide enough and chips where it is not, and at any deeper level.
 - **Mobile** (≤ 720 px): rail becomes a drawer/bottom bar, tables become
   cards using `td[data-title]`, forms stack.
 
@@ -67,6 +71,17 @@ for Vantage. Names used everywhere: theme dir `vantage`, media URL
 - All core widgets per contract §5 (dropdown state machine, tabs, modals
   incl. apply countdown, tooltips, dynlist, progress bars, file browser,
   notifications with real fade-out transition, changes dialog).
+- **Forms**: one control height for inputs, selects, dropdowns, buttons
+  and tabs, chosen by pointer type, not screen width (36 px with a mouse,
+  44 px on touch, 16 px text in touch fields); a 180 px label column and
+  fields up to 360 px (a select grows to fit a long choice). Field help
+  shows its first line and an (i) button unfolds the rest, so the start
+  of a warning is always visible. A page or card heading that only
+  repeats the breadcrumb, the map title or its tab is hidden visually and
+  kept for screen readers. LuCI's text and node order are never changed:
+  the menu script only appends the (i) button and sets classes,
+  `data-v-help` and (where missing) a description `id` for
+  `aria-controls`.
 - 404 / CSRF pages render in the theme without leaking anything.
 
 ### Visual identity

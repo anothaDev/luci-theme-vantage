@@ -1,7 +1,8 @@
 'use strict';
 /* menu-vantage.js pieces that decide what reaches the DOM: the SVG helper's
-   closed tag/attribute sets, and Channel Analysis ownership (by BSSID,
-   never by SSID text, which a neighbour controls). */
+   closed tag/attribute sets, Channel Analysis ownership (by BSSID, never by
+   SSID text, which a neighbour controls), and the form chrome (which
+   headings count as repeats, where the help button goes). */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -41,6 +42,34 @@ test('svgEl: builds every icon; any other tag or attribute throws', () => {
 		assert.throws(() => svgEl(tag, {}), /tag not allowed/, tag);
 	for (const k of [ 'href', 'xlink:href', 'onclick', 'onload', 'style', 'attributeName', 'to', 'values', 'begin', '__proto__' ])
 		assert.throws(() => svgEl('path', { [k]: 'x' }), /attribute not allowed/, k);
+});
+
+test('repeated headings: case, spacing and a trailing colon do not count', () => {
+	const start = src.indexOf('function headingKey(');
+	assert.ok(start > 0, 'found headingKey');
+	const end = src.indexOf('\n}\n', start) + 3;
+	const headingKey = new Function(src.slice(start, end) + '\nreturn headingKey;')();
+	assert.equal(headingKey('Router Password'), headingKey('router password'));
+	assert.equal(headingKey('  General\n Settings: '), 'general settings');
+	assert.equal(headingKey('Interfaces'), headingKey('Interfaces'));
+	assert.notEqual(headingKey('System'), headingKey('System Properties'));
+	assert.notEqual(headingKey('Firewall - Zone Settings'), headingKey('General Settings'));
+	assert.equal(headingKey(null), '');
+});
+
+test('form chrome: only adds beside LuCI nodes, never between label and field', () => {
+	const start = src.indexOf('\taddHelpToggle(desc) {');
+	const end = src.indexOf('\tfitHelp(desc) {');
+	assert.ok(start > 0 && end > start, 'found addHelpToggle');
+	const body = src.slice(start, end);
+	/* LuCI's label click finds its widget through nextElementSibling */
+	assert.match(body, /row\.appendChild\(btn\);/);
+	assert.doesNotMatch(body, /insertBefore|insertAdjacent|\.before\(|\.after\(|\.prepend\(/);
+	/* descriptions keep their text; folding is a class plus CSS */
+	assert.doesNotMatch(body, /textContent\s*=|innerHTML|\.remove\(\)|replaceChildren/);
+	/* a heading that holds a control (Overview's Hide/Show label) is never hidden */
+	const repeats = src.slice(src.indexOf('\tmarkRepeats() {'));
+	assert.match(repeats, /h\.querySelector\('a, button, input, select, \[data-clickable\], \[tabindex\]'\)\) return;/);
 });
 
 test('channel analysis: a row or hump is ours by BSSID only', () => {
