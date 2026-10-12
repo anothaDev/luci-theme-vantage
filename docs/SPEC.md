@@ -133,6 +133,11 @@ visible focus, reduced-motion respected.
   a per-tile minimum and hide them. Saved in `localStorage` per screen
   class (and separately for wired devices), validated on read; never on
   the device.
+- **Controls** (buttons, filter, chips, sort headers, icon buttons) take
+  the theme's control height through `--v-ctl-h` (36 px, 44 px on
+  touch) and the theme's control radius (`--v-r`); under another theme
+  the app falls back to the same 36/44 px by pointer type. The layout
+  itself stays the app's own (container queries on its width).
 - Polling via `poll.add` with sane intervals; pauses when the tab is hidden.
 - ACL: three groups. `luci-app-vantage` (read): `system info/board`,
   `network.interface dump`, `network.device status`, `iwinfo

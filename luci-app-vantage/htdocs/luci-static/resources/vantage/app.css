@@ -40,6 +40,8 @@
 	--vt-r-sm: var(--v-r-sm, 6px);
 	--vt-r: var(--v-r, 10px);
 	--vt-r-lg: var(--v-r-lg, 14px);
+	--vt-ctl: var(--v-ctl-h, 36px);       /* every control: buttons, fields, chips */
+	--vt-r-ctl: var(--v-r, 6px);          /* their corners, as the theme's controls */
 	--vt-shadow: var(--v-shadow, 0 1px 2px rgba(16, 20, 24, .05), 0 1px 1px rgba(16, 20, 24, .03));
 
 	/* derived: readable accent for text/strokes on surfaces (a lime or
@@ -74,6 +76,12 @@
 	--vt-av-ink-l: 34%;
 	--vt-scrim: rgba(12, 14, 17, .32);
 	--vt-sheet-shadow: -18px 0 48px rgba(12, 14, 17, .16), -2px 0 8px rgba(12, 14, 17, .06);
+}
+
+/* touch: controls follow the pointer, not the width (the theme sets
+   --v-ctl-h the same way; this is the fallback under other themes) */
+@media (pointer: coarse) {
+	.vt-app { --vt-ctl: var(--v-ctl-h, 44px); }
 }
 
 html[data-darkmode="true"] .vt-app {
@@ -174,8 +182,8 @@ html[data-darkmode="true"] .vt-app {
 /* buttons of the app (the theme's global button look is reset here) */
 .vt-app .vt-btn {
 	display: inline-flex; align-items: center; gap: 6px;
-	height: 32px; padding: 0 12px;
-	border: 1px solid var(--vt-line-2); border-radius: var(--vt-r-sm);
+	height: var(--vt-ctl); padding: 0 12px;
+	border: 1px solid var(--vt-line-2); border-radius: var(--vt-r-ctl);
 	background: var(--vt-surface); color: var(--vt-text);
 	font-size: 13px; font-weight: 560; line-height: 1;
 	cursor: pointer; box-shadow: none; text-transform: none; min-width: 0;
@@ -299,7 +307,7 @@ html[data-darkmode="true"] .vt-app {
 
 /* ----------------------------------------------- 3b. arranging the tiles */
 
-.vt-app .vt-layout-btn { flex: none; height: 30px; gap: 6px; font-size: 12px; }
+.vt-app .vt-layout-btn { flex: none; gap: 6px; font-size: 12px; }
 .vt-app .vt-layout-btn .vt-ico { width: 16px; height: 16px; }
 .vt-app .vt-layout-btn[aria-pressed="true"] { background: var(--vt-accent-soft); color: var(--vt-text); }
 @container vt (max-width: 699px) { .vt-app .vt-layout-btn span { display: none; } }
@@ -338,7 +346,7 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-ov-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
 .vt-app .vt-ov-grip, .vt-app .vt-ov-btn {
 	display: inline-flex; align-items: center; justify-content: center; flex: none;
-	width: 30px; height: 30px; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 8px;
+	width: var(--vt-ctl); height: var(--vt-ctl); min-width: 0; margin: 0; padding: 0; border: 0; border-radius: var(--vt-r-ctl);
 	background: transparent; color: var(--vt-text-2); box-shadow: none; cursor: pointer;
 }
 .vt-app .vt-ov-grip { cursor: grab; touch-action: none; background: var(--vt-surface-3); color: var(--vt-text); }
@@ -382,7 +390,7 @@ html[data-darkmode="true"] .vt-app {
 @container vt (max-width: 699px) {
 	.vt-app .vt-fold-btn {
 		display: inline-flex; align-items: center; justify-content: center; flex: none;
-		width: 32px; height: 32px; margin: -4px -8px -4px 0; padding: 0; border: 0; border-radius: 8px;
+		width: var(--vt-ctl); height: var(--vt-ctl); margin: -4px -8px -4px 0; padding: 0; border: 0; border-radius: var(--vt-r-ctl);
 		background: transparent; color: var(--vt-text-3); cursor: pointer; box-shadow: none; min-width: 0;
 	}
 	.vt-app .vt-fold-btn:hover { background: var(--vt-surface-3); color: var(--vt-text); }
@@ -772,7 +780,7 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-status-err::before { background: var(--vt-err); }
 .vt-app .vt-icon-action {
 	display: inline-flex; align-items: center; justify-content: center; flex: none;
-	width: 26px; height: 26px; padding: 0; margin: 0; border: 0; border-radius: 7px;
+	width: var(--vt-ctl); height: var(--vt-ctl); padding: 0; margin: 0; border: 0; border-radius: var(--vt-r-ctl);
 	background: transparent; color: var(--vt-text-3); cursor: pointer; box-shadow: none; min-width: 0;
 }
 .vt-app .vt-icon-action:hover { background: var(--vt-surface-3); color: var(--vt-text); }
@@ -812,14 +820,14 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
 .vt-app .vt-filter {
 	position: relative; display: flex; align-items: center; flex: 1 1 260px; max-width: 380px;
-	height: 34px; padding: 0 8px 0 10px; gap: 6px;
-	border: 1px solid var(--vt-line-2); border-radius: var(--vt-r-sm); background: var(--vt-surface);
+	height: var(--vt-ctl); padding: 0 8px 0 10px; gap: 6px;
+	border: 1px solid var(--vt-line-2); border-radius: var(--vt-r-ctl); background: var(--vt-surface);
 	color: var(--vt-text-3); cursor: text;
 }
 .vt-app .vt-filter:focus-within { border-color: var(--vt-accent-line); box-shadow: 0 0 0 3px var(--vt-accent-soft); }
 .vt-app .vt-filter .vt-ico { width: 16px; height: 16px; }
 .vt-app .vt-filter .vt-filter-input {
-	flex: 1; min-width: 0; width: auto; height: 32px; padding: 0; margin: 0;
+	flex: 1; min-width: 0; width: auto; height: calc(var(--vt-ctl) - 2px); padding: 0; margin: 0;
 	border: 0; background: transparent; box-shadow: none; outline: none;
 	color: var(--vt-text); font: inherit; font-size: 13px;
 }
@@ -827,14 +835,14 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-key-hint { font: 600 10.5px/1 var(--vt-mono); padding: 3px 5px; border-radius: 4px; border: 1px solid var(--vt-line-2); color: var(--vt-text-3); background: var(--vt-surface-2); }
 .vt-app .vt-filter:focus-within .vt-key-hint { display: none; }
 .vt-app .vt-filter-clear {
-	display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; margin: 0;
-	border: 0; border-radius: 5px; background: transparent; color: var(--vt-text-3); cursor: pointer; box-shadow: none; min-width: 0;
+	display: inline-flex; align-items: center; justify-content: center; width: calc(var(--vt-ctl) - 10px); height: calc(var(--vt-ctl) - 10px); padding: 0; margin: 0;
+	border: 0; border-radius: var(--vt-r-ctl); background: transparent; color: var(--vt-text-3); cursor: pointer; box-shadow: none; min-width: 0;
 }
 .vt-app .vt-filter-clear:hover { background: var(--vt-surface-3); color: var(--vt-text); }
 .vt-app .vt-filter-clear .vt-ico { width: 14px; height: 14px; }
 .vt-app .vt-fchips { display: flex; flex-wrap: wrap; gap: 6px; }
 .vt-app .vt-fchip {
-	display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; margin: 0;
+	display: inline-flex; align-items: center; gap: 6px; height: var(--vt-ctl); padding: 0 12px; margin: 0;
 	border: 1px solid var(--vt-line); border-radius: 999px; background: var(--vt-surface);
 	color: var(--vt-text-2); font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: none; min-width: 0; text-transform: none;
 }
@@ -848,13 +856,13 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-ctable { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: auto; min-width: 800px; }
 .vt-app .vt-ctable th {
 	position: sticky; top: 0; z-index: 1;
-	padding: 0 10px; height: 34px; text-align: left; white-space: nowrap; letter-spacing: normal; text-transform: none;
+	padding: 0 10px; height: var(--vt-ctl); text-align: left; white-space: nowrap; letter-spacing: normal; text-transform: none;
 	background: var(--vt-surface); border-bottom: 1px solid var(--vt-line);
 	font-weight: 400;
 }
 .vt-app .vt-sort {
-	display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px; margin: 0 -4px;
-	border: 0; border-radius: 5px; background: transparent; box-shadow: none; min-width: 0;
+	display: inline-flex; align-items: center; gap: 4px; height: var(--vt-ctl); padding: 0 4px; margin: 0 -4px;
+	border: 0; border-radius: var(--vt-r-ctl); background: transparent; box-shadow: none; min-width: 0;
 	color: var(--vt-text-3); font-size: 11px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; cursor: pointer;
 }
 .vt-app .vt-sort:hover { color: var(--vt-text); background: var(--vt-surface-2); }
@@ -985,7 +993,7 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-drawer-sub { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; color: var(--vt-text-3); font-size: 12px; margin-top: 3px; }
 .vt-app .vt-drawer-close {
 	display: inline-flex; align-items: center; justify-content: center; flex: none;
-	width: 34px; height: 34px; padding: 0; margin: 0; border: 0; border-radius: 9px;
+	width: var(--vt-ctl); height: var(--vt-ctl); padding: 0; margin: 0; border: 0; border-radius: var(--vt-r-ctl);
 	background: transparent; color: var(--vt-text-2); cursor: pointer; box-shadow: none; min-width: 0;
 }
 .vt-app .vt-drawer-close:hover { background: var(--vt-surface-3); color: var(--vt-text); }
@@ -1038,15 +1046,15 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-rename { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: var(--vt-r); background: var(--vt-surface-2); border: 1px solid var(--vt-line); }
 .vt-app .vt-rename-label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; color: var(--vt-text-2); }
 .vt-app .vt-rename .vt-rename-input {
-	height: 36px; width: 100%; padding: 0 10px; margin: 0;
-	border: 1px solid var(--vt-line-2); border-radius: var(--vt-r-sm); background: var(--vt-surface);
+	height: var(--vt-ctl); width: 100%; padding: 0 10px; margin: 0;
+	border: 1px solid var(--vt-line-2); border-radius: var(--vt-r-ctl); background: var(--vt-surface);
 	color: var(--vt-text); font: inherit; font-size: 14px; box-shadow: none;
 }
 .vt-app .vt-rename .vt-rename-input:focus { outline: none; border-color: var(--vt-accent-line); box-shadow: 0 0 0 3px var(--vt-accent-soft); }
 .vt-app .vt-icon-picks { display: flex; flex-wrap: wrap; gap: 4px; }
 .vt-app .vt-icon-pick {
-	display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; margin: 0;
-	border: 1px solid var(--vt-line); border-radius: 8px; background: var(--vt-surface); color: var(--vt-text-2);
+	display: inline-flex; align-items: center; justify-content: center; width: var(--vt-ctl); height: var(--vt-ctl); padding: 0; margin: 0;
+	border: 1px solid var(--vt-line); border-radius: var(--vt-r-ctl); background: var(--vt-surface); color: var(--vt-text-2);
 	cursor: pointer; box-shadow: none; min-width: 0;
 }
 .vt-app .vt-icon-pick:hover { border-color: var(--vt-line-2); color: var(--vt-text); }
@@ -1132,6 +1140,11 @@ html[data-darkmode="true"] .vt-app {
 	.vt-app .vt-drawer-head { padding: 10px 12px 12px 16px; }
 	.vt-app .vt-drawer-body { padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
 	.vt-app .vt-kvs .vt-kv { grid-template-columns: 112px minmax(0, 1fr); }
+}
+
+/* touch: 16px text in fields (iOS zooms into anything smaller) */
+@media (pointer: coarse) {
+	.vt-app .vt-filter .vt-filter-input, .vt-app .vt-rename .vt-rename-input { font-size: 16px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
