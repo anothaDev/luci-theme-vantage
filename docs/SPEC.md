@@ -99,6 +99,12 @@ Either way: one accent colour only, status colours distinct from it,
 system font stacks, self-drawn SVG icons, WCAG AA contrast in both modes,
 visible focus, reduced-motion respected.
 
+One type scale for the theme and the dashboard: 10.5 / 12 / 13 / 14 /
+16 / 20 / 24 px (`--fs-*`, shared as `--v-fs-*`). Every font size comes
+from it, except the 16 px of fields on touch screens (iOS zooms into
+anything smaller); monospace text is set a few percent smaller than the
+text around it so it looks the same size.
+
 ## 4. App v1 (`luci-app-vantage`)
 
 - **Overview**: device card (model, firmware, uptime, CPU, memory, temp
@@ -136,8 +142,13 @@ visible focus, reduced-motion respected.
 - **Controls** (buttons, filter, chips, sort headers, icon buttons) take
   the theme's control height through `--v-ctl-h` (36 px, 44 px on
   touch) and the theme's control radius (`--v-r`); under another theme
-  the app falls back to the same 36/44 px by pointer type. The layout
-  itself stays the app's own (container queries on its width).
+  the app falls back to the same 36/44 px by pointer type. Text sizes come
+  from the theme's type scale (`--v-fs-*`). The layout itself stays the
+  app's own: container queries on its own width, one column below
+  700 px. On a 721–803 px screen the dashboard is therefore still one
+  column while theme forms already sit beside their labels; that is
+  intended, since the dashboard only gets about 600–700 px there and its
+  two-column tiles clip below that (measured).
 - Polling via `poll.add` with sane intervals; pauses when the tab is hidden.
 - ACL: three groups. `luci-app-vantage` (read): `system info/board`,
   `network.interface dump`, `network.device status`, `iwinfo

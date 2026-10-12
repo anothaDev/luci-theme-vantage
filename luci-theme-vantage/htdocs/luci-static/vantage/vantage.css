@@ -149,6 +149,13 @@ html[data-darkmode="true"] {
 	--v-info-soft: var(--info-soft);
 	--v-font: var(--font);
 	--v-mono: var(--mono);
+	--v-fs-micro: var(--fs-micro);       /* the type scale: 10.5 12 13 14 16 20 24 px */
+	--v-fs-sm: var(--fs-sm);
+	--v-fs-base: var(--fs-base);
+	--v-fs-md: var(--fs-md);
+	--v-fs-lg: var(--fs-lg);
+	--v-fs-xl: var(--fs-xl);
+	--v-fs-2xl: var(--fs-2xl);
 	--v-r-sm: var(--r-sm);
 	--v-r: var(--r);
 	--v-r-lg: var(--r-lg);
@@ -522,7 +529,7 @@ a.vt-crumb:hover { color: var(--text); }
 	font-size: var(--fs-sm);
 	white-space: nowrap;
 }
-.vt-host b { color: var(--text); font-weight: 600; font-family: var(--mono); font-size: 11.5px; }
+.vt-host b { color: var(--text); font-weight: 600; font-family: var(--mono); font-size: var(--fs-micro); }
 .vt-host span { overflow: hidden; text-overflow: ellipsis; }
 .vt-host-sep { color: var(--text-3); }
 
@@ -569,7 +576,7 @@ a.vt-crumb:hover { color: var(--text); }
 	min-width: 20px; height: 20px; padding: 0 6px;
 	border-radius: 999px;
 	background: var(--warn); color: #1a1200;
-	font: 700 11.5px/1 var(--mono);
+	font: 700 var(--fs-micro)/1 var(--mono);
 }
 #indicators > span[data-indicator="media_error"] { color: var(--err); border-color: var(--err); background: var(--err-soft); }
 
@@ -718,7 +725,7 @@ html:has(.vt-tabs:not([hidden])) { --stick-top: calc(var(--top-h) + var(--ctl-h)
 	max-width: 76ch;
 	margin: 0 0 var(--sp-6);
 	color: var(--text-2);
-	font-size: 13.5px; line-height: 1.55;
+	font-size: var(--fs-base); line-height: 1.55;
 }
 .cbi-section-descr { max-width: 80ch; margin: 0 0 var(--sp-4); color: var(--text-2); }
 .cbi-map-descr:empty, .cbi-section-descr:empty { display: none; }
@@ -1249,7 +1256,7 @@ input[type="button"], input[type="reset"], input[type="submit"]) {
 	display: flex; align-items: center; justify-content: center;
 	border-left: 1px solid var(--line);
 	color: var(--text-3);
-	font: 400 16px/1 var(--font);
+	font: 400 var(--fs-lg)/1 var(--font);
 	cursor: pointer;
 }
 .cbi-dynlist > .item:hover::after { color: var(--err); background: var(--err-soft); border-radius: 0 var(--r) var(--r) 0; }
@@ -1332,13 +1339,13 @@ table { border-collapse: separate; border-spacing: 0; width: 100%; }
 .td:not(.cbi-value-field)[data-title*="Target" i], .td:not(.cbi-value-field)[data-title*="Source" i], .td:not(.cbi-value-field)[data-title*="DUID" i], .td:not(.cbi-value-field)[data-title="PID"],
 .td:not(.cbi-value-field)[data-title*="Metric" i], .td:not(.cbi-value-field)[data-title*="Priority" i], .td:not(.cbi-value-field)[data-title*="Remaining" i], .td:not(.cbi-value-field)[data-title*="Usage" i] {
 	white-space: nowrap;
-	font-family: var(--mono); font-size: 12.5px;
+	font-family: var(--mono); font-size: var(--fs-sm);
 	font-variant-numeric: tabular-nums slashed-zero;
 }
 .td > span:has(> span + br + span) { display: flex; flex-direction: column; gap: 1px; }
 .td > span:has(> span + br + span) > br { display: none; }
-.td > span:has(> span + br + span) > span { white-space: nowrap; font: 12px/1.5 var(--mono); }
-.td > span:has(> span + br + span) > span:not(:first-child) { color: var(--text-3); font-size: 11.5px; }
+.td > span:has(> span + br + span) > span { white-space: nowrap; font: var(--fs-sm)/1.5 var(--mono); }
+.td > span:has(> span + br + span) > span:not(:first-child) { color: var(--text-3); font-size: var(--fs-micro); }
 
 /* badges inside cells are content, not pills: icon + text */
 .td .ifacebadge, .td .ifacebadge.large {
@@ -1347,7 +1354,7 @@ table { border-collapse: separate; border-spacing: 0; width: 100%; }
 	font-size: inherit; white-space: nowrap;
 }
 .td .ifacebadge img, .td .ifacebadge img[style] { width: 18px !important; height: 18px !important; flex: none; }
-.td .ifacebadge small { color: var(--text-3); font-family: var(--mono); font-size: 11.5px; }
+.td .ifacebadge small { color: var(--text-3); font-family: var(--mono); font-size: var(--fs-micro); }
 .td > .ifacebadge + .ifacebadge, .td > span + .ifacebadge { margin-left: 10px; }
 .cbi-section-table-descr > .th { font-weight: 400; text-transform: none; letter-spacing: 0; font-size: var(--fs-sm); }
 .cbi-section-table-cell, .cbi-section-table-row > .td { vertical-align: middle; }
@@ -1494,7 +1501,7 @@ div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; 
 	min-width: 18px; height: 18px; padding: 0 5px;
 	border-radius: 999px;
 	background: var(--err); color: #fff;
-	font: 700 10.5px/1 var(--mono);
+	font: 700 var(--fs-micro)/1 var(--mono);
 }
 .cbi-tabmenu > li.cbi-tab-disabled[data-errors] > a { color: var(--err); }
 [data-tab-title]:not([data-tab-active="true"]) { display: none; }
@@ -1555,13 +1562,13 @@ div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; 
 	min-width: 0;
 	white-space: normal; overflow-wrap: anywhere;
 	color: var(--text);
-	font: 400 12px/1.55 var(--mono);
+	font: 400 var(--fs-sm)/1.55 var(--mono);
 	font-variant-numeric: tabular-nums slashed-zero;
 }
 :is(.ifacebox-body, .ifacebadge) > span:has(> .nowrap) > .nowrap:not(:has(> strong)) { display: block; }
 :is(.ifacebox-body, .ifacebadge) > span:has(> .nowrap) > .nowrap > strong {
 	color: var(--text-3);
-	font: 600 10.5px/1.55 var(--font);
+	font: 600 var(--fs-micro)/1.55 var(--font);
 	letter-spacing: .06em; text-transform: uppercase;
 	white-space: nowrap;
 }
@@ -1621,7 +1628,7 @@ div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; 
 	padding: 2px 8px;
 	border: 1px solid var(--line-2); border-radius: 999px;
 	color: var(--text-2);
-	font: 600 10.5px/1.5 var(--mono); letter-spacing: .02em;
+	font: 600 var(--fs-micro)/1.5 var(--mono); letter-spacing: .02em;
 }
 .network-status-table .ifacebox-body { display: flex; flex-direction: column; gap: 14px; padding: 8px 16px 16px; }
 .network-status-table .ifacebox-body > div:not(:empty) {
@@ -1643,7 +1650,7 @@ div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; 
 	white-space: normal;
 }
 .network-status-table .ifacebox .ifacebadge > img { width: 18px; height: 18px; margin-top: 1px; }
-.network-status-table .ifacebox .ifacebadge > span > .nowrap:first-child { display: block; margin-bottom: 4px; font: 600 13px/1.4 var(--font); }
+.network-status-table .ifacebox .ifacebadge > span > .nowrap:first-child { display: block; margin-bottom: 4px; font: 600 var(--fs-base)/1.4 var(--font); }
 .network-status-table .ifacebox .ifacebadge > span > .nowrap:first-child > strong { display: none; }
 
 /* zone colours arrive inline (--zone-color-rgb + background-color): tint instead */
@@ -1691,7 +1698,7 @@ div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; 
 	display: flex; align-items: center;
 	padding: 0 8px;
 	color: var(--text);
-	font: 500 11.5px/1 var(--mono);
+	font: 500 var(--fs-micro)/1 var(--mono);
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
 	z-index: 1;
@@ -1967,7 +1974,7 @@ iframe { border: 1px solid var(--line); border-radius: var(--r); }
 #view div[style*="height:300px"][style*="background"] svg text, #view div[id="channel_graph"] svg text {
 	fill: var(--v-chart-axis) !important;
 	text-shadow: none !important;
-	font: 500 10.5px/1 var(--v-mono) !important;
+	font: 500 var(--fs-micro)/1 var(--v-mono) !important;
 	font-variant-numeric: tabular-nums;
 	letter-spacing: .02em;
 	paint-order: stroke;                   /* halo: labels stay legible over areas */
@@ -1990,7 +1997,7 @@ body[data-page^="admin-status-realtime"] #view svg polyline:is(#load05, #tx, #tc
 /* "(4 minute window, 3 second interval)" */
 body[data-page^="admin-status-realtime"] #view .cbi-section > br { display: none; }
 body[data-page^="admin-status-realtime"] #view .cbi-section > div.right:has(> small[id^="scale"]) { margin: 6px 0 0; }
-body[data-page^="admin-status-realtime"] #view small[id^="scale"] { color: var(--v-chart-axis); font: 10.5px/1.4 var(--v-mono); letter-spacing: .02em; }
+body[data-page^="admin-status-realtime"] #view small[id^="scale"] { color: var(--v-chart-axis); font: var(--fs-micro)/1.4 var(--v-mono); letter-spacing: .02em; }
 body[data-page^="admin-status-realtime"] #view .cbi-section > .table ~ div[style*="height:300px"] { margin-top: var(--sp-6); }
 body[data-page^="admin-status-realtime"] #view .cbi-section-create:empty { display: none; }
 
@@ -2037,11 +2044,11 @@ body[data-page^="admin-status-realtime"] #view .table:has(strong[style*="border-
 }
 body[data-page^="admin-status-realtime"] #view .table:has(strong[style*="border-bottom"]) > .tr > .td:is(:nth-child(2), :nth-child(4), :nth-child(6)) {
 	font-family: var(--v-mono); font-variant-numeric: tabular-nums;
-	color: var(--v-text-3); font-size: 11.5px;
+	color: var(--v-text-3); font-size: var(--fs-micro);
 	white-space: nowrap;
 }
-body[data-page^="admin-status-realtime"] #view .table:has(strong[style*="border-bottom"]) > .tr > .td:is(:nth-child(2), :nth-child(4), :nth-child(6))::first-line { color: var(--v-text-2); font-size: 12.5px; }
-body[data-page^="admin-status-realtime"] #view .table:has(strong[style*="border-bottom"]) > .tr > .td:nth-child(2)::first-line { color: var(--v-text); font-weight: 650; font-size: 14px; }
+body[data-page^="admin-status-realtime"] #view .table:has(strong[style*="border-bottom"]) > .tr > .td:is(:nth-child(2), :nth-child(4), :nth-child(6))::first-line { color: var(--v-text-2); font-size: var(--fs-sm); }
+body[data-page^="admin-status-realtime"] #view .table:has(strong[style*="border-bottom"]) > .tr > .td:nth-child(2)::first-line { color: var(--v-text); font-weight: 650; font-size: var(--fs-md); }
 body[data-page^="admin-status-realtime"] #view .tr:has(:is(#lb_load01_cur, #rx_bw_cur, #rssi_bw_cur, #lb_udp_cur)) { --key: var(--v-chart-1); }
 body[data-page^="admin-status-realtime"] #view .tr:has(:is(#lb_load05_cur, #tx_bw_cur, #rate_bw_cur, #lb_tcp_cur)) { --key: var(--v-chart-2); }
 body[data-page^="admin-status-realtime"] #view .tr:has(:is(#lb_load15_cur, #noise_bw_cur, #lb_otr_cur)) { --key: var(--v-chart-3); }
@@ -2056,13 +2063,13 @@ body[data-page^="admin-status-realtime"] #view #settings-row input { max-width: 
 #connections .tr > .th:first-child { padding-left: var(--card-px); }
 #connections .tr:not(.table-titles) > .td:is(:nth-child(1), :nth-child(2)) {
 	color: var(--v-text-2);
-	font: 600 10.5px/1.5 var(--v-mono); letter-spacing: .05em;
+	font: 600 var(--fs-micro)/1.5 var(--v-mono); letter-spacing: .05em;
 }
-#connections .tr:not(.table-titles) > .td:is(:nth-child(3), :nth-child(4)) { font-family: var(--v-mono); font-size: 12px; overflow-wrap: break-word; }
+#connections .tr:not(.table-titles) > .td:is(:nth-child(3), :nth-child(4)) { font-family: var(--v-mono); font-size: var(--fs-sm); overflow-wrap: break-word; }
 #connections .tr > .th:is(:nth-child(1), :nth-child(2)) { width: 9%; }
 #connections .tr > .th:is(:nth-child(3), :nth-child(4)) { width: 31%; }
 #connections .tr > .th:nth-child(5) { width: 20%; }
-#connections .tr:not(.table-titles) > .td:last-child { font: 12px var(--v-mono); font-variant-numeric: tabular-nums; color: var(--v-text-2); }
+#connections .tr:not(.table-titles) > .td:last-child { font: var(--fs-sm) var(--v-mono); font-variant-numeric: tabular-nums; color: var(--v-text-2); }
 
 /* channel analysis: each tab is one card (graph over table) */
 body[data-page^="admin-status-channel_analysis"] #view .cbi-title-section { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-4); }
@@ -2107,7 +2114,7 @@ body[data-page^="admin-status-channel_analysis"] #view [data-tab-title]:not([dat
 .v-ca-shape[data-v-own] { stroke-width: 2.25px; }
 #view div[id="channel_graph"] svg text.v-ca-label {
 	fill: var(--v-text-2) !important;
-	font: 500 11px/1 var(--v-font) !important;
+	font: 500 var(--fs-micro)/1 var(--v-font) !important;
 	letter-spacing: 0;
 	paint-order: stroke;
 	stroke: var(--s1); stroke-width: 3px; stroke-linejoin: round;
@@ -2216,7 +2223,7 @@ html:not([data-darkmode="true"]) .vt-login-page {
 	padding: 10px 12px;
 }
 .cbi-section-table .ifacebox-body > br { display: none; }
-.cbi-section-table .ifacebox-body > small { flex-basis: 100%; color: var(--text-2); font: 12px/1.3 var(--mono); }
+.cbi-section-table .ifacebox-body > small { flex-basis: 100%; color: var(--text-2); font: var(--fs-sm)/1.3 var(--mono); }
 /* "( dev dev dev )": drop the parentheses, group the member ports */
 .cbi-section-table .ifacebox-body > span:not(.cbi-tooltip-container) {
 	display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;
@@ -2235,11 +2242,11 @@ html:not([data-darkmode="true"]) .vt-login-page {
 [id$="-ifc-description"] > .nowrap {
 	display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 0 1 auto;
 	white-space: normal; overflow-wrap: anywhere;
-	font: 12.5px/1.45 var(--mono); font-variant-numeric: tabular-nums slashed-zero;
+	font: var(--fs-sm)/1.45 var(--mono); font-variant-numeric: tabular-nums slashed-zero;
 }
 [id$="-ifc-description"] > .nowrap > strong, .td[data-name="_stat"] .nowrap > strong {
 	color: var(--text-3);
-	font: 600 10.5px/1.5 var(--font); letter-spacing: .06em; text-transform: uppercase;
+	font: 600 var(--fs-micro)/1.5 var(--font); letter-spacing: .06em; text-transform: uppercase;
 }
 
 /* Network -> Wireless: radios as group headers, networks as rows */
@@ -2269,7 +2276,7 @@ html:not([data-darkmode="true"]) .vt-login-page {
 .cbi-progressbar::before {
 	inset: auto 0 calc(100% + 5px) 0; padding: 0;
 	color: var(--text-2);
-	font: 500 11.5px/1.2 var(--mono);
+	font: 500 var(--fs-micro)/1.2 var(--mono);
 }
 
 /* fused memory / storage meters (built by menu-vantage.js) */
@@ -2278,9 +2285,9 @@ html:not([data-darkmode="true"]) .vt-login-page {
 .v-meter + .v-meter { margin-top: var(--sp-3); padding-top: var(--sp-4); border-top: 1px solid var(--line); }
 .v-meter-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
 .v-meter-title { color: var(--text); font-weight: 600; }
-.v-meter-big { font: 650 22px/1 var(--mono); letter-spacing: -.02em; color: var(--text); }
+.v-meter-big { font: 650 var(--fs-xl)/1 var(--mono); letter-spacing: -.02em; color: var(--text); }
 .v-meter-big small { margin-left: 6px; font: 500 var(--fs-sm) var(--font); letter-spacing: 0; color: var(--text-2); }
-.v-meter-sub { margin-left: auto; color: var(--text-2); font: 12px/1.4 var(--mono); font-variant-numeric: tabular-nums; }
+.v-meter-sub { margin-left: auto; color: var(--text-2); font: var(--fs-sm)/1.4 var(--mono); font-variant-numeric: tabular-nums; }
 .v-meter-bar {
 	position: relative;
 	display: flex;
@@ -2303,16 +2310,16 @@ html:not([data-darkmode="true"]) .vt-login-page {
 .v-seg.is-crit { background: var(--err); }
 .v-meter-legend { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; padding: 0; list-style: none; font-size: var(--fs-sm); color: var(--text-2); }
 .v-meter-legend li { display: inline-flex; align-items: center; gap: 7px; }
-.v-meter-legend b { color: var(--text); font: 600 12px var(--mono); font-variant-numeric: tabular-nums; }
+.v-meter-legend b { color: var(--text); font: 600 var(--fs-sm) var(--mono); font-variant-numeric: tabular-nums; }
 .v-meter-legend em { color: var(--text-3); font-style: normal; font-size: var(--fs-micro); }
 .v-key { width: 10px; height: 10px; border-radius: 2px; flex: none; }
 .v-key.v-seg-free { background: var(--s3); box-shadow: inset 0 0 0 1px var(--line-2); }
 .v-meter-rows { display: grid; grid-template-columns: minmax(120px, max-content) minmax(0, 1fr) max-content; gap: 14px 20px; padding: 4px 0 6px; }
 .v-meter-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; grid-template-areas: "label bar val"; align-items: center; }
 .v-meter-row > .v-meter-label { grid-area: label; color: var(--text-2); overflow-wrap: anywhere; }
-.v-meter-row > .v-meter-label small { display: block; color: var(--text-3); font: 11px var(--mono); }
+.v-meter-row > .v-meter-label small { display: block; color: var(--text-3); font: var(--fs-micro) var(--mono); }
 .v-meter-row > .v-meter-bar { grid-area: bar; }
-.v-meter-row > .v-meter-val { grid-area: val; color: var(--text-2); font: 12px var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.v-meter-row > .v-meter-val { grid-area: val; color: var(--text-2); font: var(--fs-sm) var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .v-meter-row > .v-meter-val b { color: var(--text); font-weight: 600; }
 .v-sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -2378,7 +2385,7 @@ html:not([data-darkmode="true"]) .vt-login-page {
 	.vt-rail-link .vt-rail-label, html[data-rail="pinned"] .vt-rail-link .vt-rail-label {
 		display: block !important;
 		max-width: 100%;
-		font-size: 10.5px; font-weight: 500;
+		font-size: var(--fs-micro); font-weight: 500;
 		text-align: center;
 	}
 	.vt-rail-item.is-active > .vt-rail-link::before { left: 14px; right: 14px; top: -6px; bottom: auto; width: auto; height: 2px; border-radius: 0 0 2px 2px; }

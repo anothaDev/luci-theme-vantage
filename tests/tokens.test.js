@@ -23,6 +23,19 @@ test('every theme token the app reads is defined by the theme', () => {
 	assert.deepEqual([ ...new Set(uses.map(u => u.name)) ].filter(n => !defined.has(n)), []);
 });
 
+test('one type scale: every font size comes from it, but iOS\'s 16px for fields', () => {
+	for (const n of [ 'micro', 'sm', 'base', 'md', 'lg', 'xl', '2xl' ]) {
+		assert.ok(defined.has('--v-fs-' + n), '--v-fs-' + n);
+		assert.match(appCss, new RegExp('--vt-fs-' + n + ': var\\(--v-fs-' + n + ', \\d+(\\.\\d+)?px\\);'));
+	}
+	const pxSizes = css => [ ...css.matchAll(/(?<![\w-])font(?:-size)?\s*:([^;{}]*)/g) ]
+		.map(m => m[1].trim())
+		.filter(v => /(^|\s)\d+(\.\d+)?px/.test(v.split('/')[0]))
+		.filter(v => !/^16px( !important)?$/.test(v));
+	assert.deepEqual(pxSizes(appCss), []);
+	assert.deepEqual(pxSizes(themeCss), []);
+});
+
 test('controls share one height: the app takes the theme\'s, on touch too', () => {
 	assert.ok(defined.has('--v-ctl-h'));
 	assert.match(themeCss, /--v-ctl-h: var\(--ctl-h\);/);
