@@ -74,14 +74,15 @@ for Vantage. Names used everywhere: theme dir `vantage`, media URL
 - **Forms**: one control height for inputs, selects, dropdowns, buttons
   and tabs, chosen by pointer type, not screen width (36 px with a mouse,
   44 px on touch, 16 px text in touch fields); a 180 px label column and
-  fields up to 360 px (a select grows to fit a long choice). Field help
-  shows its first line and an (i) button unfolds the rest, so the start
-  of a warning is always visible. A page or card heading that only
+  fields up to 360 px (a select grows to fit a long choice). Field help,
+  and page and section intros, show their first line and an (i) button
+  unfolds the rest, so the start of a warning is always visible; text
+  that fits one line gets no button. A page or card heading that only
   repeats the breadcrumb, the map title or its tab is hidden visually and
-  kept for screen readers. LuCI's text and node order are never changed:
-  the menu script only appends the (i) button and sets classes,
-  `data-v-help` and (where missing) a description `id` for
-  `aria-controls`.
+  kept for screen readers. LuCI's text and the order of LuCI's nodes are
+  never changed: the menu script adds the (i) buttons (after a field
+  row's field, or first inside an intro) and sets classes, `data-v-help`
+  and (where missing) a description `id` for `aria-controls`.
 - 404 / CSRF pages render in the theme without leaking anything.
 
 ### Visual identity

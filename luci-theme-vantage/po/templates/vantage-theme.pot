@@ -142,11 +142,15 @@ msgstr ""
 msgid "Session"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1252
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1260
+msgid "Show full description"
+msgstr ""
+
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1249
 msgid "Show full help"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1251
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1249
 msgid "Show full help: %s"
 msgstr ""
 

@@ -1209,9 +1209,9 @@ return baseclass.extend({
 	/* ---------------------------------------------------- form chrome */
 
 	/* LuCI renders forms into #view and the modal, and renders them again
-	   after a save: watch the body and decorate what is new. This appends a
-	   button and sets classes and attributes; LuCI's text and node order
-	   stay as they are. */
+	   after a save: watch the body and decorate what is new. This adds (i)
+	   buttons and sets classes and attributes; LuCI's text and the order of
+	   LuCI's nodes stay as they are. */
 	setupForms() {
 		this.formsQueued = false;
 		this.helpSeq = 0;
@@ -1232,38 +1232,67 @@ return baseclass.extend({
 
 	decorateForms() {
 		document.querySelectorAll('.cbi-value > .cbi-value-title + .cbi-value-field > .cbi-value-description:not(.vt-help-text)')
-			.forEach(desc => this.addHelpToggle(desc));
+			.forEach(desc => this.addFieldHelp(desc));
+		document.querySelectorAll(':is(.cbi-map-descr, .cbi-section-descr):not(:has(> .vt-help))')
+			.forEach(desc => this.addIntroHelp(desc));
 		this.markRepeats();
 	},
 
-	/* A description shows its first line; (i) unfolds the rest. LuCI also
-	   puts warnings here, so none is hidden whole: its start stays visible.
-	   The button sits in the label column, after the field, because LuCI's
-	   label click handler finds the widget through nextElementSibling. */
-	addHelpToggle(desc) {
+	/* Help text shows its first line; (i) unfolds the rest. LuCI also puts
+	   warnings here, so none is hidden whole: its start stays visible.
+	   Field help: the button sits in the label column, after the field,
+	   because LuCI's label click handler finds the widget through
+	   nextElementSibling. */
+	addFieldHelp(desc) {
 		const row = desc.parentNode.parentNode;
 		const title = row.querySelector(':scope > .cbi-value-title');
+		row.appendChild(this.helpToggle(desc, row, _('Show full help: %s').format(title.textContent.trim()), _('Show full help')));
+	},
+
+	/* Page and section intros: the button leads the first line, inside the
+	   description, since nothing may stand between LuCI's siblings (ui.tabs
+	   finds a tab menu as its pane group's previous sibling). The fold needs
+	   the button, so a view that rewrote the text would show it whole until
+	   the next pass adds the button again. The cut-off line unfolds on a
+	   click too, a bigger target on touch than the icon. */
+	addIntroHelp(desc) {
+		if (desc.closest('.vt-app') || !desc.textContent.trim()) return;
+		desc.insertBefore(this.helpToggle(desc, desc, _('Show full description'), _('Show full description')), desc.firstChild);
+		if (desc._vtIntroClick) return;
+		desc._vtIntroClick = true;
+		desc.addEventListener('click', ev => {
+			const btn = desc.querySelector(':scope > .vt-help');
+			if (!btn || btn.hidden || desc.getAttribute('data-v-help') !== 'closed') return;
+			if (ev.target.closest('a, button') || String(window.getSelection())) return;
+			btn.click();
+		});
+	},
+
+	/* The (i) button for desc. Its state lives on holder (the field row, or
+	   the intro itself) as data-v-help, which the CSS folds by. */
+	helpToggle(desc, holder, label, title) {
+		const state = holder.getAttribute('data-v-help') || 'closed';
+		holder.setAttribute('data-v-help', state);
 		desc.classList.add('vt-help-text');
 		if (!desc.id) desc.id = 'vt-help-' + (++this.helpSeq);
 		const btn = E('button', {
 			'class': 'vt-help', 'type': 'button', 'hidden': '',
-			'aria-expanded': 'false', 'aria-controls': desc.id,
-			'aria-label': _('Show full help: %s').format(title.textContent.trim()),
-			'title': _('Show full help'),
+			'aria-expanded': String(state === 'open'), 'aria-controls': desc.id,
+			'aria-label': label, 'title': title,
 			'click': () => {
-				const open = row.getAttribute('data-v-help') !== 'open';
-				row.setAttribute('data-v-help', open ? 'open' : 'closed');
+				const open = holder.getAttribute('data-v-help') !== 'open';
+				holder.setAttribute('data-v-help', open ? 'open' : 'closed');
 				btn.setAttribute('aria-expanded', String(open));
 				this.fitHelp(desc);
 			}
 		}, [ svg('info', 16) ]);
-		row.setAttribute('data-v-help', 'closed');
-		row.appendChild(btn);
+		desc._vtHelp = { btn: btn, holder: holder };
 		if (this.helpSizes) this.helpSizes.observe(desc);
 		else btn.hidden = false;
+		return btn;
 	},
 
-	/* (i) shows only while the one-line clamp cuts the text. A row that is
+	/* (i) shows only while the one-line clamp cuts the text. Text that is
 	   not displayed (another tab, an unmet dependency) measures 0 and waits
 	   for the next resize notification. */
 	fitHelp(desc) {
@@ -1271,11 +1300,10 @@ return baseclass.extend({
 			if (this.helpSizes) this.helpSizes.unobserve(desc);
 			return;
 		}
-		const row = desc.closest('.cbi-value');
-		const btn = row && row.querySelector(':scope > .vt-help');
-		if (!btn || !desc.clientHeight) return;
+		const h = desc._vtHelp;
+		if (!h || !h.btn.isConnected || !desc.clientHeight) return;
 		const cut = desc.scrollHeight > desc.clientHeight + 1;
-		btn.hidden = !cut && row.getAttribute('data-v-help') !== 'open';
+		h.btn.hidden = !cut && h.holder.getAttribute('data-v-help') !== 'open';
 	},
 
 	/* A page title or card heading that only repeats the breadcrumb, the

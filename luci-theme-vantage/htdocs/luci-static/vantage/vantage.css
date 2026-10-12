@@ -805,7 +805,7 @@ legend { font-size: var(--fs-md); font-weight: 600; padding: 0; margin-bottom: v
 
 /* folding help (menu-vantage.js): one line until (i) unfolds it; the
    button shares the label cell, so both are placed explicitly */
-.cbi-value[data-v-help="closed"] .vt-help-text {
+.cbi-value[data-v-help="closed"] > .cbi-value-field > .vt-help-text {
 	display: -webkit-box; -webkit-box-orient: vertical;
 	-webkit-line-clamp: 1; line-clamp: 1;
 	max-height: 1.5em;
@@ -824,12 +824,33 @@ legend { font-size: var(--fs-md); font-weight: 600; padding: 0; margin-bottom: v
 	color: var(--text-3);
 	cursor: pointer;
 }
-.cbi-value > .vt-help svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.cbi-value > .vt-help:hover { color: var(--text); background: var(--s3); }
-.cbi-value > .vt-help[aria-expanded="true"] { color: var(--accent-text); }
 /* a title that opens with <br> (Wireless "Operating frequency", lined up
    with captioned selects) has its text on the second line: so has (i) */
 .cbi-value:has(> .cbi-value-title > br:first-child) > .vt-help { margin-top: 1.5em; }
+
+/* page and section intros fold the same way, (i) leading the first line;
+   the fold needs the button, so without it the text shows whole */
+:is(.cbi-map-descr, .cbi-section-descr)[data-v-help="closed"]:has(> .vt-help) {
+	display: -webkit-box; -webkit-box-orient: vertical;
+	-webkit-line-clamp: 1; line-clamp: 1;
+	overflow: hidden;
+}
+.cbi-map-descr[data-v-help="closed"]:has(> .vt-help) { max-height: 1.55em; }       /* its line-height */
+.cbi-section-descr[data-v-help="closed"]:has(> .vt-help) { max-height: 1.5em; }
+:is(.cbi-map-descr, .cbi-section-descr)[data-v-help="closed"]:has(> .vt-help:not([hidden])) { cursor: pointer; }
+:is(.cbi-map-descr, .cbi-section-descr) > .vt-help {
+	display: inline-grid; place-items: center;
+	width: 1.5em; height: 1.5em;
+	margin: 0 6px 0 -3px; padding: 0;
+	vertical-align: top;
+	background: none; border: 0; border-radius: var(--r-sm);
+	color: var(--text-3);
+	cursor: pointer;
+}
+/* both buttons, after their placement rules */
+.vt-help svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.vt-help:hover { color: var(--text); background: var(--s3); }
+.vt-help[aria-expanded="true"] { color: var(--accent-text); }
 
 /* a heading that repeats the breadcrumb or its tab (menu-vantage.js):
    gone from view, still a heading for screen readers */

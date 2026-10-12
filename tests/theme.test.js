@@ -57,16 +57,28 @@ test('repeated headings: case, spacing and a trailing colon do not count', () =>
 	assert.equal(headingKey(null), '');
 });
 
-test('form chrome: only adds beside LuCI nodes, never between label and field', () => {
-	const start = src.indexOf('\taddHelpToggle(desc) {');
-	const end = src.indexOf('\tfitHelp(desc) {');
-	assert.ok(start > 0 && end > start, 'found addHelpToggle');
-	const body = src.slice(start, end);
-	/* LuCI's label click finds its widget through nextElementSibling */
-	assert.match(body, /row\.appendChild\(btn\);/);
-	assert.doesNotMatch(body, /insertBefore|insertAdjacent|\.before\(|\.after\(|\.prepend\(/);
-	/* descriptions keep their text; folding is a class plus CSS */
-	assert.doesNotMatch(body, /textContent\s*=|innerHTML|\.remove\(\)|replaceChildren/);
+test('form chrome: never stands between LuCI nodes, never changes their text', () => {
+	const part = (from, to) => {
+		const start = src.indexOf(from), end = src.indexOf(to, start);
+		assert.ok(start > 0 && end > start, 'found ' + from.trim());
+		return src.slice(start, end);
+	};
+	const field = part('\taddFieldHelp(desc) {', '\taddIntroHelp(desc) {');
+	const intro = part('\taddIntroHelp(desc) {', '\thelpToggle(desc, holder, label, title) {');
+	const toggle = part('\thelpToggle(desc, holder, label, title) {', '\tfitHelp(desc) {');
+	const placing = /insertBefore|insertAdjacent|appendChild|\.before\(|\.after\(|\.prepend\(|\.append\(/g;
+	/* field help goes after the field: LuCI's label click finds its widget
+	   through nextElementSibling */
+	assert.deepEqual(field.match(placing), [ 'appendChild' ]);
+	assert.match(field, /row\.appendChild\(this\.helpToggle\(/);
+	/* intro help goes inside the description, never beside it: ui.tabs finds
+	   a tab menu as its pane group's previous sibling */
+	assert.deepEqual(intro.match(placing), [ 'insertBefore' ]);
+	assert.match(intro, /desc\.insertBefore\(this\.helpToggle\(.*\), desc\.firstChild\);/);
+	assert.equal(toggle.match(placing), null);
+	/* descriptions keep their text; folding is an attribute plus CSS */
+	for (const body of [ field, intro, toggle ])
+		assert.doesNotMatch(body, /textContent\s*=|innerHTML|\.remove\(\)|replaceChildren/);
 	/* a heading that holds a control (Overview's Hide/Show label) is never hidden */
 	const repeats = src.slice(src.indexOf('\tmarkRepeats() {'));
 	assert.match(repeats, /h\.querySelector\('a, button, input, select, \[data-clickable\], \[tabindex\]'\)\) return;/);
