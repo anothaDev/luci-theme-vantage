@@ -241,6 +241,47 @@ node dev/replay/server.js --mirror ../vantage-mirror --port 8106 --demo \
     --app-dir luci-app-vantage --lang de
 ```
 
+## Add-on pages (`addons.sh`)
+
+To check official LuCI add-ons under the theme:
+
+```sh
+dev/replay/addons.sh --port 8150              # Vantage, --demo
+dev/replay/addons.sh --port 8151 --bootstrap  # the same under Bootstrap
+```
+
+The script fetches the add-ons from openwrt/luci and the adblock/banIP
+feed lists from openwrt/packages at pinned `openwrt-25.12` commits
+(`LUCI_REV`, `PACKAGES_REV`; sparse, shallow, symlinks as plain files) into
+`~/.cache/vantage/addons-<luci>-<packages>` (`--cache <dir>`, never inside
+the repository), copies the data files the add-ons read from the device
+into `<cache>/fixtures`, and starts the replay with every add-on as
+`--app-dir` and `--fixtures dev/replay/fixtures/addons --fixtures
+<cache>/fixtures`. Arguments after `--` go to `server.js`;
+`--fetch-only` prints the command instead. Needs the recording and rootfs
+like any replay, and network access only for the first fetch.
+
+`dev/replay/fixtures/addons/` holds the device side, documentation values
+only: uci configs, runtime and report files, `exec.json` outputs and
+stand-ins for the add-ons' rpcd plugins (`luci.ddns`, `luci.upnp`,
+`luci.wol`, `luci.wireguard`, `luci.https-dns-proxy`, `rpc-sys`, and a
+`network` wrapper that adds the `wireguard` protocol). A `wg0` interface
+with two peers is added to the recorded network config.
+
+Covered: acme, adblock, attendedsysupgrade, banip, ddns, https-dns-proxy,
+nlbwmon (with `luci-lib-chartjs`), sqm, statistics (setup pages), ttyd
+(settings), upnp, watchcat, wol and `luci-proto-wireguard` (status page,
+interface, peers). Not covered:
+
+- luci-app-openvpn is still Lua (`luasrc/`, no `menu.d`); the replay
+  cannot run it, so it is not fetched.
+- Statistics graphs: rrdtool renders them on the device (exec), so the
+  graph pages stay on "Loading data…".
+- Attended Sysupgrade's search needs `sysupgrade.openwrt.org`; the
+  replay's CSP blocks it (no network), so it stays on "Searching…".
+- The ttyd terminal is a separate daemon on its own port; its iframe
+  stays empty.
+
 ## Demo mode (`--demo`)
 
 For screenshots, screen shares and bug reports: `--demo` pseudonymises the

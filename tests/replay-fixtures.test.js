@@ -3,7 +3,7 @@
    never leave <dir>/root, the recording answers first, fixture plugins
    cannot replace built-in ones, uci fixtures only add sections, and
    /cgi-bin/cgi-download keeps the replay's host, cross-site and session
-   checks.
+   checks. Also checks the committed sample fixtures and dev/replay/addons.sh.
 
    Runs without the private mirror: a small synthetic mirror and rootfs are
    made in a temporary directory. The HTTP test listens on a free port in
@@ -20,6 +20,7 @@ const { Fixtures } = require('../dev/replay/fixtures');
 const { Store } = require('../dev/replay/store');
 
 const ROOT = path.join(__dirname, '..');
+const ADDONS = path.join(ROOT, 'dev/replay/fixtures/addons');
 
 function put(file, data) {
 	fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -345,4 +346,68 @@ test('replay server: without --fixtures cgi-download stays refused; a bad --fixt
 		assert.equal(await new Promise(res => p.on('exit', res)), 2, bad);
 		assert.match(err, /--fixtures .*: not a directory/);
 	}
+});
+
+/* ------------------------------------------------------ committed files */
+
+test('sample add-on fixtures: data and plugins only, no third-party sources, no network', () => {
+	const files = [];
+	(function walk(d) {
+		for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+			const f = path.join(d, e.name);
+			assert.ok(!e.isSymbolicLink(), `${f}: no symlinks`);
+			if (e.isDirectory()) walk(f); else files.push(path.relative(ADDONS, f));
+		}
+	})(ADDONS);
+	/* upstream package files are copied into the cache by addons.sh, never committed */
+	for (const f of files) assert.doesNotMatch(f, /^root\/(www\/|usr\/share\/luci\/|usr\/share\/https-dns-proxy\/)|^root\/etc\/(adblock\/adblock|banip\/banip)\.(feeds|categories|countries)$/, f);
+	/* plugins: our stand-ins, no network or processes */
+	const plugins = files.filter(f => /-plugin\.js$/.test(f));
+	assert.ok(plugins.length >= 5);
+	for (const f of [ ...plugins.map(p => path.join(ADDONS, p)), path.join(ROOT, 'dev/replay/fixtures.js') ]) {
+		const src = fs.readFileSync(f, 'utf8');
+		assert.match(src, /^'use strict';/, f);
+		assert.doesNotMatch(src, /require\(\s*['"](?:node:)?(?:https?|http2|net|tls|dgram|dns|child_process|worker_threads|vm)['"]\s*\)|\bfetch\(|\beval\(|new Function/, f);
+	}
+	assert.ok(files.every(f => !/\.(ut|htm)$/.test(f)), 'nothing a template engine would compile');
+	/* exec.json and the uci files parse */
+	const fx = new Fixtures([ ADDONS ]);
+	assert.ok(fx.exec.size >= 10);
+	for (const v of fx.exec.values()) assert.equal(typeof v, 'string');
+	assert.ok(fx.configs().length >= 11);
+	/* every plugin answers each POLICY method without throwing */
+	const s = new Store(mirror(), { synthetic: false, fixtures: fx });
+	for (const p of plugins) {
+		const mod = require(path.join(ADDONS, p));
+		for (const o of Array.isArray(mod.OBJECTS) ? mod.OBJECTS : [ mod.OBJECT ]) {
+			assert.equal(s.plugins.get(o), mod, o);
+			for (const m of Object.keys(mod.POLICY || {})) {
+				const r = s.call(o, m, {});
+				assert.ok(r && (Array.isArray(r.result) || r.error), `${o}.${m}`);
+			}
+		}
+	}
+	assert.ok('wireguard' in s.call('network', 'get_proto_handlers', {}).result[1]);
+	assert.equal(s.call('luci.ddns', 'get_services_log', { service_name: '../../../../etc/passwd' }).result[1].result, 'File not found or empty');
+	assert.match(s.call('luci.ddns', 'get_services_log', { service_name: 'home_ipv4' }).result[1].result, /203\.0\.113\.7/);
+});
+
+test('addons.sh: pinned commits, cache outside the repository', () => {
+	const sh = fs.readFileSync(path.join(ROOT, 'dev/replay/addons.sh'), 'utf8');
+	assert.match(sh, /^LUCI_REV=[0-9a-f]{40}\b/m);
+	assert.match(sh, /^PACKAGES_REV=[0-9a-f]{40}\b/m);
+	assert.match(sh, /fetch -q --depth 1 --filter=blob:none origin "\$rev"/);
+	assert.match(sh, /core\.symlinks false/);
+	assert.match(sh, /libs\/luci-lib-chartjs/);
+	assert.doesNotMatch(sh, /luci-app-openvpn$/m, 'Lua app not served');
+	assert.doesNotMatch(sh, /rm -rf/);
+	const inside = spawn('bash', [ path.join(ROOT, 'dev/replay/addons.sh'), '--cache', path.join(ROOT, 'dev/replay/cache-test'), '--fetch-only' ], { stdio: [ 'ignore', 'ignore', 'pipe' ] });
+	let err = '';
+	inside.stderr.on('data', d => { err += d; });
+	return new Promise(res => inside.on('exit', code => {
+		assert.equal(code, 2);
+		assert.match(err, /inside the repository/);
+		assert.ok(!fs.existsSync(path.join(ROOT, 'dev/replay/cache-test')));
+		res();
+	}));
 });
