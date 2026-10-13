@@ -716,7 +716,12 @@ return view.extend({
 		if (window.ResizeObserver) {
 			var ro = new ResizeObserver(function() { self.scheduleLayout(); });
 			ro.observe(this.el.grid);
-			layout.TILES.forEach(function(id) { ro.observe(self.tiles[id]); });
+			layout.TILES.forEach(function(id) {
+				ro.observe(self.tiles[id]);
+				/* a held min-height keeps the tile's box still while its
+				   content changes: watch the content as well */
+				Array.prototype.forEach.call(self.tiles[id].children, function(c) { if (!c.classList.contains('vt-ov')) ro.observe(c); });
+			});
 		}
 		window.addEventListener('resize', function() { self.scheduleLayout(); });
 		window.addEventListener('hashchange', function() { self.openFromHash(); });
@@ -863,6 +868,10 @@ return view.extend({
 			t.style.setProperty('--y', r.top.toFixed(1) + 'px');
 		});
 		grid.style.height = p.height.toFixed(1) + 'px';
+		/* polls no longer lay out, so the end of a hold needs its own wake-up */
+		var wait = layout.nextRelease(held, now);
+		if (this.holdTimer) { window.clearTimeout(this.holdTimer); this.holdTimer = null; }
+		if (wait != null) this.holdTimer = window.setTimeout(function() { self.holdTimer = null; self.scheduleLayout(); }, wait + 50);
 		var g = this.drag && p.rects[this.drag.id], ghost = this.el.ghost;
 		ghost.classList.toggle('vt-on', !!g);
 		if (g) {
