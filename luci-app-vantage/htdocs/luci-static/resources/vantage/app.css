@@ -23,7 +23,7 @@
 	--vt-line-2: var(--v-line-2, #cbd0d6);
 	--vt-text: var(--v-text, #15181c);
 	--vt-text-2: var(--v-text-2, #4b525b);
-	--vt-text-3: var(--v-text-3, #6a717a);
+	--vt-text-3: var(--v-text-3, #5f666f);   /* 4.5:1 on --vt-surface-3 (tags) */
 	--vt-accent: var(--v-accent, #3563e9);
 	--vt-accent-ink: var(--v-accent-ink, #ffffff);
 	--vt-accent-soft: var(--v-accent-soft, rgba(53, 99, 233, .12));
@@ -71,6 +71,7 @@
 	--vt-b5: var(--vt-chart-3);
 	--vt-b6: var(--vt-chart-4);
 	--vt-b60: var(--vt-text-2);
+	--vt-band-ink: 60%;   /* band colour in a chip's text: 4.5:1 on light surfaces */
 	--vt-series-up: var(--vt-chart-1);
 	/* throughput directions: download keeps the uplink colour, upload
 	   takes one that no band uses */
@@ -123,6 +124,7 @@ html[data-darkmode="true"] .vt-app {
 	--vt-chart-6: var(--v-chart-6, #d9588c);
 	--vt-chart-grid: var(--v-chart-grid, color-mix(in srgb, var(--vt-text) 7%, transparent));
 	--vt-fill-op: var(--v-chart-fill-opacity, .2);
+	--vt-band-ink: 78%;
 	--vt-av-l: 24%;
 	--vt-av-s: 30%;
 	--vt-av-ink-l: 76%;
@@ -224,7 +226,7 @@ html[data-darkmode="true"] .vt-app {
 	border-radius: 5px; font-size: var(--vt-fs-micro); font-weight: 700; letter-spacing: .01em; white-space: nowrap;
 	--vt-bc: var(--vt-b60);
 	background: color-mix(in oklab, var(--vt-bc) 14%, transparent);
-	color: color-mix(in oklab, var(--vt-bc) 78%, var(--vt-text));
+	color: color-mix(in oklab, var(--vt-bc) var(--vt-band-ink), var(--vt-text));
 }
 .vt-app .vt-band-2g { --vt-bc: var(--vt-b2); }
 .vt-app .vt-band-5g { --vt-bc: var(--vt-b5); }
@@ -472,21 +474,24 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-subline { color: var(--vt-text-3); font-size: var(--vt-fs-sm); margin-top: 2px; }
 
 .vt-app .vt-livepill {
-	flex: none; display: inline-flex; align-items: center; gap: 8px;
+	flex: none; display: inline-flex; align-items: center; gap: 8px; isolation: isolate;
 	height: 30px; padding: 0 12px 0 10px; border-radius: 999px;
 	border: 1px solid var(--vt-line); background: var(--vt-surface);
 	font-size: var(--vt-fs-sm); font-weight: 560; color: var(--vt-text-2); white-space: nowrap;
 }
 .vt-app .vt-live-beat { position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--vt-beat-c, var(--vt-ok)); }
 /* the beat is a ring that scales and fades (compositor only; an animated
-   box-shadow repainted every frame) */
+   box-shadow repainted every frame). It sits behind the dot (z-index -1 in
+   the pill's stacking context) so the dot keeps its colour, and it is
+   transparent unless the animation runs: nothing shows without motion. */
 .vt-app .vt-live-beat::after {
-	content: ""; position: absolute; inset: 0; border-radius: 50%;
+	content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 50%;
 	background: color-mix(in oklab, var(--vt-beat-c, var(--vt-ok)) 45%, transparent);
+	opacity: 0;
 	animation: vt-beat 2s ease-out infinite;
 }
 .vt-app .vt-live-paused .vt-live-beat { --vt-beat-c: var(--vt-text-3); }
-.vt-app .vt-live-paused .vt-live-beat::after { animation: none; opacity: 0; }
+.vt-app .vt-live-paused .vt-live-beat::after { animation: none; }
 .vt-app .vt-live-err .vt-live-beat { --vt-beat-c: var(--vt-warn); }
 @keyframes vt-beat { 0% { transform: scale(1); opacity: 1; } 70%, 100% { transform: scale(2.75); opacity: 0; } }
 
@@ -1093,7 +1098,12 @@ html[data-darkmode="true"] .vt-app {
 	   reconnecting still says so in words */
 	.vt-app .vt-live-ok { padding: 0 11px; }
 	.vt-app .vt-live-ok .vt-live-text { display: none; }
-	.vt-app .vt-livepill .vt-live-text { max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+	/* "Paused while hidden" and the like get a row of their own under
+	   the headline instead of being cut (the orb is 32 px + the 10 px gap) */
+	.vt-app .vt-head { flex-wrap: wrap; row-gap: 8px; }
+	.vt-app .vt-head-text { flex-basis: 160px; }
+	.vt-app .vt-livepill:not(.vt-live-ok) { order: 1; margin-left: 42px; min-width: 0; max-width: calc(100% - 42px); }
+	.vt-app .vt-livepill .vt-live-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 	.vt-app .vt-chart .vt-tile-extra { flex-basis: 100%; justify-content: space-between; }
 	.vt-app .vt-health { grid-template-columns: 1fr 1fr; gap: 8px; }
 	.vt-app .vt-chip { padding: 9px 10px; gap: 8px; }
