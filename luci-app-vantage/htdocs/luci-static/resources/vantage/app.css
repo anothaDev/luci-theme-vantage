@@ -341,6 +341,11 @@ html[data-darkmode="true"] .vt-app {
 }
 
 .vt-app .vt-ov { display: none; }
+/* arranging: the handle bar takes the place of the tile's head (it names
+   the tile), and the content starts below it (--vt-ovh: the bar's height,
+   measured by the view) instead of under it */
+.vt-app.vt-editing .vt-cell { padding-top: calc(var(--vt-ovh, 50px) + 16px); }
+.vt-app.vt-editing .vt-cell > .vt-tile-head { display: none; }
 .vt-app.vt-editing .vt-ov {
 	display: block; position: absolute; inset: 0; z-index: 4;
 	border: 2px dashed var(--vt-accent-line); border-radius: var(--vt-r-lg);

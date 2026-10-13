@@ -842,6 +842,11 @@ return view.extend({
 			t.style.setProperty('--w', Math.min(e.w, cols).toFixed(0));
 			t.style.minHeight = '';
 		});
+		/* arranging: each tile's content starts below its handle bar */
+		if (this.editing) {
+			var bars = shown.map(function(e) { return self.ov[e.id].bar.offsetHeight; });
+			shown.forEach(function(e, k) { tiles[e.id].style.setProperty('--vt-ovh', bars[k].toFixed(0) + 'px'); });
+		}
 		/* live content changes hold a tile's height for a while; a new
 		   width or an edit shows true sizes at once */
 		if (this.heldWidth !== width || this.drag) { this.held = Object.create(null); this.heldWidth = width; }
@@ -918,10 +923,11 @@ return view.extend({
 		this.el.root.classList.toggle('vt-editing', this.editing);
 		this.el.layoutBtn.setAttribute('aria-pressed', String(this.editing));
 		this.el.editBar.hidden = !this.editing;
-		if (this.editing) {
-			this.doLayout();
-			this.el.editDone.focus();
-		}
+		/* the handle bars change the tiles' heights both ways: true sizes
+		   at once, nothing held from the other mode */
+		this.held = Object.create(null);
+		this.doLayout();
+		if (this.editing) this.el.editDone.focus();
 		else this.el.layoutBtn.focus();
 	},
 
@@ -988,7 +994,7 @@ return view.extend({
 			self.el.editDone.focus();
 		});
 		o.root = E('div', { 'class': 'vt-ov vt-fold-keep', 'role': 'group', 'aria-label': name }, [
-			E('div', { 'class': 'vt-ov-bar' }, [
+			o.bar = E('div', { 'class': 'vt-ov-bar' }, [
 				o.grip,
 				E('span', { 'class': 'vt-ov-name' }, [ name ]),
 				E('span', { 'class': 'vt-ov-btns' }, [ o.up, o.down, o.left, o.right, o.narrow, o.size, o.wide, o.hide ])
