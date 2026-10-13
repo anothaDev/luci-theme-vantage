@@ -175,7 +175,9 @@ text around it so it looks the same size.
   tiles, move them with buttons or arrow keys, change their width within
   a per-tile minimum and hide them. Saved in `localStorage` per screen
   class (and separately for wired devices), validated on read; never on
-  the device.
+  the device. A tile whose content shrinks keeps its height for 30 s,
+  then the layout settles on its own; while arranging, each tile's
+  content starts below its handle bar.
 - **Controls** (buttons, filter, chips, sort headers, icon buttons) take
   the theme's control height through `--v-ctl-h` (36 px, 44 px on
   touch) and the theme's control radius (`--v-r`); under another theme
@@ -187,6 +189,10 @@ text around it so it looks the same size.
   intended, since the dashboard only gets about 600–700 px there and its
   two-column tiles clip below that (measured).
 - Polling via `poll.add` with sane intervals; pauses when the tab is hidden.
+  A poll updates only what changed and lays nothing out unless a tile
+  changes size. Idle animations (the Live beat, the flow on busy wires)
+  use transform and opacity only, so the compositor runs them; with
+  reduced motion they stop and busy wires show a static dotted line.
 - ACL: three groups. `luci-app-vantage` (read): `system info/board`,
   `network.interface dump`, `network.device status`, `iwinfo
   info/assoclist`, `hostapd.* get_status/get_clients`, `luci-rpc
@@ -230,7 +236,8 @@ text around it so it looks the same size.
   and text nodes only; style, selectors, dynamic regular expressions and
   history URLs from data are rejected too (checked by
   `security-tests/check_dom_sinks.js`, on the theme and the app, with no
-  `dom-safe` suppressions).
+  `dom-safe` suppressions). Web Animations keyframes count as CSS from
+  data.
 - ACL test: the app's ACL grants only the listed read methods and every
   `rpc.declare` in the app is covered, nothing unused is granted
   (`security-tests/test_acl_policy.js`, also run by `node --test tests/`).
