@@ -672,6 +672,9 @@ class Program {
 			if (t.t === 'punc' || isId(t, 'instanceof') || isId(t, 'in')) ops.push(j);
 		}
 		const opAt = (v) => ops.filter((j) => T[j].v === v);
+		/* a sequence yields its last operand: (x * 0, x) is x, not a number */
+		const comma = opAt(',');
+		if (comma.length) return this.classify(u, comma[comma.length - 1] + 1, b, kind);
 		const assign = ops.find((j) => ASSIGN_OPS.has(T[j].v));
 		if (assign !== undefined)
 			return T[assign].v === '=' ? this.classify(u, assign + 1, b, kind) : (NUMERIC.has(K.base) && NUM_ASSIGN_OPS.has(T[assign].v));

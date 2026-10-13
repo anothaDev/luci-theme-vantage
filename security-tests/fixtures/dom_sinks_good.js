@@ -168,6 +168,7 @@ function goodCss(el, n, x, sheet) {
 	el.animate([ { opacity: 0 }, { opacity: 1 } ], 200);
 	el.animate({ opacity: [ 0, 1 ], transform: [ 'none', 'scale(' + n.toFixed(2) + ')' ] }, { duration: n * 10, iterations: Infinity, easing: 'linear' });
 	el.animate(flowFrames([ [ n, n ] ]), { duration: 300, delay: -n / 2, fill: 'both' });
+	el.animate([ { opacity: 0 } ], (x, n * 2));
 }
 
 /* keyframes built in a loop from numbers */

@@ -255,6 +255,9 @@ function badCss(el, x, sheet, doc) {
 	el.animate([ { opacity: 0 }, x ], 300); // expect-violation
 	el.animate([ { opacity: 0 } ], { duration: 300, easing: x }); // expect-violation
 	el.animate([ { opacity: 0 } ], x); // expect-violation
+	el.animate([ { backgroundImage: (x * 0, x) } ], 300); // expect-violation
+	el.animate([ { opacity: 0 } ], (x * 0, x)); // expect-violation
+	el.style.color = (x - 1, x); // expect-violation
 	var kf = [];
 	kf.push({ transform: x });
 	el.animate(kf, 300); // expect-violation
