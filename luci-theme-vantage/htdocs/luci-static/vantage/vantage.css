@@ -69,7 +69,10 @@
 	--warn-soft: rgba(214, 138, 0, .15);
 	--err: #c42b2b;
 	--err-soft: rgba(196, 43, 43, .1);
+	--err-ink: #ffffff;         /* text on an --err / --info fill, >= 4.5:1 */
 	--info: #1c64c4;
+	--info-ink: #ffffff;
+	--ok-text: #0a7262;         /* --ok as text on control fills (s3, s4) */
 	--info-soft: rgba(28, 100, 196, .1);
 	--scrim: rgba(20, 23, 26, .38);
 	--shadow-pop: 0 12px 32px rgba(20, 23, 26, .16), 0 2px 6px rgba(20, 23, 26, .08);
@@ -107,7 +110,10 @@ html[data-darkmode="true"] {
 	--warn-soft: rgba(245, 184, 74, .13);
 	--err: #ff6b6b;
 	--err-soft: rgba(255, 107, 107, .12);
+	--err-ink: #1a0505;         /* white on the light dark-mode red was 2.8:1 */
 	--info: #6cb4ff;
+	--info-ink: #0d0e10;
+	--ok-text: var(--ok);
 	--info-soft: rgba(108, 180, 255, .12);
 	--scrim: rgba(0, 0, 0, .58);
 	--shadow-pop: 0 16px 40px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .02);
@@ -902,6 +908,8 @@ legend { font-size: var(--fs-md); font-weight: 600; padding: 0; margin-bottom: v
 .cbi-section-create > * { margin: 0; }
 .cbi-section-create > .cbi-section-create-name { max-width: 240px; }
 .cbi-section-remove { text-align: right; padding: var(--sp-2) 0; }
+/* several nodes of one typed section in a card: a rule between them */
+.cbi-section-node + :is(.cbi-section-node, .cbi-section-remove) { margin-top: var(--sp-5); padding-top: var(--sp-5); border-top: 1px solid var(--line); }
 
 /* page actions: a floating command bar docked to the bottom right */
 .cbi-page-actions {
@@ -923,6 +931,13 @@ legend { font-size: var(--fs-md); font-weight: 600; padding: 0; margin-bottom: v
 .cbi-page-actions .cbi-button-save { order: 2; }
 .cbi-page-actions .cbi-button-apply, .cbi-page-actions .cbi-dropdown { order: 3; }
 .cbi-page-actions:empty { display: none; }
+/* the bar sits at the bottom of the view (docked, or the page's end), so
+   its Save & Apply menu opens upwards; LuCI's touch branch would open it
+   down, under the phone's bottom bar and past the screen */
+.cbi-page-actions .cbi-dropdown[open] > ul.dropdown {
+	top: auto !important; bottom: 100% !important;
+	max-height: 50vh !important;
+}
 
 /* ------------------------------------------------------------ 6. widgets */
 
@@ -947,6 +962,8 @@ input, select, textarea, button { font: inherit; color: inherit; }
 	transition: border-color .12s, box-shadow .12s;
 }
 .vt-main textarea, .cbi-input-textarea, .modal textarea { max-width: calc(2 * var(--field-max)); min-height: 88px; font-family: var(--mono); font-size: var(--fs-sm); resize: vertical; }
+/* read-only text (System and Kernel log) is a viewer, not a field: full width */
+.vt-main textarea[readonly] { max-width: none; }
 .vt-main select, .cbi-input-select, .modal select {
 	appearance: none; -webkit-appearance: none;
 	padding-right: 30px;
@@ -971,6 +988,15 @@ input:focus, select:focus, textarea:focus {
 	box-shadow: 0 0 0 3px var(--accent-soft);
 }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
+/* fields in pages, modals and the login: the rules above lose to the field
+   rules' (0,2,1), so hover and focus are restated at their weight. Focus:
+   a --focus border plus a 1px ring of it (>= 3:1 against the field and
+   the card in both modes) and the soft halo. The dashboard styles its own. */
+:is(input, select, textarea):not([type="checkbox"], [type="radio"], [type="range"], .vt-pal-input, .vt-app *):hover { border-color: var(--text-3); }
+:is(input, select, textarea):not([type="checkbox"], [type="radio"], [type="range"], .vt-pal-input, .vt-app *):focus {
+	border-color: var(--focus);
+	box-shadow: 0 0 0 1px var(--focus), 0 0 0 4px var(--accent-soft);
+}
 input[disabled], select[disabled], textarea[disabled], input[readonly] { opacity: .6; cursor: not-allowed; }
 input[readonly] { cursor: default; }
 
@@ -993,6 +1019,9 @@ input[readonly] { cursor: default; }
 .control-group > :not(:last-child) { border-top-right-radius: 0 !important; border-bottom-right-radius: 0 !important; }
 .control-group > :not(:first-child) { border-top-left-radius: 0 !important; border-bottom-left-radius: 0 !important; }
 .control-group > .btn, .control-group > .cbi-button { flex: none; }
+/* in LuCI's unclassed field wrapper (a flex row) the group sized to its
+   content, 254px for a password with its reveal button: as wide as a field */
+.cbi-value-field > div:not([class]) > .control-group { flex: 1 1 auto; }
 
 /* checkbox */
 .cbi-checkbox { display: inline-flex; align-items: center; min-height: var(--ctl-h); gap: var(--sp-2); }
@@ -1072,7 +1101,7 @@ input[type="button"], input[type="reset"], input[type="submit"]) {
 	vertical-align: middle;
 }
 .cbi-dropdown:hover { border-color: var(--text-3); }
-.cbi-dropdown:focus, .cbi-dropdown[open] { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+.cbi-dropdown:focus, .cbi-dropdown[open] { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus), 0 0 0 4px var(--accent-soft); }
 .cbi-dropdown:focus-visible { outline: none; }
 .cbi-dropdown[disabled] { opacity: .55; pointer-events: none; }
 
@@ -1247,15 +1276,15 @@ input[type="button"], input[type="reset"], input[type="submit"]) {
 }
 .cbi-value-field :is(.btn, .cbi-button).cbi-button-apply:hover,
 .td :is(.btn, .cbi-button).cbi-button-apply:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent-text); }
-:is(.btn, .cbi-button).cbi-button-positive:not(.important) { color: var(--ok); }
+:is(.btn, .cbi-button).cbi-button-positive:not(.important) { color: var(--ok-text); }
 :is(.btn, .cbi-button, .cbi-dropdown):is(.cbi-button-negative, .cbi-button-remove) {
 	background: transparent;
 	color: var(--err);
 	border-color: color-mix(in srgb, var(--err) 40%, var(--line-2));
 }
 :is(.btn, .cbi-button, .cbi-dropdown):is(.cbi-button-negative, .cbi-button-remove):hover { background: var(--err-soft); border-color: var(--err); }
-:is(.btn, .cbi-button, .cbi-dropdown).cbi-button-negative.important { background: var(--err); border-color: var(--err); color: #fff; }
-:is(.btn, .cbi-button, .cbi-dropdown).cbi-button-negative.important:hover { background: color-mix(in srgb, var(--err) 85%, #000); color: #fff; }
+:is(.btn, .cbi-button, .cbi-dropdown).cbi-button-negative.important { background: var(--err); border-color: var(--err); color: var(--err-ink); }
+:is(.btn, .cbi-button, .cbi-dropdown).cbi-button-negative.important:hover { background: color-mix(in srgb, var(--err) 88%, var(--err-ink)); color: var(--err-ink); }
 :is(.btn, .cbi-button).cbi-button-reset { background: transparent; color: var(--text-2); }
 :is(.btn, .cbi-button).cbi-button-reset:hover { color: var(--text); }
 
@@ -1453,7 +1482,7 @@ div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; 
 	display: inline-flex; align-items: center; justify-content: center;
 	min-width: 18px; height: 18px; padding: 0 5px;
 	border-radius: 999px;
-	background: var(--err); color: #fff;
+	background: var(--err); color: var(--err-ink);
 	font: 700 var(--fs-micro)/1 var(--mono);
 }
 .cbi-tabmenu > li.cbi-tab-disabled[data-errors] > a { color: var(--err); }
@@ -1504,18 +1533,21 @@ div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; 
 :is(.ifacebox-body, .ifacebadge) > span:has(> .nowrap) {
 	display: grid;
 	grid-template-columns: max-content minmax(0, 1fr);
-	column-gap: 14px; row-gap: 3px;
+	column-gap: 14px; row-gap: 0;
 	align-items: baseline;
 	min-width: 0;
 	white-space: normal;
 	text-align: left;
+	font-size: 0; line-height: 0;
 }
 :is(.ifacebox-body, .ifacebadge) > span:has(> .nowrap) > br { display: none; }
+:is(.ifacebox-body, .ifacebadge) > span:has(> .nowrap) > :not(.nowrap) { font-size: var(--fs-sm); line-height: 1.55; }
 :is(.ifacebox-body, .ifacebadge) > span:has(> .nowrap) > .nowrap {
 	grid-column: 1 / -1;
 	display: grid; grid-template-columns: subgrid;
 	align-items: baseline;
 	min-width: 0;
+	margin-block: 1.5px;
 	white-space: normal; overflow-wrap: anywhere;
 	color: var(--text);
 	font: 400 var(--fs-sm)/1.55 var(--mono);
@@ -1627,7 +1659,8 @@ div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; 
 .zonebadge[style*="--zone-color-rgb"] { box-shadow: inset 3px 0 0 rgb(var(--zone-color-rgb)); padding-left: 10px; }
 .ifacebox-head[style*="--zone-color-rgb"] { box-shadow: inset 0 3px 0 rgb(var(--zone-color-rgb)); border-bottom-color: rgba(var(--zone-color-rgb), .4) !important; }
 .ifacebox-head[style*="background-color:#"], .ifacebox-head[style*="background-color: #"] { color: #111 !important; }
-.zonebadge > em { font-style: normal; color: var(--text-3); }
+/* muted, but on the zone tint: --text-3 fell to 3.1:1 there in dark mode */
+.zonebadge > em { font-style: normal; color: color-mix(in srgb, var(--text) 78%, transparent); }
 .zonebadge .ifacebadge { padding: 0 4px; border: 0; background: transparent; }
 .zone-forwards { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .zone-forwards > span { color: var(--text-3); }
@@ -1721,9 +1754,9 @@ div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; 
 	transition: opacity .15s;
 	pointer-events: none;
 }
-.cbi-tooltip.error { background: var(--err); border-color: var(--err); color: #fff; }
+.cbi-tooltip.error { background: var(--err); border-color: var(--err); color: var(--err-ink); }
 .cbi-tooltip.warning { background: var(--warn); border-color: var(--warn); color: #1a1200; }
-.cbi-tooltip.info { background: var(--info); border-color: var(--info); color: #fff; }
+.cbi-tooltip.info { background: var(--info); border-color: var(--info); color: var(--info-ink); }
 .cbi-tooltip-container { position: relative; cursor: help; }
 .cbi-tooltip-container > .cbi-tooltip { left: -10000px; top: auto; margin-top: 6px; white-space: normal; }
 .cbi-tooltip-container:hover > .cbi-tooltip { left: 0; top: 100%; opacity: 1; }
@@ -1760,6 +1793,10 @@ body.modal-overlay-active #modal_overlay { display: block; }
 }
 #modal_overlay > .modal.cbi-modal { width: min(960px, 100%); }
 #modal_overlay > .modal .cbi-section { background: none; border: 0; padding: 0; margin: 0; box-shadow: none; }
+/* a modal's sections have no card padding, so nothing in them bleeds out
+   by it: tables keep the modal's width (a bleed scrolled the section
+   sideways) and their first and last cells line up with the fields */
+#modal_overlay > .modal .cbi-section { --card-px: 0px; --card-py: 0px; }
 #modal_overlay > .modal .cbi-section > h3:first-child { margin: 0 0 var(--sp-3); padding: 0; min-height: 0; border: 0; }
 .uci-dialog > .cbi-section > br, .uci-change-list > br:last-child { display: none; }
 .uci-dialog > .cbi-section > strong { display: block; margin-bottom: var(--sp-2); color: var(--text-3); font-size: var(--fs-micro); letter-spacing: .08em; text-transform: uppercase; }
@@ -2293,6 +2330,16 @@ html:not([data-darkmode="true"]) .vt-login-page {
 @media (720px < width <= 1180px) {
 	.cbi-section { overflow-x: auto; }
 	.cbi-section:has(.cbi-dropdown[open]) { overflow: visible; }
+	/* a free-standing table card (Processes, Wireless's stations) has no
+	   section to scroll in: the card itself scrolls, its rows held in one
+	   table box (LuCI puts every row, titles too, in the tbody, so the
+	   columns stay aligned), its header static as in sections */
+	:is(#view, #view > div, .cbi-map, #view > div > div > [data-tab-title]:not(.cbi-section)) > .table:not(:has(> thead)) {
+		display: block; overflow-x: auto;
+	}
+	:is(#view, #view > div, .cbi-map, #view > div > div > [data-tab-title]:not(.cbi-section)) > .table:not(:has(> thead)) > tbody { display: table; width: 100%; }
+	:is(#view, #view > div, .cbi-map, #view > div > div > [data-tab-title]:not(.cbi-section)) > .table:has(.cbi-dropdown[open]) { overflow: visible; }
+	:is(#view, #view > div, .cbi-map, #view > div > div > [data-tab-title]:not(.cbi-section)) > .table .tr > .th.th { position: static; }
 }
 
 
@@ -2300,6 +2347,18 @@ html:not([data-darkmode="true"]) .vt-login-page {
    scroller (pushed down by --stick-top over the rows): keep those static */
 .cbi-tblsection .table .tr > .th.th, .cbi-section:has(> .cbi-tblsection) .table .tr > .th.th { position: static; }
 @media (max-width: 1180px) { .cbi-section .table .tr > .th.th { position: static; } }
+
+/* add-ons: adblock and banIP inject status palettes keyed on the OS
+   colour scheme (@media prefers-color-scheme), so with the theme toggle
+   set the other way their text fell to 1.7-3:1. Their own two palettes,
+   picked by the toggle instead (html[data-darkmode] outweighs their #id
+   rules); nothing else of theirs is touched. */
+html[data-darkmode="false"] #adb-status { --adb-ok: #1f8a5f; --adb-warn: #a8760a; --adb-err: #c0392b; --adb-info: #2f6fb0; }
+html[data-darkmode="true"] #adb-status { --adb-ok: #63c79b; --adb-warn: #d9ab4e; --adb-err: #e8897e; --adb-info: #7fb3e8; }
+html[data-darkmode="false"] #adb-dash { --adb-blocked: #c0392b; --adb-allowed: #1f8a5f; --adb-neutral: #2f6fb0; --adb-warn: #a8760a; }
+html[data-darkmode="true"] #adb-dash { --adb-blocked: #e8897e; --adb-allowed: #63c79b; --adb-neutral: #7fb3e8; --adb-warn: #d9ab4e; }
+html[data-darkmode="false"] :is(#ban-status, #ban-report) { --ban-ok: #1f8a5f; --ban-err: #c0392b; --ban-info: #2f6fb0; }
+html[data-darkmode="true"] :is(#ban-status, #ban-report) { --ban-ok: #63c79b; --ban-err: #e8897e; --ban-info: #7fb3e8; }
 
 /* ----------------------------------------------------- responsive */
 
@@ -2404,7 +2463,14 @@ html:not([data-darkmode="true"]) .vt-login-page {
 		width: auto;
 		margin: var(--sp-4) 0 0;
 	}
-	.cbi-page-actions > * { flex: 1 1 auto; }
+	/* one row: the buttons share the bar from a zero basis, so the row only
+	   breaks when their longest words no longer fit, and a long label
+	   wraps inside its button instead of taking the bar to a second row */
+	.cbi-page-actions > *, .cbi-page-actions > form > * { flex: 1 1 0; }
+	.cbi-page-actions :is(.btn, .cbi-button, button, input[type="button"], input[type="submit"]):not(.cbi-dropdown) {
+		padding: 4px 8px;
+		white-space: normal; text-align: center; line-height: 1.15;
+	}
 	.cbi-section { overflow-x: visible; }
 	.cbi-tblsection, .cbi-section:has(> .cbi-tblsection) { overflow-x: visible; }
 	.network-status-table .ifacebox-head, .network-status-table .ifacebox-body { padding-left: 12px; padding-right: 12px; }
@@ -2438,28 +2504,30 @@ html:not([data-darkmode="true"]) .vt-login-page {
 	.cbi-tabmenu > li > a, .vt-pagetabs > .vt-tab { justify-content: center; }
 	.cbi-dropdown, .vt-main input, .vt-main select, .control-group, .cbi-dynlist { max-width: none; }
 
-	/* tables become cards */
+	/* tables become cards, in pages and in modals alike. Header rows go
+	   (LuCI also puts .cbi-section-table-titles on each row's name cell,
+	   which stays); every cell drops the fixed row height. */
 	.hide-xs { display: none !important; }
-	.vt-main .table, .vt-main .table > tbody, .vt-main .table > thead, .modal .table, .modal .table > tbody { display: block; width: 100%; }
-	.vt-main .table > .tr.table-titles, .vt-main .table > thead > .tr.table-titles, .vt-main .table > tbody > .tr.table-titles,
-	.vt-main .cbi-section-table-titles, .vt-main .cbi-section-table-descr, .modal .table-titles { display: none !important; }
-	.vt-main .table .tr, .modal .table .tr {
+	:is(.vt-main, .modal) .table, :is(.vt-main, .modal) .table > :is(tbody, thead) { display: block; width: 100%; }
+	:is(.vt-main, .modal) .table :is(tr, .tr):is(.table-titles, .cbi-section-table-titles, .cbi-section-table-descr) { display: none !important; }
+	:is(.vt-main, .modal) .table .tr {
 		display: flex; flex-wrap: wrap;
 		padding: 6px 0;
 		border-bottom: 1px solid var(--line);
 	}
-	.vt-main .table .tr:last-child { border-bottom: 0; }
-	.vt-main .table .tr > .td, .modal .table .tr > .td {
+	:is(.vt-main, .modal) .table .tr:last-child { border-bottom: 0; }
+	:is(.vt-main, .modal) .table .tr > .td {
 		display: block;
 		flex: 1 1 100%;
 		min-width: 0;
 		width: auto !important;
+		height: auto;
 		padding: 4px 10px;
 		border: 0;
 		text-align: left !important;
 	}
-	.vt-main :is(.cbi-section, .cbi-value) .table .tr > .td:nth-child(n) { padding: 4px var(--card-px); height: auto; }
-	.vt-main .table .tr > .td[data-title]::before, .modal .table .tr > .td[data-title]::before {
+	:is(.vt-main, .modal) :is(.cbi-section, .cbi-value) .table .tr > .td:nth-child(n) { padding: 4px var(--card-px); }
+	:is(.vt-main, .modal) .table .tr > .td[data-title]::before {
 		content: attr(data-title);
 		display: block;
 		margin-bottom: 2px;
@@ -2467,18 +2535,20 @@ html:not([data-darkmode="true"]) .vt-login-page {
 		color: var(--text-3);
 		font-size: var(--fs-micro); font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
 	}
-	.vt-main .table:not(:has(.table-titles)) .tr > .td:first-child:nth-last-child(2) {
+	:is(.vt-main, .modal) .table:not(:has(.table-titles)) .tr > .td:first-child:nth-last-child(2) {
 		width: auto !important; padding-bottom: 0;
 		color: var(--text-3); font-size: var(--fs-micro); font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
 	}
-	.vt-main .table .tr > .td[data-title]:not(:only-child) { flex-basis: 50%; }
-	.vt-main .table .tr > .td[data-title]:last-child:nth-child(odd) { flex-basis: 100%; }
-	.vt-main .table .tr > .td.cbi-section-actions { flex-basis: 100%; text-align: left !important; }
-	.vt-main .table .tr > .td[data-name="_ifacebox"], .vt-main .table .tr > .td[data-name="_ifacestat"] { flex-basis: 100%; }
+	:is(.vt-main, .modal) .table .tr > .td[data-title]:not(:only-child) { flex-basis: 50%; }
+	:is(.vt-main, .modal) .table .tr > .td[data-title]:last-child:nth-child(odd) { flex-basis: 100%; }
+	:is(.vt-main, .modal) .table .tr > .td.cbi-section-actions { flex-basis: 100%; text-align: left !important; }
+	/* a named grid section's name cell heads its card */
+	:is(.vt-main, .modal) .table .tr > .td.cbi-section-table-titles { flex-basis: 100%; color: var(--text); font-weight: 600; }
+	:is(.vt-main, .modal) .table .tr > .td:is([data-name="_ifacebox"], [data-name="_ifacestat"]) { flex-basis: 100%; }
 	.cbi-section-table .td[data-name="_ifacebox"] .ifacebox { width: 100%; }
-	.vt-main .table .tr > .td.cbi-section-actions > div { flex-wrap: wrap; }
-	.vt-main .table .tr > .td.cbi-section-actions::before { display: none !important; }
-	.vt-main .table .tr:hover > .td { background: none; }
+	:is(.vt-main, .modal) .table .tr > .td.cbi-section-actions > div { flex-wrap: wrap; }
+	:is(.vt-main, .modal) .table .tr > .td.cbi-section-actions::before { display: none !important; }
+	:is(.vt-main, .modal) .table .tr:hover > .td { background: none; }
 	.cbi-section .table, .cbi-section .cbi-section-table { border: 0; }
 	.cbi-progressbar { max-width: none; }
 	.network-status-table > .ifacebox { max-width: none; }
