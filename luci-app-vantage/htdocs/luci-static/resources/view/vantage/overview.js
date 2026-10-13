@@ -1524,8 +1524,10 @@ return view.extend({
 		var self = this, path = this.el && this.el.path, svg = this.el && this.el.wires;
 		if (!path || !svg || !this.hero || !path.isConnected) return;
 		var box = path.getBoundingClientRect();
-		/* folded or hidden: no dots running where nobody sees them */
+		/* folded or hidden: no dots running where nobody sees them, and
+		   none rebuilt by a poll until the path has a size again */
 		if (!box.width) { this.stopFlows(); return; }
+		this.flowsHidden = false;
 		var vb = '0 0 ' + Math.round(box.width) + ' ' + Math.round(box.height);
 		if (svg.getAttribute('viewBox') !== vb) {
 			svg.setAttribute('viewBox', vb);
@@ -1578,7 +1580,7 @@ return view.extend({
 
 	/* which wires carry traffic and how fast: classes only, no geometry */
 	paintWireState: function() {
-		var self = this, map = this.wireMap, still = reducedMotion();
+		var self = this, map = this.wireMap, still = reducedMotion() || !!this.flowsHidden;
 		if (!map) return;
 		this.wireList().forEach(function(w) {
 			var g = map[w.key];
@@ -1636,6 +1638,7 @@ return view.extend({
 
 	stopFlows: function() {
 		var self = this, map = this.wireMap || {};
+		this.flowsHidden = true;
 		Object.keys(map).forEach(function(k) { self.clearDots(map[k]); setClass(map[k].fw, 'vt-fwire'); });
 	},
 

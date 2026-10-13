@@ -167,3 +167,30 @@ test('the network path: a poll with the same radios and SSIDs updates the nodes 
 	self.paintHero();
 	assert.deepEqual([ built, updated ], [ 2, 4 ]);
 });
+
+test('a folded or hidden network path: polls rebuild no flow dots until it has a size again', () => withBrowser(b => {
+	b.window.matchMedia = () => ({ matches: false });
+	const self = Object.create(view);
+	const el = () => ({ attrs: {}, getAttribute(k) { return this.attrs[k] || null; }, setAttribute(k, v) { this.attrs[k] = v; } });
+	const g = { base: el(), flow: el(), fw: el(), d: 'M0 0H100', dots: [], anims: [] };
+	let built = 0;
+	self.hero = { key: 'k' };
+	self.wireMap = { gw: g };
+	const node = (l, t) => ({ getBoundingClientRect: () => ({ left: l, right: l + 120, top: t, bottom: t + 60 }) });
+	const gw = node(0, 70), ap = node(300, 70);
+	self.wireList = () => [ { key: 'gw', from: gw, to: ap, active: true, speed: 2, main: true } ];
+	self.buildDots = wire => { built++; wire.dotsFor = wire.d; wire.dots = [ {} ]; };
+	self.clearDots = wire => { wire.dots = []; wire.anims = []; wire.dotsFor = null; };
+
+	self.paintWireState();               /* busy and visible: dots */
+	assert.equal(built, 1);
+	self.stopFlows();                    /* folded: drawWires found no size */
+	for (let k = 0; k < 3; k++) self.paintWireState();   /* polls while folded */
+	assert.equal(built, 1, 'a poll rebuilt dots inside a hidden path');
+	assert.equal(g.dots.length, 0);
+
+	/* unfolded: the observer measures a size again and the dots return */
+	self.el = { path: { isConnected: true, getBoundingClientRect: () => ({ left: 0, top: 0, width: 600, height: 200 }) }, wires: el() };
+	self.drawWires();
+	assert.equal(built, 2);
+}));

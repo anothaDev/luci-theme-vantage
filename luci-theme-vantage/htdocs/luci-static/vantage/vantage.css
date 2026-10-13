@@ -2573,6 +2573,8 @@ html[data-darkmode="true"] :is(#ban-status, #ban-report) { --ban-ok: #63c79b; --
 	input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; }
 	/* top-bar buttons: a touch control high, at every width */
 	.vt-icon-btn, .vt-search { min-width: var(--ctl-h); height: var(--ctl-h); }
+	/* dropdown choices (Save & Apply's too) are touch targets */
+	.cbi-dropdown[open] > ul.dropdown > li { min-height: var(--ctl-h); }
 	.cbi-value { padding: 8px 0; }
 }
 
