@@ -582,14 +582,20 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-wire { fill: none; stroke: var(--vt-line-2); stroke-width: 1.5; transition: stroke .4s; }
 .vt-app .vt-wire-main { stroke-width: 2.5; }
 .vt-app .vt-wire-on { stroke: color-mix(in oklab, var(--vt-accent-line) 40%, var(--vt-line-2)); }
+/* traffic on a wire: dots about 16 px apart moving along it (1.6, 1.05
+   or 0.6 s per 32 px by load), each a small element the view animates with
+   transform, so the compositor moves them without repainting the wires.
+   The SVG flow path is only the static dotted look under reduced motion. */
 .vt-app .vt-flow {
 	fill: none; stroke: var(--vt-accent-line); stroke-width: 2.4; stroke-linecap: round;
-	stroke-dasharray: 1.5 14.5; opacity: 0; transition: opacity .4s;
+	stroke-dasharray: 1.5 6; opacity: 0;
 }
-.vt-app .vt-flow-on { opacity: .95; animation: vt-flow 1.6s linear infinite; }
-.vt-app .vt-flow-2.vt-flow-on { animation-duration: 1.05s; }
-.vt-app .vt-flow-3.vt-flow-on { animation-duration: .6s; stroke-width: 3; }
-@keyframes vt-flow { to { stroke-dashoffset: -32; } }
+.vt-app .vt-flows, .vt-app .vt-fwire { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 0; pointer-events: none; }
+.vt-app .vt-fwire { opacity: 0; transition: opacity .4s; }
+.vt-app .vt-fwire-on { opacity: .95; }
+/* a 1.5 px dash with round caps of the 2.4 px stroke, centred on its point */
+.vt-app .vt-fdot { position: absolute; left: -1.95px; top: -1.2px; width: 3.9px; height: 2.4px; border-radius: 1.2px; background: var(--vt-accent-line); }
+.vt-app .vt-fwire-3 .vt-fdot { left: -2.25px; top: -1.5px; width: 4.5px; height: 3px; border-radius: 1.5px; }
 
 .vt-app .vt-node {
 	position: relative; z-index: 1;
@@ -686,14 +692,18 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-cores-box { display: flex; flex-direction: column; align-items: center; flex: none; cursor: help; }
 .vt-app .vt-cores { display: flex; gap: 3px; height: 38px; align-items: flex-end; }
 .vt-app .vt-core { position: relative; width: 6px; height: 100%; border-radius: 3px; background: var(--vt-surface-3); overflow: hidden; }
-.vt-app .vt-core-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 3px; background: var(--vt-chart-5); transition: height .6s ease; }
+.vt-app .vt-core-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 3px; background: var(--vt-chart-5); }
 
 .vt-app .vt-sys-mem { display: flex; flex-direction: column; gap: 7px; }
 .vt-app .vt-mem-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .vt-app .vt-mem-avail { font-size: var(--vt-fs-lg); font-weight: 680; }
 .vt-app .vt-mem-of { font-size: var(--vt-fs-sm); color: var(--vt-text-3); }
 .vt-app .vt-seg { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--vt-surface-3); gap: 2px; }
-.vt-app .vt-seg-part { height: 100%; min-width: 0; transition: width .7s cubic-bezier(.2, .7, .2, 1); }
+/* width animates only for a visible change (the view sets .vt-seg-move):
+   a width transition lays out every frame, and memory moves by fractions
+   of a percent on most polls */
+.vt-app .vt-seg-part { height: 100%; min-width: 0; }
+.vt-app .vt-seg-move .vt-seg-part { transition: width .7s cubic-bezier(.2, .7, .2, 1); }
 .vt-app .vt-seg-used { background: var(--vt-mem); border-radius: 6px 2px 2px 6px; }
 .vt-app .vt-seg-cache {
 	background:
@@ -715,7 +725,7 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-storage { display: flex; flex-direction: column; gap: 8px; }
 .vt-app .vt-mount-top { display: flex; justify-content: space-between; gap: 8px; font-size: var(--vt-fs-sm); margin-bottom: 4px; }
 .vt-app .vt-bar { height: 6px; border-radius: 3px; background: var(--vt-surface-3); overflow: hidden; }
-.vt-app .vt-bar-fill { display: block; height: 100%; border-radius: 3px; background: var(--vt-mem); transition: width .7s ease; }
+.vt-app .vt-bar-fill { display: block; height: 100%; border-radius: 3px; background: var(--vt-mem); }
 .vt-app .vt-bg-warn { background: var(--vt-warn); }
 .vt-app .vt-bg-err { background: var(--vt-err); }
 .vt-app .vt-fw { display: flex; flex-direction: column; gap: 1px; margin-top: auto; padding-top: 10px; border-top: 1px dashed var(--vt-line); font-size: var(--vt-fs-sm); color: var(--vt-text-2); }
@@ -930,7 +940,7 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-live-cell { display: grid; grid-template-columns: auto; gap: 3px; min-width: 96px; }
 .vt-app .vt-live-total { font-weight: 650; }
 .vt-app .vt-mini { display: block; height: 4px; border-radius: 2px; background: var(--vt-surface-3); overflow: hidden; }
-.vt-app .vt-mini-fill { display: block; height: 100%; background: var(--vt-info); border-radius: 2px; transition: width .6s ease; }
+.vt-app .vt-mini-fill { display: block; height: 100%; background: var(--vt-info); border-radius: 2px; }
 .vt-app .vt-live-split { font-size: var(--vt-fs-micro); color: var(--vt-text-3); white-space: nowrap; }
 .vt-app .vt-exp { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .vt-app .vt-score {
@@ -968,7 +978,7 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-talk-share { font-size: var(--vt-fs-sm); font-weight: 650; color: var(--vt-text-2); white-space: nowrap; }
 .vt-app .vt-talk-sub b { color: var(--vt-text); font-weight: 650; }
 .vt-app .vt-talk-bar { height: 5px; border-radius: 3px; background: var(--vt-surface-3); overflow: hidden; }
-.vt-app .vt-talk-fill { display: block; height: 100%; border-radius: 3px; background: var(--vt-info); transition: width .6s ease; }
+.vt-app .vt-talk-fill { display: block; height: 100%; border-radius: 3px; background: var(--vt-info); }
 .vt-app .vt-talk-sub { display: flex; gap: 8px; align-items: baseline; font-size: var(--vt-fs-micro); color: var(--vt-text-3); white-space: nowrap; overflow: hidden; }
 
 .vt-app .vt-ssids { display: flex; flex-direction: column; gap: 2px; }
@@ -1179,5 +1189,7 @@ html[data-darkmode="true"] .vt-app {
 
 @media (prefers-reduced-motion: reduce) {
 	.vt-app *, .vt-app *::before, .vt-app *::after { animation: none !important; transition: none !important; }
-	.vt-app .vt-flow-on { opacity: .8; stroke-dasharray: 1.5 6; }
+	.vt-app .vt-flow-on { opacity: .8; }
+	.vt-app .vt-flow-3.vt-flow-on { stroke-width: 3; }
+	.vt-app .vt-flows { display: none; }
 }
