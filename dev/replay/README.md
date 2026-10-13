@@ -8,7 +8,7 @@ Nothing is forwarded anywhere; there is no upstream.
         [--theme-dir <pkg>/htdocs/luci-static/<name>] [--theme <name>] \
         [--templates <pkg>/ucode/template] [--rootfs <device rootfs dump>] \
         [--app-dir <luci-app package dir>]... [--keep-uniwrt] [--no-synthetic] \
-        [--demo] [--wired] [--lang <lang>]
+        [--demo] [--wired] [--lang <lang>] [--fixtures <dir>]...
 
 Open <http://127.0.0.1:8025/>. Any username/password logs in; the session
 lasts until the replay restarts (log in again after a restart).
@@ -16,9 +16,10 @@ lasts until the replay restarts (log in again after a restart).
 ## Trust model
 
 The templates (`--templates`, `--theme-dir`, the theme and `--app-dir`
-packages) and the `--rootfs` dump are **code**: `ut.js` compiles every
-`.ut` file to a JavaScript function that runs in the replay's Node process
-with your privileges, and nothing stops a template from reaching the file
+packages), the `--rootfs` dump and the `*-plugin.js` files of a
+`--fixtures` directory are **code**: `ut.js` compiles every `.ut` file to a
+JavaScript function and plugins are `require()`d; both run in the replay's
+Node process with your privileges, and nothing stops a template from reaching the file
 system or starting programs. The scope handling in `ut.js` gives ucode
 semantics; it is not a sandbox (a function literal alone leads to the
 `Function` constructor). Use only themes and dumps you trust, such as your
@@ -26,8 +27,10 @@ own work, LuCI's, and a dump of your own device. For a third-party theme or
 a dump of a device you do not control, run the replay in a disposable
 container or as a separate unprivileged user, with the inputs mounted
 read-only, only the 127.0.0.1 port reachable, and no credentials in the
-environment. Recorded data and HTTP requests only ever reach templates as
-values; they are never compiled.
+environment. Recorded data, the rest of a fixture directory and HTTP
+requests only ever reach templates and pages as values; they are never
+compiled. `--app-dir` packages' JavaScript runs in the browser only; the
+replay reads their `menu.d` JSON and uci defaults as data.
 
 ## Requests the replay refuses
 
@@ -43,7 +46,8 @@ The replay listens on 127.0.0.1 only, and on top of that:
 - ubus calls need the session id the login created, like rpcd; without it
   only rpcd's `unauthenticated` ACL of the rootfs applies
   (`session.access/login`, `luci.getFeatures`), everything else is
-  `-32002 Access denied`. `/cgi-bin/cgi-exec` needs that session id too,
+  `-32002 Access denied`. `/cgi-bin/cgi-exec` and `/cgi-bin/cgi-download`
+  need that session id too,
   and `/admin/uci/*` the login cookie or `?sid=`.
 - uci names that libuci refuses (and `__proto__`, `constructor`,
   `prototype`) answer `[2]` (INVALID_ARGUMENT) and never touch the overlay.
@@ -79,6 +83,26 @@ Inputs:
   overlay for configs the mirror has not recorded, so the app's own config
   reads and writes (add/set/delete/commit) work for the session. Files are
   read on every request.
+
+- `--fixtures` (repeatable): hand-written device data for pages the
+  recording never saw, typically add-ons (adblock, sqm, ddns, ...), used
+  only where the recording has no answer (`fixtures.js`); with several
+  directories the first that has a file wins:
+  - `<dir>/*-plugin.js`: rpcd stand-ins with the plugin contract below
+    (code). They cannot replace a built-in plugin, `uci` or `session`.
+  - `<dir>/root/etc/config/*`: seeds the uci overlay before the
+    `--app-dir` defaults; for a config the recording has, only the
+    sections it lacks are added (never replaced).
+  - `<dir>/root/...`: a small file system for `file.read/stat/list` and
+    `/cgi-bin/cgi-download` (`fs.read_direct`). Paths must be absolute,
+    without `..`, and resolve (symlinks included) inside `<dir>/root`;
+    `file.write/remove` stay dropped. Without `--fixtures`,
+    `cgi-download` is refused as before.
+  - `<dir>/exec.json`: `[ { "argv": [...], "stdout": "..." } ]` (or
+    `"json": <value>`) for `file.exec` and `/cgi-bin/cgi-exec`.
+
+  Fixture data is served as it is, also with `--demo`: documentation
+  values only (`check_private_addresses.js` checks the committed ones).
 
 Default theme is `bootstrap` (from the rootfs). A theme without templates
 gets a built-in minimal header/footer shell (`#topmenu`, `#tabmenu`,
@@ -120,14 +144,19 @@ Routing follows the device dispatcher: the recorded menu
 - `file.write/remove`, `rc.init`, `luci.set*`, `system.reboot`,
   `network(.interface)` actions answer success and are dropped.
 - `file.exec` and `/cgi-bin/cgi-exec` answer from recorded outputs by exact
-  argv; otherwise NOT_FOUND / 403. Other `/cgi-bin/cgi-*` are refused.
-- Plugins: every `dev/replay/<name>-plugin.js` is loaded at start and
-  answers the ubus object(s) it names, before the recording is consulted.
-  A plugin stands in for an rpcd plugin the replay cannot run and exports
-  `OBJECT` (or `OBJECTS: [...]`), `call(store, method, args)` returning
-  `{ result: [ status, data? ] }`, and optionally `POLICY`
-  (`{ method: { arg: type } }`, used for `list`). It may use the store's
-  `data()`, `call()`, `uci()`, `uciGet()` and `uciSeed()`. The replay
+  argv, then `--fixtures` outputs; otherwise NOT_FOUND / 403.
+  `/cgi-bin/cgi-download` answers fixture files only; other
+  `/cgi-bin/cgi-*` are refused.
+- Plugins: every `dev/replay/<name>-plugin.js` (then those of
+  `--fixtures`) is loaded at start and answers the ubus object(s) it
+  names, before the recording is consulted. A plugin stands in for an rpcd
+  plugin the replay cannot run and exports `OBJECT` (or `OBJECTS: [...]`),
+  `call(store, method, args, next)` returning
+  `{ result: [ status, data? ] }` (`next()` is the reply the replay would
+  give without the plugin, to extend a recorded object), and optionally
+  `POLICY` (`{ method: { arg: type } }`, used for `list`). It may use the
+  store's `data()`, `call()`, `uci()`, `uciGet()`, `uciSeed()` and
+  `fixtures` (`read(path)`, `list(path)`). The replay
   prints the loaded plugins at start
   (`vantage-plugin.js`: `luci.vantage`, luci-app-vantage's plugin).
 - Mirrored static files that are uhttpd's 404 page are served as 404, as on
