@@ -76,7 +76,7 @@
 	--zone-mix: .22;
 	--seg-bg: var(--s3);        /* segmented control: track, selected segment */
 	--seg-on: var(--s2);
-	--seg-on-ring: 0 0 0 1px var(--line), var(--v-shadow);
+	--seg-on-ring: inset 0 0 0 1px var(--line);   /* inset: drawn at the segment's padding edge */
 }
 
 html[data-darkmode="true"] {
@@ -114,7 +114,7 @@ html[data-darkmode="true"] {
 	--zone-mix: .2;
 	--seg-bg: var(--bg);
 	--seg-on: var(--s3);
-	--seg-on-ring: 0 0 0 1px var(--line-2);
+	--seg-on-ring: inset 0 0 0 1px var(--line-2);
 }
 
 /* touch: controls are sized by the pointer, not the screen width */
@@ -161,7 +161,7 @@ html[data-darkmode="true"] {
 	--v-r-lg: var(--r-lg);
 	--v-ctl-h: var(--ctl-h);             /* every control: 36px, 44px on touch */
 	--v-shadow: 0 1px 2px rgba(20, 23, 26, .06), 0 1px 0 rgba(20, 23, 26, .03);
-	/* where sticky content may start: below the top bar and page tabs */
+	/* where sticky content may start: below the top bar (page tabs scroll) */
 	--v-stick-top: var(--stick-top);
 
 	/* charts (stock realtime graphs, channel analysis, the dashboard app).
@@ -429,7 +429,7 @@ html[data-rail="pinned"] .vt-frame { margin-left: var(--rail-w-pinned); }
 .vt-fly-list > li + li { margin-top: 1px; }
 .vt-fly-link {
 	display: flex; align-items: center; gap: var(--sp-2);
-	min-height: 34px; padding: 6px 10px;
+	min-height: var(--ctl-h); padding: 6px 10px;
 	border-radius: var(--r);
 	color: var(--text);
 	text-decoration: none !important;
@@ -475,18 +475,23 @@ html[data-rail="pinned"] .vt-frame { margin-left: var(--rail-w-pinned); }
 
 .vt-crumbs {
 	display: flex; align-items: center; gap: 6px;
-	min-width: 0; flex: 1 1 auto;
+	min-width: 0; flex: 1 .001 auto;     /* gives way last: see .vt-top-actions */
+	align-self: stretch;                 /* the bar's height: room for focus rings */
+	margin-inline: -8px; padding-inline: 8px;   /* room for the switch's ring (it sits 6px out) */
 	font-size: var(--fs-base);
 	white-space: nowrap; overflow: hidden;
 }
 .vt-crumb { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; text-decoration: none !important; }
+/* a link crumb is a control high to click; the padding adds no height to the bar */
+a.vt-crumb { padding-block: calc((var(--ctl-h) - 1.5em) / 2); }
 a.vt-crumb:hover { color: var(--text); }
 .vt-crumb-current { color: var(--text); font-weight: 600; }
 .vt-crumb-sep { color: var(--text-3); flex: none; font-family: var(--mono); font-size: var(--fs-sm); }
-/* the current crumb of a page with page tabs: opens its sibling pages */
+/* the current crumb of a page with page tabs: opens its sibling pages.
+   A control high; the ring sits on its edge, inside the crumbs' clip. */
 .vt-crumb-switch {
 	display: inline-flex; align-items: center; gap: 4px;
-	min-width: 0; margin: -4px -6px; padding: 4px 6px;
+	min-width: 0; min-height: var(--ctl-h); margin: 0 -6px; padding: 0 6px;
 	border: 0; border-radius: var(--r);
 	background: none;
 	font: inherit; font-weight: 600; color: var(--text);
@@ -495,8 +500,9 @@ a.vt-crumb:hover { color: var(--text); }
 .vt-crumb-switch > span { overflow: hidden; text-overflow: ellipsis; }
 .vt-crumb-switch > svg { flex: none; width: 14px; height: 14px; color: var(--text-3); transition: transform .15s; }
 .vt-crumb-switch:hover, .vt-crumb-switch[aria-expanded="true"] { background: var(--s3); }
+.vt-crumb-switch:focus-visible { outline-offset: 0; }
 .vt-crumb-switch[aria-expanded="true"] > svg { transform: rotate(90deg); }
-@media (min-width: 721px) {
+@media (width > 720px) {
 	/* the flyout as a dropdown under the crumb (left: set from the crumb) */
 	.vt-flyout.is-switch {
 		top: calc(var(--top-h) - 4px); bottom: auto; left: var(--x, var(--rail-w));
@@ -508,7 +514,10 @@ a.vt-crumb:hover { color: var(--text); }
 }
 @keyframes vt-drop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
-.vt-top-actions { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
+/* when the bar is short of room, the host chip gives way first, then the
+   search field's label, and only then the crumbs */
+.vt-top-actions { display: flex; align-items: center; gap: var(--sp-2); flex: 0 1 auto; min-width: 0; }
+.vt-top-actions > :not(.vt-host, .vt-search) { flex: none; }
 
 .vt-search {
 	display: inline-flex; align-items: center; gap: var(--sp-2);
@@ -546,6 +555,7 @@ a.vt-crumb:hover { color: var(--text); }
 .vt-host {
 	display: inline-flex; align-items: center; gap: 6px;
 	height: 28px; max-width: 300px;
+	flex: 0 1000 auto; min-width: 0; overflow: hidden;
 	padding: 0 10px;
 	border: 1px solid var(--line); border-radius: 999px;
 	background: var(--s1);
@@ -571,17 +581,21 @@ a.vt-crumb:hover { color: var(--text); }
 }
 #indicators > span[data-clickable] { cursor: pointer; }
 #indicators > span[data-clickable]:hover { border-color: var(--text-3); color: var(--text); }
-#indicators > span[data-indicator="poll-status"][data-style="active"] { position: relative; }
+#indicators > span[data-indicator="poll-status"][data-style="active"] { position: relative; isolation: isolate; }
 #indicators > span[data-indicator="poll-status"][data-style="active"]::before {
 	content: ""; width: 7px; height: 7px; border-radius: 50%;
 	background: var(--accent-text);
 }
 /* the pulse is a ring of its own that scales and fades: the compositor
-   runs it, where an animated box-shadow repainted the page every frame */
+   runs it, where an animated box-shadow repainted the page every frame.
+   It sits behind the dot (z-index -1 in the pill's isolated stack), so
+   the dot never lightens, and is invisible unless animated: with reduced
+   motion the one near-instant run ends on opacity 0. */
 #indicators > span[data-indicator="poll-status"][data-style="active"]::after {
-	content: ""; position: absolute; left: 10px; top: calc(50% - 3.5px);
+	content: ""; position: absolute; z-index: -1; left: 10px; top: calc(50% - 3.5px);
 	width: 7px; height: 7px; border-radius: 50%;
 	background: var(--accent-line);
+	opacity: 0;
 	pointer-events: none;
 	animation: vt-live 2s ease-out infinite;
 }
@@ -613,7 +627,7 @@ a.vt-crumb:hover { color: var(--text); }
 #indicators > span[data-indicator="media_error"] { color: var(--err); border-color: var(--err); background: var(--err-soft); }
 
 /* level-3 page tabs: on the content column, drawn as every other tab
-   level (.vt-seg shares the .cbi-tabmenu rules below). They scroll with
+   level (.vt-pagetabs shares the .cbi-tabmenu rules below). They scroll with
    the page; the current crumb in the top bar switches between them. */
 .vt-tabs {
 	width: 100%; max-width: calc(var(--content-max) + 2 * var(--sp-6));
@@ -1402,34 +1416,38 @@ div.right { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(
 div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; }
 
 /* Tabs: one segmented control for every level, the menu's page tabs
-   (.vt-seg), ui.tabs at page level, in a form or modal, and tabs inside
-   a tab. Nesting shows by where a control sits, not by another look. It
-   wraps its segments instead of hiding them. */
-.cbi-tabmenu, .vt-seg {
-	display: flex; flex-wrap: wrap; align-items: center; gap: 2px;
+   (.vt-pagetabs in #vt-tabs), ui.tabs at page level, in a form or modal,
+   and tabs inside a tab. Nesting shows by where a control sits, not by
+   another look. It wraps its segments instead of hiding them. Every
+   segment is a whole control high (--ctl-h, 36px / 44px on touch) to
+   click or tap: the 3px between the track's edge and the drawn segment
+   is the segment's own transparent border, so the track is one control
+   high as well. */
+.cbi-tabmenu, .vt-tabs > .vt-pagetabs {
+	display: flex; flex-wrap: wrap; align-items: stretch;
 	width: fit-content; max-width: 100%; min-height: var(--ctl-h);
-	margin: 0 0 var(--sp-5); padding: 2px;
+	margin: 0 0 var(--sp-5); padding: 0;
 	list-style: none;
 	background: var(--seg-bg);
-	border: 1px solid var(--line);
 	border-radius: var(--r-lg);
-	overflow-x: auto;
-	scrollbar-width: none;
+	box-shadow: inset 0 0 0 1px var(--line);
 }
-.vt-seg { margin: 0; }
-:is(.cbi-tabmenu, .vt-seg)::-webkit-scrollbar { display: none; }
-.cbi-tabmenu > li { position: relative; flex: none; }
-.cbi-tabmenu > li > a, .vt-tab {
+.vt-tabs > .vt-pagetabs { margin: 0; }
+.cbi-tabmenu > li { position: relative; flex: none; display: flex; max-width: 100%; }
+.cbi-tabmenu > li > a, .vt-pagetabs > .vt-tab {
+	flex: 1 1 auto;
 	display: flex; align-items: center; gap: 6px;
-	height: calc(var(--ctl-h) - 6px); padding: 0 var(--sp-3);
-	border-radius: var(--r);
+	min-height: var(--ctl-h); padding: 0 10px;
+	border: 3px solid transparent; background-clip: padding-box;
+	border-radius: calc(var(--r) + 3px);
 	color: var(--text-2);
 	font-weight: 500;
 	white-space: nowrap;
 	text-decoration: none !important;
 }
-:is(.cbi-tabmenu > li > a, .vt-tab):hover { color: var(--text); }
-.cbi-tabmenu > li.cbi-tab > a, .vt-tab[aria-current] { background: var(--seg-on); color: var(--text); font-weight: 600; box-shadow: var(--seg-on-ring); }
+:is(.cbi-tabmenu > li > a, .vt-pagetabs > .vt-tab):hover { color: var(--text); }
+:is(.cbi-tabmenu > li > a, .vt-pagetabs > .vt-tab):focus-visible { outline-offset: -1px; border-radius: calc(var(--r) + 3px); }
+.cbi-tabmenu > li.cbi-tab > a, .vt-pagetabs > .vt-tab[aria-current] { background-color: var(--seg-on); color: var(--text); font-weight: 600; box-shadow: var(--seg-on-ring); }
 .cbi-tabmenu > li[data-errors] > a::after {
 	content: attr(data-errors);
 	display: inline-flex; align-items: center; justify-content: center;
@@ -1480,6 +1498,9 @@ div.right > .btn, div.right > .cbi-button, div.right > button { margin-left: 0; 
 /* "<strong>Label:</strong> value<br>" dumps (LuCI itemlist) -> aligned
    label/value grid. Each span.nowrap becomes a subgrid row: the <strong>
    is the label cell, the contiguous value run the anonymous value cell. */
+/* LuCI's " | " separators between the items are bare text, so each would
+   be a grid row of its own: no text size, line or row gap for them; the
+   items keep their own size and space */
 :is(.ifacebox-body, .ifacebadge) > span:has(> .nowrap) {
 	display: grid;
 	grid-template-columns: max-content minmax(0, 1fr);
@@ -2120,8 +2141,12 @@ html:not([data-darkmode="true"]) .vt-login-page {
 	color: var(--text-3);
 	font-size: var(--fs-micro); font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
 }
-.vt-live-dot { position: relative; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-text); }
-.vt-live-dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--accent-line); animation: vt-live 2s ease-out infinite; }
+.vt-login-sub { isolation: isolate; }
+/* the ring as on the poll pill: behind the dot (the dot itself makes no
+   stacking context, so z-index -1 lands under its background), opacity 0
+   unless animated */
+.vt-login-dot { position: relative; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-text); }
+.vt-login-dot::after { content: ""; position: absolute; z-index: -1; inset: 0; border-radius: 50%; background: var(--accent-line); opacity: 0; animation: vt-live 2s ease-out infinite; }
 .vt-login-error {
 	margin: 0 0 var(--sp-4);
 	padding: var(--sp-2) var(--sp-3);
@@ -2135,7 +2160,7 @@ html:not([data-darkmode="true"]) .vt-login-page {
 .vt-field { display: flex; flex-direction: column; gap: 6px; }
 .vt-field-label { color: var(--text-3); font-size: var(--fs-micro); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
 .vt-field input {
-	width: 100%; height: 38px;
+	width: 100%; height: var(--ctl-h);
 	padding: 0 12px;
 	background: var(--s2);
 	color: var(--text);
@@ -2144,7 +2169,7 @@ html:not([data-darkmode="true"]) .vt-login-page {
 	font-size: var(--fs-md);
 }
 .vt-field input[name="luci_username"] { font-family: var(--mono); }
-.vt-login-submit { height: 38px; margin-top: var(--sp-2); font-size: var(--fs-md) !important; width: 100%; }
+.vt-login-submit { height: var(--ctl-h); margin-top: var(--sp-2); font-size: var(--fs-md) !important; width: 100%; }
 .vt-login-foot { margin: var(--sp-4) 0 0; text-align: center; color: var(--text-3); font: var(--fs-micro)/1.4 var(--mono); letter-spacing: .03em; }
 
 /* ------------------------------------------------ 9. stock page layouts */
@@ -2265,7 +2290,7 @@ html:not([data-darkmode="true"]) .vt-login-page {
    a non-scrolling ancestor, so status tables only scroll when narrow. */
 .cbi-tblsection, .cbi-section:has(> .cbi-tblsection) { overflow-x: auto; }
 .cbi-section:has(.cbi-dropdown[open]), .cbi-tblsection:has(.cbi-dropdown[open]) { overflow: visible; }
-@media (max-width: 1180px) and (min-width: 721px) {
+@media (720px < width <= 1180px) {
 	.cbi-section { overflow-x: auto; }
 	.cbi-section:has(.cbi-dropdown[open]) { overflow: visible; }
 }
@@ -2286,6 +2311,13 @@ html:not([data-darkmode="true"]) .vt-login-page {
 
 @media (max-width: 900px) {
 	.vt-host { display: none !important; }
+	/* indicators go compact (dot, count) before the crumbs get cut; the
+	   label stays as text for screen readers and as the title */
+	#indicators > span[data-indicator] { height: 28px; padding: 0 8px; }
+	#indicators > span[data-indicator="poll-status"] { font-size: 0; gap: 0; width: 28px; justify-content: center; padding: 0; }
+	#indicators > span[data-indicator="poll-status"][data-style="active"]::after { left: calc(50% - 3.5px); }
+	#indicators > span[data-indicator][data-count] { padding: 0 3px; gap: 0; }
+	#indicators > span[data-indicator][data-count]::before { content: none; }
 	html[data-rail="pinned"] .vt-rail { width: var(--rail-w); }
 	html[data-rail="pinned"] .vt-frame { margin-left: var(--rail-w); }
 	html[data-rail="pinned"] body.vt-auth .vt-shell::before { width: var(--rail-w); }
@@ -2311,12 +2343,17 @@ html:not([data-darkmode="true"]) .vt-login-page {
 	.vt-rail > .vt-brand, .vt-rail-foot { display: none; }
 	body.vt-auth .vt-shell::before { display: none; }
 	.vt-rail-list {
-		flex-direction: row; justify-content: center;
+		flex-direction: row; justify-content: flex-start;
 		gap: 0; padding: 0 var(--sp-1);
 		overflow-x: auto; overflow-y: hidden;
 	}
-	/* the buttons stay a centred group on wider screens */
+	/* the buttons stay a centred group on wider screens. Centred with auto
+	   margins, not justify-content: center, which would push an overflowing
+	   list's first items past the scroll start where nothing reaches them;
+	   auto margins drop to 0 when the list overflows. */
 	.vt-rail-item { flex: 1 0 60px; max-width: 104px; padding: 6px 2px; }
+	.vt-rail-item:first-child { margin-inline-start: auto; }
+	.vt-rail-item:last-child { margin-inline-end: auto; }
 	.vt-rail-link, html[data-rail="pinned"] .vt-rail-link {
 		flex-direction: column; justify-content: center; gap: 3px;
 		height: 48px; padding: 0 4px;
@@ -2355,11 +2392,6 @@ html:not([data-darkmode="true"]) .vt-login-page {
 	.vt-crumbs .vt-crumb-current { font-size: var(--fs-md); }
 	.vt-top-actions { gap: 2px; }
 	.vt-search { border-color: transparent; background: none; color: var(--text-2); width: 32px; height: 32px; }
-	#indicators > span[data-indicator] { height: 28px; padding: 0 8px; }
-	#indicators > span[data-indicator="poll-status"] { font-size: 0; gap: 0; width: 28px; justify-content: center; padding: 0; }
-	#indicators > span[data-indicator="poll-status"][data-style="active"]::after { left: calc(50% - 3.5px); }
-	#indicators > span[data-indicator][data-count] { padding: 0 3px; gap: 0; }
-	#indicators > span[data-indicator][data-count]::before { content: none; }
 	.vt-tabs { padding: var(--sp-4) var(--sp-4) 0; }
 	.vt-tabs:not([hidden]) + .vt-main { padding-top: var(--sp-4); }
 
@@ -2401,9 +2433,9 @@ html:not([data-darkmode="true"]) .vt-login-page {
 	.cbi-value:has(> .cbi-value-field > .cbi-checkbox) > .vt-help { grid-row: 1; grid-column: 3; }
 	.cbi-value:has(> .cbi-value-field > .cbi-checkbox) > .cbi-value-field > :not(.cbi-checkbox) { grid-column: 1 / -1; }
 	/* a segmented control spans the width and its segments share each row */
-	.cbi-tabmenu, .vt-seg { width: auto; }
-	.cbi-tabmenu > li, .vt-tab { flex: 1 1 auto; }
-	.cbi-tabmenu > li > a, .vt-tab { justify-content: center; }
+	.cbi-tabmenu, .vt-tabs > .vt-pagetabs { width: auto; }
+	.cbi-tabmenu > li, .vt-pagetabs > .vt-tab { flex: 1 1 auto; }
+	.cbi-tabmenu > li > a, .vt-pagetabs > .vt-tab { justify-content: center; }
 	.cbi-dropdown, .vt-main input, .vt-main select, .control-group, .cbi-dynlist { max-width: none; }
 
 	/* tables become cards */
@@ -2469,6 +2501,8 @@ html:not([data-darkmode="true"]) .vt-login-page {
 }
 @media (pointer: coarse) {
 	input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; }
+	/* top-bar buttons: a touch control high, at every width */
+	.vt-icon-btn, .vt-search { min-width: var(--ctl-h); height: var(--ctl-h); }
 	.cbi-value { padding: 8px 0; }
 }
 
@@ -2498,6 +2532,7 @@ html:not([data-darkmode="true"]) .vt-login-page {
 	/* ui.Dropdown moves focus on transitionend: keep a (near-instant) transition */
 	.cbi-dropdown[open] > ul.dropdown { transition-duration: .01s; }
 	.cbi-progressbar > div { transition: none; }
+	.vt-crumb-switch > svg, .vt-rail-caret, .vt-rail-pin svg { transition: none; }
 }
 
 @media print {
