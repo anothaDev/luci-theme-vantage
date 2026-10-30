@@ -2790,6 +2790,9 @@ return view.extend({
 
 	handleKey: function(ev) {
 		var t = ev.target, typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+		/* Escape in an open chart style list (a select whose list the page
+		   draws, focus on an option) closes the list, not Customize */
+		if (ev.key === 'Escape' && t && t.tagName === 'OPTION') return;
 		if (ev.key === 'Escape' && this.ui.drawer && !document.body.classList.contains('modal-overlay-active')) {
 			this.closeDrawer();
 			return;

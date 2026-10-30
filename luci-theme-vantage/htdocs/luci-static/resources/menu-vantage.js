@@ -1312,6 +1312,16 @@ return baseclass.extend({
 		const btn = document.getElementById('vt-search-btn');
 		if (btn) btn.addEventListener('click', () => this.openPalette());
 
+		/* a select whose list the page draws (customizable select) closes it
+		   on Escape; the modal under it (ui.cancelModal on #modal_overlay)
+		   must not take the same Escape and dismiss the dialog. Capture, as
+		   for the row menu. */
+		const openList = CSS.supports('selector(:open)') ? 'select:open' : null;
+		document.addEventListener('keydown', ev => {
+			if (openList && ev.key === 'Escape' && ev.target.closest && ev.target.closest(openList))
+				ev.stopPropagation();
+		}, true);
+
 		document.addEventListener('keydown', ev => {
 			if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && (ev.key === 'k' || ev.key === 'K')) {
 				ev.preventDefault();

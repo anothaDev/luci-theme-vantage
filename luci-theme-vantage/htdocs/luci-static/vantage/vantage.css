@@ -993,6 +993,11 @@ legend { font-size: var(--fs-md); font-weight: 600; padding: 0; margin-bottom: v
 	top: auto !important; bottom: 100% !important;
 	max-height: 50vh !important;
 }
+/* LuCI moves focus into the list when its max-height transition ends, and
+   the 50vh !important above left nothing to transition, so arrow keys never
+   reached "Apply unchecked". A length (not none) on the closed list gives
+   the open one a change to run */
+.cbi-page-actions .cbi-dropdown > ul:not(.dropdown) { max-height: 100vh; }
 
 /* ------------------------------------------------------------ 6. widgets */
 
@@ -1036,7 +1041,20 @@ body[data-page="admin-system-system"] .cbi-value[data-name="notes"] textarea { m
 	field-sizing: content;
 	width: auto; min-width: min(100%, var(--field-max)); max-width: 100%;
 }
-.vt-main select[multiple] { background-image: none; padding-right: 10px; }
+/* a listbox (multiple, or size above 1) has no arrow, in a page or a
+   modal (replaces `.vt-main select[multiple]`) */
+:is(.vt-main, .modal) select:is([multiple], [size]:not([size="1"])):not(.vt-app *) { background-image: none; padding-right: 10px; }
+/* adblock (DNS Report -> Refresh...) and banIP (Set Reporting -> Set
+   Content...) give the <label> around their select the select's class:
+   the label stays a label, not a second field with its own arrow */
+label.cbi-input-select {
+	display: block;
+	width: auto; max-width: none; min-height: 0;
+	padding: 0;
+	background: none;
+	border: 0; border-radius: 0;
+	transition: none;
+}
 input::placeholder, textarea::placeholder { color: var(--text-3); opacity: 1; }
 input:hover, select:hover, textarea:hover { border-color: var(--text-3); }
 input:focus, select:focus, textarea:focus {
@@ -1054,6 +1072,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 	border-color: var(--focus);
 	box-shadow: 0 0 0 1px var(--focus), 0 0 0 4px var(--accent-soft);
 }
+/* a disabled field does not answer the pointer */
+:is(input, select, textarea):not([type="checkbox"], [type="radio"], [type="range"], .vt-pal-input, .vt-app *):disabled:hover { border-color: var(--line-2); }
 input[disabled], select[disabled], textarea[disabled], input[readonly] { opacity: .6; cursor: not-allowed; }
 input[readonly] { cursor: default; }
 
@@ -1063,6 +1083,82 @@ input[readonly] { cursor: default; }
 	background-color: var(--err-soft) !important;
 	color: var(--text) !important;
 	box-shadow: 0 0 0 3px var(--err-soft) !important;
+}
+
+/* a select's list drawn by the browser (Firefox, Safari, Chromium before
+   135, and the selects below that keep it) takes little from the page
+   but the options' colours. It took the field's background: a tinted
+   field (invalid, a firewall warning) opened a cream list with light
+   text in dark mode. The options carry the surface and text instead. */
+:is(.vt-main, .modal) select:not([multiple], [size], .vt-app *) :is(option, optgroup) { background-color: var(--s2); color: var(--text); }
+:is(.vt-main, .modal) select:not([multiple], [size], .vt-app *) option:disabled { color: var(--text-3); }
+
+/* a select's list drawn in the page (customizable select, Chromium 135+)
+   gets the .cbi-dropdown list's look. Not listboxes, nor a select LuCI
+   sizes itself (width:auto, Wireless "Operating frequency"): base-select
+   sizes a field to its chosen label, not its longest. The dashboard
+   styles its own. */
+@supports (appearance: base-select) {
+	:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *),
+	:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *)::picker(select) { appearance: base-select; }
+	/* the field as before: base-select makes it a flex box with the value
+	   at the top (2px high, 6px on touch) and free to wrap; centre it on
+	   one line, cut at the content edge as the native field cuts it */
+	:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *) {
+		align-items: center;
+		white-space: nowrap;
+		overflow: clip; overflow-clip-margin: content-box;
+	}
+	/* the theme draws the arrow */
+	:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *)::picker-icon { display: none; }
+	/* focus moves to an option while the list is open: the field keeps its
+	   ring and its arrow turns to the signal, as on an open .cbi-dropdown */
+	:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *):open {
+		border-color: var(--focus);
+		box-shadow: 0 0 0 1px var(--focus), 0 0 0 4px var(--accent-soft);
+		background-image: linear-gradient(45deg, transparent 50%, var(--accent-text) 50%), linear-gradient(135deg, var(--accent-text) 50%, transparent 50%);
+	}
+	/* the list: 4px off the field, at least as wide, above it when there
+	   is more room there; 50vh at most, as .cbi-dropdown, and never past
+	   the screen (100% is the room beside the field: less the 8px of
+	   margins below, an 8px gutter across) */
+	:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *)::picker(select) {
+		margin: 4px 0;
+		padding: 4px;
+		min-inline-size: anchor-size(self-inline);
+		max-inline-size: calc(100% - var(--sp-2));
+		max-block-size: min(50vh, calc(100% - 8px));
+		background: var(--s2);
+		color: var(--text);
+		border: 1px solid var(--line-2);
+		border-radius: var(--r);
+		box-shadow: var(--shadow-pop);
+		overflow: hidden auto;
+		scrollbar-width: thin;
+	}
+	/* choices as .cbi-dropdown's: long ones wrap */
+	:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *) option {
+		min-block-size: calc(var(--ctl-h) - 4px);
+		padding: 4px 8px;
+		border-radius: var(--r-sm);
+		white-space: normal;
+		color: var(--text);
+		font-weight: 400;
+	}
+	/* the chosen one in the signal (fill and weight, no check mark); the
+	   one under the pointer or the keyboard on --s4, the keyboard's with
+	   the accent bar */
+	:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *) option::checkmark { display: none; }
+	:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *) option:checked { color: var(--accent-text); font-weight: 600; background: var(--accent-soft); }
+	:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *) option:is(:hover, :focus-visible) { background: var(--s4); color: var(--text); outline: none; }
+	:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *) option:focus-visible { box-shadow: inset 2px 0 0 var(--accent-text); }
+	:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *) option:disabled { color: var(--text-3); background: none; cursor: not-allowed; }
+	/* a group's label: quiet, its choices as any other */
+	:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *) optgroup { color: var(--text-3); font-weight: 600; }
+	/* touch: each choice is a touch target, as the dropdown's */
+	@media (pointer: coarse) {
+		:is(.vt-main, .modal) select:not([multiple], [size], [style*="width:auto"], .vt-app *) option { min-block-size: var(--ctl-h); }
+	}
 }
 
 /* password + reveal and other control groups */
@@ -1084,6 +1180,7 @@ input[readonly] { cursor: default; }
 
 /* checkbox */
 .cbi-checkbox { display: inline-flex; align-items: center; min-height: var(--ctl-h); gap: var(--sp-2); }
+input.cbi-checkbox { min-height: 0; }   /* banIP puts the class on the box itself */
 /* its help 8px under the box, as under a field: the box (16px) sits
    centred in a control-high row */
 @media (width > 720px) {
@@ -1307,6 +1404,68 @@ input[type="button"], input[type="reset"], input[type="submit"]) {
 .cbi-dropdown.btn[open] > ul.dropdown > li.focus, .cbi-dropdown.cbi-button[open] > ul.dropdown > li.focus { background: var(--s4); }
 .cbi-dropdown.btn.spinning > ul.dropdown, .cbi-dropdown.cbi-button.spinning > ul.dropdown { display: none !important; }
 .cbi-dropdown.btn[open] > ul.preview, .cbi-dropdown.cbi-button[open] > ul.preview { display: flex; }
+
+/* LuCI sizes an open list to the room left in its scroll parent, and picks
+   that parent before the list opens: a card that scrolls sideways (a
+   section holding a table, every card at 721-1180 px) capped long lists at
+   2-4 rows (DNS record types, log facility) or flipped them upwards. Focus
+   lands on the dropdown before it opens, so a focused one lifts the
+   card's scroller as an open one does */
+.cbi-section:has(.cbi-dropdown:focus-within), .cbi-tblsection:has(.cbi-dropdown:focus-within) { overflow: visible; }
+/* the bridge VLAN table sets its scroller inline (tools/network.js), which
+   beat this and the open rule: its port list showed 3 of 4 rows */
+.cbi-tblsection[style*="overflow"]:has(.cbi-dropdown:is(:focus-within, [open])) { overflow: visible !important; }
+
+/* rich choices (flow offloading, RA flags): LuCI sets each description
+   min-width: 25vw to widen its list; ours is the field's width, so from
+   1440 px the text ran past the row's clip ("indicates tl"). In the
+   chosen row only the title is bold */
+.cbi-dropdown[open] > ul.dropdown > li .hide-close[style*="min-width"] { min-width: 0 !important; }
+.cbi-dropdown[open] > ul.dropdown > li > label { min-width: 0; }
+.cbi-dropdown[open] > ul.dropdown > li .hide-close > span { font-weight: 400; }
+
+/* the current choice keeps its colour under focus and the pointer: LuCI
+   focuses it on open, and the grey left only the weight to tell it */
+.cbi-dropdown:not(.btn, .cbi-button)[open] > ul.dropdown > li[selected]:is(:hover, .focus) { color: var(--accent-text); }
+/* LuCI 25.12 never binds its mouseover-to-focus, so the pointer and the
+   keyboard each mark a row: hover takes the lighter step, and the focused
+   row (fill and edge) stays the one Enter picks */
+.cbi-dropdown[open] > ul.dropdown > li:hover:not(.focus) { background: var(--s3); }
+
+/* a chosen network or zone is already a badge: it is the chip, without a
+   second frame around it (Covered networks, zone forwards) */
+.cbi-dropdown[multiple] > ul:not(.dropdown) > li[display]:has(> label > :is(.ifacebadge, .zonebadge):only-child) { padding: 0; background: none; border: 0; }
+/* the custom-value field of a multiple choice spans its row, as in a
+   single choice (it stopped at the label's content width) */
+.cbi-dropdown[multiple][open] > ul.dropdown > li > label:has(> .create-item-input) { flex: 1 1 auto; }
+
+/* a zone's live interface inside its badge: the zone badge already frames
+   it; the active ring drew a pill in a pill (zone pickers, closed and open) */
+.zonebadge .ifacebadge-active { box-shadow: none; }
+
+/* a dropdown in a table cell is as narrow as its column (bridge VLAN
+   ports: 4em) and so was its list: "Not Member" read "Not Mem". The open
+   list takes its choices' width instead (LuCI's touch layout, which sets
+   left and right itself, keeps its full-width list) */
+.td .cbi-dropdown:not(.btn, .cbi-button)[open] > ul.dropdown:not([style*="left:"]) {
+	right: auto;
+	width: max-content;
+	max-width: min(24em, calc(100vw - 2 * var(--sp-4)));
+}
+
+/* LuCI's touch layout (any touch screen, not only phones) stretches the
+   list from the viewport's left edge to its right and hangs 50vh of it
+   under a field it scrolls to mid-screen: on a tablet it crossed the whole
+   page and the dialog, and everywhere it ended past the screen's foot.
+   It stops above the foot (and a phone's bottom bar); wider than a phone
+   it keeps to its field */
+.cbi-dropdown[open] > ul.dropdown[style*="left:"] {
+	max-height: calc(50vh - var(--ctl-h) - var(--sp-3) - var(--bar-h, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+}
+@media (width > 720px) {
+	.cbi-dropdown:not(.btn, .cbi-button)[open] > ul.dropdown[style*="left:"] { left: -1px !important; right: -1px !important; }
+	.cbi-dropdown:is(.btn, .cbi-button)[open] > ul.dropdown[style*="left:"] { left: auto !important; right: -1px !important; }
+}
 
 
 /* button variants (after the dropdown rules so ComboButtons pick them up) */
@@ -1553,6 +1712,7 @@ table { border-collapse: separate; border-spacing: 0; width: 100%; }
 .vt-actmenu-item:focus-visible { background: var(--s3); outline: 2px solid var(--focus); outline-offset: -2px; }
 .vt-actmenu-item.is-danger { color: var(--err); }
 .vt-actmenu-item[disabled] { opacity: .5; cursor: default; }
+.vt-actmenu-item[disabled]:hover { background: none; }
 .drag-handle { cursor: grab; color: var(--text-3); padding: 0 6px; font-family: var(--mono); }
 .drag-over-above > .td, .drag-over-above > td { box-shadow: inset 0 2px 0 var(--accent-text); }
 .drag-over-below > .td, .drag-over-below > td { box-shadow: inset 0 -2px 0 var(--accent-text); }
@@ -2424,6 +2584,15 @@ html:not([data-darkmode="true"]) .vt-login-page {
 .vt-login-foot { margin: var(--sp-4) 0 0; text-align: center; color: var(--text-3); font: var(--fs-micro)/1.4 var(--mono); letter-spacing: .03em; }
 
 /* ------------------------------------------------ 9. stock page layouts */
+
+/* Statistics -> Graphs: each select and the button that applies it, one
+   control group (they touched, a pixel or two out of line) */
+body[data-page="admin-statistics-graphs"] p.controls > .nowrap {
+	display: inline-flex; align-items: stretch; vertical-align: top;
+	margin: 0 var(--sp-2) var(--sp-2) 0;
+}
+body[data-page="admin-statistics-graphs"] p.controls > .nowrap > select { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+body[data-page="admin-statistics-graphs"] p.controls > .nowrap > .cbi-button { margin-left: -1px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
 
 /* Network -> Interfaces: device box + stats grid */
 .cbi-section-table .td[data-name="_ifacebox"] { width: 1%; padding-right: var(--sp-5); }
