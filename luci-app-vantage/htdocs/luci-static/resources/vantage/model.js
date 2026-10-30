@@ -174,9 +174,11 @@ return baseclass.extend({
 
 	/* Pick the interface carrying traffic in/out of this device, and the
 	   physical device its counters live on. Prefer interfaces with a default
-	   route, keeping wan/wan6/*wan* priority within that set. Fall back to
-	   WAN names, then the first up interface. A bridge is followed to its
-	   wired member (wireless members skipped; netifd 'ethernet' preferred); DSA with
+	   route, as the kernel picks among them: IPv4 before IPv6, then the
+	   lowest metric (multi-WAN: the backup uplink has the higher one), with
+	   wan/wan6/*wan* priority only on a tie. Fall back to WAN names, then
+	   the first up interface. A bridge is followed to its wired member
+	   (wireless members skipped; netifd 'ethernet' preferred); DSA with
 	   hardware offload uses the conduit's counters. */
 	resolveUplink: function(ifaces, devs, wirelessNames) {
 		var self = this;
@@ -190,15 +192,31 @@ return baseclass.extend({
 		function preferredWan(list) {
 			return named(list, /^wan$/) || named(list, /^wan6$/) || named(list, /wan/i);
 		}
+		function wanRank(i) {
+			return /^wan$/.test(i.interface) ? 0 : /^wan6$/.test(i.interface) ? 1 : /wan/i.test(i.interface) ? 2 : 3;
+		}
+		/* netifd lists a route's metric only when the route sets one; the
+		   interface's metric applies otherwise */
+		function metric(i, r) {
+			var m = r.metric != null ? +r.metric : +i.metric;
+			return isFinite(m) ? m : 0;
+		}
 		function defRoute(i) {
 			return arr(i.route).filter(function(r) {
 				return r && +r.mask === 0 && (r.target === '0.0.0.0' || r.target === '::');
+			}).sort(function(a, b) {
+				return (a.target === '::') - (b.target === '::') || metric(i, a) - metric(i, b);
 			})[0] || null;
 		}
 
 		/* An AP may retain an up, unmanaged WAN port without any routes. */
-		var routed = up.filter(defRoute);
-		var pick = preferredWan(routed) || routed[0] || preferredWan(up) || up[0];
+		var routed = up.map(function(i, n) {
+			var r = defRoute(i);
+			return r ? { i: i, v6: r.target === '::' ? 1 : 0, metric: metric(i, r), wan: wanRank(i), n: n } : null;
+		}).filter(Boolean).sort(function(a, b) {
+			return a.v6 - b.v6 || a.metric - b.metric || a.wan - b.wan || a.n - b.n;
+		});
+		var pick = routed.length ? routed[0].i : preferredWan(up) || up[0];
 		if (!pick) return null;
 
 		var l3 = pick.l3_device || pick.device, dev = l3, d = devs[dev];
