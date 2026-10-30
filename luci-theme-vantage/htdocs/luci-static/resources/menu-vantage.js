@@ -243,6 +243,18 @@ function helpCut(desc, cs, line) {
 	return Math.ceil(r.right - box.left) + 1;
 }
 
+/* Where the text of a folded help line ends: a line that wraps early (a
+   long word next, a narrow phone) ends well short of the box, so the fade
+   is placed there. Offset in px from the text's left edge, or null. */
+function helpLineEnd(desc, cs, line) {
+	const range = document.createRange();
+	range.selectNodeContents(desc);
+	const box = desc.getBoundingClientRect(), limit = box.top + (parseFloat(cs.paddingTop) || 0) + line + 1;
+	let right = 0;
+	for (const r of range.getClientRects()) if (r.width && r.bottom <= limit) right = Math.max(right, r.right);
+	return right ? Math.ceil(right - box.left) : null;
+}
+
 /* ---------------------------------------------------------------------------
  * Stock-page enhancers, only where CSS cannot restructure LuCI's markup
  * (Status -> Overview: fused memory bar, per-mount storage bars, radio band
@@ -1179,9 +1191,11 @@ return baseclass.extend({
 
 	openPalette() {
 		if (this.pal) return;
-		/* a row menu or Appearance left open would take the palette's Escape */
+		/* a row menu, Appearance or a pinned help box left open would take
+		   the palette's Escape */
 		this.closeActMenu(false);
 		this.closeAppearance(false);
+		this.closeHelp(false);
 		/* focus inside the flyout goes back to what opened the flyout, since
 		   closing it hides the element that had focus */
 		const from = document.activeElement;
@@ -1457,6 +1471,7 @@ return baseclass.extend({
 
 	openAppearance(btn) {
 		this.closeActMenu(false);
+		this.closeHelp(false);
 		const box = this.appearanceEl();
 		this.syncAppearance();
 		box.style.maxHeight = '';
@@ -1859,7 +1874,8 @@ return baseclass.extend({
 			const btn = desc.querySelector(':scope > .vt-help');
 			if (!btn || btn.hidden || btn.contains(ev.target) || ev.target.closest('a')) return;
 			if (String(window.getSelection())) return;
-			btn.click();
+			if (this.helpBtn === btn && this.helpPinned) this.closeHelp(false);
+			else this.openHelp(btn, desc, true, false);
 		});
 	},
 
@@ -1915,12 +1931,13 @@ return baseclass.extend({
 			const line = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.6;
 			const text = desc.scrollHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
 			const fold = text > line * 1.5 && !helpWarns(desc);
-			fits.push([ h, desc, fold, fold ? helpCut(desc, cs, line) : null ]);
+			const cut = fold ? helpCut(desc, cs, line) : null;
+			fits.push([ h, desc, fold, cut, line, fold && cut === null ? helpLineEnd(desc, cs, line) : null ]);
 		}
 		/* an intro's (i) sits in its line, so showing it moves the text:
 		   that line is measured again once laid out */
 		const again = [];
-		for (const [ h, desc, fold, cut ] of fits) {
+		for (const [ h, desc, fold, cut, line, end ] of fits) {
 			const state = fold ? 'fold' : 'show';
 			if (h.holder.getAttribute('data-v-help') !== state) h.holder.setAttribute('data-v-help', state);
 			if (h.btn.hidden === fold) {
@@ -1933,7 +1950,9 @@ return baseclass.extend({
 				continue;
 			}
 			desc.setAttribute('data-v-end', cut === null ? 'fade' : 'cut');
-			if (cut !== null) desc.style.setProperty('--vt-cut', cut.toFixed(0) + 'px');
+			if (cut !== null || end !== null) desc.style.setProperty('--vt-cut', (cut !== null ? cut : end).toFixed(0) + 'px');
+			else desc.style.removeProperty('--vt-cut');
+			desc.style.setProperty('--vt-line', line.toFixed(2) + 'px');
 		}
 		if (again.length) window.requestAnimationFrame(() => this.fitHelps(again));
 	},
@@ -1957,12 +1976,23 @@ return baseclass.extend({
 		pop.addEventListener('focusout', ev => {
 			if (this.helpBtn && !pop.contains(ev.relatedTarget) && ev.relatedTarget !== this.helpBtn) this.closeHelp(false);
 		});
-		/* capture, so a modal under it does not take the same Escape */
+		/* capture, so a modal under it does not take the same Escape; an
+		   open list takes its own first. Focus goes back to (i) only from
+		   the box or (i), not from a field typed in under a hover box. */
+		const openList = CSS.supports('selector(:open)') ? 'select:open, .cbi-dropdown[open]' : '.cbi-dropdown[open]';
 		document.addEventListener('keydown', ev => {
-			if (this.helpBtn && ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); this.closeHelp(true); }
+			if (!this.helpBtn || ev.key !== 'Escape' || (ev.target.closest && ev.target.closest(openList))) return;
+			ev.preventDefault();
+			ev.stopPropagation();
+			const from = document.activeElement;
+			this.closeHelp(pop.contains(from) || from === this.helpBtn);
 		}, true);
+		/* a click on an intro's folded line toggles the box itself */
 		document.addEventListener('pointerdown', ev => {
-			if (this.helpBtn && !pop.contains(ev.target) && !this.helpBtn.contains(ev.target)) this.closeHelp(false);
+			if (!this.helpBtn || pop.contains(ev.target) || this.helpBtn.contains(ev.target)) return;
+			const intro = this.helpBtn.parentNode;
+			if (intro.matches('.cbi-map-descr, .cbi-section-descr') && intro.contains(ev.target)) return;
+			this.closeHelp(false);
 		}, true);
 		window.addEventListener('resize', () => this.closeHelp(false));
 		window.addEventListener('scroll', ev => { if (!pop.contains(ev.target)) this.closeHelp(false); }, true);
@@ -1984,12 +2014,19 @@ return baseclass.extend({
 
 	openHelp(btn, desc, pinned, focusIn) {
 		window.clearTimeout(this.helpTimer);
+		const pop = this.helpPopEl();
+		const enter = () => {
+			const link = focusIn && pop.querySelector('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+			if (link) link.focus();
+		};
+		/* open already (on hover or keyboard focus): a click pins it, Enter
+		   also moves into it */
 		if (this.helpBtn === btn) {
 			this.helpPinned = this.helpPinned || pinned;
+			enter();
 			return;
 		}
 		this.closeHelp(false);
-		const pop = this.helpPopEl();
 		const copy = [];
 		desc.childNodes.forEach(n => {
 			if (n === btn) return;
@@ -2019,10 +2056,7 @@ return baseclass.extend({
 		btn.setAttribute('aria-expanded', 'true');
 		this.helpBtn = btn;
 		this.helpPinned = pinned;
-		if (focusIn) {
-			const link = pop.querySelector('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
-			if (link) link.focus();
-		}
+		enter();
 	},
 
 	closeHelp(refocus) {

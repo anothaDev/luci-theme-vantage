@@ -151,7 +151,7 @@ msgid "%s (new this session)"
 msgstr "%s（本次新增）"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:25
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:183
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:185
 msgid "%s Gbit/s"
 msgstr "%s Gbit/s"
 
@@ -166,7 +166,7 @@ msgstr "%s MHz"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:25
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:52
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:183
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:185
 msgid "%s Mbit/s"
 msgstr "%s Mbit/s"
 
@@ -505,7 +505,7 @@ msgctxt "vantage"
 msgid "CPU"
 msgstr "CPU"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:95
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:97
 msgid "Cache (reclaimable)"
 msgstr "缓存（可回收）"
 
@@ -785,7 +785,7 @@ msgstr "默认接受转发"
 msgid "Frames to device"
 msgstr "发往设备的帧"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:96
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:98
 msgctxt "vantage"
 msgid "Free"
 msgstr "空闲"
@@ -893,7 +893,7 @@ msgstr "身份"
 msgid "In no zone: the default policies apply."
 msgstr "不属于任何区域：适用默认策略。"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:94
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:96
 msgctxt "vantage"
 msgid "In use"
 msgstr "已用"
@@ -1391,7 +1391,7 @@ msgstr "对互联网开放：%d"
 msgid "Open network"
 msgstr "开放网络"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:520
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:532
 msgid "OpenWrt device"
 msgstr "OpenWrt 设备"
 
@@ -1533,7 +1533,7 @@ msgstr "重置"
 msgid "Reverse DNS of its address"
 msgstr "其地址的反向 DNS"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:532
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:544
 msgid "Root (overlay)"
 msgstr "Root（overlay）"
 
@@ -1682,7 +1682,7 @@ msgstr "Tbit/s"
 msgid "Temperature %s"
 msgstr "温度 %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:532
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:544
 msgid "Temporary (RAM)"
 msgstr "临时（RAM）"
 
@@ -2213,7 +2213,7 @@ msgstr "来自任意地址"
 msgid "from anywhere except %s"
 msgstr "来自除 %s 外的任意地址"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:184
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:186
 msgid "full duplex"
 msgstr "全双工"
 
@@ -2221,7 +2221,7 @@ msgstr "全双工"
 msgid "gateway %s"
 msgstr "网关 %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:184
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:186
 msgid "half duplex"
 msgstr "半双工"
 

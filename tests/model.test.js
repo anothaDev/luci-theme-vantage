@@ -158,6 +158,21 @@ test('resolveUplink: an IPv4 default route beats an IPv6-only one, whatever the 
 	assert.equal(u.gateway, '192.0.2.1');
 });
 
+test('resolveUplink: a DS-Lite or MAP-E softwire shows the IPv6 line, not the tunnel', () => {
+	for (const proto of [ 'dslite', 'map', '464xlat' ]) {
+		const u = model.resolveUplink([ ...IFACES.slice(0, 1),
+			{ interface: 'wan', up: true, proto: 'dhcp', device: 'eth1' },
+			{ interface: 'wan6', up: true, proto: 'dhcpv6', device: 'eth1', l3_device: 'eth1',
+				route: [ { target: '::', mask: 0, nexthop: 'fe80::1' } ] },
+			{ interface: 'wan6_4', up: true, proto, l3_device: proto === 'map' ? 'map-wan6_4' : 'ds-wan6_4',
+				route: [ { target: '0.0.0.0', mask: 0, nexthop: '0.0.0.0' } ] }
+		], {});
+		assert.equal(u.iface, 'wan6', proto);
+		assert.equal(u.dev, 'eth1');
+		assert.equal(u.gateway, 'fe80::1');
+	}
+});
+
 test('resolveUplink: multi-WAN picks the lowest metric, not the name (#56)', () => {
 	/* two PPPoE uplinks, usb preferred by metric; their IPv6 aliases keep
 	   metric 0, the modem links have no default route */
@@ -184,6 +199,17 @@ test('resolveUplink: multi-WAN picks the lowest metric, not the name (#56)', () 
 	/* equal metrics: the name decides, as before */
 	const tie = ifaces.map(i => i.interface === 'usb' ? { ...i, metric: 20 } : i);
 	assert.equal(model.resolveUplink(tie, {}).iface, 'wan');
+	/* a default in another table (a VPN's own, for policy routing) does not compete */
+	const vpn = { interface: 'vpn', up: true, proto: 'wireguard', l3_device: 'wg0', metric: 1, route: [ { target: '0.0.0.0', mask: 0, nexthop: '0.0.0.0', table: 100 } ] };
+	assert.equal(model.resolveUplink([ ...ifaces, vpn ], {}).iface, 'usb');
+	assert.equal(model.resolveUplink([ ...ifaces, { ...vpn, route: [ { ...vpn.route[0], table: undefined } ], ip4table: '100' } ], {}).iface, 'usb');
+	assert.equal(model.resolveUplink([ ...ifaces, { ...vpn, route: [ { ...vpn.route[0], table: 254 } ] } ], {}).iface, 'vpn');
+});
+
+test('resolveUplink: an IPv6 metric of 0 counts as 1024, as the kernel stores it', () => {
+	const v6 = (name, metric) => ({ interface: name, up: true, device: 'eth' + metric, metric, route: [ { target: '::', mask: 0, nexthop: '2001:db8::1' } ] });
+	assert.equal(model.resolveUplink([ v6('backup6', 0), v6('wan6', 100) ], {}).iface, 'wan6');
+	assert.equal(model.resolveUplink([ v6('backup6', 2000), v6('wan6', 0) ], {}).iface, 'wan6');
 });
 
 test('resolveUplink: no default route retains WAN and first-up fallbacks', () => {

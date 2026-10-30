@@ -20,13 +20,13 @@ LUCI_DESCRIPTION:=Live network dashboard (landing page under admin/dashboard): d
 	Read-only except for station names, which are kept in /etc/config/vantage.
 # rpcd-mod-iwinfo provides the station lists (iwinfo info/assoclist).
 # rpcd-mod-ucode runs the app's plugin (/usr/share/rpcd/ucode/luci.vantage:
-# key-free wireless status, validated alias writes), which imports the uci
-# and ubus ucode modules; luci-base pulls all three in already, they are
-# listed because the plugin needs them.
+# key-free wireless status, thermal zones, validated alias writes), which
+# imports the uci, ubus and fs ucode modules; luci-base pulls all four in
+# already, they are listed because the plugin needs them.
 # Optional at runtime, degrade when absent: rpcd-mod-rrdns (reverse DNS
 # names), umdns (mDNS names), hostapd ubus objects (WPS names, client
 # capabilities).
-LUCI_DEPENDS:=+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus
+LUCI_DEPENDS:=+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs
 LUCI_PKGARCH:=all
 LUCI_MAINTAINER:=anothaDev <10740588+anothaDev@users.noreply.github.com>
 LUCI_URL:=https://github.com/anothaDev/luci-theme-vantage

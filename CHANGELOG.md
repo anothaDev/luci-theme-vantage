@@ -11,9 +11,10 @@ Each release ships both packages, `luci-theme-vantage` and
 - **Dashboard: the uplink in use when there are several** (#56,
   [@wolvth](https://github.com/wolvth)). With two WANs the dashboard
   showed the one named wan, even when traffic left through the other,
-  preferred by its lower metric. It now picks as the kernel does: an
-  IPv4 default route before an IPv6 one, then the lowest metric; the
-  name only breaks a tie.
+  preferred by its lower metric. It now picks as the kernel does for
+  ordinary traffic: a default route in the main table, IPv4 before IPv6,
+  then the lowest metric; the name only breaks a tie. With DS-Lite or
+  MAP-E it shows the IPv6 line, not the tunnel.
 - **Dashboard: temperature** (#56). The CPU check and the System tile
   show the hottest temperature sensor, and the tile's tooltip lists each
   one. A new read-only plugin method, `luci.vantage thermal`, reads the
