@@ -850,15 +850,19 @@ legend { font-size: var(--fs-md); font-weight: 600; padding: 0; margin-bottom: v
 }
 .cbi-value-helpicon img { width: 14px; height: 14px; opacity: .6; }
 
-/* folding help (menu-vantage.js): one line until (i) unfolds it; the
-   button shares the label cell, so both are placed explicitly. The cap is
-   one line as laid out (lh): a minimum font size (Firefox) raises the
-   line height but not the em, and 1.5em cut the line's foot */
-.cbi-value[data-v-help="closed"] > .cbi-value-field > .vt-help-text {
-	display: -webkit-box; -webkit-box-orient: vertical;
-	-webkit-line-clamp: 1; line-clamp: 1;
+/* folding help (menu-vantage.js): help longer than a line folds to one
+   and (i) shows all of it in a box. The line is one as laid out (lh): a
+   minimum font size (Firefox) raises the line height but not the em. It
+   ends after the first sentence (cut, at --vt-cut), else it fades out.
+   The button shares the label cell, so both are placed explicitly. */
+.cbi-value[data-v-help="fold"] > .cbi-value-field > .vt-help-text {
 	max-height: 1lh;
 	overflow: hidden;
+}
+.vt-help-text[data-v-end="cut"] { clip-path: inset(0 calc(100% - var(--vt-cut, 100%)) 0 -2px); }
+.vt-help-text[data-v-end="fade"] {
+	-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 4em), transparent);
+	mask-image: linear-gradient(to right, #000 calc(100% - 4em), transparent);
 }
 .cbi-value[data-v-help] > .cbi-value-title { grid-row: 1; grid-column: 1; }
 .cbi-value[data-v-help] > .cbi-value-field { grid-row: 1; }
@@ -877,15 +881,12 @@ legend { font-size: var(--fs-md); font-weight: 600; padding: 0; margin-bottom: v
    with captioned selects) has its text on the second line: so has (i) */
 .cbi-value:has(> .cbi-value-title > br:first-child) > .vt-help { margin-top: 1.5em; }
 
-/* page and section intros fold the same way, (i) leading the first line;
-   the fold needs the button, so without it the text shows whole */
-:is(.cbi-map-descr, .cbi-section-descr)[data-v-help="closed"]:has(> .vt-help) {
-	display: -webkit-box; -webkit-box-orient: vertical;
-	-webkit-line-clamp: 1; line-clamp: 1;
+/* page and section intros fold the same way, (i) leading the line */
+:is(.cbi-map-descr, .cbi-section-descr)[data-v-help="fold"] {
+	max-height: 1lh;
 	overflow: hidden;
+	cursor: pointer;
 }
-:is(.cbi-map-descr, .cbi-section-descr)[data-v-help="closed"]:has(> .vt-help) { max-height: 1lh; }
-:is(.cbi-map-descr, .cbi-section-descr)[data-v-help="closed"]:has(> .vt-help:not([hidden])) { cursor: pointer; }
 :is(.cbi-map-descr, .cbi-section-descr) > .vt-help {
 	display: inline-grid; place-items: center;
 	width: 1.5em; height: 1.5em;
@@ -899,6 +900,20 @@ legend { font-size: var(--fs-md); font-weight: 600; padding: 0; margin-bottom: v
 .vt-help svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .vt-help:hover { color: var(--text); background: var(--s3); }
 .vt-help[aria-expanded="true"] { color: var(--accent-text); }
+
+/* the box (i) opens, over the page and any modal (menu-vantage.js) */
+.vt-help-pop {
+	position: fixed; z-index: 1100;
+	width: max-content; max-width: min(34em, calc(100vw - 16px));
+	padding: 10px 12px;
+	overflow-y: auto; overscroll-behavior: contain;
+	border: 1px solid var(--line-2); border-radius: var(--r);
+	background: var(--s2); box-shadow: var(--shadow-pop);
+	color: var(--text-2);
+	font-size: var(--fs-sm); line-height: 1.5;
+	overflow-wrap: anywhere;
+}
+.vt-help-pop[hidden] { display: none; }
 
 /* a heading that repeats the breadcrumb or its tab (menu-vantage.js):
    gone from view, still a heading for screen readers */
