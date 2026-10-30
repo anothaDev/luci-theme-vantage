@@ -25,6 +25,7 @@ const callWirelessDevices = rpc.declare({ object: 'luci-rpc', method: 'getWirele
 
 const THEME_KEY = 'vantage.theme';
 const RAIL_KEY = 'vantage.rail';
+const LOGIN_KEY = 'vantage.login';      /* read by the login page's login.js */
 
 /* 24px stroke icons, drawn for this theme: constant [tag, attributes] lists,
    built with createElementNS (no markup parsing, no user data) */
@@ -1168,6 +1169,9 @@ return baseclass.extend({
 		if (pref !== 'dark') list.push({ title: _('Use dark theme'), path: _('Appearance', 'vantage-theme'), icon: 'moon', run: () => this.setTheme('dark') });
 		if (pref !== 'light') list.push({ title: _('Use light theme'), path: _('Appearance', 'vantage-theme'), icon: 'sun', run: () => this.setTheme('light') });
 		if (pref !== 'auto') list.push({ title: _('Follow system theme'), path: _('Appearance', 'vantage-theme'), icon: 'auto', run: () => this.setTheme('auto') });
+		const login = this.loginPref(), names = this.loginNames();
+		for (const k of [ 'grid', 'stars', 'none' ])
+			if (k !== login) list.push({ title: '%s: %s'.format(_('Login background'), names[k]), path: _('Appearance', 'vantage-theme'), icon: 'page', run: () => this.setLoginPref(k) });
 		list.push({ title: _('Log out'), path: _('Session'), icon: 'logout', segs: [ 'admin', 'logout' ] });
 		list.forEach(a => { a.hay = a.path + ' › ' + a.title; a.group = _('Actions'); });
 		return list;
@@ -1175,8 +1179,9 @@ return baseclass.extend({
 
 	openPalette() {
 		if (this.pal) return;
-		/* a row menu left open would take the palette's Escape */
+		/* a row menu or Appearance left open would take the palette's Escape */
 		this.closeActMenu(false);
+		this.closeAppearance(false);
 		/* focus inside the flyout goes back to what opened the flyout, since
 		   closing it hides the element that had focus */
 		const from = document.activeElement;
@@ -1348,23 +1353,126 @@ return baseclass.extend({
 
 		const btn = document.getElementById('vt-theme');
 		if (btn) {
-			const names = { auto: _('Auto', 'vantage-theme'), light: _('Light', 'vantage-theme'), dark: _('Dark', 'vantage-theme') };
-			const label = '%s: %s'.format(_('Colour theme'), names[pref]) + (pref === 'auto' ? ' (%s)'.format(dark ? names.dark : names.light) : '');
 			btn.textContent = '';
 			btn.appendChild(svg(pref === 'auto' ? 'auto' : (pref === 'dark' ? 'moon' : 'sun'), 18));
-			btn.setAttribute('aria-label', label);
-			btn.setAttribute('title', label);
 		}
+		this.syncAppearance();
+	},
+
+	/* the login page's backdrop (login.js): grid packets unless set */
+	loginPref() {
+		const p = storageGet(LOGIN_KEY);
+		return (p === 'stars' || p === 'none') ? p : 'grid';
+	},
+
+	loginNames() {
+		return { grid: _('Grid packets'), stars: _('Starfield'), none: _('None', 'vantage-theme') };
+	},
+
+	setLoginPref(pref) {
+		storageSet(LOGIN_KEY, pref === 'grid' ? null : pref);
+		this.syncAppearance();
 	},
 
 	setupTheme() {
 		const btn = document.getElementById('vt-theme');
-		const order = { auto: 'light', light: 'dark', dark: 'auto' };
-		if (btn) btn.addEventListener('click', () => this.setTheme(order[this.themePref()]));
+		if (btn) {
+			btn.addEventListener('click', () => {
+				if (this.appearBtn) this.closeAppearance(false);
+				else this.openAppearance(btn);
+			});
+			btn.addEventListener('keydown', ev => {
+				if (ev.key !== 'ArrowDown' || this.appearBtn) return;
+				ev.preventDefault();
+				this.openAppearance(btn);
+			});
+		}
 		const mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
 		if (mq && mq.addEventListener) mq.addEventListener('change', () => { if (this.themePref() === 'auto') this.applyTheme(); });
-		window.addEventListener('storage', ev => { if (ev.key === THEME_KEY) this.applyTheme(); });
+		window.addEventListener('storage', ev => {
+			if (ev.key === THEME_KEY) this.applyTheme();
+			else if (ev.key === LOGIN_KEY) this.syncAppearance();
+		});
 		this.applyTheme();
+	},
+
+	/* Appearance, under the colour-theme button: the colour theme and the
+	   login background, each a native radio group (the arrow keys move
+	   within it) drawn as segments. Choices apply at once and stay open;
+	   Escape, Tab out of either end, a click outside, resizing or
+	   scrolling the page close it. */
+	appearanceEl() {
+		if (this.appear) return this.appear;
+		const group = (name, legend, opts, set) => E('fieldset', { 'class': 'vt-appear-set' }, [
+			E('legend', {}, [ legend ]),
+			E('div', { 'class': 'vt-appear-track' }, opts.map(o => {
+				const input = E('input', { 'type': 'radio', 'name': name, 'value': o[0] });
+				input.addEventListener('change', () => { if (input.checked) set(o[0]); });
+				return E('label', { 'class': 'vt-appear-opt' }, [ input ].concat(o[2] ? [ svg(o[2], 16) ] : [], [ E('span', {}, [ o[1] ]) ]));
+			}))
+		]);
+		const login = this.loginNames();
+		const box = E('div', { 'id': 'vt-appearance', 'class': 'vt-appearance', 'role': 'dialog', 'aria-label': _('Appearance', 'vantage-theme'), 'hidden': 'hidden' }, [
+			group('vt-colour', _('Colour theme'), [
+				[ 'auto', _('Auto', 'vantage-theme'), 'auto' ], [ 'light', _('Light', 'vantage-theme'), 'sun' ], [ 'dark', _('Dark', 'vantage-theme'), 'moon' ]
+			], v => this.setTheme(v)),
+			group('vt-login', _('Login background'), [ [ 'grid', login.grid ], [ 'stars', login.stars ], [ 'none', login.none ] ], v => this.setLoginPref(v))
+		]);
+		box.addEventListener('keydown', ev => {
+			if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); this.closeAppearance(true); }
+			else if (ev.key === 'Tab') {
+				const sets = box.querySelectorAll('fieldset');
+				const edge = ev.shiftKey ? sets[0] : sets[sets.length - 1];
+				if (edge.contains(ev.target)) { ev.preventDefault(); this.closeAppearance(true); }
+			}
+		});
+		document.addEventListener('keydown', ev => {
+			if (!this.appearBtn || box.contains(ev.target)) return;
+			if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); this.closeAppearance(true); }
+		}, true);
+		document.addEventListener('pointerdown', ev => {
+			if (this.appearBtn && !box.contains(ev.target) && !this.appearBtn.contains(ev.target)) this.closeAppearance(false);
+		}, true);
+		window.addEventListener('resize', () => this.closeAppearance(false));
+		window.addEventListener('scroll', ev => { if (!box.contains(ev.target)) this.closeAppearance(false); }, true);
+		document.body.appendChild(box);
+		return (this.appear = box);
+	},
+
+	syncAppearance() {
+		if (!this.appear) return;
+		const now = { 'vt-colour': this.themePref(), 'vt-login': this.loginPref() };
+		Array.prototype.forEach.call(this.appear.querySelectorAll('input[type="radio"]'), r => { r.checked = (now[r.name] === r.value); });
+	},
+
+	openAppearance(btn) {
+		this.closeActMenu(false);
+		const box = this.appearanceEl();
+		this.syncAppearance();
+		box.style.maxHeight = '';
+		box.hidden = false;
+		/* below the button, right edges aligned, above the phone's bottom bar */
+		const r = btn.getBoundingClientRect(), w = box.offsetWidth;
+		const rail = this.mqMobile && this.mqMobile.matches ? document.querySelector('.vt-rail') : null;
+		const floor = rail ? rail.getBoundingClientRect().top : window.innerHeight;
+		const top = r.bottom + 6;
+		if (box.offsetHeight > floor - 8 - top) box.style.maxHeight = Math.max(0, floor - 8 - top).toFixed(0) + 'px';
+		box.style.top = top.toFixed(0) + 'px';
+		box.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)).toFixed(0) + 'px';
+		btn.setAttribute('aria-controls', 'vt-appearance');
+		btn.setAttribute('aria-expanded', 'true');
+		this.appearBtn = btn;
+		const on = box.querySelector('input:checked');
+		if (on) on.focus();
+	},
+
+	closeAppearance(refocus) {
+		const btn = this.appearBtn;
+		if (!btn) return;
+		this.appearBtn = null;
+		this.appear.hidden = true;
+		btn.setAttribute('aria-expanded', 'false');
+		if (refocus && btn.isConnected) btn.focus();
 	},
 
 	/* --------------------------------------------------- host chip */

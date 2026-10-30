@@ -565,7 +565,37 @@ a.vt-crumb:hover { color: var(--text); }
 	text-decoration: none !important;
 }
 .vt-icon-btn:hover { background: var(--s3); color: var(--text); border-color: var(--line); }
-.vt-icon-btn .vt-fill, .vt-pal .vt-fill { fill: currentColor; stroke: none; }
+.vt-icon-btn .vt-fill, .vt-pal .vt-fill, .vt-appearance .vt-fill { fill: currentColor; stroke: none; }
+.vt-icon-btn[aria-expanded="true"] { background: var(--s3); color: var(--text); border-color: var(--line); }
+
+/* Appearance (menu-vantage.js), under the colour-theme button: each
+   setting a native radio group drawn as segments, like the page tabs */
+.vt-appearance {
+	position: fixed; z-index: 1100;
+	display: flex; flex-direction: column; gap: var(--sp-4);
+	width: max-content; max-width: calc(100vw - 16px); padding: var(--sp-4);
+	overflow-y: auto; overscroll-behavior: contain;
+	border: 1px solid var(--line-2); border-radius: var(--r-lg);
+	background: var(--s2); box-shadow: var(--shadow-pop);
+}
+.vt-appearance[hidden] { display: none; }
+.vt-appear-set { min-width: 0; margin: 0; padding: 0; border: 0; }
+.vt-appear-set > legend { margin: 0 0 6px; padding: 0; color: var(--text-3); font-size: var(--fs-micro); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.vt-appear-track { display: flex; background: var(--seg-bg); border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line); }
+.vt-appear-opt {
+	position: relative; flex: 1 1 0;
+	display: flex; align-items: center; justify-content: center; gap: 6px;
+	min-height: var(--ctl-h); padding: 0 12px;
+	border: 3px solid transparent; background-clip: padding-box;
+	border-radius: calc(var(--r) + 3px);
+	color: var(--text-2); font-weight: 500; white-space: nowrap;
+	cursor: pointer;
+}
+.vt-appear-opt:hover { color: var(--text); }
+.vt-appear-opt > input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
+.vt-appear-opt:has(> input:checked) { background-color: var(--seg-on); color: var(--accent-text); font-weight: 600; box-shadow: inset 0 0 0 1px var(--accent-line); }
+.vt-appear-opt:has(> input:focus-visible) { outline: 2px solid var(--focus); outline-offset: -1px; }
+.vt-appear-opt svg { flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
 .vt-host {
 	display: inline-flex; align-items: center; gap: 6px;
@@ -2343,7 +2373,9 @@ html:not([data-darkmode="true"]) .vt-login-page {
 		linear-gradient(90deg, rgba(20, 23, 26, .04) 1px, transparent 1px) 0 0 / 32px 32px,
 		var(--bg);
 }
-.vt-login { width: min(380px, 100%); }
+/* the starfield (login.js), between the grid and the card */
+.vt-login-sky { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.vt-login { position: relative; width: min(380px, 100%); }
 .vt-login-card {
 	padding: var(--sp-6);
 	background: var(--s1);
