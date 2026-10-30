@@ -232,6 +232,19 @@ test('networks: other interfaces, not loopback or the uplink, one per device', (
 	assert.deepEqual(model.networks(null, null), []);
 });
 
+test('temps: hottest first, millidegrees to degrees, implausible readings left out', () => {
+	assert.deepEqual(model.temps([
+		{ zone: 'thermal_zone0', type: 'cpu-thermal', temp: 52100 },
+		{ zone: 'thermal_zone1', type: '', temp: 77800 },
+		{ zone: 'thermal_zone2', type: 'x', temp: 200000 },
+		{ zone: 'thermal_zone3', type: 'y', temp: '60000' },
+		{ zone: 'thermal_zone4', type: 'z', temp: NaN },
+		{ zone: 'thermal_zone5', type: 'cold', temp: -45000 },
+		null
+	]), [ { name: 'thermal_zone1', celsius: 77.8 }, { name: 'cpu-thermal', celsius: 52.1 } ]);
+	assert.deepEqual(model.temps(null), []);
+});
+
 test('deviceModel: board_name beats a reference-design model string', () => {
 	assert.equal(model.deviceModel({ model: 'Qualcomm Technologies, Inc. IPQ5332/RDP442/AP-MI01.3', board_name: 'zyxel,nwa50be' }), 'Zyxel NWA50BE');
 	assert.equal(model.deviceModel({ model: 'Example Router X1', board_name: 'example,x1' }), 'Example Router X1');

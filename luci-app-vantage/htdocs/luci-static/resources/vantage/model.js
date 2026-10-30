@@ -59,6 +59,18 @@ return baseclass.extend({
 		return { pct: pct, cores: cur.cores.map(function(c, i) { return self.cpuPercent(prev.cores[i], c); }) };
 	},
 
+	/* luci.vantage thermal zones [ { zone, type, temp } ] (temp in
+	   millidegrees) -> [ { name, celsius } ], the hottest first; an
+	   implausible reading is left out */
+	temps: function(zones) {
+		return arr(zones).map(function(z) {
+			var c = z && typeof z.temp === 'number' && isFinite(z.temp) ? z.temp / 1000 : NaN;
+			if (!(c >= -40 && c <= 150)) return null;
+			var name = typeof z.type === 'string' && z.type ? z.type : typeof z.zone === 'string' ? z.zone : '';
+			return { name: fmt.safeText(name, 32), celsius: c };
+		}).filter(Boolean).sort(function(a, b) { return b.celsius - a.celsius; });
+	},
+
 	/* ---------------------------------------------------------- memory */
 
 	/* One bar, three segments that add up to total:
