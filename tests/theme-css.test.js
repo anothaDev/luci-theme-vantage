@@ -212,6 +212,13 @@ test('row menus: a busy ⋯ swaps its dots for the spinner and stays clickable; 
 	assert.match(menuJs, /menu\.style\.maxHeight = /);
 });
 
+test('firmware upload progress fills the modal width', () => {
+	const bar = themeRules.find((r) => r.sel.includes('#modal_overlay > .modal .cbi-progressbar'));
+	assert.ok(bar, 'found the modal progress rule');
+	assert.match(bar.body, /width:\s*100%/);
+	assert.match(bar.body, /max-width:\s*none/);
+});
+
 /* light and dark token blocks, var() references resolved */
 function tokens(block) {
 	const m = new RegExp(block.replace(/[[\]"]/g, '\\$&') + ' \\{([^}]*)\\}').exec(themeCss);
