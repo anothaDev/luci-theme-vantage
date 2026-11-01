@@ -8,6 +8,18 @@ Each release ships both packages, `luci-theme-vantage` and
 
 ## Unreleased
 
+- **Dashboard: an animated network path.** The path's dot grid carries
+  packets now, the login page's "Grid packets": downloads run from the
+  gateway's side, uploads back, more and faster with the live uplink
+  rate. Under Customize, "Network path background" switches to the
+  login page's starfield, streaming out of the device's node, or turns
+  it off. It runs at 20 frames a second on a quiet uplink and up to 30
+  on a busy one, pauses while another window has the focus, the tab is
+  hidden or the tile is out of view, and stands still with reduced
+  motion.
+- **Dashboard: the numbers under the network path stay in their cells**
+  on a phone; a long line such as the clients per band ends with "…"
+  instead of running into the next cell.
 - **Dashboard: wired devices** (#62,
   [@HyperdrivzZ](https://github.com/HyperdrivzZ)). The Clients tile now
   lists the devices on Ethernet ports too, with a Wi-Fi/Wired switch

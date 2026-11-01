@@ -238,6 +238,19 @@ text around it so it looks the same size.
   without samples (page hidden, failed polls) is hatched as "no data".
   The pick is saved in `localStorage`, validated on read; the tile's size
   and place don't change with it.
+- **Network path background**: behind the path, on its dot grid, one
+  canvas in the style picked under "Customize", the login page's two:
+  grid packets (the default; downloads run from the gateway's side,
+  uploads back, more and faster with the uplink's live rate, from a
+  couple at idle to 36 at 1 Gbit/s) or a starfield streaming out of this
+  device's node (faster with the rate), or none (the dot grid alone). It
+  draws over the path's height only, 20 frames a second up to
+  100 kbit/s and up to 30 from 10 Mbit/s (each frame is asked for when
+  it is drawn, not on every display refresh), and stops while another
+  window has the focus, the tab is hidden, the tile is out of view or
+  folded; with
+  reduced motion it is one still frame. Saved in `localStorage` like the
+  chart style.
 - **Firewall overview** (Network → Firewall → Overview, first tab):
   read-only, from uci `firewall`, read the way firewall4 (fw4, as 25.12
   ships it) reads it: its boolean spellings (1/on/true/yes, 0/off/false/

@@ -12,6 +12,7 @@
 'require vantage.series as series';
 'require vantage.layout as layout';
 'require vantage.wires as wires';
+'require vantage.backdrop as backdrop';
 
 /* Vantage dashboard (luci-app-vantage): a live, read-only overview of the
    device, its uplink, radios, SSIDs and stations. The only write is the
@@ -440,6 +441,23 @@ function writeChartStyle(v) {
 	} catch (e) {}
 }
 
+/* The network path's backdrop the viewer picked (backdrop.STYLES), in
+   this browser */
+var BACKDROP_KEY = 'vantage.backdrop.v1';
+
+function readBackdrop() {
+	var v = null;
+	try { v = window.localStorage.getItem(BACKDROP_KEY); } catch (e) { v = null; }
+	return backdrop.STYLES.indexOf(v) >= 0 ? v : backdrop.STYLES[0];
+}
+
+function writeBackdrop(v) {
+	try {
+		if (v === backdrop.STYLES[0]) window.localStorage.removeItem(BACKDROP_KEY);
+		else window.localStorage.setItem(BACKDROP_KEY, v);
+	} catch (e) {}
+}
+
 /* ================================================================= view */
 
 return view.extend({
@@ -557,6 +575,7 @@ return view.extend({
 		this.foldBtns = {};
 		this.layouts = readLayouts();
 		this.chartStyle = readChartStyle();
+		this.backdropStyle = readBackdrop();
 		this.editing = false;
 		this.drag = null;
 		this.applyMdns(data.mdns);
@@ -1052,6 +1071,22 @@ return view.extend({
 		return E('div', { 'class': 'vt-edit-field' }, [ E('label', { 'for': 'vt-chart-style' }, [ _('Throughput chart') ]), pick ]);
 	},
 
+	/* the network path's backdrop, picked under Customize */
+	buildBackdropPick: function() {
+		var self = this, names = { 'grid': _('Grid packets'), 'stars': _('Starfield'), 'none': _('None') };
+		var pick = E('select', { 'class': 'vt-select', 'id': 'vt-backdrop-style', 'change': function(ev) { self.setBackdrop(ev.target.value); } },
+			backdrop.STYLES.map(function(k) { return E('option', { 'value': k }, [ names[k] ]); }));
+		pick.value = this.backdropStyle;
+		return E('div', { 'class': 'vt-edit-field' }, [ E('label', { 'for': 'vt-backdrop-style' }, [ _('Network path background') ]), pick ]);
+	},
+
+	setBackdrop: function(v) {
+		if (backdrop.STYLES.indexOf(v) < 0 || v === this.backdropStyle) return;
+		this.backdropStyle = v;
+		writeBackdrop(v);
+		if (this.backdrop) this.backdrop.style(v);
+	},
+
 	setChartStyle: function(v) {
 		if (series.CHART_STYLES.indexOf(v) < 0 || v === this.chartStyle) return;
 		this.chartStyle = v;
@@ -1069,6 +1104,7 @@ return view.extend({
 			E('div', { 'class': 'vt-editbar-text' }, [ E('strong', {}, [ _('Customize the dashboard') ]), el.editHint ]),
 			el.editHidden,
 			this.buildChartPick(),
+			this.buildBackdropPick(),
 			E('div', { 'class': 'vt-editbar-actions' }, [
 				E('button', { 'type': 'button', 'class': 'vt-btn', 'click': function() {
 					var l = self.lay;
@@ -1319,11 +1355,14 @@ return view.extend({
 		this.wireMap = Object.create(null);
 		this.hero = null;
 		el.kpis = E('div', { 'class': 'vt-kpis vt-fold-keep' });
-		return this.foldable('hero', E('section', { 'class': 'vt-tile vt-hero', 'aria-label': _('Network path') }, [
+		var tile = this.foldable('hero', E('section', { 'class': 'vt-tile vt-hero', 'aria-label': _('Network path') }, [
 			tileHead('pulse', _('Network path'), [ E('span', { 'class': 'vt-hint vt-hint-wide' }, [ _('Click any node for details') ]), this.foldButton('hero', _('Show or hide the network path')) ]),
 			el.path,
 			el.kpis
 		]));
+		/* packets or stars behind the path, moved by the uplink's rate */
+		this.backdrop = backdrop.mount(tile, el.path, this.backdropStyle);
+		return tile;
 	},
 
 	/* the nodes the path shows: rebuilt only when this changes (a radio,
@@ -1491,6 +1530,7 @@ return view.extend({
 		txt(h.apUp, d.uptime != null ? _('up %s').format(fmt.duration(d.uptime)) : '');
 		h.upActive = !!(upR && upR.rx + upR.tx > 50e3);
 		h.upRate = upR ? upR.rx + upR.tx : 0;
+		if (this.backdrop) this.backdrop.update({ down: upR ? upR.rx : null, up: upR ? upR.tx : null, origin: h.ap });
 
 		if (m.wired) {
 			var nets = Object.create(null);

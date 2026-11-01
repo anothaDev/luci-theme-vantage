@@ -614,7 +614,7 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-kpi + .vt-kpi { box-shadow: -1px 0 0 var(--vt-line); border-radius: 0 var(--vt-r-sm) var(--vt-r-sm) 0; }
 .vt-app .vt-kpi-label { font-size: var(--vt-fs-micro); font-weight: 650; color: var(--vt-text-3); text-transform: uppercase; letter-spacing: .05em; }
 .vt-app .vt-kpi-value { font-size: var(--vt-fs-xl); font-weight: 700; letter-spacing: -.02em; line-height: 1.2; white-space: nowrap; }
-.vt-app .vt-kpi-sub { font-size: var(--vt-fs-sm); color: var(--vt-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vt-app .vt-kpi-sub { max-width: 100%; font-size: var(--vt-fs-sm); color: var(--vt-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vt-app .vt-kpi-warn .vt-kpi-value { color: var(--vt-warn); }
 @container vthero (max-width: 700px) {
 	.vt-app .vt-kpis { grid-template-columns: 1fr 1fr; }
@@ -627,6 +627,10 @@ html[data-darkmode="true"] .vt-app {
 	-webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.55), transparent 85%);
 	mask-image: linear-gradient(180deg, rgba(0,0,0,.55), transparent 85%);
 }
+/* the backdrop (vantage/backdrop.js): a canvas over the dot grid and
+   under the wires and nodes, drawing over the path's height only */
+.vt-app .vt-backdrop { position: absolute; left: 0; top: 0; pointer-events: none; border-radius: inherit; }
+.vt-app .vt-backdrop[hidden] { display: none; }
 .vt-app .vt-path {
 	position: relative;
 	display: grid;
