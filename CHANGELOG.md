@@ -34,14 +34,15 @@ Each release ships both packages, `luci-theme-vantage` and
   fits on a phone. Wired devices get reverse DNS names and vendors like
   Wi-Fi clients, and those on a bridge VLAN their network and address;
   devices reached through the uplink port are tagged Upstream. At most
-  128 are listed per port, and none when a bridge has learned 4,096
+  128 are listed per port, and none when the bridges have learned 4,096
   addresses or more, so a flood of made-up addresses cannot exhaust the
   device's memory.
 - **Dashboard: the right uplink port on a bridge with several.** An
   access point whose LAN bridge has more than one Ethernet port took the
   first one as its uplink, for the uplink's traffic, link speed and
   "No link" check. It now takes the port the bridge learned the gateway
-  on, else one with a link.
+  on (also over IPv6, and through a VLAN on the bridge), else one with a
+  link.
 - **Dashboard: Wi-Fi on firmware without netifd's wireless status** (#60,
   [@bakaranadnan-a11y](https://github.com/bakaranadnan-a11y)). Vendor
   drivers that bypass netifd, such as MediaTek's mtkwifi on GL.iNet

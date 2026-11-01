@@ -193,10 +193,10 @@ return baseclass.extend({
 	   wan/wan6/*wan* priority only on a tie. A softwire (DS-Lite, MAP-E,
 	   464XLAT) carries IPv4 over the IPv6 uplink, so it ranks after IPv6:
 	   the uplink shown is the line, not the tunnel. Fall back to WAN names, then
-	   the first up interface. A bridge is followed to its wired member
-	   (wireless members skipped): the port given as `via` (where the
-	   bridge learned the gateway), else one with a link, netifd
-	   'ethernet' preferred. `port` is the member known to lead to the
+	   the first up interface. A bridge, or a VLAN on one (br-lan.10), is
+	   followed to its wired member (wireless members skipped): the port
+	   given as `via` (where the bridge learned the gateway), else one with
+	   a link, netifd 'ethernet' preferred. `port` is the member known to lead to the
 	   gateway: `via`, or the bridge's only wired member; null when it has
 	   several and the gateway's port is unknown. DSA with hardware
 	   offload uses the conduit's counters. */
@@ -248,13 +248,16 @@ return baseclass.extend({
 		if (!pick) return null;
 
 		var l3 = pick.l3_device || pick.device, dev = l3, d = devs[dev], port = dev;
-		if (d && (d.type === 'bridge' || d.devtype === 'bridge') && Array.isArray(d['bridge-members'])) {
-			var members = d['bridge-members'];
+		var isBridge = function(x) { return !!x && (x.type === 'bridge' || x.devtype === 'bridge') && Array.isArray(x['bridge-members']); };
+		var vlanOf = /^(.+)\.\d{1,4}$/.exec(dev);
+		var br = isBridge(d) ? d : (vlanOf && isBridge(devs[vlanOf[1]])) ? devs[vlanOf[1]] : null;
+		if (br) {
+			var members = br['bridge-members'];
 			var wired = members.filter(function(m) { return !self.isWireless(m, devs[m], wirelessNames); });
 			var eth = wired.filter(function(m) { return devs[m] && devs[m].devtype === 'ethernet'; });
 			var lit = function(m) { return devs[m] && devs[m].carrier === true; };
 			var known = typeof via === 'string' && wired.indexOf(via) >= 0 ? via : null;
-			var next = known || eth.filter(lit)[0] || eth[0] || wired.filter(lit)[0] || wired[0] || members[0];
+			var next = known || eth.filter(lit)[0] || wired.filter(lit)[0] || eth[0] || wired[0] || members[0];
 			if (next) { dev = next; d = devs[dev] || null; }
 			port = known || (wired.length === 1 ? wired[0] : null);
 		}
@@ -492,7 +495,7 @@ return baseclass.extend({
 		var gwMac = null;
 		if (uplink && uplink.gateway) Object.keys(hints).forEach(function(k) {
 			var mac = names.normMac(k);
-			if (mac && arr(obj(hints[k]).ipaddrs).indexOf(uplink.gateway) >= 0) gwMac = mac;
+			if (mac && arr(obj(hints[k]).ipaddrs).concat(arr(obj(hints[k]).ip6addrs)).indexOf(uplink.gateway) >= 0) gwMac = mac;
 		});
 		if (uplink && gwMac && fdb[gwMac] && uplink.port !== fdb[gwMac].port) {
 			var via = this.resolveUplink(raw.ifaces, devs, wlNames, fdb[gwMac].port);

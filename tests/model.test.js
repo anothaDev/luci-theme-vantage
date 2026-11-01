@@ -510,3 +510,25 @@ test('build: an access point on a bridge with several ports takes the uplink whe
 	/* one wired member: that one leads to the gateway */
 	assert.equal(model.resolveUplink(IFACES, DEVS).port, 'eth0');
 });
+
+test('build: the uplink port through a bridge VLAN, an IPv6 gateway, and a port with a link before one without', () => {
+	const devs = {
+		'br-lan': { type: 'bridge', devtype: 'bridge', 'bridge-members': [ 'lan1', 'lan2' ] },
+		'br-lan.10': { devtype: 'vlan', carrier: true },
+		lan1: { devtype: 'ethernet', carrier: true, speed: '1000F' }, lan2: { devtype: 'ethernet', carrier: true, speed: '2500F' }
+	};
+	/* the AP's address on VLAN 10 of the bridge; the gateway learned on lan2 */
+	const ifaces = [ { interface: 'lan', up: true, l3_device: 'br-lan.10', device: 'br-lan.10', 'ipv4-address': [ { address: '192.0.2.10', mask: 24 } ],
+		route: [ { target: '0.0.0.0', mask: 0, nexthop: '192.0.2.1' } ] } ];
+	const fdb = [ { mac: '00:00:5e:00:53:01', port: 'lan2', bridge: 'br-lan', vlan: 10, seen: 1 } ];
+	const m = model.build({ ifaces, devs, hints: { '00:00:5E:00:53:01': { ipaddrs: [ '192.0.2.1' ] } }, fdb });
+	assert.deepEqual([ m.uplink.l3dev, m.uplink.dev, m.uplink.port, m.uplink.speed.mbps ], [ 'br-lan.10', 'lan2', 'lan2', 2500 ]);
+	/* IPv6 only: the gateway is a link-local next hop the hints list under ip6addrs */
+	const v6 = [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv6-address': [ { address: '2001:db8::10', mask: 64 } ],
+		route: [ { target: '::', mask: 0, nexthop: 'fe80::1' } ] } ];
+	const n = model.build({ ifaces: v6, devs, hints: { '00:00:5E:00:53:01': { ip6addrs: [ 'fe80::1' ] } }, fdb: [ { mac: '00:00:5e:00:53:01', port: 'lan2', bridge: 'br-lan', seen: 1 } ] });
+	assert.deepEqual([ n.uplink.dev, n.uplink.port, n.wiredHosts[0].gateway ], [ 'lan2', 'lan2', true ]);
+	/* the gateway not learned: an unplugged Ethernet member loses to a switch port with a link */
+	const dsa = { 'br-lan': { type: 'bridge', devtype: 'bridge', 'bridge-members': [ 'eth1', 'lan1' ] }, eth1: { devtype: 'ethernet', carrier: false }, lan1: { devtype: 'dsa', carrier: true } };
+	assert.equal(model.resolveUplink(v6, dsa).dev, 'lan1');
+});

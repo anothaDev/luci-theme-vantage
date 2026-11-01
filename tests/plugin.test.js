@@ -38,13 +38,17 @@ function findUcode() {
 const UCODE = findUcode();
 const NO_UCODE = UCODE ? false : 'no ucode binary (set UCODE=/path/to/ucode, e.g. an OpenWrt build\'s staging_dir/hostpkg/bin/ucode)';
 
-/* a fake /sys/class/net: br-lan with `entries` forwarding records in
-   brforward (16 bytes each), eth0 without one */
+/* a fake /sys/class/net: br-lan and br-guest with forwarding records
+   in brforward (16 bytes each; `entries` is br-lan's count, or both as
+   [ lan, guest ]), eth0 without one */
+const BRIDGES = [ 'br-lan', 'br-guest' ];
 function fakeNet(dir, entries) {
-	const net = path.join(dir, 'net');
-	fs.mkdirSync(path.join(net, 'br-lan'), { recursive: true });
-	fs.mkdirSync(path.join(net, 'eth0'));
-	fs.writeFileSync(path.join(net, 'br-lan', 'brforward'), Buffer.alloc(16 * entries));
+	const net = path.join(dir, 'net'), n = [].concat(entries, 0);
+	fs.mkdirSync(path.join(net, 'eth0'), { recursive: true });
+	BRIDGES.forEach((b, i) => {
+		fs.mkdirSync(path.join(net, b));
+		fs.writeFileSync(path.join(net, b, 'brforward'), Buffer.alloc(16 * n[i]));
+	});
 	return net;
 }
 
@@ -65,8 +69,8 @@ function spawnUcode(cases, source, entries) {
 		args.push('-D', 'PLUGIN=' + plugin, '-D', 'CASES=' + file, path.join(__dirname, 'ucode/harness.uc'));
 		return spawnSync(UCODE, args, { encoding: 'utf8' });
 	} finally {
-		for (const f of [ file, plugin, path.join(dir, 'net/br-lan/brforward') ]) if (fs.existsSync(f)) fs.unlinkSync(f);
-		for (const d of [ 'net/br-lan', 'net/eth0', 'net', '' ]) if (fs.existsSync(path.join(dir, d))) fs.rmdirSync(path.join(dir, d));
+		for (const f of [ file, plugin ].concat(BRIDGES.map(b => path.join(dir, 'net', b, 'brforward')))) if (fs.existsSync(f)) fs.unlinkSync(f);
+		for (const d of BRIDGES.map(b => 'net/' + b).concat([ 'net/eth0', 'net', '' ])) if (fs.existsSync(path.join(dir, d))) fs.rmdirSync(path.join(dir, d));
 	}
 }
 
@@ -401,14 +405,23 @@ test('stand-in: wired keeps the hosts the bridges learned, with port, VLAN and s
 	assert.equal(up.reply.hosts.filter(h => h.port === 'eth0').length, 128);
 });
 
-test('ucode plugin: a crowded bridge is counted, not dumped', { skip: NO_UCODE }, () => {
+test('ucode plugin: crowded bridges are counted, not dumped', { skip: NO_UCODE }, () => {
 	const src = fs.readFileSync(PLUGIN, 'utf8');
 	assert.match(src, /^const NET = '\/sys\/class\/net';$/m);
 	assert.match(src, /^const FDB_LIMIT = 4096;/m);
-	const run = entries => { const r = spawnUcode([ { method: 'wired', fdb: FDB } ], null, entries); assert.equal(r.status, 0, r.stderr); return JSON.parse(r.stdout)[0].reply; };
-	assert.deepEqual(run(4096), { hosts: [], crowded: true }, 'at the limit: nothing dumped');
-	assert.equal(run(4095).hosts.length, 5, 'one below: dumped as usual');
-	assert.equal(run(0).hosts.length, 5);
+	/* never more read than the budget left, so a huge table costs no more */
+	assert.match(src, /let left = FDB_LIMIT \* FDB_ENTRY;/);
+	assert.match(src, /readfile\(NET \+ '\/' \+ n \+ '\/brforward', left\)/);
+	const run = (entries, fdbIn) => { const r = spawnUcode([ { method: 'wired', fdb: fdbIn } ], null, entries); assert.equal(r.status, 0, r.stderr); return JSON.parse(r.stdout)[0].reply; };
+	/* 'no dump': the rtnl double stops the run if the table is dumped */
+	assert.deepEqual(run(4096, 'no dump'), { hosts: [], crowded: true }, 'at the limit: nothing dumped');
+	assert.deepEqual(run([ 3000, 3000 ], 'no dump'), { hosts: [], crowded: true }, 'two bridges add up: one dump returns both');
+	assert.equal(run(4095, FDB).hosts.length, 5, 'one below: dumped as usual');
+	assert.equal(run([ 2000, 2095 ], FDB).hosts.length, 5);
+	assert.equal(run(0, FDB).hosts.length, 5);
+	const dumped = spawnUcode([ { method: 'wired', fdb: 'no dump' } ], null, 0);
+	assert.notEqual(dumped.status, 0, 'the double does catch a dump');
+	assert.match(dumped.stderr, /rtnl stub: a dump where none may happen/);
 });
 
 test('stand-in: the replay falls back to the store\'s uci wireless when network.wireless is missing or empty', () => {
