@@ -237,7 +237,7 @@ function mount(host, band, style) {
 	var down = null, up = null, originEl = null;
 	var scene = null, cur = 'none', raf = 0, timer = 0, last = 0, dpr = 1, inView = true, hidden = false, still = false, mq = null;
 	var focused = typeof document.hasFocus === 'function' ? document.hasFocus() : true;
-	var ro = null, io = null, onMq = null, stillRated = false;
+	var ro = null, io = null, onMq = null, stillRated = false, mo = null, scheme = null, onScheme = null;
 
 	cv.className = 'vt-backdrop';
 	cv.setAttribute('aria-hidden', 'true');
@@ -370,6 +370,17 @@ function mount(host, band, style) {
 		io = new IntersectionObserver(function(es) { inView = es.some(function(e) { return e.isIntersecting; }); run(); });
 		io.observe(host);
 	}
+	/* a theme switch (the theme's data-darkmode / data-theme, or the
+	   system's scheme): the new colours at once, not at the next poll */
+	onScheme = function() { colours(); if (!running()) paint(); };
+	if (typeof MutationObserver === 'function') {
+		mo = new MutationObserver(onScheme);
+		mo.observe(document.documentElement, { attributes: true, attributeFilter: [ 'data-darkmode', 'data-theme' ] });
+	}
+	if (window.matchMedia) {
+		scheme = window.matchMedia('(prefers-color-scheme: dark)');
+		if (scheme.addEventListener) scheme.addEventListener('change', onScheme);
+	}
 	var onVis = function() { hidden = !!document.hidden; run(); };
 	document.addEventListener('visibilitychange', onVis);
 	/* another window has the focus: the last frame stays */
@@ -404,6 +415,8 @@ function mount(host, band, style) {
 			window.removeEventListener('blur', onBlur);
 			window.removeEventListener('focus', onFocus);
 			if (mq && onMq && mq.removeEventListener) mq.removeEventListener('change', onMq);
+			if (scheme && scheme.removeEventListener) scheme.removeEventListener('change', onScheme);
+			if (mo) mo.disconnect();
 			if (cv.parentNode) cv.parentNode.removeChild(cv);
 		}
 	};

@@ -17,6 +17,9 @@ Each release ships both packages, `luci-theme-vantage` and
   on a busy one, pauses while another window has the focus, the tab is
   hidden or the tile is out of view, and stands still with reduced
   motion.
+- **Dashboard: a jump from the network path stops below the top bar.**
+  Clicking an SSID, Wired or port node scrolled the Clients tile's head
+  under the sticky top bar.
 - **Dashboard: the numbers under the network path stay in their cells**
   on a phone; a long line such as the clients per band ends with "…"
   instead of running into the next cell.
@@ -28,16 +31,30 @@ Each release ships both packages, `luci-theme-vantage` and
   heard. Routers without Wi-Fi get the Clients tile for them, and the
   network path shows a Wired branch with a node per port. The quick
   filters moved into a menu at the end of the search box, so the tile
-  fits on a phone.
+  fits on a phone. Wired devices get reverse DNS names and vendors like
+  Wi-Fi clients, and those on a bridge VLAN their network and address;
+  devices reached through the uplink port are tagged Upstream. At most
+  128 are listed per port, and none when a bridge has learned 4,096
+  addresses or more, so a flood of made-up addresses cannot exhaust the
+  device's memory.
+- **Dashboard: the right uplink port on a bridge with several.** An
+  access point whose LAN bridge has more than one Ethernet port took the
+  first one as its uplink, for the uplink's traffic, link speed and
+  "No link" check. It now takes the port the bridge learned the gateway
+  on, else one with a link.
 - **Dashboard: Wi-Fi on firmware without netifd's wireless status** (#60,
   [@bakaranadnan-a11y](https://github.com/bakaranadnan-a11y)). Vendor
   drivers that bypass netifd, such as MediaTek's mtkwifi on GL.iNet
   firmware, left the Wi-Fi section empty. The radios and networks now
   come from the wireless configuration there, with run state from
   iwinfo, and a configured Wi-Fi 7 (EHT) mode is shown even when the
-  driver reports Wi-Fi 6. OpenWrt's own drivers are read as before.
+  driver reports Wi-Fi 6, also where netifd answers but lists no radio.
+  OpenWrt's own drivers are read as before.
 - **Firmware upload: the progress bar fills its dialog** (#59,
-  [@VIKINGYFY](https://github.com/VIKINGYFY)).
+  [@VIKINGYFY](https://github.com/VIKINGYFY)), and the upload dialog's
+  Cancel and Upload buttons sit on the line with Browse….
+- **Realtime Graphs on a phone:** the current, average and peak values
+  of each line get a row each instead of running into each other.
 
 ## 1.0.11 - 2026-10-30
 

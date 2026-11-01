@@ -103,10 +103,97 @@ test('stars: stream from the origin, respawn inside the band, ease to the rate\'
 	const sc = bd.starfield(e);
 	sc.resize(true);
 	assert.ok(sc.size() >= 24 && sc.size() <= 160);
+	/* depth covered in one step by the stars that did not respawn */
+	const pace = () => { const z0 = sc.items().map(s => s.z); sc.step(.033); const d = sc.items().map((s, i) => z0[i] - s.z).filter(v => v > 0).sort((x, y) => x - y); return d[d.length >> 1] / .033; };
+	const early = pace();
 	for (let i = 0; i < 600; i++) sc.step(.033);
+	const late = pace();
+	assert.ok(early > 2 * late, 'starts fast');
+	assert.ok(Math.abs(late - e.speed) < e.speed * .05, 'settles at the rate\'s speed');
 	for (const s of sc.items()) {
 		assert.ok(s.z > .02 && s.z <= 1);
 		assert.ok(Math.hypot(s.x, s.y) <= 1.0001);
+	}
+});
+
+/* mount() on a fake page and clock: rAF on a 16 ms display, timers */
+test('mount: one frame loop, 20 a second on a quiet uplink, none in the background, nothing left after stop()', () => {
+	const saved = {}, names = [ 'performance', 'requestAnimationFrame', 'cancelAnimationFrame', 'setTimeout', 'clearTimeout', 'ResizeObserver', 'IntersectionObserver', 'MutationObserver', 'document', 'window', 'getComputedStyle' ];
+	names.forEach(n => { saved[n] = Object.getOwnPropertyDescriptor(global, n); });
+	let now = 0, id = 1, painted = 0, io = null, reduced = false, themeFlip = null, observing = false, colour = 'rgb(1, 2, 3)';
+	const mq = {};
+	const rafs = new Map(), timers = new Map(), on = { doc: {}, win: {} };
+	const add = t => (ev, fn) => { (t[ev] = t[ev] || []).push(fn); };
+	const rem = t => (ev, fn) => { t[ev] = (t[ev] || []).filter(f => f !== fn); };
+	const fire = (t, ev) => (t[ev] || []).slice().forEach(f => f());
+	const set = (n, v) => Object.defineProperty(global, n, { value: v, configurable: true, writable: true });
+	set('performance', { now: () => now });
+	set('requestAnimationFrame', fn => { const i = id++; rafs.set(i, fn); return i; });
+	set('cancelAnimationFrame', i => rafs.delete(i));
+	set('setTimeout', (fn, ms) => { const i = id++; timers.set(i, { fn, at: now + ms }); return i; });
+	set('clearTimeout', i => timers.delete(i));
+	set('ResizeObserver', class { observe() {} disconnect() {} });
+	set('IntersectionObserver', class { constructor(cb) { io = cb; } observe() {} disconnect() {} });
+	set('MutationObserver', class { constructor(cb) { themeFlip = cb; } observe(el, o) { observing = o.attributeFilter.join(); } disconnect() { observing = false; } });
+	const ctx = { setTransform() {}, clearRect() { painted++; }, save() {}, restore() {}, beginPath() {}, rect() {}, clip() {}, stroke() {}, fill() {}, fillStyle: '#000', strokeStyle: '#000' };
+	const canvas = { style: {}, setAttribute() {}, getContext: () => ctx, isConnected: true, parentNode: null };
+	set('document', { hidden: false, hasFocus: () => true, documentElement: {}, createElement: () => canvas, addEventListener: add(on.doc), removeEventListener: rem(on.doc) });
+	set('window', { devicePixelRatio: 1, addEventListener: add(on.win), removeEventListener: rem(on.win),
+		matchMedia: q => ({ get matches() { return /reduced/.test(q) && reduced; }, addEventListener: (e, f) => { mq[q] = f; }, removeEventListener: () => { delete mq[q]; } }) });
+	set('getComputedStyle', () => ({ color: colour }));
+	const rect = (l, t, w, h) => ({ left: l, top: t, right: l + w, bottom: t + h, width: w, height: h });
+	const host = { clientLeft: 0, clientTop: 0, clientWidth: 1200, clientHeight: 700, getBoundingClientRect: () => rect(0, 0, 1200, 700), insertBefore(c) { c.parentNode = { removeChild() {} }; }, firstChild: null };
+	const band = { getBoundingClientRect: () => rect(20, 60, 1160, 400) };
+	let pending = 0;
+	const run = ms => { const end = now + ms; while (now < end) { now++;
+		for (const [ i, t ] of [ ...timers ]) if (t.at <= now) { timers.delete(i); t.fn(); }
+		if (now % 16 === 0) for (const [ i, fn ] of [ ...rafs ]) { rafs.delete(i); fn(now); }
+		pending = Math.max(pending, rafs.size + timers.size); } };
+	const frames = ms => { const p = painted; run(ms); return painted - p; };
+	try {
+		const b = bd.mount(host, band, 'grid');
+		b.update({ down: 2e4, up: 1e4 });
+		const quiet = frames(1000);
+		assert.ok(quiet >= 18 && quiet <= 22, 'about 20 a second: ' + quiet);
+		b.update({ down: 5e7, up: 1e7 });
+		const busy = frames(1000);
+		assert.ok(busy >= 28 && busy <= 32, 'about 30 a second: ' + busy);
+		for (let i = 0; i < 50; i++) { b.update({ down: i * 1e6, up: 1e5 }); fire(on.win, 'focus'); fire(on.doc, 'visibilitychange'); run(5); }
+		assert.equal(pending, 1, 'never more than one frame or wait pending');
+		fire(on.win, 'blur'); run(40);
+		assert.equal(frames(1000), 0, 'another window has the focus');
+		fire(on.win, 'focus'); assert.ok(frames(500) > 5, 'back on focus');
+		document.hidden = true; fire(on.doc, 'visibilitychange'); run(40);
+		assert.equal(frames(1000), 0, 'tab hidden');
+		document.hidden = false; fire(on.doc, 'visibilitychange'); assert.ok(frames(500) > 5);
+		io([ { isIntersecting: false } ]); run(40);
+		assert.equal(frames(1000), 0, 'scrolled away');
+		io([ { isIntersecting: true } ]); assert.ok(frames(500) > 5);
+		b.style('none'); run(40);
+		assert.equal(frames(1000), 0, 'none');
+		assert.equal(canvas.hidden, true);
+		b.style('stars'); assert.ok(frames(500) > 5, 'stars run');
+		const motion = mq['(prefers-reduced-motion: reduce)'];
+		reduced = true; motion(); run(40);
+		assert.equal(frames(1000), 0, 'reduced motion: still');
+		/* a theme switch repaints the still frame in the new colours at once */
+		assert.equal(observing, 'data-darkmode,data-theme');
+		colour = 'rgb(200, 239, 48)';
+		const before = painted;
+		themeFlip();
+		assert.equal(painted, before + 1, 'repainted');
+		assert.equal(ctx.strokeStyle, 'rgb(200, 239, 48)', 'in the new colour');
+		assert.equal(typeof mq['(prefers-color-scheme: dark)'], 'function', 'the system scheme too');
+		reduced = false; motion(); assert.ok(frames(500) > 5);
+		b.stop();
+		assert.equal(frames(1000), 0, 'stopped');
+		assert.equal(rafs.size + timers.size, 0, 'nothing pending');
+		assert.equal(Object.values(on.doc).flat().length + Object.values(on.win).flat().length, 0, 'every listener removed');
+		assert.deepEqual(Object.keys(mq), [], 'media listeners removed');
+		assert.equal(observing, false, 'theme observer disconnected');
+	}
+	finally {
+		names.forEach(n => { if (saved[n]) Object.defineProperty(global, n, saved[n]); else delete global[n]; });
 	}
 });
 

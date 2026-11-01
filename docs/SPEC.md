@@ -352,8 +352,14 @@ text around it so it looks the same size.
   (MAC, port, bridge, VLAN, seconds since last heard), from one
   read-only netlink dump of the forwarding database (`ucode-mod-rtnl`,
   RTM_GETNEIGH for AF_BRIDGE): not the bridges' own addresses, the switch
-  drivers' copies or group addresses, at most 512. The bridge forgets a
-  host after about five minutes without traffic.
+  drivers' copies or group addresses, at most 128 per port and 512 in
+  all, so the uplink's port cannot take every slot. It first counts each
+  bridge's entries through `/sys/class/net/<bridge>/brforward`, reading
+  no more than 4,096 records, and dumps nothing (`crowded: true`) when a
+  bridge holds that many: a flood of made-up addresses must not make
+  rpcd build the whole table. The bridge forgets a host after about five
+  minutes without traffic. Where `network.wireless status` answers with
+  no radios at all, `wireless` reads the configuration too.
   `set_alias({mac, name, icon})`
   re-applies the view's rules on the device (unicast MAC, name of at most
   48 code points without control, bidi or invisible characters, icon from
