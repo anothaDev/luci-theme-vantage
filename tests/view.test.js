@@ -210,6 +210,26 @@ test('wired hosts: the path counts those downstream only; filters, search and so
 	assert.deepEqual([ self.ui.kind, self.ui.chip, self.ui.filter ], [ 'wired', 'port:lan1', '' ]);
 });
 
+test('wired branch: each port node shows its traffic, all its hosts\' together', () => {
+	const self = Object.create(view);
+	const el = () => ({ textContent: '', attrs: {}, getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }, setAttribute(k, v) { this.attrs[k] = v; } });
+	const node = port => ({ port, el: el(), name: el(), count: el(), rate: el() });
+	const host = (mac, port, extra) => Object.assign({ mac, port, name: 'h' + mac.slice(-2), speed: { mbps: 1000 } }, extra);
+	self.m = { wiredHosts: [
+		host('00:00:5e:00:53:01', 'lan5', { shared: true, peers: 2 }),
+		host('00:00:5e:00:53:02', 'lan5', { shared: true, peers: 2 }),
+		host('00:00:5e:00:53:03', 'lan6')
+	] };
+	self.st = { devRates: { lan5: { rx: 3000, tx: 12345678 } } };
+	const b = { ssids: [ node('lan5'), node('lan6') ], title: el(), sub: el() };
+	self.updateWiredBranch(b);
+	const [ shared, alone ] = b.ssids;
+	assert.deepEqual([ shared.name.textContent, shared.count.textContent, shared.rate.textContent ], [ 'lan5', '2 devices', '↓ 12M  ↑ 3k' ]);
+	assert.equal(shared.el.attrs.title, 'Show the devices on lan5\nPort total: ↓ 12.3 Mbit/s · ↑ 3 kbit/s');
+	assert.deepEqual([ alone.name.textContent, alone.rate.textContent, alone.el.attrs.title ], [ 'lan6 · h03', '—', 'Show the devices on lan6' ], 'no counters yet: a dash, no total');
+	assert.equal(b.sub.textContent, '↓ 12.3 Mbit/s');
+});
+
 test('names beyond a poll: reverse DNS and the vendor table for wired hosts too', async () => {
 	const self = Object.create(view);
 	const asked = [];
@@ -248,4 +268,44 @@ test('wired reply: hosts kept, a crowded bridge flagged, anything else read as n
 		assert.deepEqual([ failed.fdb, failed.fdbCrowded ], [ [], false ], 'a failed call');
 	}
 	finally { global.L = savedL; delete REPLIES['luci.vantage wired']; }
+});
+
+test('switch ports: LuCI is asked for a switch with hosts behind it, at most every 30 s', async () => {
+	const calls = [];
+	const lan = n => ({ num: n, role: 'lan', index: n + 1 });
+	REPLIES['luci.vantage wired'] = () => Promise.resolve({
+		hosts: [ { mac: '00:00:5e:00:53:11', port: 'eth1.1', bridge: 'br-lan', seen: 1 } ],
+		switches: { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ lan(0), lan(1) ] }, 'eth1.2': { name: 'switch1', vlan: 2, ports: [ lan(4) ] }, 'eth9': { name: 'bad name;', vlan: 3, ports: [] } }
+	});
+	REPLIES['luci getSwconfigPortState'] = name => { calls.push(name); return Promise.resolve([ { port: 1, link: true, speed: 1000, duplex: true } ]); };
+	const self = Object.create(view);
+	const now = Date.now, savedL = global.L;
+	let t = 1e12;
+	Date.now = () => t;
+	global.L = { resolveDefault: (p, d) => Promise.resolve(p).catch(() => d) };
+	try {
+		const a = await self.fetch();
+		assert.deepEqual(calls, [ 'switch0' ], 'only the switch with hosts behind it');
+		assert.deepEqual(a.switchState.switch0, [ { port: 1, link: true, speed: 1000, duplex: true } ]);
+		assert.equal(a.switches['eth1.1'].name, 'switch0');
+		t += 29e3;
+		const b = await self.fetch();
+		assert.deepEqual(calls, [ 'switch0' ], 'not again within 30 s');
+		assert.deepEqual(b.switchState.switch0, a.switchState.switch0, 'the last answer kept');
+		t += 1e3;
+		await self.fetch();
+		assert.deepEqual(calls, [ 'switch0', 'switch0' ]);
+		/* a failed call is remembered too, not retried every poll */
+		REPLIES['luci getSwconfigPortState'] = name => { calls.push(name); return Promise.reject(new Error('denied')); };
+		t += 30e3;
+		const c = await self.fetch();
+		t += 5e3;
+		await self.fetch();
+		assert.deepEqual([ calls.length, c.switchState.switch0 ], [ 3, null ]);
+	} finally {
+		Date.now = now;
+		global.L = savedL;
+		delete REPLIES['luci.vantage wired'];
+		delete REPLIES['luci getSwconfigPortState'];
+	}
 });
