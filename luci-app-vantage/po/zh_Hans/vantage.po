@@ -161,7 +161,7 @@ msgid "%s (new this session)"
 msgstr "%s（本次新增）"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:25
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:210
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:212
 msgid "%s Gbit/s"
 msgstr "%s Gbit/s"
 
@@ -176,7 +176,7 @@ msgstr "%s MHz"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:25
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:52
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:210
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:212
 msgid "%s Mbit/s"
 msgstr "%s Mbit/s"
 
@@ -1483,7 +1483,7 @@ msgstr "对互联网开放：%d"
 msgid "Open network"
 msgstr "开放网络"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:654
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:656
 msgid "OpenWrt device"
 msgstr "OpenWrt 设备"
 
@@ -1541,7 +1541,7 @@ msgstr "较差"
 msgid "Port"
 msgstr "端口"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:200
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:202
 msgid "Port %d"
 msgstr "端口 %d"
 
@@ -1655,7 +1655,7 @@ msgstr "重置"
 msgid "Reverse DNS of its address"
 msgstr "其地址的反向 DNS"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:666
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:668
 msgid "Root (overlay)"
 msgstr "Root（overlay）"
 
@@ -1828,7 +1828,7 @@ msgstr "Tbit/s"
 msgid "Temperature %s"
 msgstr "温度 %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:666
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:668
 msgid "Temporary (RAM)"
 msgstr "临时（RAM）"
 
@@ -2407,7 +2407,7 @@ msgstr "来自任意地址"
 msgid "from anywhere except %s"
 msgstr "来自除 %s 外的任意地址"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:211
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:213
 msgid "full duplex"
 msgstr "全双工"
 
@@ -2415,7 +2415,7 @@ msgstr "全双工"
 msgid "gateway %s"
 msgstr "网关 %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:211
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:213
 msgid "half duplex"
 msgstr "半双工"
 

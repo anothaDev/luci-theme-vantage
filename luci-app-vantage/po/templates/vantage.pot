@@ -150,7 +150,7 @@ msgid "%s (new this session)"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:25
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:210
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:212
 msgid "%s Gbit/s"
 msgstr ""
 
@@ -165,7 +165,7 @@ msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:25
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:52
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:210
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:212
 msgid "%s Mbit/s"
 msgstr ""
 
@@ -1465,7 +1465,7 @@ msgstr ""
 msgid "Open network"
 msgstr ""
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:654
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:656
 msgid "OpenWrt device"
 msgstr ""
 
@@ -1519,7 +1519,7 @@ msgstr ""
 msgid "Port"
 msgstr ""
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:200
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:202
 msgid "Port %d"
 msgstr ""
 
@@ -1633,7 +1633,7 @@ msgstr ""
 msgid "Reverse DNS of its address"
 msgstr ""
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:666
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:668
 msgid "Root (overlay)"
 msgstr ""
 
@@ -1806,7 +1806,7 @@ msgstr ""
 msgid "Temperature %s"
 msgstr ""
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:666
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:668
 msgid "Temporary (RAM)"
 msgstr ""
 
@@ -2374,7 +2374,7 @@ msgstr ""
 msgid "from anywhere except %s"
 msgstr ""
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:211
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:213
 msgid "full duplex"
 msgstr ""
 
@@ -2382,7 +2382,7 @@ msgstr ""
 msgid "gateway %s"
 msgstr ""
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:211
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:213
 msgid "half duplex"
 msgstr ""
 

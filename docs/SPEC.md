@@ -195,8 +195,10 @@ text around it so it looks the same size.
   show the port as shared, with no speed or traffic of their own; their
   details give the port's total, labelled as the port's. A port that is
   a VLAN on a swconfig switch (`eth1.1`; the plugin maps it from
-  `/etc/board.json` and the `switch_vlan` sections) lists the VLAN's
-  switch ports with their links; with one of them linked, its hosts get
+  `/etc/board.json` and the `switch_vlan` sections, or board.json's roles
+  for a switch those give no VLAN) lists the VLAN's switch ports with
+  their links ("LAN 2" where board.json numbers them, else swconfig's
+  "Port 1"); with one of them linked, its hosts get
   that port's speed instead of the CPU port's. The network
   path adds a Wired branch, a node per port with the port's traffic, for
   hosts downstream of the device (not those on the uplink's port).

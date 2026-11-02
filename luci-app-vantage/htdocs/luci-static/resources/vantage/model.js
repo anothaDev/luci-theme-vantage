@@ -192,12 +192,14 @@ return baseclass.extend({
 		arr(state).slice(0, 64).forEach(function(p) { p = obj(p); if (finite(p.port)) byNum[p.port] = p; });
 		var known = Array.isArray(state), up = 0;
 		var ports = arr(sw.ports).slice(0, 64).map(obj).filter(function(p) { return finite(p.num) && p.num >= 0 && p.num < 64; }).map(function(p) {
-			var s = byNum[p.num], role = typeof p.role === 'string' && /^[a-z]{1,8}$/.test(p.role) ? p.role.toUpperCase() : null;
+			var s = byNum[p.num], role = typeof p.role === 'string' && /^[a-z0-9]{1,16}$/.test(p.role) ? p.role.toUpperCase() : null;
 			var link = known ? !!(s && s.link === true) : null;
 			if (link) up++;
 			return {
 				num: p.num,
-				label: role ? (finite(p.index) ? role + ' ' + p.index : role) : _('Port %d').format(p.num),
+				/* "LAN 2" where board.json numbers the ports by role, else
+				   swconfig's own number: four "LAN" would tell them apart */
+				label: role && finite(p.index) ? role + ' ' + p.index : _('Port %d').format(p.num),
 				link: link,
 				speed: link && finite(s.speed) && s.speed > 0 ? { mbps: s.speed, duplex: s.duplex === true ? 'full' : s.duplex === false ? 'half' : null } : null
 			};

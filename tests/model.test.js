@@ -541,7 +541,10 @@ test('switchOf: the switch ports behind a VLAN port, with their links once the s
 	const sw = model.switchOf(map, state, 'eth1.1');
 	assert.deepEqual([ sw.name, sw.vlan, sw.up ], [ 'switch0', 1, 3 ]);
 	assert.deepEqual(sw.ports.map(p => [ p.label, p.link, p.speed && p.speed.mbps ]), [ [ 'LAN 1', false, null ], [ 'LAN 2', true, 2500 ], [ 'LAN 3', true, 1000 ], [ 'LAN 4', true, 1000 ] ]);
-	assert.deepEqual(model.switchOf(map, state, 'eth1.2').ports.map(p => p.label), [ 'WAN' ]);
+	assert.deepEqual(model.switchOf(map, state, 'eth1.2').ports.map(p => p.label), [ 'Port 4' ], 'a role without a number: the switch\'s');
+	/* board.json without numbers (GL.iNet): four "LAN" would not tell them apart */
+	const plain = { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ 0, 1, 2, 3 ].map(n => ({ num: n, role: 'lan', index: null })) } };
+	assert.deepEqual(model.switchOf(plain, state, 'eth1.1').ports.map(p => p.label), [ 'Port 0', 'Port 1', 'Port 2', 'Port 3' ]);
 	/* not answered yet: links unknown, not down */
 	const quiet = model.switchOf(map, {}, 'eth1.1');
 	assert.deepEqual([ quiet.up, quiet.ports[1].link ], [ null, null ]);

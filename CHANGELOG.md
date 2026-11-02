@@ -18,7 +18,8 @@ Each release ships both packages, `luci-theme-vantage` and
   port is a VLAN on a swconfig switch (`eth1.1` on routers with a
   hardware switch), a device's details list the VLAN's switch ports and
   their links, from LuCI's own switch port state, asked at most every
-  30 seconds. When only one of them has a link, the devices behind it get
+  30 seconds. Ports are named as swconfig numbers them ("Port 1") unless
+  the board description numbers them per role ("LAN 2"). When only one of them has a link, the devices behind it get
   that port's speed instead of the switch's link to the CPU. Which port
   each device is on stays unknown otherwise. The app's read permission
   gains `luci getSwconfigPortState`.

@@ -463,7 +463,7 @@ test('ucode plugin: a switch VLAN behind a port, from board.json and the switch_
 	const dsa = { model: { id: 'example,dsa' }, network: { lan: { ports: [ 'lan1', 'lan2' ] } } };
 	for (const b of [ dsa, null, '{"switch": {"switch0": ', '[]', JSON.stringify({ switch: { switch0: { ports: [ { num: 0, role: 'lan' } ] } } }) ])
 		assert.equal(run(b, 'no load').switches, undefined, 'board ' + JSON.stringify(b).slice(0, 40));
-	assert.equal(run(SWITCH_BOARD, []).switches, undefined, 'no switch_vlan sections');
+	assert.deepEqual(run(SWITCH_BOARD, []).switches, r.switches, 'no switch_vlan sections: board.json\'s roles');
 
 	/* vid over vlan; an untagged CPU port is the bare device; bad tokens,
 	   unknown switches and bad device names skipped */
@@ -478,6 +478,27 @@ test('ucode plugin: a switch VLAN behind a port, from board.json and the switch_
 		'eth1.100': { name: 'switch0', vlan: 100, ports: [ lan(0), lan(1) ] },
 		'eth1': { name: 'switch0', vlan: 4, ports: [ lan(2), { num: 7, role: null, index: null }, lan(3) ] }
 	});
+	/* GL.iNet's layout (#67): ports with a role and no number, a role
+	   longer than "wan", the CPU tagged; the switch_vlan sections named,
+	   or without their ports: board.json's roles */
+	const gl = { model: { id: 'example,gl' }, switch: { switch0: { enable: true, reset: 0,
+		ports: [ 0, 1, 2, 3 ].map(n => ({ num: n, role: 'lan' })).concat([ { num: 4, role: 'secondwan' }, { num: 5, device: 'eth1', need_tag: true, want_untag: false } ]),
+		roles: [ { role: 'lan', ports: '0 1 2 3 5t', device: 'eth1.1' }, { role: 'secondwan', ports: '4 5t', device: 'eth1.2' } ] } } };
+	const plain = n => ({ num: n, role: 'lan', index: null });
+	const glWant = { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ plain(0), plain(1), plain(2), plain(3) ] }, 'eth1.2': { name: 'switch0', vlan: 2, ports: [ { num: 4, role: 'secondwan', index: null } ] } };
+	const named = [ { '.name': 'cfg01', '.type': 'switch', name: 'switch0', reset: '0', enable_vlan: '1' },
+		{ '.name': 'vlan_lan', '.type': 'switch_vlan', device: 'switch0', vlan: '1', ports: '0 1 2 3 5t' },
+		{ '.name': 'vlan_secondwan', '.type': 'switch_vlan', device: 'switch0', vlan: '2', ports: '4 5t' } ];
+	assert.deepEqual(run(gl, named).switches, glWant);
+	assert.deepEqual(run(gl, named.map(x => x['.type'] === 'switch_vlan' ? { '.name': x['.name'], '.type': x['.type'], device: x.device } : x)).switches, glWant, 'sections without ports: the roles');
+	/* the config wins where it has the switch's VLANs, roles or not */
+	assert.deepEqual(run(gl, [ { '.name': 'v', '.type': 'switch_vlan', device: 'switch0', vlan: '1', ports: '0 1 5t' } ]).switches,
+		{ 'eth1.1': { name: 'switch0', vlan: 1, ports: [ plain(0), plain(1) ] } });
+	/* roles that do not add up (a device that is not the CPU port's, no
+	   VLAN, no device name) are skipped */
+	const odd2 = JSON.parse(JSON.stringify(gl));
+	odd2.switch.switch0.roles = [ { role: 'lan', ports: '0 1 5t', device: 'eth2.1' }, { role: 'x', ports: '2 5', device: 'eth1' }, { role: 'y', ports: '3 5t', device: 'eth1.3;x' } ];
+	assert.equal(run(odd2, []).switches, undefined);
 	const evil = JSON.parse(JSON.stringify(SWITCH_BOARD));
 	evil.switch.switch0.ports[5].device = 'eth1;reboot';
 	assert.equal(run(evil, 'no load').switches, undefined, 'a CPU device that is no device name: no switch');

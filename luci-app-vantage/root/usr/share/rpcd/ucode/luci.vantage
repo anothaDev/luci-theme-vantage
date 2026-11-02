@@ -24,7 +24,8 @@
 //              (switches): from /etc/board.json (the CPU port's network
 //              device, the ports' roles) and the switch_vlan sections of
 //              /etc/config/network (device, vlan, vid and ports, nothing
-//              else). Read group luci-app-vantage.
+//              else), or board.json's roles for a switch those give no
+//              VLAN. Read group luci-app-vantage.
 //   set_alias  { mac, name, icon }: name one station, or remove its name
 //              with name ''. Validated here, whatever the browser did, and
 //              written to /etc/config/vantage only. Write group
@@ -482,14 +483,40 @@ function switch_port(v) {
 	return (type(v) == 'int' && v >= 0 && v < 64) ? v : null;
 }
 
+// the network device a switch VLAN reaches this device as (the CPU port's
+// device, with .vid when the CPU port is tagged in it) and its other
+// ports, from a port list such as '0 1 2 3 5t'; null without a CPU port
+function vlan_ports(sw, list, vid) {
+	let dev = null, members = [];
+
+	for (let t in split(list, /\s+/)) {
+		let m = match(t, /^([0-9]{1,2})([t*]?)$/);
+		let num = m ? switch_port(+m[1]) : null;
+
+		if (num == null || length(members) >= 64)
+			continue;
+
+		if (sw.cpu[num] != null) {
+			if (dev == null)
+				dev = (m[2] == 't') ? sw.cpu[num] + '.' + vid : sw.cpu[num];
+		}
+		else
+			push(members, sw.ports[num] ?? { num, role: null, index: null });
+	}
+
+	dev = netdev(dev);
+	return dev ? { dev, members } : null;
+}
+
 // { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ { num, role, index } ] } }
 // for each VLAN of a swconfig switch: the network device it reaches this
-// device as (the CPU port's device, with .vid when the CPU port is tagged
-// in it) and its other ports, as LuCI's switch page lays them out. Only
-// switches /etc/board.json describes; {} without one, so a device whose
-// ports are all Linux ports (DSA) loads no network config at all.
+// device as and its other ports, as LuCI's switch page lays them out.
+// From the switch_vlan sections of the network config, or for a switch
+// they give no VLAN, from the roles board.json gives it (the first boot's
+// layout). Only switches /etc/board.json describes; {} without one, so a
+// device whose ports are all Linux ports (DSA) loads no network config.
 function switches() {
-	let board = null, known = {}, out = {}, n = 0;
+	let board = null, known = {}, used = {}, out = {}, n = 0;
 
 	try { board = json(readfile(BOARD, BOARD_MAX) ?? 'null'); }
 	catch (e) { return out; }
@@ -511,13 +538,13 @@ function switches() {
 			else
 				ports[num] = {
 					num,
-					role: (type(p.role) == 'string' && match(p.role, /^[a-z]{1,8}$/)) ? p.role : null,
+					role: (type(p.role) == 'string' && match(p.role, /^[a-z0-9]{1,16}$/)) ? p.role : null,
 					index: (type(p.index) == 'int' && p.index >= 0 && p.index < 100) ? p.index : null
 				};
 		}
 
 		if (length(cpu))
-			known[name] = { ports, cpu };
+			known[name] = { ports, cpu, roles: (type(sw.roles) == 'array') ? slice(sw.roles, 0, 16) : [] };
 	}
 
 	if (!length(known))
@@ -525,42 +552,39 @@ function switches() {
 
 	let nw = cursor();
 
-	if (!nw.load(NETWORK))
-		return out;
+	if (nw.load(NETWORK))
+		nw.foreach(NETWORK, 'switch_vlan', (s) => {
+			let sw = (type(s.device) == 'string') ? known[s.device] : null;
+			let id = s.vid ?? s.vlan;
+			let vid = (type(id) == 'string' && match(id, /^[0-9]{1,4}$/)) ? +id : null;
 
-	nw.foreach(NETWORK, 'switch_vlan', (s) => {
-		let sw = (type(s.device) == 'string') ? known[s.device] : null;
-		let id = s.vid ?? s.vlan;
-		let vid = (type(id) == 'string' && match(id, /^[0-9]{1,4}$/)) ? +id : null;
+			if (!sw || vid == null || vid > 4094 || type(s.ports) != 'string')
+				return;
 
-		if (!sw || vid == null || vid > 4094 || type(s.ports) != 'string')
-			return;
+			if (++n > MAX_SWITCH_VLANS)
+				return false;
 
-		if (++n > MAX_SWITCH_VLANS)
-			return false;
+			let v = vlan_ports(sw, s.ports, vid);
 
-		let dev = null, members = [];
-
-		for (let t in split(s.ports, /\s+/)) {
-			let m = match(t, /^([0-9]{1,2})([t*]?)$/);
-			let num = m ? switch_port(+m[1]) : null;
-
-			if (num == null || length(members) >= 64)
-				continue;
-
-			if (sw.cpu[num] != null) {
-				if (dev == null)
-					dev = (m[2] == 't') ? sw.cpu[num] + '.' + vid : sw.cpu[num];
+			if (v && !out[v.dev]) {
+				out[v.dev] = { name: s.device, vlan: vid, ports: v.members };
+				used[s.device] = true;
 			}
-			else
-				push(members, sw.ports[num] ?? { num, role: null, index: null });
+		});
+
+	for (let name, sw in known) {
+		if (used[name])
+			continue;
+
+		for (let r in sw.roles) {
+			let m = (type(r?.device) == 'string' && type(r.ports) == 'string') ? match(r.device, /^[A-Za-z0-9_-]{1,10}\.([0-9]{1,4})$/) : null;
+			let vid = m ? +m[1] : null;
+			let v = (vid != null && vid <= 4094) ? vlan_ports(sw, r.ports, vid) : null;
+
+			if (v && v.dev == r.device && !out[v.dev])
+				out[v.dev] = { name, vlan: vid, ports: v.members };
 		}
-
-		dev = netdev(dev);
-
-		if (dev && !out[dev])
-			out[dev] = { name: s.device, vlan: vid, ports: members };
-	});
+	}
 
 	return out;
 }
