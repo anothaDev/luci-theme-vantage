@@ -266,6 +266,12 @@ function checkPluginSource(src) {
 	const fsCalls = [ ...src.matchAll(/\b(lsdir|readfile)\(([^,)]*)/g) ].map(m => m[1] + '(' + m[2]);
 	assert.ok(fsCalls.length >= 5, 'found the fs calls');
 	for (const c of fsCalls) assert.match(c, /^(lsdir\(THERMAL$|readfile\(THERMAL \+ '\/' \+ n \+ '\/(temp|type)'|lsdir\(NET$|readfile\(NET \+ '\/' \+ n \+ '\/brforward'|readfile\(BOARD)$/, c);
+	/* each path constant only in its definition and those calls, so no
+	   `let BOARD = ...` can shadow one; board.json read up to BOARD_MAX */
+	for (const [ name, uses ] of [ [ 'THERMAL', 4 ], [ 'NET', 3 ], [ 'BOARD', 2 ] ])
+		assert.equal([ ...src.matchAll(new RegExp('\\b' + name + '\\b', 'g')) ].length, uses, `${name}: its definition and its ${uses - 1} fs calls${REWORD}`);
+	assert.match(src, /^const BOARD_MAX = 65536; /m);
+	assert.match(src, /\breadfile\(BOARD, BOARD_MAX\)/, 'board.json read with its bound');
 
 	/* uci: three cursors made without arguments, `uci` on CONFIG
 	   ('vantage'), `wl`, which only loads and walks WIRELESS ('wireless'),
@@ -329,8 +335,11 @@ test('the plugin source rules catch writes, other configs and calls, and names p
 		'nw walks interfaces': plugin.replace('nw.foreach(NETWORK, \'switch_vlan\'', 'nw.foreach(NETWORK, \'interface\''),
 		'nw writes': plugin.replace('\tif (nw.load(NETWORK))', '\tnw.set(NETWORK, \'lan\', \'proto\', \'none\');\n\tif (nw.load(NETWORK))'),
 		'another switch_vlan option': plugin.replace('let id = s.vid ?? s.vlan;', 'let id = s.vid ?? s.vlan ?? s.password;'),
-		'a whole section passed on': plugin.replace('out[v.dev] = { name: s.device,', 'out[v.dev] = { section: s, name: s.device,'),
+		'a whole section passed on': plugin.replace('out[dev] = { name: s.device,', 'out[dev] = { section: s, name: s.device,'),
 		'other file': plugin.replace('readfile(BOARD, BOARD_MAX)', 'readfile(\'/etc/shadow\', BOARD_MAX)'),
+		'shadowed path': plugin.replace('\tlet board = null, known = {}', '\tlet BOARD = \'/etc/shadow\';\n\tlet board = null, known = {}'),
+		'unbounded board read': plugin.replace('readfile(BOARD, BOARD_MAX)', 'readfile(BOARD)'),
+		'shadowed net': plugin.replace('\tlet left = FDB_LIMIT * FDB_ENTRY;', '\tlet left = FDB_LIMIT * FDB_ENTRY;\n\tlet NET = \'/etc\';'),
 		'ubus call in double quotes': add('connect()?.call("uci", "set", {});'),
 		'ubus call on a computed object': add('let o = \'file\'; connect()?.call(o, \'write\', {});'),
 		'process by reference': add('let s = system; s(\'reboot\');'),

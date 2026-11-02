@@ -483,11 +483,11 @@ function switch_port(v) {
 	return (type(v) == 'int' && v >= 0 && v < 64) ? v : null;
 }
 
-// the network device a switch VLAN reaches this device as (the CPU port's
-// device, with .vid when the CPU port is tagged in it) and its other
+// the network devices a switch VLAN reaches this device as (each CPU
+// port's device in it, with .vid where that port is tagged) and its other
 // ports, from a port list such as '0 1 2 3 5t'; null without a CPU port
 function vlan_ports(sw, list, vid) {
-	let dev = null, members = [];
+	let devs = [], members = [];
 
 	for (let t in split(list, /\s+/)) {
 		let m = match(t, /^([0-9]{1,2})([t*]?)$/);
@@ -497,15 +497,16 @@ function vlan_ports(sw, list, vid) {
 			continue;
 
 		if (sw.cpu[num] != null) {
-			if (dev == null)
-				dev = (m[2] == 't') ? sw.cpu[num] + '.' + vid : sw.cpu[num];
+			let dev = netdev((m[2] == 't') ? sw.cpu[num] + '.' + vid : sw.cpu[num]);
+
+			if (dev && index(devs, dev) < 0)
+				push(devs, dev);
 		}
 		else
 			push(members, sw.ports[num] ?? { num, role: null, index: null });
 	}
 
-	dev = netdev(dev);
-	return dev ? { dev, members } : null;
+	return length(devs) ? { devs, members } : null;
 }
 
 // { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ { num, role, index } ] } }
@@ -566,8 +567,10 @@ function switches() {
 
 			let v = vlan_ports(sw, s.ports, vid);
 
-			if (v && !out[v.dev]) {
-				out[v.dev] = { name: s.device, vlan: vid, ports: v.members };
+			for (let dev in (v?.devs ?? [])) {
+				if (!out[dev])
+					out[dev] = { name: s.device, vlan: vid, ports: v.members };
+
 				used[s.device] = true;
 			}
 		});
@@ -581,8 +584,8 @@ function switches() {
 			let vid = m ? +m[1] : null;
 			let v = (vid != null && vid <= 4094) ? vlan_ports(sw, r.ports, vid) : null;
 
-			if (v && v.dev == r.device && !out[v.dev])
-				out[v.dev] = { name, vlan: vid, ports: v.members };
+			if (v && index(v.devs, r.device) >= 0 && !out[r.device])
+				out[r.device] = { name, vlan: vid, ports: v.members };
 		}
 	}
 

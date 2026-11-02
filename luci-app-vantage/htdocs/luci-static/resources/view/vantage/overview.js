@@ -41,8 +41,10 @@ var callThermal = rpc.declare({ object: 'luci.vantage', method: 'thermal', expec
 /* { hosts, crowded, switches }: crowded when a bridge holds too many
    entries to list; switches, the swconfig switch ports behind a port */
 var callWired = rpc.declare({ object: 'luci.vantage', method: 'wired', expect: { '': {} } });
-/* LuCI's own (its switch page's): link and speed of a switch's ports */
-var callSwitchPorts = rpc.declare({ object: 'luci', method: 'getSwconfigPortState', params: [ 'switch' ], expect: { result: [] } });
+/* LuCI's own (its switch page's): link and speed of a switch's ports, in
+   result. The whole reply, and a failed call rejected: a default [] would
+   read as every port down */
+var callSwitchPorts = rpc.declare({ object: 'luci', method: 'getSwconfigPortState', params: [ 'switch' ], expect: { '': {} }, reject: true });
 var callHints = rpc.declare({ object: 'luci-rpc', method: 'getHostHints', expect: { '': {} } });
 var callIwInfo = rpc.declare({ object: 'iwinfo', method: 'info', params: [ 'device' ], expect: { '': {} } });
 var callAssoc = rpc.declare({ object: 'iwinfo', method: 'assoclist', params: [ 'device' ], expect: { results: [] } });
@@ -537,18 +539,24 @@ return view.extend({
 			   configuration only) */
 			var per = [];
 			/* the link state of a switch with hosts behind it, every
-			   SWITCH_MS: each answer runs swconfig on the device */
+			   SWITCH_MS: each answer runs swconfig on the device. Asked
+			   on the side, so a slow switch holds up no poll; the answer
+			   shows from the next one */
 			var switches = (wiredReply.switches && typeof wiredReply.switches === 'object' && !Array.isArray(wiredReply.switches)) ? wiredReply.switches : {};
 			var swState = self.swState || (self.swState = Object.create(null));
 			var hostPorts = (Array.isArray(wiredReply.hosts) ? wiredReply.hosts : []).map(function(h) { return h && h.port; });
-			var due = [];
+			var due = [], asked = Date.now();
 			Object.keys(switches).forEach(function(dev) {
 				var n = switches[dev] && switches[dev].name;
 				if (typeof n === 'string' && /^[A-Za-z0-9_.-]{1,32}$/.test(n) && hostPorts.indexOf(dev) >= 0 && due.indexOf(n) < 0 &&
-				    !(swState[n] && started - swState[n].at < SWITCH_MS)) due.push(n);
+				    !(swState[n] && asked - swState[n].at < SWITCH_MS)) due.push(n);
 			});
 			due.slice(0, 4).forEach(function(n) {
-				per.push(L.resolveDefault(callSwitchPorts(n), null).then(function(v) { return [ 'switch', n, v ]; }));
+				swState[n] = { at: asked, ports: swState[n] ? swState[n].ports : null };
+				L.resolveDefault(callSwitchPorts(n), null).then(function(v) {
+					/* no ports (an error, an unknown switch): not known, not down */
+					swState[n] = { at: asked, ports: v && Array.isArray(v.result) && v.result.length ? v.result : null };
+				});
 			});
 			ifnames.forEach(function(ifn) {
 				per.push(L.resolveDefault(callAssoc(ifn), []).then(function(v) { return [ 'assoc', ifn, v ]; }));
@@ -562,7 +570,6 @@ return view.extend({
 					if (p[0] === 'assoc') assoc[p[1]] = p[2];
 					else if (p[0] === 'hapd') hapd[p[1]] = p[2];
 					else if (p[0] === 'hapdStatus') hapdStatus[p[1]] = p[2];
-					else if (p[0] === 'switch') swState[p[1]] = { at: started, ports: Array.isArray(p[2]) ? p[2] : null };
 					else iwinfo[p[1]] = p[2];
 				});
 				var switchState = Object.create(null);

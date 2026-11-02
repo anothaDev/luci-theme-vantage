@@ -548,6 +548,11 @@ test('switchOf: the switch ports behind a VLAN port, with their links once the s
 	/* not answered yet: links unknown, not down */
 	const quiet = model.switchOf(map, {}, 'eth1.1');
 	assert.deepEqual([ quiet.up, quiet.ports[1].link ], [ null, null ]);
+	assert.deepEqual([ model.switchOf(map, { switch0: [] }, 'eth1.1').up ], [ null ], 'an empty answer: not known, not down');
+	const odd = { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ { num: 1, role: 'lan x', index: 2 }, { num: 64, role: 'lan', index: 1 }, { num: -1 } ] } };
+	assert.deepEqual(model.switchOf(odd, state, 'eth1.1').ports.map(p => p.label), [ 'Port 1' ], 'no role from an odd string; ports 0-63 only');
+	const down = model.switchOf(map, { switch0: [ { port: 1, link: 'yes', speed: 1000 }, { port: 2, link: true, speed: 0 } ] }, 'eth1.1');
+	assert.deepEqual(down.ports.slice(1, 3).map(p => [ p.link, p.speed ]), [ [ false, null ], [ true, null ] ], 'link only when true; no speed of 0');
 	assert.deepEqual(model.switchOf({ x: { name: 'switch0', vlan: 3, ports: [ { num: 6 } ] } }, state, 'x').ports.map(p => p.label), [ 'Port 6' ]);
 	/* anything else: no switch */
 	for (const [ m, p ] of [ [ map, 'lan1' ], [ map, '__proto__' ], [ map, 'constructor' ], [ null, 'eth1.1' ], [ { 'eth1.1': { name: '../x', vlan: 1, ports: [] } }, 'eth1.1' ], [ { 'eth1.1': { name: 'switch0', vlan: '1' } }, 'eth1.1' ] ])

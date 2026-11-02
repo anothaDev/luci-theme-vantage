@@ -270,42 +270,62 @@ test('wired reply: hosts kept, a crowded bridge flagged, anything else read as n
 	finally { global.L = savedL; delete REPLIES['luci.vantage wired']; }
 });
 
-test('switch ports: LuCI is asked for a switch with hosts behind it, at most every 30 s', async () => {
-	const calls = [];
+test('switch ports: LuCI is asked on the side for a switch with hosts behind it, at most every 30 s from the call; a failure is not known', async () => {
+	const calls = [], STATE = [ { port: 1, link: true, speed: 1000, duplex: true } ];
 	const lan = n => ({ num: n, role: 'lan', index: n + 1 });
+	let answer = () => Promise.resolve({ result: STATE }), slow = 0;
 	REPLIES['luci.vantage wired'] = () => Promise.resolve({
 		hosts: [ { mac: '00:00:5e:00:53:11', port: 'eth1.1', bridge: 'br-lan', seen: 1 } ],
 		switches: { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ lan(0), lan(1) ] }, 'eth1.2': { name: 'switch1', vlan: 2, ports: [ lan(4) ] }, 'eth9': { name: 'bad name;', vlan: 3, ports: [] } }
 	});
-	REPLIES['luci getSwconfigPortState'] = name => { calls.push(name); return Promise.resolve([ { port: 1, link: true, speed: 1000, duplex: true } ]); };
+	REPLIES['luci getSwconfigPortState'] = name => { calls.push(name); return answer(); };
+	/* the base replies take `slow` ms of the device's clock */
+	REPLIES['system info'] = () => { t += slow; return Promise.resolve({}); };
+	const flush = () => new Promise(r => setImmediate(r));
 	const self = Object.create(view);
 	const now = Date.now, savedL = global.L;
 	let t = 1e12;
 	Date.now = () => t;
 	global.L = { resolveDefault: (p, d) => Promise.resolve(p).catch(() => d) };
+	const poll = async ms => { t += ms; const r = await self.fetch(); await flush(); return r; };
 	try {
-		const a = await self.fetch();
+		const a = await poll(0);
 		assert.deepEqual(calls, [ 'switch0' ], 'only the switch with hosts behind it');
-		assert.deepEqual(a.switchState.switch0, [ { port: 1, link: true, speed: 1000, duplex: true } ]);
 		assert.equal(a.switches['eth1.1'].name, 'switch0');
-		t += 29e3;
-		const b = await self.fetch();
-		assert.deepEqual(calls, [ 'switch0' ], 'not again within 30 s');
-		assert.deepEqual(b.switchState.switch0, a.switchState.switch0, 'the last answer kept');
-		t += 1e3;
-		await self.fetch();
-		assert.deepEqual(calls, [ 'switch0', 'switch0' ]);
-		/* a failed call is remembered too, not retried every poll */
-		REPLIES['luci getSwconfigPortState'] = name => { calls.push(name); return Promise.reject(new Error('denied')); };
-		t += 30e3;
-		const c = await self.fetch();
-		t += 5e3;
-		await self.fetch();
-		assert.deepEqual([ calls.length, c.switchState.switch0 ], [ 3, null ]);
+		assert.equal(a.switchState.switch0, null, 'asked on the side: not waited for');
+		assert.deepEqual((await poll(5e3)).switchState.switch0, STATE, 'the answer from the next poll');
+		assert.deepEqual((await poll(24e3)).switchState.switch0, STATE, 'kept');
+		assert.equal(calls.length, 1, 'not again within 30 s');
+		await poll(1e3);
+		assert.equal(calls.length, 2);
+
+		/* 30 s from the call: base replies that took 10 s put the call 10 s
+		   into the poll; 20 s after it, nothing is asked */
+		slow = 10e3;
+		await poll(30e3);
+		slow = 0;
+		assert.equal(calls.length, 3);
+		await poll(20e3);
+		assert.equal(calls.length, 3, 'counted from the call, not the poll');
+		await poll(10e3);
+		assert.equal(calls.length, 4);
+
+		/* an error reply, no ports, or a failed call: not known (null), not
+		   "every port down" */
+		for (const bad of [ () => Promise.resolve({ error: 'No such switch' }), () => Promise.resolve({ result: [] }), () => Promise.reject(new Error('denied')) ]) {
+			answer = bad;
+			await poll(30e3);
+			assert.equal((await poll(1e3)).switchState.switch0, null);
+		}
+		/* a call that never answers holds up no poll */
+		answer = () => new Promise(() => {});
+		const done = await Promise.race([ poll(30e3).then(() => 'polled'), new Promise(r => setTimeout(() => r('stuck'), 200)) ]);
+		assert.equal(done, 'polled');
 	} finally {
 		Date.now = now;
 		global.L = savedL;
 		delete REPLIES['luci.vantage wired'];
 		delete REPLIES['luci getSwconfigPortState'];
+		delete REPLIES['system info'];
 	}
 });

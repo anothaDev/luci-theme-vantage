@@ -499,6 +499,22 @@ test('ucode plugin: a switch VLAN behind a port, from board.json and the switch_
 	const odd2 = JSON.parse(JSON.stringify(gl));
 	odd2.switch.switch0.roles = [ { role: 'lan', ports: '0 1 5t', device: 'eth2.1' }, { role: 'x', ports: '2 5', device: 'eth1' }, { role: 'y', ports: '3 5t', device: 'eth1.3;x' } ];
 	assert.equal(run(odd2, []).switches, undefined);
+	/* a VLAN on two CPU ports reaches this device on both */
+	const twoCpu = { switch: { switch0: { ports: [ { num: 0, role: 'lan', index: 1 }, { num: 5, device: 'eth0' }, { num: 6, device: 'eth1' } ] } } };
+	assert.deepEqual(run(twoCpu, [ { '.name': 'v', '.type': 'switch_vlan', device: 'switch0', vlan: '100', ports: '0 5t 6t' } ]).switches,
+		{ 'eth0.100': { name: 'switch0', vlan: 100, ports: [ lan(0) ] }, 'eth1.100': { name: 'switch0', vlan: 100, ports: [ lan(0) ] } });
+	/* only plain names, roles and numbers reach the reply */
+	const hostile = { switch: {
+		'switch0': { ports: [ { num: 0, role: 'lan<b>', index: 1 }, { num: 1, role: 'a'.repeat(17), index: 2 }, { num: 2, role: 'lan', index: 100 }, { num: 5, device: 'eth1' } ],
+			roles: [ { ports: '0 5t', device: 'eth1.4095' } ] },
+		'sw itch': { ports: [ { num: 0 }, { num: 5, device: 'eth2' } ], roles: [ { ports: '0 5t', device: 'eth2.1' } ] } } };
+	assert.deepEqual(run(hostile, [ { '.name': 'v', '.type': 'switch_vlan', device: 'switch0', vlan: '4095', ports: '0 5t' },
+		{ '.name': 'w', '.type': 'switch_vlan', device: 'switch0', vlan: '9', ports: '0 1 2 5t' } ]).switches,
+		{ 'eth1.9': { name: 'switch0', vlan: 9, ports: [ { num: 0, role: null, index: 1 }, { num: 1, role: null, index: 2 }, { num: 2, role: 'lan', index: null } ] } },
+		'no VLAN 4095, no odd role, index or switch name');
+	assert.equal(run(hostile, [ { '.name': 'v', '.type': 'switch_vlan', device: 'switch1', vlan: '1', ports: '0 5t' } ]).switches, undefined, 'roles with VLAN 4095: none');
+	const many = Array.from({ length: 70 }, (_, i) => ({ '.name': 'v' + i, '.type': 'switch_vlan', device: 'switch0', vlan: String(i + 1), ports: '0 5t' }));
+	assert.equal(Object.keys(run(SWITCH_BOARD, many).switches).length, 64, 'at most 64 VLANs');
 	const evil = JSON.parse(JSON.stringify(SWITCH_BOARD));
 	evil.switch.switch0.ports[5].device = 'eth1;reboot';
 	assert.equal(run(evil, 'no load').switches, undefined, 'a CPU device that is no device name: no switch');
