@@ -2200,6 +2200,15 @@ body.modal-overlay-active #modal_overlay { display: block; }
 #modal_overlay > .modal.alert-message.warning::after { background: var(--warn); }
 #modal_overlay > .modal.alert-message.error::after, #modal_overlay > .modal.alert-message.danger::after { background: var(--err); }
 #modal_overlay > .modal.alert-message.spinning::before { flex: none; width: 18px; height: 18px; margin: 0; }
+/* LuCI shows each step of the apply countdown through showModal(), which
+   resets the dialog's class to "modal" and lays it out before "spinning"
+   is back: the spinner, a ::before of .spinning, was dropped and started
+   over at 0° every second. The dialog keeps that ::before, empty, with
+   the same animation paused in between, so the spinner turns on. */
+#modal_overlay > .modal:not(.spinning)::before {
+	content: ""; position: absolute; width: 0; height: 0; border: 0;
+	animation: vt-spin .8s linear infinite paused;
+}
 #modal_overlay > .modal.alert-message > * { margin: 0; }
 #modal_overlay > .modal.alert-message .right, #modal_overlay > .modal.alert-message .button-row { margin: 0 0 0 auto; padding: 0; border: 0; background: none; }
 #modal_overlay > .modal.alert-message:has(> .right) { flex-wrap: wrap; }
@@ -3434,7 +3443,18 @@ select[id^="widget.cbid.firewall."] > option { color: var(--text); font-weight: 
 	.v-meter-row { grid-template-areas: "label" "bar" "val"; row-gap: 6px; }
 	.v-meter-row > .v-meter-val { text-align: left; white-space: normal; }
 	.v-meter-row > .v-meter-label small { display: inline; margin-left: 6px; }
+	/* Software: "Actions" is one group of three buttons; it ran past the
+	   card and widened the page. Groups of buttons only wrap here. */
+	:is(#view > .controls, #view > .cbi-section > .controls) > div > .control-group:not(:has(> input, > select, > .cbi-dropdown)) { flex-wrap: wrap; gap: var(--sp-2); }
+	:is(#view > .controls, #view > .cbi-section > .controls) > div > .control-group:not(:has(> input, > select, > .cbi-dropdown)) > * { flex: 1 1 auto; margin-left: 0 !important; border-radius: var(--r-sm) !important; }
+	/* a package's dependency tree: less indent per level */
+	#modal_overlay ul.deps { padding-left: var(--sp-2); }
 }
+/* Software, a package's details: a dependency line (name, size, status)
+   doesn't wrap in LuCI's own stylesheet; a few levels deep it ran past the
+   dialog and left the ↳ alone on its line */
+#modal_overlay ul.deps li > span { white-space: normal; overflow-wrap: anywhere; }
+#modal_overlay ul.deps li > span > .label { white-space: nowrap; }
 
 @media (prefers-reduced-motion: reduce) {
 	*, *::before, *::after {
@@ -3442,7 +3462,7 @@ select[id^="widget.cbid.firewall."] > option { color: var(--text); font-weight: 
 		animation-iteration-count: 1 !important;
 		scroll-behavior: auto !important;
 	}
-	.spinning::before { animation-duration: 1.6s !important; animation-iteration-count: infinite !important; }
+	.spinning::before, #modal_overlay > .modal::before { animation-duration: 1.6s !important; animation-iteration-count: infinite !important; }
 	.alert-message { transition-duration: .01s; }
 	/* ui.Dropdown moves focus on transitionend: keep a (near-instant) transition */
 	.cbi-dropdown[open] > ul.dropdown { transition-duration: .001s; }

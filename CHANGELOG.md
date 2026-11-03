@@ -6,6 +6,17 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
+## Unreleased
+
+- **The spinner while changes are applied turns smoothly** (#71,
+  [@HyperdrivzZ](https://github.com/HyperdrivzZ)). LuCI rebuilds the
+  "Applying configuration changes… 89s" notice every second, and the
+  spinner started over from the top each time.
+- **Software on a phone** (#71). The Actions buttons wrap instead of
+  running past the card, which made the page wider than the screen and
+  pushed its dialogs off the right edge, and a package's dependency tree
+  wraps inside its dialog instead of cutting off the status labels.
+
 ## 1.0.13 - 2026-11-02
 
 - **Dashboard: a port's traffic on its node** (#67,
