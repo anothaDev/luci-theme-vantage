@@ -16,6 +16,9 @@ Each release ships both packages, `luci-theme-vantage` and
   running past the card, which made the page wider than the screen and
   pushed its dialogs off the right edge, and a package's dependency tree
   wraps inside its dialog instead of cutting off the status labels.
+- **"Signal · 3 weak" lists all three** (#71). With more than one weak
+  client, the dashboard's Signal check opens the clients list on its Weak
+  signal filter instead of only the weakest client's details.
 
 ## 1.0.13 - 2026-11-02
 
