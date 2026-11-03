@@ -1657,6 +1657,10 @@ table { border-collapse: separate; border-spacing: 0; width: 100%; }
 .td > span:has(> span + br + span) > br { display: none; }
 .td > span:has(> span + br + span) > span { white-space: nowrap; font: var(--fs-sm)/1.5 var(--mono); }
 .td > span:has(> span + br + span) > span:not(:first-child) { color: var(--text-3); font-size: var(--fs-micro); }
+/* Wireless's stations: a rate line ("576.4 Mbit/s, 160 MHz, EHT-MCS 3,
+   EHT-NSS 2") breaks at its commas when the columns run short, which
+   kept the table wider than its card */
+.assoclist .td > span:has(> span + br + span) > span { white-space: normal; }
 
 /* badges inside cells are content, not pills: icon + text (a badge that
    is a tooltip, Interfaces' device details, keeps the tooltip's box) */
@@ -2745,12 +2749,14 @@ body[data-page="admin-statistics-graphs"] p.controls > .nowrap > .cbi-button { m
 /* Table sections can sit below form wrappers; their outer card scrolls too.
    Other status cards only scroll when narrow so their headers can stick.
    Vertical overflow is clipped to prevent spurious scrolling on scaled
-   Firefox displays. */
-.cbi-tblsection, .cbi-section:has(.cbi-tblsection), .cbi-section:has(> :where(#packages)) { overflow-x: auto; overflow-y: hidden; }
+   Firefox displays. LuCI 25.12 puts Wireless's station list in a section
+   of its own (cbi-section around the heading and table); its rates and
+   network badges don't wrap, and the table ran past the card. */
+.cbi-tblsection, .cbi-section:has(.cbi-tblsection), .cbi-section:has(> :where(#packages)), .cbi-section:has(> .table.assoclist) { overflow-x: auto; overflow-y: hidden; }
 /* overlay scrollbars show nothing until touched: a shade on the side with
    more table says it scrolls. The covers move with the content and hide
    the shade at either end, so a card that fits looks as before. */
-.vt-main .cbi-tblsection, .vt-main .cbi-section:has(.cbi-tblsection), .vt-main .cbi-section:has(> :where(#packages)) {
+.vt-main .cbi-tblsection, .vt-main .cbi-section:has(.cbi-tblsection), .vt-main .cbi-section:has(> :where(#packages)), .vt-main .cbi-section:has(> .table.assoclist) {
 	background-image:
 		linear-gradient(to right, var(--s1) 50%, transparent), linear-gradient(to left, var(--s1) 50%, transparent),
 		linear-gradient(to right, var(--line-2), transparent), linear-gradient(to left, var(--line-2), transparent);
@@ -2793,7 +2799,7 @@ body[data-page="admin-statistics-graphs"] p.controls > .nowrap > .cbi-button { m
 
 /* a sticky header inside a horizontal scroller would stick relative to that
    scroller (pushed down by --stick-top over the rows): keep those static */
-.cbi-tblsection .table .tr > .th.th, .cbi-section:has(.cbi-tblsection) .table .tr > .th.th, #packages .tr > .th.th { position: static; }
+.cbi-tblsection .table .tr > .th.th, .cbi-section:has(.cbi-tblsection) .table .tr > .th.th, #packages .tr > .th.th, .cbi-section > .table.assoclist .tr > .th.th { position: static; }
 @media (max-width: 1180px) { .cbi-section .table .tr > .th.th { position: static; } }
 
 /* add-ons: adblock and banIP inject status palettes keyed on the OS
@@ -3269,7 +3275,7 @@ select[id^="widget.cbid.firewall."] > option { color: var(--text); font-weight: 
 		white-space: normal; text-align: center; line-height: 1.15;
 	}
 	.cbi-section { overflow-x: visible; }
-	.cbi-tblsection, .cbi-section:has(.cbi-tblsection), .cbi-section:has(> :where(#packages)) { overflow: visible; }
+	.cbi-tblsection, .cbi-section:has(.cbi-tblsection), .cbi-section:has(> :where(#packages)), .cbi-section:has(> .table.assoclist) { overflow: visible; }
 	.network-status-table .ifacebox-head, .network-status-table .ifacebox-body { padding-left: 12px; padding-right: 12px; }
 	:is(.ifacebox-body, .ifacebadge) > span:has(> .nowrap) { column-gap: 10px; }
 	.v-meter-sub { margin-left: 0; flex-basis: 100%; }

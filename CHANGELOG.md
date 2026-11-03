@@ -19,6 +19,12 @@ Each release ships both packages, `luci-theme-vantage` and
 - **"Signal · 3 weak" lists all three** (#71). With more than one weak
   client, the dashboard's Signal check opens the clients list on its Weak
   signal filter instead of only the weakest client's details.
+- **Wireless's Associated Stations stay in their card** (#74,
+  [@kylesean](https://github.com/kylesean)). LuCI 25.12 now puts the list
+  in a section of its own, and with names and addresses in Host it ran
+  past the card's edge on narrower desktop windows. The rate lines wrap
+  when space runs short, and on 25.12 the card scrolls if it still
+  doesn't fit.
 
 ## 1.0.13 - 2026-11-02
 
