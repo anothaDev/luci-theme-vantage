@@ -194,6 +194,14 @@ function readMenuDir(dir) {
 	}
 	return specs;
 }
+/* depends.fs, as the dispatcher checks it, against the rootfs dump: an
+   entry for a package the device lacks (luci-mod-dashboard's page) stays
+   hidden */
+function fsSatisfied(spec) {
+	const d = spec.depends && spec.depends.fs;
+	if (!d || typeof d !== 'object') return true;
+	return (Array.isArray(d) ? d : [ d ]).some(alt => Object.keys(alt).every(p => fs.existsSync(path.join(rootfs, p))));
+}
 function mergeMenu(root, specs) {
 	for (const [ p, spec ] of Object.entries(specs)) {
 		if (!spec || typeof spec !== 'object' || !/^[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)*$/.test(p)) continue;
@@ -202,7 +210,7 @@ function mergeMenu(root, specs) {
 		segs.forEach((seg, i) => {
 			node.children = node.children || {};
 			if (i === segs.length - 1)
-				node.children[seg] = Object.assign({ satisfied: true }, node.children[seg] && node.children[seg].children ? { children: node.children[seg].children } : {}, spec);
+				node.children[seg] = Object.assign({ satisfied: true }, node.children[seg] && node.children[seg].children ? { children: node.children[seg].children } : {}, spec, { satisfied: fsSatisfied(spec) });
 			else if (!node.children[seg] || typeof node.children[seg] !== 'object')
 				node.children[seg] = { satisfied: true, action: { type: 'firstchild' }, children: {} };
 			node = node.children[seg];
