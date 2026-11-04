@@ -92,6 +92,9 @@ var ICONS = {
 	cpu: [ 'M7.5 6h9A1.5 1.5 0 0 1 18 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 16.5v-9A1.5 1.5 0 0 1 7.5 6Z', 'M10 10h4v4h-4z', 'M9.5 3v3M14.5 3v3M9.5 18v3M14.5 18v3M3 9.5h3M3 14.5h3M18 9.5h3M18 14.5h3' ],
 	memory: [ 'M4 7.5h16a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z', 'M7 16.5v2.5M11 16.5v2.5M15 16.5v2.5M19 16.5v2.5', 'M6.5 10.5h3v3h-3zM10.5 10.5h3v3h-3zM14.5 10.5h3v3h-3z' ],
 	disk: [ 'M4.5 6.5c0-1.4 3.4-2.5 7.5-2.5s7.5 1.1 7.5 2.5v11c0 1.4-3.4 2.5-7.5 2.5s-7.5-1.1-7.5-2.5z', 'M4.5 6.5c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5', 'M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5' ],
+	/* an Ethernet jack, front on */
+	port: [ 'M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-3v2.5h-8V16.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5Z', 'M8 9v2.5M10.67 9v2.5M13.33 9v2.5M16 9v2.5' ],
+	signal: [ 'M5 19.5v-3', 'M9.5 19.5v-6.5', 'M14 19.5v-10', 'M18.5 19.5v-14' ],
 	clock: [ 'M12 3.5a8.5 8.5 0 1 0 0 17a8.5 8.5 0 1 0 0-17Z', 'M12 7.5V12l3 2' ],
 	down: [ 'M12 5v14', 'M6.5 13.5 12 19l5.5-5.5' ],
 	up: [ 'M12 19V5', 'M6.5 10.5 12 5l5.5 5.5' ],
@@ -213,7 +216,8 @@ function pos(el, xPct, yPct) {
    marker on the newest value, a faint top grid line and (opts.scale) the
    axis maximum with its unit. Before a minute of history the data is
    drawn from the right edge. opts: { min: axis floor, scale: fn(max),
-   thresh: value for a dashed reference line, threshLabel } */
+   thresh: value for a dashed reference line, threshLabel, quiet: no
+   'collecting…' note before there is a line } */
 function sparkline(data, cols, vmax, cls, opts) {
 	opts = opts || {};
 	var W = 100, H = 26;
@@ -225,7 +229,7 @@ function sparkline(data, cols, vmax, cls, opts) {
 	s.appendChild(svgPath('M0 ' + H + 'H' + W, 'vt-spark-base'));
 	if (!data || data.length < 2) {
 		wrap.classList.add('vt-sk-empty');
-		wrap.appendChild(E('span', { 'class': 'vt-sk-note' }, [ _('collecting…') ]));
+		if (!opts.quiet) wrap.appendChild(E('span', { 'class': 'vt-sk-note' }, [ _('collecting…') ]));
 		return wrap;
 	}
 	var t1 = data[data.length - 1][0], t0 = Math.min(data[0][0], t1 - 60000);
@@ -255,6 +259,16 @@ function sparkline(data, cols, vmax, cls, opts) {
 	if (opts.scale) wrap.appendChild(E('span', { 'class': 'vt-sk-max vt-tn' }, [ opts.scale(max) ]));
 	return wrap;
 }
+
+/* a thin bar filled to pct, in the warning colours at warn and err */
+function fillBar(pct, level) {
+	var f = E('span', { 'class': 'vt-bar-fill' + (level === 'err' ? ' vt-bg-err' : level === 'warn' ? ' vt-bg-warn' : '') });
+	setW(f, Math.max(+pct || 0, 0.8));
+	return E('span', { 'class': 'vt-bar vt-chip-bar' }, [ f ]);
+}
+
+/* each health check's own icon (insight.health ids) */
+var CHECK_ICONS = { uplink: 'port', cpu: 'cpu', memory: 'memory', radios: 'wifi', signal: 'signal', storage: 'disk' };
 
 /* -------------------------------------------------------------- helpers */
 
@@ -378,6 +392,22 @@ function pageLink(page, label) {
 	return E('a', { 'class': 'vt-link', 'href': L.url.apply(L, page) }, [ E('span', {}, [ label ]), icon('chevron') ]);
 }
 
+/* LuCI's own landing pages: luci-mod-dashboard's, where the app's menu.d
+   file moves it, and Status -> Overview */
+var LUCI_DASHBOARD = [ 'admin', 'status', 'dashboard' ];
+var LUCI_OVERVIEW = [ 'admin', 'status', 'overview' ];
+
+/* Is luci-theme-vantage installed? A HEAD for its menu script, a static
+   file from the server this view came from: no ACL, nothing new on the
+   device. The menu.d depends can't tell: LuCI caches the menu tree and a
+   theme switch doesn't renew it. Anything but a script (a 404, an error
+   page, no answer) reads as not installed, which keeps the dashboard */
+function themeInstalled() {
+	return fetch(L.resource('menu-vantage.js'), { method: 'HEAD', cache: 'no-store' }).then(function(r) {
+		return r.ok && /javascript/i.test(r.headers.get('Content-Type') || '');
+	}).catch(function() { return false; });
+}
+
 /* axis labels: round numbers without a trailing '.0' ('15 Mbit/s') */
 function bitsLabel(v) {
 	var p = fmt.bitsParts(v);
@@ -486,19 +516,53 @@ return view.extend({
 	/* ---------------------------------------------------------- loading */
 
 	load: function() {
-		return Promise.all([
-			loadCss(),
-			L.resolveDefault(callBoard(), {}),
-			L.resolveDefault(callAccess('access-group', 'luci-app-vantage-names', 'write'), false),
-			this.loadAliases(),
-			L.resolveDefault(callMdns(), null),
-			this.fetch(),
-			/* reverse DNS is an optional grant: without it, skip it quietly */
-			L.resolveDefault(callAccess('access-group', 'luci-app-vantage-rdns', 'read'), false),
-			L.resolveDefault(ui.menu.load(), null)
-		]).then(function(r) {
+		var self = this;
+		return this.stepAside().then(function() {
+			return Promise.all([
+				loadCss(),
+				L.resolveDefault(callBoard(), {}),
+				L.resolveDefault(callAccess('access-group', 'luci-app-vantage-names', 'write'), false),
+				self.loadAliases(),
+				L.resolveDefault(callMdns(), null),
+				self.fetch(),
+				/* reverse DNS is an optional grant: without it, skip it quietly */
+				L.resolveDefault(callAccess('access-group', 'luci-app-vantage-rdns', 'read'), false),
+				L.resolveDefault(ui.menu.load(), null)
+			]);
+		}).then(function(r) {
 			menuTree = r[7] || null;
 			return { board: r[1] || {}, canWrite: r[2] === true, mdns: r[4], raw: r[5], canRdns: r[6] === true };
+		});
+	},
+
+	/* #83: the page to open instead of the dashboard, or null to stay.
+	   media is L.env.media, the theme LuCI renders with
+	   ('/luci-static/argon'). Only when luci-theme-vantage is installed
+	   but another theme is in use: the app installed alone works under
+	   any theme. Then LuCI's own landing page, luci-mod-dashboard's or
+	   Status -> Overview; a user who may see neither keeps the dashboard
+	   rather than reach an access error */
+	asidePage: function(media, themeHere, hasLuciDashboard, hasOverview) {
+		var theme = (typeof media === 'string') ? media.replace(/\/+$/, '').replace(/^.*\//, '') : '';
+		if (!theme || theme === 'vantage' || themeHere !== true) return null;
+		if (hasLuciDashboard === true) return LUCI_DASHBOARD.slice();
+		return hasOverview === false ? null : LUCI_OVERVIEW.slice();
+	},
+
+	/* before load() asks for anything. Under Vantage (or an unnamed theme)
+	   at once; under another, once the theme's file and the menu
+	   answered. Stepping aside replaces the location and never resolves,
+	   so nothing of the dashboard renders or loads */
+	stepAside: function() {
+		var self = this, media = L.env.media;
+		if (!this.asidePage(media, true, false, true)) return Promise.resolve();
+		return Promise.all([ themeInstalled(), L.resolveDefault(ui.menu.load(), null) ]).then(function(r) {
+			/* without a menu hasPage says yes: Status -> Overview, which every LuCI has */
+			menuTree = r[1] || null;
+			var to = self.asidePage(media, r[0], !!menuTree && hasPage(LUCI_DASHBOARD), hasPage(LUCI_OVERVIEW));
+			if (!to) return;
+			window.location.replace(L.url.apply(L, to));
+			return new Promise(function() {});
 		});
 	},
 
@@ -618,6 +682,13 @@ return view.extend({
 		this.layouts = readLayouts();
 		this.chartStyle = readChartStyle();
 		this.backdropStyle = readBackdrop();
+		/* picked under the theme's Appearance (menu-vantage.js), here or
+		   in another tab */
+		var self = this, follow = function() { self.setBackdrop(readBackdrop()); };
+		if (window.addEventListener) {
+			window.addEventListener('vantage:backdrop', follow);
+			window.addEventListener('storage', function(ev) { if (ev.key === BACKDROP_KEY) follow(); });
+		}
 		this.editing = false;
 		this.drag = null;
 		this.applyMdns(data.mdns);
@@ -1116,12 +1187,15 @@ return view.extend({
 		return E('div', { 'class': 'vt-edit-field' }, [ E('label', { 'for': 'vt-chart-style' }, [ _('Throughput chart') ]), pick ]);
 	},
 
-	/* the network path's backdrop, picked under Customize */
+	/* the network path's backdrop, picked under Customize; under the
+	   Vantage theme it is in Appearance instead (menu-vantage.js) */
 	buildBackdropPick: function() {
+		if (/(^|\/)vantage\/*$/.test(L.env.media || '')) return null;
 		var self = this, names = { 'grid': _('Grid packets'), 'stars': _('Starfield'), 'none': _('None') };
 		var pick = E('select', { 'class': 'vt-select', 'id': 'vt-backdrop-style', 'change': function(ev) { self.setBackdrop(ev.target.value); } },
 			backdrop.STYLES.map(function(k) { return E('option', { 'value': k }, [ names[k] ]); }));
 		pick.value = this.backdropStyle;
+		this.backdropPick = pick;
 		return E('div', { 'class': 'vt-edit-field' }, [ E('label', { 'for': 'vt-backdrop-style' }, [ _('Network path background') ]), pick ]);
 	},
 
@@ -1130,6 +1204,7 @@ return view.extend({
 		this.backdropStyle = v;
 		writeBackdrop(v);
 		if (this.backdrop) this.backdrop.style(v);
+		if (this.backdropPick && this.backdropPick.value !== v) this.backdropPick.value = v;
 	},
 
 	setChartStyle: function(v) {
@@ -1362,28 +1437,102 @@ return view.extend({
 
 	/* ----------------------------------------------------------- health */
 
+	/* The health cards: each check with its own icon, tinted only when it
+	   needs attention, its value and reason, and a small picture of the
+	   last minutes or of how full it is. A change of shape (which checks,
+	   a level, where one leads) rebuilds them; otherwise the text and the
+	   pictures update in place, so a focused card keeps its focus. */
 	paintHealth: function() {
-		var self = this;
-		/* the same checks as last poll: leave the chips alone */
-		var sig = JSON.stringify(this.st.health.map(function(c) { return [ c.level, c.title, c.value, c.reason, c.detail, c.client, c.list, c.page ]; }));
-		if (sig === this.healthSig) return;
-		this.healthSig = sig;
-		dom.content(this.el.health, this.st.health.map(function(c) {
-			var ic = c.level === 'ok' ? 'check' : c.level === 'err' ? 'err' : c.level === 'warn' ? 'warn' : 'info';
-			var body = [
-				E('span', { 'class': 'vt-chip-ico' }, [ icon(ic) ]),
-				E('span', { 'class': 'vt-chip-main' }, [
-					E('span', { 'class': 'vt-chip-top' }, [ E('span', { 'class': 'vt-chip-title' }, [ c.title ]), E('span', { 'class': 'vt-chip-value' }, [ c.value ]) ]),
-					E('span', { 'class': 'vt-chip-reason' }, [ c.reason ])
-				])
-			];
-			if (c.client || c.list)
-				return E('button', { 'type': 'button', 'class': 'vt-chip vt-chip-' + c.level, 'role': 'listitem', 'title': c.detail || c.reason,
-					'click': function() { self.openCheck(c); } }, body);
-			/* without its page (no block-mount), a check links to the status overview */
-			var to = hasPage(c.page) ? c.page : [ 'admin', 'status', 'overview' ];
-			return E('a', { 'class': 'vt-chip vt-chip-' + c.level, 'role': 'listitem', 'title': c.detail || c.reason, 'href': L.url.apply(L, to) }, body);
-		}));
+		var self = this, checks = this.st.health;
+		var shape = JSON.stringify(checks.map(function(c) { return [ c.id, c.level, !!(c.client || c.list), c.page ]; }));
+		if (shape !== this.healthShape) {
+			this.healthShape = shape;
+			this.healthCells = checks.map(function(c) {
+				var cell = {
+					title: E('span', { 'class': 'vt-chip-title' }),
+					value: E('span', { 'class': 'vt-chip-value vt-tn' }),
+					reason: E('span', { 'class': 'vt-chip-reason' }),
+					viz: E('span', { 'class': 'vt-chip-viz', 'aria-hidden': 'true' })
+				};
+				var body = [
+					E('span', { 'class': 'vt-chip-ico' }, [ icon(CHECK_ICONS[c.id] || 'info') ]),
+					E('span', { 'class': 'vt-chip-main' }, [ E('span', { 'class': 'vt-chip-top' }, [ cell.title, cell.value ]), cell.reason, cell.viz ])
+				];
+				if (c.client || c.list)
+					cell.el = E('button', { 'type': 'button', 'class': 'vt-chip vt-chip-' + c.level, 'role': 'listitem',
+						'click': function() { self.openCheck(cell.check); } }, body);
+				else {
+					/* without its page (no block-mount), a check links to the status overview */
+					var to = hasPage(c.page) ? c.page : [ 'admin', 'status', 'overview' ];
+					cell.el = E('a', { 'class': 'vt-chip vt-chip-' + c.level, 'role': 'listitem', 'href': L.url.apply(L, to) }, body);
+				}
+				return cell;
+			});
+			dom.content(this.el.health, this.healthCells.map(function(cell) { return cell.el; }));
+		}
+		this.healthCells.forEach(function(cell, i) {
+			var c = checks[i];
+			cell.check = c;
+			txt(cell.title, c.title);
+			txt(cell.value, c.value);
+			txt(cell.reason, c.reason);
+			setTitle(cell.el, c.detail || c.reason);
+			patch(cell.viz, self.checkPicture(c));
+		});
+	},
+
+	/* the small picture under a health card: the last five minutes for
+	   what moves (uplink traffic, CPU), how full for what fills (memory,
+	   storage), each radio's airtime, and how the clients' signals spread */
+	checkPicture: function(c) {
+		var st = this.st, d = (this.m && this.m.device) || {};
+		switch (c.id) {
+		case 'uplink':
+			return [ sparkline(st.hist.net.uplink || [], [ 1, 2 ], 0, 'vt-spark-up', { min: 1000, quiet: true }) ];
+		case 'cpu':
+			return [ sparkline(st.hist.cpu || [], [ 1 ], 100, 'vt-spark-cpu', { quiet: true }) ];
+		case 'memory':
+			/* in use, then the reclaimable cache (part of what is available), as in the System tile */
+			if (!d.memory || !d.memory.segments) return [];
+			return [ E('span', { 'class': 'vt-chip-bar vt-chip-mem' + (c.level === 'ok' ? '' : ' vt-chip-mem-' + c.level) }, d.memory.segments.filter(function(g) { return g.key !== 'free'; }).map(function(g) {
+				var x = E('span', { 'class': 'vt-chip-mem-' + g.key });
+				setW(x, g.pct);
+				return x;
+			})) ];
+		case 'storage':
+			return (d.storage || [])[0] ? [ fillBar(d.storage[0].usedPct, c.level) ] : [];
+		case 'radios':
+			return this.radioPicture();
+		case 'signal':
+			return this.signalPicture();
+		}
+		return [];
+	},
+
+	/* each radio's airtime (how busy its channel is) as a short bar under
+	   its band; nothing where the driver doesn't report airtime */
+	radioPicture: function() {
+		var radios = ((this.m && this.m.radios) || []).filter(function(r) { return !r.disabled && r.airtime != null; });
+		if (!radios.length) return [];
+		return [ E('span', { 'class': 'vt-chip-radios' }, radios.map(function(r) {
+			return E('span', { 'class': 'vt-chip-radio vt-band-' + (r.band || 'x') }, [
+				E('span', { 'class': 'vt-chip-radio-top' }, [ E('span', {}, [ r.bandLabel || r.id ]), E('b', { 'class': 'vt-tn' }, [ fmt.pct(r.airtime) ]) ]),
+				fillBar(r.airtime, r.airtime >= 80 ? 'err' : r.airtime >= 60 ? 'warn' : 'ok')
+			]);
+		})) ];
+	},
+
+	/* the clients by signal class (wifi.signal), weakest on the right */
+	signalPicture: function() {
+		var clients = ((this.m && this.m.clients) || []).filter(function(c) { return c.signal != null; });
+		if (!clients.length) return [];
+		var by = { 4: 0, 3: 0, 2: 0, 1: 0 };
+		clients.forEach(function(c) { var b = wifi.signal(c.signal).bars; if (by[b] != null) by[b]++; });
+		return [ E('span', { 'class': 'vt-chip-dist' }, [ 4, 3, 2, 1 ].filter(function(b) { return by[b]; }).map(function(b) {
+			var s = E('span', { 'class': 'vt-dist-' + b });
+			setW(s, by[b] / clients.length * 100);
+			return s;
+		})) ];
 	},
 
 	/* ------------------------------------------------------------- hero */
@@ -2052,7 +2201,11 @@ return view.extend({
 		   can run ahead of the browser's: the axis ends at the newest one */
 		list.forEach(function(s) { var h = net[s.key]; if (h && h.length) now = Math.max(now, h[h.length - 1][0]); });
 
-		var dm = series.domain(list.map(function(s) { return net[s.key]; }), now, 60000, WINDOW_MS);
+		/* always the full five minutes: while history collects, the lines
+		   start part way across and the minute labels stay where they are
+		   (a span that grew with the history moved them every poll, #71) */
+		var dm = series.domain(list.map(function(s) { return net[s.key]; }), now, WINDOW_MS, WINDOW_MS);
+		dm.full = dm.age >= WINDOW_MS - 1000;
 		var ticks = [];
 		for (var k = 1; k * 60000 < dm.span - 20000; k++) ticks.push(k);
 		var rows = [], samples = 0;

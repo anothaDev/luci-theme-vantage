@@ -73,7 +73,9 @@ test('health: chip text is short, framed like the System tile, with the full sen
 	const h = insight.health(baseModel(), { cpu: { pct: 7, cores: [ 1, 2, 3, 4 ] }, uplinkRate: { rx: 374e6, tx: 3.77e6 } });
 	/* the uplink value is live traffic; the link speed is context */
 	assert.equal(byId(h, 'uplink').value, '↓ 374 Mbit/s');
-	assert.equal(byId(h, 'uplink').reason.replace(/\u00a0/g, ' '), '↑ 3.77 Mbit/s · eth0 · 2.5G link');
+	/* the path already names the device: with a rate, the reason doesn't */
+	assert.equal(byId(h, 'uplink').reason.replace(/\u00a0/g, ' '), '↑ 3.77 Mbit/s · 2.5G link');
+	assert.equal(byId(insight.health(baseModel(), {}), 'uplink').reason.replace(/\u00a0/g, ' '), 'eth0 · 2.5G link');
 	assert.match(byId(h, 'uplink').detail, /eth0 up at 2\.5 Gbit\/s, gateway 192\.0\.2\.1/);
 	/* memory is framed as available, like the System tile; storage says used */
 	assert.equal(byId(h, 'memory').value, '60% available');
@@ -84,6 +86,26 @@ test('health: chip text is short, framed like the System tile, with the full sen
 	}
 	/* before the first rate the value is just "Up" */
 	assert.equal(byId(insight.health(baseModel(), {}), 'uplink').value, 'Up');
+});
+
+test('health: all fine, Signal shows the weakest client and Wi-Fi counts radios', () => {
+	const h = insight.health(baseModel(), { cpu: { pct: 7, cores: [ 1 ] } });
+	assert.equal(byId(h, 'signal').value, '−60 dBm');
+	assert.equal(byId(h, 'signal').reason, 'Weakest of 2 clients');
+	assert.equal(byId(h, 'radios').value, '2 radios up');
+	const one = baseModel();
+	one.clients = [ { mac: 'a', name: 'A', signal: -52 } ];
+	one.radios = [ one.radios[0] ];
+	const h1 = insight.health(one, {});
+	assert.equal(byId(h1, 'signal').reason, '1 client');
+	assert.equal(byId(h1, 'radios').value, '1 radio up');
+	/* nobody there: no reason line that only repeats the value */
+	const none = Object.assign(baseModel(), { clients: [] });
+	assert.equal(byId(insight.health(none, {}), 'signal').value, 'No clients');
+	assert.equal(byId(insight.health(none, {}), 'signal').reason, '');
+	/* a driver without signal levels */
+	const quiet = Object.assign(baseModel(), { clients: [ { mac: 'a', name: 'A' } ] });
+	assert.equal(byId(insight.health(quiet, {}), 'signal').value, '—');
 });
 
 test('health: missing data degrades to info, never throws', () => {

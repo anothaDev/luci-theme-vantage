@@ -26,6 +26,10 @@ const callWirelessDevices = rpc.declare({ object: 'luci-rpc', method: 'getWirele
 const THEME_KEY = 'vantage.theme';
 const RAIL_KEY = 'vantage.rail';
 const LOGIN_KEY = 'vantage.login';      /* read by the login page's login.js */
+/* the dashboard's network path backdrop (luci-app-vantage view/vantage/overview.js),
+   picked here when the dashboard is installed; the dashboard listens for BACKDROP_EVENT */
+const BACKDROP_KEY = 'vantage.backdrop.v1';
+const BACKDROP_EVENT = 'vantage:backdrop';
 
 /* 24px stroke icons, drawn for this theme: constant [tag, attributes] lists,
    built with createElementNS (no markup parsing, no user data) */
@@ -1184,6 +1188,11 @@ return baseclass.extend({
 		const login = this.loginPref(), names = this.loginNames();
 		for (const k of [ 'grid', 'stars', 'none' ])
 			if (k !== login) list.push({ title: '%s: %s'.format(_('Login background'), names[k]), path: _('Appearance', 'vantage-theme'), icon: 'page', run: () => this.setLoginPref(k) });
+		if (this.hasDashboard()) {
+			const bd = this.backdropPref();
+			for (const k of [ 'grid', 'stars', 'none' ])
+				if (k !== bd) list.push({ title: '%s: %s'.format(_('Network path background'), names[k]), path: _('Appearance', 'vantage-theme'), icon: 'page', run: () => this.setBackdropPref(k) });
+		}
 		list.push({ title: _('Log out'), path: _('Session'), icon: 'logout', segs: [ 'admin', 'logout' ] });
 		list.forEach(a => { a.hay = a.path + ' › ' + a.title; a.group = _('Actions'); });
 		return list;
@@ -1398,6 +1407,23 @@ return baseclass.extend({
 		this.syncAppearance();
 	},
 
+	/* Vantage's dashboard, where this user may open it: its network path
+	   takes the same backdrops as the login page */
+	hasDashboard() {
+		return !!(this.admin && ui.menu.getChildren(this.admin).some(c => c.name === 'dashboard' && c.action && c.action.path === 'vantage/overview'));
+	},
+
+	backdropPref() {
+		const p = storageGet(BACKDROP_KEY);
+		return (p === 'stars' || p === 'none') ? p : 'grid';
+	},
+
+	setBackdropPref(pref) {
+		storageSet(BACKDROP_KEY, pref === 'grid' ? null : pref);
+		window.dispatchEvent(new CustomEvent(BACKDROP_EVENT));
+		this.syncAppearance();
+	},
+
 	setupTheme() {
 		const btn = document.getElementById('vt-theme');
 		if (btn) {
@@ -1415,13 +1441,14 @@ return baseclass.extend({
 		if (mq && mq.addEventListener) mq.addEventListener('change', () => { if (this.themePref() === 'auto') this.applyTheme(); });
 		window.addEventListener('storage', ev => {
 			if (ev.key === THEME_KEY) this.applyTheme();
-			else if (ev.key === LOGIN_KEY) this.syncAppearance();
+			else if (ev.key === LOGIN_KEY || ev.key === BACKDROP_KEY) this.syncAppearance();
 		});
 		this.applyTheme();
 	},
 
-	/* Appearance, under the colour-theme button: the colour theme and the
-	   login background, each a native radio group (the arrow keys move
+	/* Appearance, under the colour-theme button: the colour theme, the
+	   login background and, with the dashboard, the network path's
+	   background, each a native radio group (the arrow keys move
 	   within it) drawn as segments. Choices apply at once and stay open;
 	   Escape, Tab out of either end, a click outside, resizing or
 	   scrolling the page close it. */
@@ -1441,7 +1468,9 @@ return baseclass.extend({
 				[ 'auto', _('Auto', 'vantage-theme'), 'auto' ], [ 'light', _('Light', 'vantage-theme'), 'sun' ], [ 'dark', _('Dark', 'vantage-theme'), 'moon' ]
 			], v => this.setTheme(v)),
 			group('vt-login', _('Login background'), [ [ 'grid', login.grid ], [ 'stars', login.stars ], [ 'none', login.none ] ], v => this.setLoginPref(v))
-		]);
+		].concat(this.hasDashboard()
+			? [ group('vt-backdrop', _('Network path background'), [ [ 'grid', login.grid ], [ 'stars', login.stars ], [ 'none', login.none ] ], v => this.setBackdropPref(v)) ]
+			: []));
 		box.addEventListener('keydown', ev => {
 			if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); this.closeAppearance(true); }
 			else if (ev.key === 'Tab') {
@@ -1465,7 +1494,7 @@ return baseclass.extend({
 
 	syncAppearance() {
 		if (!this.appear) return;
-		const now = { 'vt-colour': this.themePref(), 'vt-login': this.loginPref() };
+		const now = { 'vt-colour': this.themePref(), 'vt-login': this.loginPref(), 'vt-backdrop': this.backdropPref() };
 		Array.prototype.forEach.call(this.appear.querySelectorAll('input[type="radio"]'), r => { r.checked = (now[r.name] === r.value); });
 	},
 

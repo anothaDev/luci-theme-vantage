@@ -36,9 +36,15 @@ port in one click, finding anything by typing — not from their look.
 | `luci-theme-vantage` | ucode templates, CSS, icons, `menu-vantage.js` (shell: rail, top bar, palette, tabs, indicators), login page | `+luci-base` |
 | `luci-app-vantage` | dashboard + inspector views under `admin/dashboard` (landing page), its rpcd ACL (reads + its own config only), its rpcd ucode plugin `luci.vantage` (key-free wireless status, temperatures, the bridges' wired hosts, validated alias writes), `/etc/config/vantage` | `+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs +ucode-mod-rtnl` (rpcd-mod-iwinfo, ucode-mod-fs and ucode-mod-rtnl beyond luci-base; Wi-Fi images already have rtnl, as wifi-scripts needs it); reverse DNS (`rpcd-mod-rrdns`), mDNS (`umdns`) and hostapd's ubus objects are optional and degrade |
 
-The theme is useful alone; the app works under any theme but is designed
-for Vantage. Names used everywhere: theme dir `vantage`, media URL
-`/luci-static/vantage`, uci `luci.themes.Vantage`, config `/etc/config/vantage`.
+The theme is useful alone; the app alone works under any theme but is
+designed for Vantage. With both installed and another theme selected, the
+dashboard steps aside: `admin/dashboard` opens LuCI's own landing page
+instead (`luci-mod-dashboard`'s Status → Dashboard, else Status →
+Overview). The view decides this in the browser, because LuCI caches the
+menu tree across theme switches; a HEAD request for the theme's
+`menu-vantage.js` tells whether the theme is installed. Names used
+everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
+`luci.themes.Vantage`, config `/etc/config/vantage`.
 
 ## 3. Theme v1
 
@@ -225,7 +231,12 @@ text around it so it looks the same size.
   command palette.
 - **Health**: simple, explainable scores (e.g. signal < −75 dBm, uplink
   down, memory > 90 %, radio disabled) each with a one-line reason and a
-  link to the page that fixes it.
+  link to the page that fixes it. Each card carries its own icon (port,
+  CPU, memory, Wi-Fi, signal, storage), plain while all is well and in
+  the level's colour when it needs attention, and a small picture on its
+  bottom edge: the last five minutes of uplink traffic and CPU, how full
+  memory (in use, then cache) and storage are, each radio's airtime where
+  the driver reports it, and the clients by signal class.
 - **Layout**: tiles are packed into columns (four, two or one by width);
   each tile has a column, a width and a place in the order, and stacks
   under the earlier tiles in its columns. "Customize" lets the viewer drag
@@ -246,7 +257,9 @@ text around it so it looks the same size.
   The pick is saved in `localStorage`, validated on read; the tile's size
   and place don't change with it.
 - **Network path background**: behind the path, on its dot grid, one
-  canvas in the style picked under "Customize", the login page's two:
+  canvas in the style picked under the theme's Appearance (or under
+  "Customize" when the dashboard runs without the Vantage theme), the
+  login page's two:
   grid packets (the default; downloads run from the gateway's side,
   uploads back, more and faster with the uplink's live rate, from a
   couple at idle to 36 at 1 Gbit/s) or a starfield streaming out of this

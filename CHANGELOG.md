@@ -6,6 +6,32 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
+## Unreleased
+
+- **Vantage's dashboard goes with Vantage's theme** (#83,
+  [@smallprogram](https://github.com/smallprogram)). With both packages
+  installed and another theme selected, such as Argon, the dashboard
+  still opened after login and looked broken in that theme. Dashboard
+  and the page after login now open LuCI's own: Status → Dashboard when
+  `luci-mod-dashboard` is installed, otherwise Status → Overview.
+  Installed without the theme, the dashboard still works under any
+  theme.
+- **Health cards with their own icons and a picture each.** The six
+  cards above the network path all carried the same check mark. Each now
+  shows what it is about (port, CPU, memory, Wi-Fi, signal, storage),
+  coloured only when it needs attention, with the last five minutes of
+  uplink traffic and CPU, how full memory and storage are, each radio's
+  airtime where the driver reports it, and how the clients' signals
+  spread. Signal shows the weakest client instead of "All good".
+- **The throughput chart's minute labels stay put** (#71,
+  [@HyperdrivzZ](https://github.com/HyperdrivzZ)). While the five minutes
+  of history filled, the time axis stretched with it and "−2 min" slid
+  into "3 min ago" on a phone. The axis is now always five minutes, and
+  the lines start part way across until the history is full.
+- **The network path's background is under Appearance**, next to the
+  login page's, instead of in the dashboard's Customize bar. A dashboard
+  installed without the theme keeps it under Customize.
+
 ## 1.0.14 - 2026-11-03
 
 - **The spinner while changes are applied turns smoothly** (#71,

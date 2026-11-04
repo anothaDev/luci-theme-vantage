@@ -585,13 +585,43 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-chip-warn { --vt-cc: var(--vt-warn); background: color-mix(in oklab, var(--vt-warn) 7%, var(--vt-surface)); border-color: color-mix(in oklab, var(--vt-warn) 35%, var(--vt-line)); }
 .vt-app .vt-chip-err { --vt-cc: var(--vt-err); background: color-mix(in oklab, var(--vt-err) 7%, var(--vt-surface)); border-color: color-mix(in oklab, var(--vt-err) 35%, var(--vt-line)); }
 .vt-app .vt-chip-info { --vt-cc: var(--vt-text-3); }
+/* the check's own icon: plain while all is well, in the level's colour
+   when it needs attention */
 .vt-app .vt-chip-ico {
 	flex: none; width: 26px; height: 26px; border-radius: 8px;
 	display: inline-flex; align-items: center; justify-content: center;
-	background: color-mix(in oklab, var(--vt-cc) 15%, transparent); color: var(--vt-cc);
+	background: var(--vt-surface-2); color: var(--vt-text-2);
 }
-.vt-app .vt-chip-ico .vt-ico { width: 15px; height: 15px; stroke-width: 2.1; }
-.vt-app .vt-chip-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.vt-app :is(.vt-chip-warn, .vt-chip-err) .vt-chip-ico { background: color-mix(in oklab, var(--vt-cc) 15%, transparent); color: var(--vt-cc); }
+.vt-app .vt-chip-ico .vt-ico { width: 15px; height: 15px; stroke-width: 1.9; }
+.vt-app .vt-chip { align-self: stretch; }
+.vt-app .vt-chip-main { display: flex; flex-direction: column; min-width: 0; flex: 1; align-self: stretch; }
+/* the picture sits on the card's bottom edge, level across a row */
+.vt-app .vt-chip-viz { display: block; margin-top: auto; padding-top: 8px; }
+.vt-app .vt-chip-viz:empty { display: none; }
+.vt-app .vt-chip-viz .vt-spark { height: 22px; }
+.vt-app .vt-chip-viz .vt-sk-dot { width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; }
+.vt-app .vt-chip-bar { display: block; height: 4px; border-radius: 2px; }
+.vt-app .vt-chip-bar .vt-bar-fill { border-radius: 2px; }
+.vt-app .vt-chip-mem { display: flex; gap: 1px; overflow: hidden; background: var(--vt-surface-3); }
+.vt-app .vt-chip-mem > span { display: block; height: 100%; }
+.vt-app .vt-chip-mem-used { background: var(--vt-mem); }
+.vt-app .vt-chip-mem-cache { background: color-mix(in oklab, var(--vt-mem) 35%, var(--vt-surface-3)); }
+.vt-app .vt-chip-mem-warn .vt-chip-mem-used { background: var(--vt-warn); }
+.vt-app .vt-chip-mem-err .vt-chip-mem-used { background: var(--vt-err); }
+.vt-app .vt-chip-radios { display: flex; gap: 10px; }
+.vt-app .vt-chip-radio { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.vt-app .vt-chip-radio-top { display: flex; justify-content: space-between; gap: 4px; font-size: var(--vt-fs-micro); line-height: 1.2; color: var(--vt-text-3); white-space: nowrap; }
+.vt-app .vt-chip-radio-top b { color: var(--vt-text-2); font-weight: 600; }
+.vt-app .vt-chip-radio.vt-band-2g .vt-bar-fill:not(.vt-bg-warn, .vt-bg-err) { background: var(--vt-b2); }
+.vt-app .vt-chip-radio.vt-band-5g .vt-bar-fill:not(.vt-bg-warn, .vt-bg-err) { background: var(--vt-b5); }
+.vt-app .vt-chip-radio.vt-band-6g .vt-bar-fill:not(.vt-bg-warn, .vt-bg-err) { background: var(--vt-b6); }
+.vt-app .vt-chip-dist { display: flex; gap: 2px; height: 4px; }
+.vt-app .vt-chip-dist > span { flex: 0 1 auto; min-width: 4px; border-radius: 2px; }
+.vt-app .vt-dist-4 { background: var(--vt-ok); }
+.vt-app .vt-dist-3 { background: color-mix(in oklab, var(--vt-ok) 55%, var(--vt-surface-3)); }
+.vt-app .vt-dist-2 { background: var(--vt-warn); }
+.vt-app .vt-dist-1 { background: var(--vt-err); }
 .vt-app .vt-chip-top { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
 .vt-app .vt-chip-title { font-size: var(--vt-fs-micro); line-height: 1.3; font-weight: 650; color: var(--vt-text-3); text-transform: uppercase; letter-spacing: .05em; }
 .vt-app .vt-chip-value { font-size: var(--vt-fs-md); font-weight: 700; letter-spacing: -.01em; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
