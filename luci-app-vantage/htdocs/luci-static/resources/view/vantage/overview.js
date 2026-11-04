@@ -81,6 +81,11 @@ function reducedMotion() {
 	return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 }
 
+/* is the page rendered by the Vantage theme (L.env.media '/luci-static/vantage')? */
+function vantageTheme() {
+	return /(^|\/)vantage\/*$/.test(L.env.media || '');
+}
+
 /* ------------------------------------------------------------- SVG kit */
 
 var ICONS = {
@@ -95,13 +100,11 @@ var ICONS = {
 	/* an Ethernet jack, front on */
 	port: [ 'M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-3v2.5h-8V16.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5Z', 'M8 9v2.5M10.67 9v2.5M13.33 9v2.5M16 9v2.5' ],
 	signal: [ 'M5 19.5v-3', 'M9.5 19.5v-6.5', 'M14 19.5v-10', 'M18.5 19.5v-14' ],
-	clock: [ 'M12 3.5a8.5 8.5 0 1 0 0 17a8.5 8.5 0 1 0 0-17Z', 'M12 7.5V12l3 2' ],
 	down: [ 'M12 5v14', 'M6.5 13.5 12 19l5.5-5.5' ],
 	up: [ 'M12 19V5', 'M6.5 10.5 12 5l5.5 5.5' ],
 	close: [ 'M6.5 6.5l11 11M17.5 6.5l-11 11' ],
 	search: [ 'M10.5 4.5a6 6 0 1 0 0 12a6 6 0 1 0 0-12Z', 'M15 15l4.5 4.5' ],
 	chevron: [ 'M9.5 6l6 6-6 6' ],
-	out: [ 'M9 15 16.5 7.5', 'M10 7.5h6.5V14', 'M13 4.5H6A1.5 1.5 0 0 0 4.5 6v12A1.5 1.5 0 0 0 6 19.5h12a1.5 1.5 0 0 0 1.5-1.5v-7' ],
 	check: [ 'M5 12.5l4.5 4.5L19 7.5' ],
 	warn: [ 'M10.3 4.6 3 17.5A2 2 0 0 0 4.7 20.5h14.6A2 2 0 0 0 21 17.5L13.7 4.6a2 2 0 0 0-3.4 0Z', 'M12 9.5v4.5', 'M12 17h.01' ],
 	err: [ 'M12 3.5a8.5 8.5 0 1 0 0 17a8.5 8.5 0 1 0 0-17Z', 'M9 9l6 6M15 9l-6 6' ],
@@ -110,7 +113,6 @@ var ICONS = {
 	lock: [ 'M6.5 11h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z', 'M8.5 11V8a3.5 3.5 0 0 1 7 0v3' ],
 	unlock: [ 'M6.5 11h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z', 'M8.5 11V8a3.5 3.5 0 0 1 6.8-1.2' ],
 	users: [ 'M9 11a3.5 3.5 0 1 0 0-7a3.5 3.5 0 1 0 0 7Z', 'M2.5 20c.8-3.4 3.3-5.5 6.5-5.5s5.7 2.1 6.5 5.5', 'M16 4.3a3.5 3.5 0 0 1 0 6.4', 'M18 14.8c1.8.8 3 2.6 3.5 5.2' ],
-	spark: [ 'M12 3.5v4M12 16.5v4M3.5 12h4M16.5 12h4M6 6l2.6 2.6M15.4 15.4 18 18M6 18l2.6-2.6M15.4 8.6 18 6' ],
 	pulse: [ 'M3 12h4l2.5-6 5 12 2.5-6H21' ],
 	phone: [ 'M8 3h8a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 16 21H8a1.5 1.5 0 0 1-1.5-1.5v-15A1.5 1.5 0 0 1 8 3Z', 'M11 18h2' ],
 	laptop: [ 'M5.5 5.5h13a1 1 0 0 1 1 1v8.5h-15V6.5a1 1 0 0 1 1-1Z', 'M2.5 18.5h19l-1.5-3.5h-16z' ],
@@ -329,6 +331,10 @@ function avatar(c, small) {
 	el.style.setProperty('--vt-h', hueOf(c.mac).toFixed(0));
 	return el;
 }
+
+/* a client named after its address (vendor, private or MAC fallback,
+   names.resolve): plainName is the name without the MAC's octets */
+function madeName(c) { return !!c.plainName && c.plainName !== c.name; }
 
 function bandBadge(band, label) {
 	return E('span', { 'class': 'vt-band vt-band-' + (band || 'x') }, [ label || wifi.bandLabel(band) ]);
@@ -1190,7 +1196,7 @@ return view.extend({
 	/* the network path's backdrop, picked under Customize; under the
 	   Vantage theme it is in Appearance instead (menu-vantage.js) */
 	buildBackdropPick: function() {
-		if (/(^|\/)vantage\/*$/.test(L.env.media || '')) return null;
+		if (vantageTheme()) return null;
 		var self = this, names = { 'grid': _('Grid packets'), 'stars': _('Starfield'), 'none': _('None') };
 		var pick = E('select', { 'class': 'vt-select', 'id': 'vt-backdrop-style', 'change': function(ev) { self.setBackdrop(ev.target.value); } },
 			backdrop.STYLES.map(function(k) { return E('option', { 'value': k }, [ names[k] ]); }));
@@ -1415,13 +1421,24 @@ return view.extend({
 		]);
 	},
 
+	/* the device and its clients; the firmware is in the System tile */
 	paintHead: function() {
-		var s = this.st.summary, d = this.m.device;
+		var s = this.st.summary, clients = this.m.clients.length;
 		this.el.orb.className = 'vt-orb vt-orb-' + s.level;
 		txt(this.el.headline, s.headline);
-		var clients = this.m.clients.length;
-		txt(this.el.subline, [ d.model, d.hostname, d.firmware ? d.firmware.replace(/\s+r\d+-[0-9a-f]+$/, '') : null,
-			this.m.wired ? null : clients === 1 ? _('1 client') : _('%d clients').format(clients) ].filter(Boolean).join('  ·  '));
+		txt(this.el.subline, this.identity(this.m.device).concat(
+			this.m.wired ? [] : [ clients === 1 ? _('1 client') : _('%d clients').format(clients) ]).join('  ·  '));
+	},
+
+	/* model and hostname, or the one of them that holds the other
+	   ("Example AX3000", "example-ax3000"), compared in lower case on
+	   letters and digits only */
+	identity: function(d) {
+		var key = function(v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ''); };
+		var a = key(d.model), b = key(d.hostname);
+		if (a && b && a.indexOf(b) >= 0) return [ d.model ];
+		if (a && b && b.indexOf(a) >= 0) return [ d.hostname ];
+		return [ d.model, d.hostname ].filter(Boolean);
 	},
 
 	paintLive: function() {
@@ -1431,6 +1448,9 @@ return view.extend({
 		else if (st.lastErr) { state = 'err'; label = _('Reconnecting…', 'vantage'); }
 		else { state = 'ok'; label = _('Live') + ' · ' + fmt.ago(Date.now() - st.lastOk); }
 		this.el.live.className = 'vt-livepill vt-live-' + state;
+		/* the Vantage theme's poll indicator already says the page is
+		   live: then this pill shows only when it is not */
+		this.el.live.hidden = state === 'ok' && vantageTheme();
 		this.el.live.setAttribute('title', label);
 		txt(this.el.liveText, label);
 	},
@@ -1547,11 +1567,9 @@ return view.extend({
 		el.path.appendChild(el.flows);
 		this.wireMap = Object.create(null);
 		this.hero = null;
-		el.kpis = E('div', { 'class': 'vt-kpis vt-fold-keep' });
 		var tile = this.foldable('hero', E('section', { 'class': 'vt-tile vt-hero', 'aria-label': _('Network path') }, [
-			tileHead('pulse', _('Network path'), [ E('span', { 'class': 'vt-hint vt-hint-wide' }, [ _('Click any node for details') ]), this.foldButton('hero', _('Show or hide the network path')) ]),
-			el.path,
-			el.kpis
+			tileHead('pulse', _('Network path'), [ this.foldButton('hero', _('Show or hide the network path')) ]),
+			el.path
 		]));
 		/* packets or stars behind the path, moved by the uplink's rate */
 		this.backdrop = backdrop.mount(tile, el.path, this.backdropStyle);
@@ -1609,7 +1627,6 @@ return view.extend({
 		var key = this.heroKey();
 		if (!this.hero || this.hero.key !== key) this.buildHeroNodes(key);
 		this.updateHero();
-		this.paintKpis();
 		this.paintWireState();
 	},
 
@@ -1754,7 +1771,7 @@ return view.extend({
 				txt(b.kicker, n.proto || _('Interface'));
 				txt(b.title, n.name);
 				txt(b.addr, n.ipv4 ? n.ipv4.split('/')[0] : (n.dev || fmt.DASH));
-				txt(b.sub, r ? '↓ ' + fmt.bitsShort(r.tx) + '  ↑ ' + fmt.bitsShort(r.rx) : fmt.DASH);
+				txt(b.sub, r ? fmt.rates(r.tx, r.rx) : fmt.DASH);
 				b.active = !!(r && r.rx + r.tx > 50e3);
 				b.rate = r ? r.rx + r.tx : 0;
 			});
@@ -1780,15 +1797,17 @@ return view.extend({
 				var s = ssids[sn.id];
 				if (!s) return;
 				sn.data = s;
-				var tone = s.security.tone === 'open' ? 'unlock' : 'lock';
+				/* a lock only where the security is open or weak */
+				var tone = s.security.tone === 'open' ? 'unlock' : s.security.tone === 'weak' ? 'lock' : null;
 				if (sn.tone !== tone) {
-					var ico = icon(tone, 'vt-ico-sm');
-					if (sn.ico) sn.title.replaceChild(ico, sn.ico); else sn.title.insertBefore(ico, sn.name);
+					var ico = tone ? icon(tone, 'vt-ico-sm') : null;
+					if (sn.ico) sn.title.removeChild(sn.ico);
+					if (ico) sn.title.insertBefore(ico, sn.name);
 					sn.ico = ico;
 					sn.tone = tone;
 				}
 				setClass(sn.el, 'vt-node vt-node-ssid' + (s.clients ? '' : ' vt-node-idle'));
-				setTitle(sn.el, _('Show the clients of %s').format(s.ssid));
+				setTitle(sn.el, _('Show the clients of %s').format(s.ssid) + (tone ? '\n' + s.security.long : ''));
 				txt(sn.name, s.ssid || _('(hidden)'));
 				txt(sn.count, s.clients === 1 ? _('1 client') : _('%d clients').format(s.clients));
 				var dots = m.clients.filter(function(c) { return c.ssidId === s.id; }).slice(0, 8);
@@ -1817,86 +1836,14 @@ return view.extend({
 			setTitle(sn.el, _('Show the devices on %s').format(sn.port) + (r ? '\n' + _('Port total: %s').format('↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx)) : '') +
 				(sw ? '\n' + switchNote(sw) : ''));
 			txt(sn.name, one ? sn.port + ' · ' + one.name : sn.port);
-			txt(sn.count, one ? (one.speed ? fmt.phyRate(one.speed.mbps * 1000) : fmt.DASH) : on.length === 1 ? _('1 device') : _('%d devices').format(on.length));
-			txt(sn.rate, r ? '↓ ' + fmt.bitsShort(r.tx) + '  ↑ ' + fmt.bitsShort(r.rx) : fmt.DASH);
+			txt(sn.count, one ? (one.speed ? fmt.phyRate(one.speed.mbps * 1000) : fmt.DASH) : _('%d devices').format(on.length));
+			txt(sn.rate, r ? fmt.rates(r.tx, r.rx) : fmt.DASH);
 			sn.active = !!(r && r.rx + r.tx > 50e3);
 		});
 		txt(b.title, n === 1 ? _('1 device') : _('%d devices').format(n));
 		txt(b.sub, seen ? '↓ ' + fmt.bits(tx) : fmt.DASH);
 		b.active = !!(seen && rx + tx > 50e3);
 		b.rate = seen ? rx + tx : 0;
-	},
-
-	/* four numbers under the path: who is here, what flows, where, and
-	   who is worst off. The cells stay; only a change of shape (tone, or
-	   whether a cell links somewhere) rebuilds them. */
-	paintKpis: function() {
-		var self = this, specs = this.m.wired ? this.netKpiSpecs() : this.kpiSpecs();
-		var shape = specs.map(function(k) { return k.tone + (k.act ? '+' : '-'); }).join(' ');
-		this.kpiActs = specs.map(function(k) { return k.act; });
-		if (this.kpiShape !== shape) {
-			this.kpiShape = shape;
-			this.kpiCells = specs.map(function(k, i) {
-				var c = { label: E('span', { 'class': 'vt-kpi-label' }), value: E('span', { 'class': 'vt-kpi-value vt-tn' }), sub: E('span', { 'class': 'vt-kpi-sub' }) };
-				var body = [ c.label, c.value, c.sub ];
-				c.el = k.act
-					? E('button', { 'type': 'button', 'class': 'vt-kpi vt-kpi-' + k.tone, 'click': function() { var f = self.kpiActs[i]; if (f) f(); } }, body)
-					: E('div', { 'class': 'vt-kpi vt-kpi-' + k.tone }, body);
-				return c;
-			});
-			dom.content(this.el.kpis, this.kpiCells.map(function(c) { return c.el; }));
-		}
-		this.kpiCells.forEach(function(c, i) {
-			txt(c.label, specs[i].label);
-			txt(c.value, specs[i].value);
-			txt(c.sub, specs[i].sub);
-		});
-	},
-
-	kpiSpecs: function() {
-		var self = this, m = this.m, st = this.st, up = st.uplinkRate;
-		var byBand = {};
-		m.clients.forEach(function(c) { byBand[c.band] = (byBand[c.band] || 0) + 1; });
-		var bandText = Object.keys(byBand).sort().map(function(b) { return _('%d on %s').format(byBand[b], wifi.bandLabel(b)); }).join(' · ');
-		/* wired hosts downstream count as clients too */
-		var ports = this.wiredPorts(), wiredN = (m.wiredHosts || []).filter(function(c) { return ports.indexOf(c.port) >= 0; }).length;
-		if (wiredN) bandText = [ bandText, _('%d wired').format(wiredN) ].filter(Boolean).join(' · ');
-		var busiest = null;
-		m.radios.forEach(function(r) { var i = st.radioInsights[r.id]; if (i && i.busiest) busiest = { r: r, share: i.share }; });
-		var weakest = m.clients.filter(function(c) { return c.signal != null; }).sort(function(a, b) { return a.signal - b.signal; })[0];
-		return [
-			{ label: _('Clients'), value: String(m.clients.length + wiredN), sub: bandText || _('none connected'), tone: 'plain',
-				act: function() { self.el.clients.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' }); } },
-			{ label: _('Traffic now'), value: up ? '↓ ' + fmt.bits(up.rx) : fmt.DASH, sub: up ? _('↑ %s · via %s').format(fmt.bits(up.tx), m.uplink ? m.uplink.dev : '') : _('measuring'), tone: 'plain',
-				act: function() { self.openDrawer('uplink', 'uplink'); } },
-			busiest ? { label: _('Busiest radio'), value: busiest.r.bandLabel, sub: _('%s of Wi-Fi traffic').format(fmt.pct(busiest.share * 100)), tone: 'plain',
-				act: function() { self.openDrawer('radio', busiest.r.id); } }
-				: { label: _('Busiest radio'), value: fmt.DASH, sub: _('no Wi-Fi traffic yet'), tone: 'plain', act: null },
-			weakest ? { label: _('Weakest signal'), value: fmt.dbm(weakest.signal), sub: weakest.name, tone: weakest.signal < insight.WEAK_DBM ? 'warn' : 'plain',
-				act: function() { self.openDrawer('client', weakest.mac); } }
-				: { label: _('Weakest signal'), value: fmt.DASH, sub: _('no clients'), tone: 'plain', act: null }
-		];
-	},
-
-	/* wired-only: what flows, how long the uplink has held, which
-	   networks are up and which is busiest */
-	netKpiSpecs: function() {
-		var self = this, m = this.m, st = this.st, up = st.uplinkRate, link = m.uplink;
-		var nets = m.networks, upNets = nets.filter(function(n) { return n.up; });
-		var busiest = null;
-		upNets.forEach(function(n) {
-			var r = n.dev ? st.devRates[n.dev] : null;
-			if (r && r.rx + r.tx > 0 && (!busiest || r.rx + r.tx > busiest.r.rx + busiest.r.tx)) busiest = { n: n, r: r };
-		});
-		function toNetwork() { window.location.href = L.url.apply(L, insight.PAGES.network); }
-		function toUplink() { self.openDrawer('uplink', 'uplink'); }
-		return [
-			{ label: _('Traffic now'), value: up ? '↓ ' + fmt.bits(up.rx) : fmt.DASH, sub: up ? _('↑ %s · via %s').format(fmt.bits(up.tx), link ? link.dev : '') : _('measuring'), tone: 'plain', act: toUplink },
-			{ label: _('Connected for'), value: link && link.uptime != null ? fmt.duration(link.uptime) : fmt.DASH, sub: link ? [ link.iface, link.proto ].filter(Boolean).join(' · ') : _('no uplink'), tone: 'plain', act: toUplink },
-			{ label: _('Networks'), value: String(upNets.length), sub: nets.length > upNets.length ? _('%d down').format(nets.length - upNets.length) : _('all up'), tone: 'plain', act: toNetwork },
-			busiest ? { label: _('Busiest network'), value: busiest.n.name, sub: '↓ ' + fmt.bits(busiest.r.tx) + '  ↑ ' + fmt.bits(busiest.r.rx), tone: 'plain', act: toNetwork }
-				: { label: _('Busiest network'), value: fmt.DASH, sub: _('no traffic yet'), tone: 'plain', act: toNetwork }
-		];
 	},
 
 	scheduleWires: function() {
@@ -2102,6 +2049,7 @@ return view.extend({
 
 		/* memory: one bar, three named segments */
 		var mem = d.memory;
+		el.memBar.hidden = !mem;
 		if (mem) {
 			patch(el.memHead, [
 				E('span', { 'class': 'vt-mem-avail vt-tn' }, [ _('%s available', 'vantage').format(fmt.pct(mem.availPct)) ]),
@@ -2122,7 +2070,13 @@ return view.extend({
 			}));
 		}
 		else {
+			/* nothing left of the last reading, so the next one starts afresh */
 			patch(el.memHead, [ E('span', { 'class': 'vt-muted' }, [ _('Not reported') ]) ]);
+			dom.content(el.memBar, []);
+			el.memBar.removeAttribute('aria-label');
+			el.memSegs = null;
+			el.memPct = null;
+			patch(el.memLegend, []);
 		}
 		if (d.swap) {
 			var sb = E('span', { 'class': 'vt-thin-fill' });
@@ -2215,7 +2169,7 @@ return view.extend({
 			var d = (net[s.key] || []).filter(function(p) { return p[0] >= dm.t0 - POLL_S * 1000; });
 			var sd = series.stats(d, s.dn, dm.t0), su = series.stats(d, s.up, dm.t0);
 			var last = d.length ? d[d.length - 1] : null, fresh = !!(last && now - last[0] < POLL_S * 3000);
-			var g = series.chartGeom(style, sd.peak, su.peak);
+			var g = series.chartGeom(style, sd.peak, su.peak), pk = fmt.rateParts(sd.peak, su.peak);
 			samples = Math.max(samples, sd.n);
 
 			var svg = svgRoot('vt-mult-svg', '0 0 ' + W + ' ' + H);
@@ -2264,7 +2218,7 @@ return view.extend({
 					E('span', { 'class': 'vt-mult-now vt-mult-now-up', 'title': _('Upload') }, [ dirKey('up'),
 						E('b', { 'class': 'vt-tn' }, [ dirArrow('up'), ' ', fresh && su.now != null ? fmt.bits(last[s.up]) : fmt.DASH ]) ]),
 					E('span', { 'class': 'vt-mult-stats vt-tn' }, sd.n > 1 ? [
-						E('span', {}, [ _('peak', 'vantage'), ' ', E('b', {}, [ dirArrow('dn'), ' ' + fmt.bitsShort(sd.peak) ]), ' ', E('b', {}, [ dirArrow('up'), ' ' + fmt.bitsShort(su.peak) ]) ])
+						E('span', {}, [ _('peak', 'vantage'), ' ', E('b', {}, [ dirArrow('dn'), ' ' + pk.dn ]), ' ', E('b', {}, [ dirArrow('up'), ' ' + pk.up ]), pk.unit ? ' ' + pk.unit : '' ])
 					] : [ E('span', {}, [ _('measuring…') ]) ])
 				]),
 				E('div', { 'class': 'vt-mult-plot vt-chart-' + style }, [
@@ -2291,7 +2245,6 @@ return view.extend({
 		var age = dm.age;
 		txt(el.chartSub, dm.full ? _('last 5 min')
 			: samples < 2 ? _('collecting · first samples') : _('collecting · %s of data').format(spanShort(age)));
-		el.plot.classList.toggle('vt-collecting', !dm.full);
 		if (this.ui.hover) this.chartShow(this.ui.hover);
 	},
 
@@ -2420,7 +2373,7 @@ return view.extend({
 			}
 			var hist = st.hist.net[r.id] || [];
 			var clients = m.clients.filter(function(c) { return c.radio === r.id; });
-			return E('article', { 'class': 'vt-tile vt-radio vt-radio-' + (r.band || 'x') + (r.up ? '' : ' vt-radio-off') + (ins.busiest ? ' vt-radio-busiest' : ''), 'data-radio': r.id }, [
+			return E('article', { 'class': 'vt-tile vt-radio vt-radio-' + (r.band || 'x') + (r.up ? '' : ' vt-radio-off'), 'data-radio': r.id }, [
 				E('header', { 'class': 'vt-radio-head' }, [
 					bandBadge(r.band),
 					E('span', { 'class': 'vt-radio-name' }, [ r.gen || r.id ]),
@@ -2433,11 +2386,12 @@ return view.extend({
 					E('span', { 'class': 'vt-radio-width vt-tn' }, [ r.width ? _('%s MHz').format(r.width) : '', r.auto ? ' · ' + _('auto') : '' ])
 				]),
 				spec,
+				/* noise and airtime only where the driver reports them */
 				E('dl', { 'class': 'vt-stats' }, [
 					kv(_('Clients'), E('span', { 'class': 'vt-tn' }, [ String(r.clients) ])),
 					kv(_('Tx power'), E('span', { 'class': 'vt-tn' }, [ r.txpower != null ? _('%s dBm').format(r.txpower) : fmt.DASH ])),
-					kv(_('Noise'), r.noise != null ? E('span', { 'class': 'vt-tn' }, [ fmt.dbm(r.noise) ]) : E('span', { 'class': 'vt-muted', 'title': _('The driver reports a placeholder value, so no noise floor or SNR is shown') }, [ _('not reported') ])),
-					kv(_('Airtime'), r.airtime != null ? E('span', { 'class': 'vt-tn' }, [ fmt.pct(r.airtime) ]) : E('span', { 'class': 'vt-muted' }, [ _('not reported') ]))
+					r.noise != null ? kv(_('Noise'), E('span', { 'class': 'vt-tn' }, [ fmt.dbm(r.noise) ])) : '',
+					r.airtime != null ? kv(_('Airtime'), E('span', { 'class': 'vt-tn' }, [ fmt.pct(r.airtime) ])) : ''
 				]),
 				E('div', { 'class': 'vt-radio-live' }, [
 					rateLine(rr ? rr.tx : null, rr ? rr.rx : null),
@@ -2460,13 +2414,13 @@ return view.extend({
 		var self = this, el = this.el, ui = this.ui;
 		el.filter = E('input', { 'type': 'text', 'class': 'vt-filter-input', 'placeholder': _('Filter by name, address, SSID…'),
 			'aria-label': _('Filter clients'), 'autocomplete': 'off', 'spellcheck': 'false',
-			'input': function(ev) { self.ui.filter = ev.target.value; self.paintClients(); } });
+			'input': function(ev) { self.ui.filter = ev.target.value; self.pickClients(); } });
 		el.filterClear = E('button', { 'type': 'button', 'class': 'vt-filter-clear', 'aria-label': _('Clear filter', 'vantage'), 'hidden': 'hidden',
 			'click': function() { self.setFilter(''); el.filter.focus(); } }, [ icon('close') ]);
 		/* the quick filters sit in a menu at the end of the search box; the
 		   one in force shows as a tag in the box, so none is ever hidden */
 		el.filterTag = E('button', { 'type': 'button', 'class': 'vt-ftag', 'hidden': 'hidden',
-			'click': function(ev) { ev.preventDefault(); ui.chip = 'all'; self.paintClients(); el.filter.focus(); } });
+			'click': function(ev) { ev.preventDefault(); ui.chip = 'all'; self.pickClients(); el.filter.focus(); } });
 		el.filterBtn = E('button', { 'type': 'button', 'class': 'vt-filter-btn', 'aria-haspopup': 'true', 'aria-expanded': 'false',
 			'aria-label': _('Quick filters'), 'title': _('Quick filters'),
 			'click': function(ev) { ev.preventDefault(); self.filterMenu(); } }, [ icon('filter') ]);
@@ -2523,7 +2477,16 @@ return view.extend({
 	setFilter: function(v) {
 		this.ui.filter = v;
 		this.el.filter.value = v;
+		this.pickClients();
+	},
+
+	/* the viewer changed what the Clients tile lists (filter, quick
+	   filter, Wi-Fi or wired): its new height at once. The hold that
+	   keeps the page still is for polls, not for a pick */
+	pickClients: function() {
+		if (this.held) delete this.held.clients;
 		this.paintClients();
+		this.scheduleLayout();
 	},
 
 	filterSsid: function(ssid, band) {
@@ -2623,7 +2586,7 @@ return view.extend({
 		dom.content(el.filterMenu, defs.map(function(d) {
 			var sel = ui.chip === d[0];
 			return E('button', { 'type': 'button', 'role': 'menuitemradio', 'aria-checked': String(sel), 'class': 'vt-fmenu-item' + (d[3] && d[2] ? ' vt-fmenu-warn' : ''),
-				'click': function() { ui.chip = d[0]; self.filterMenu(false); self.paintClients(); el.filterBtn.focus(); } }, [
+				'click': function() { ui.chip = d[0]; self.filterMenu(false); self.pickClients(); el.filterBtn.focus(); } }, [
 				E('span', { 'class': 'vt-fmenu-check', 'aria-hidden': 'true' }, [ sel ? icon('check') : '' ]),
 				E('span', { 'class': 'vt-fmenu-label' }, [ d[1] ]),
 				E('span', { 'class': 'vt-fmenu-n vt-tn' }, [ String(d[2]) ])
@@ -2645,7 +2608,7 @@ return view.extend({
 			this.kindSig = kindSig;
 			dom.content(el.kinds, !both ? [] : [ [ 'wifi', _('Wi-Fi'), m.clients.length ], [ 'wired', _('Wired'), hosts.length ] ].map(function(k) {
 				return E('button', { 'type': 'button', 'class': 'vt-kind' + (ui.kind === k[0] ? ' vt-kind-on' : ''), 'aria-pressed': String(ui.kind === k[0]),
-					'click': function() { if (ui.kind !== k[0]) { ui.kind = k[0]; ui.chip = 'all'; self.paintClients(); } } }, [
+					'click': function() { if (ui.kind !== k[0]) { ui.kind = k[0]; ui.chip = 'all'; self.pickClients(); } } }, [
 					E('span', {}, [ k[1] ]), E('span', { 'class': 'vt-kind-n vt-tn' }, [ String(k[2]) ])
 				]);
 			}));
@@ -2747,14 +2710,18 @@ return view.extend({
 	},
 
 	/* the device cell of a client row: avatar, name, where the name comes
-	   from, tags and the address */
+	   from, tags and the address. A name made up from the address
+	   ("Private device 53:0F") says where it comes from itself, and
+	   drops the octets when the second line is the MAC */
 	whoCell: function(c, tags) {
+		var made = madeName(c), label = made && c.secondary === c.macLabel ? c.plainName : c.name;
 		return E('td', { 'class': 'vt-td-name', 'data-title': _('Device') }, [
 			E('div', { 'class': 'vt-who' }, [
 				avatar(c),
 				E('div', { 'class': 'vt-who-text' }, [
-					E('div', { 'class': 'vt-who-label', 'title': c.name }, [ c.name ]),
-					E('div', { 'class': 'vt-who-sub' }, [ E('span', { 'class': 'vt-src vt-src-' + c.nameSource, 'title': _('Name from: %s').format(this.sourceText(c)) }, [ c.nameSourceLabel ]) ].concat(tags, [ E('span', { 'class': 'vt-mono vt-who-id' }, [ c.secondary ]) ]))
+					E('div', { 'class': 'vt-who-label', 'title': label }, [ label ]),
+					E('div', { 'class': 'vt-who-sub' }, (made ? [] : [ E('span', { 'class': 'vt-src vt-src-' + c.nameSource, 'title': _('Name from: %s').format(this.sourceText(c)) }, [ c.nameSourceLabel ]) ])
+						.concat(tags, [ E('span', { 'class': 'vt-mono vt-who-id' }, [ c.secondary ]) ]))
 				])
 			])
 		]);
@@ -2790,7 +2757,7 @@ return view.extend({
 				E('div', { 'class': 'vt-live-cell' }, [
 					E('span', { 'class': 'vt-tn vt-live-total' }, [ r ? fmt.bits(total) : fmt.DASH ]),
 					E('span', { 'class': 'vt-mini' }, [ bar ]),
-					E('span', { 'class': 'vt-live-split vt-tn', 'title': r ? _('To device %s, from device %s').format(fmt.bits(r.tx), fmt.bits(r.rx)) : '' }, [ r ? '↓ ' + fmt.bitsShort(r.tx) + '  ↑ ' + fmt.bitsShort(r.rx) : '' ])
+					E('span', { 'class': 'vt-live-split vt-tn', 'title': r ? _('To device %s, from device %s').format(fmt.bits(r.tx), fmt.bits(r.rx)) : '' }, [ r ? fmt.rates(r.tx, r.rx) : '' ])
 				])
 			]),
 			E('td', { 'class': 'vt-td-seen vt-tn', 'data-title': _('Last heard') }, [ c.seen == null ? _('static entry') : fmt.ago(c.seen * 1000) ])
@@ -2825,7 +2792,7 @@ return view.extend({
 				E('div', { 'class': 'vt-live-cell' }, [
 					E('span', { 'class': 'vt-tn vt-live-total' }, [ r ? fmt.bits(total) : fmt.DASH ]),
 					E('span', { 'class': 'vt-mini' }, [ bar ]),
-					E('span', { 'class': 'vt-live-split vt-tn', 'title': r ? _('To device %s, from device %s').format(fmt.bits(r.tx), fmt.bits(r.rx)) : '' }, [ r ? '↓ ' + fmt.bitsShort(r.tx) + '  ↑ ' + fmt.bitsShort(r.rx) : '' ])
+					E('span', { 'class': 'vt-live-split vt-tn', 'title': r ? _('To device %s, from device %s').format(fmt.bits(r.tx), fmt.bits(r.rx)) : '' }, [ r ? fmt.rates(r.tx, r.rx) : '' ])
 				])
 			]),
 			E('td', { 'class': 'vt-td-exp', 'data-title': _('Experience') }, c.gone ? [ E('span', { 'class': 'vt-muted' }, [ fmt.DASH ]) ] : [
@@ -2843,7 +2810,7 @@ return view.extend({
 	buildTalkers: function() {
 		this.el.talkers = E('div', { 'class': 'vt-talkers' });
 		return E('section', { 'class': 'vt-tile vt-talk', 'aria-label': _('Top talkers', 'vantage') }, [
-			tileHead('pulse', _('Top talkers', 'vantage'), [ E('span', { 'class': 'vt-hint' }, [ _('who uses the bandwidth') ]) ]),
+			tileHead('pulse', _('Top talkers', 'vantage')),
 			this.el.talkers
 		]);
 	},
@@ -2879,7 +2846,7 @@ return view.extend({
 					E('span', { 'class': 'vt-talk-top' }, [ E('span', { 'class': 'vt-talk-name', 'title': c.name }, [ c.name ]) ]),
 					E('span', { 'class': 'vt-talk-bar' }, [ fill ]),
 					E('span', { 'class': 'vt-talk-sub vt-tn', 'title': _('To device %s, from device %s').format(fmt.bits(x.down), fmt.bits(x.up)) }, [
-						E('b', {}, [ fmt.bits(x.total) ]), E('span', { 'class': 'vt-talk-share' }, [ fmt.pct(x.share * 100) ]), '↓ ' + fmt.bitsShort(x.down) + '  ↑ ' + fmt.bitsShort(x.up) ])
+						E('b', {}, [ fmt.bits(x.total) ]), E('span', { 'class': 'vt-talk-share' }, [ fmt.pct(x.share * 100) ]), fmt.rates(x.down, x.up) ])
 				])
 			]);
 		}).concat(slots));
@@ -2906,12 +2873,13 @@ return view.extend({
 			var rx = 0, tx = 0, has = false;
 			g.ids.forEach(function(id) { var r = st.ssidRates[id]; if (r) { rx += r.rx; tx += r.tx; has = true; } });
 			var bands = g.bands.map(function(b) { return bandBadge(b); });
+			/* a lock, in amber, only where the security is open or weak */
+			var tone = g.security.tone === 'open' ? 'unlock' : g.security.tone === 'weak' ? 'lock' : null;
 			return E('button', { 'type': 'button', 'class': 'vt-ssid' + (g.clients ? '' : ' vt-ssid-idle'), 'title': _('Show the clients of %s').format(g.ssid),
 				'click': function() { self.filterSsid(g.ssid); } }, [
-				E('span', { 'class': 'vt-ssid-ico' + (g.security.tone === 'open' || g.security.tone === 'weak' ? ' vt-t-warn' : '') }, [ icon(g.security.tone === 'open' ? 'unlock' : 'lock') ]),
 				E('span', { 'class': 'vt-ssid-main' }, [
 					E('span', { 'class': 'vt-ssid-top' }, [ E('span', { 'class': 'vt-ssid-name' }, [ g.ssid || _('(hidden)') ]), g.hidden ? pill(_('Hidden', 'vantage'), 'muted') : '' ]),
-					E('span', { 'class': 'vt-ssid-meta' }, bands.concat([ E('span', { 'class': 'vt-sec', 'title': g.security.long }, [ g.security.short ]) ]))
+					E('span', { 'class': 'vt-ssid-meta' }, bands.concat([ E('span', { 'class': 'vt-sec' + (tone ? ' vt-t-warn' : ''), 'title': g.security.long }, [ tone ? icon(tone, 'vt-ico-sm') : '', g.security.short ]) ]))
 				]),
 				E('span', { 'class': 'vt-ssid-side' }, [
 					E('span', { 'class': 'vt-ssid-n vt-tn' }, [ String(g.clients) ]),
@@ -2941,13 +2909,15 @@ return view.extend({
 		var el = this.el;
 		this.ui.drawer = { kind: kind, id: id };
 		this.ui.editing = null;
+		/* the address names what is shown, also when the open drawer
+		   moves on (from a radio to one of its clients) */
+		try { history.replaceState(null, '', '#' + kind + '=' + encodeURIComponent(id)); } catch (e) {}
 		if (!el.drawer.hidden) { this.paintDrawer(); this.paintClients(); return; }
 		this.lastFocus = document.activeElement;
 		el.drawer.hidden = false;
 		el.drawerBack.hidden = false;
 		this.paintDrawer();
 		this.paintClients();
-		try { history.replaceState(null, '', '#' + kind + '=' + encodeURIComponent(id)); } catch (e) {}
 		window.requestAnimationFrame(function() { el.root.classList.add('vt-drawer-open'); el.drawerClose.focus(); });
 	},
 
@@ -2999,6 +2969,22 @@ return view.extend({
 		return E('section', { 'class': 'vt-dsec' + (cls ? ' ' + cls : '') }, [ E('h4', { 'class': 'vt-dsec-title' }, [ title ]) ].concat(children));
 	},
 
+	/* a client's drawer title: its name, where the name comes from and
+	   its address; a name made up from the MAC shows the MAC instead */
+	drawerWho: function(c) {
+		var made = madeName(c);
+		return [
+			avatar(c),
+			E('div', { 'class': 'vt-drawer-titles' }, [
+				E('div', { 'class': 'vt-drawer-name', 'id': 'vt-drawer-name' }, [ made ? c.plainName : c.name ]),
+				E('div', { 'class': 'vt-drawer-sub' }, made ? [ E('span', { 'class': 'vt-mono' }, [ c.macLabel ]) ] : [
+					E('span', { 'class': 'vt-src vt-src-' + c.nameSource }, [ c.nameSourceLabel ]),
+					E('span', { 'class': 'vt-mono' }, [ c.secondary ])
+				])
+			])
+		];
+	},
+
 	drawerClient: function(mac) {
 		var self = this, st = this.st, c = null, gone = null;
 		this.m.clients.forEach(function(x) { if (x.mac === mac) c = x; });
@@ -3015,16 +3001,7 @@ return view.extend({
 		var exp = c.exp || insight.experience(c);
 		var radio = this.m.radios.filter(function(x) { return x.id === c.radio; })[0];
 
-		var title = [
-			avatar(c),
-			E('div', { 'class': 'vt-drawer-titles' }, [
-				E('div', { 'class': 'vt-drawer-name', 'id': 'vt-drawer-name' }, [ c.name ]),
-				E('div', { 'class': 'vt-drawer-sub' }, [
-					E('span', { 'class': 'vt-src vt-src-' + c.nameSource }, [ c.nameSourceLabel ]),
-					E('span', { 'class': 'vt-mono' }, [ c.secondary ])
-				])
-			])
-		];
+		var title = this.drawerWho(c);
 
 		var rename = this.canWrite ? E('button', { 'type': 'button', 'class': 'vt-btn vt-btn-ghost', 'click': function() { self.startRename(c); } }, [ icon('pencil'), E('span', {}, [ c.alias ? _('Rename', 'vantage') : _('Name this device') ]) ]) : '';
 		var sigSeries = hist.map(function(p) { return [ p[0], p[1] ]; }).filter(function(p) { return isFinite(p[1]); });
@@ -3039,7 +3016,7 @@ return view.extend({
 			E('div', { 'class': 'vt-dactions' }, [ rename, pageLink(insight.PAGES.wireless, _('Wireless settings')) ]),
 			this.el.renameSlot = E('div', { 'class': 'vt-rename-slot' }),
 			c.gone ? '' : E('div', { 'class': 'vt-expcard vt-expcard-' + exp.level }, [
-				E('div', { 'class': 'vt-ring vt-tn' }, [ this.ring(exp.score, exp.level), E('span', { 'class': 'vt-ring-n' }, [ String(exp.score) ]) ]),
+				E('div', { 'class': 'vt-ring vt-tn' }, [ this.ring(exp.score), E('span', { 'class': 'vt-ring-n' }, [ String(exp.score) ]) ]),
 				E('div', { 'class': 'vt-expcard-text' }, [
 					E('div', { 'class': 'vt-expcard-grade' }, [ _('%s experience').format(exp.grade) ]),
 					E('div', { 'class': 'vt-expcard-reason' }, [ exp.reason ]),
@@ -3073,19 +3050,19 @@ return view.extend({
 				kv(_('Network'), [ c.ssid, ' ', bandBadge(c.band) ]),
 				kv(_('Radio', 'vantage'), radio ? _('%s · channel %d · %d MHz').format(radio.id, radio.channel || 0, radio.width || 20) : c.radio),
 				kv(_('Connected for'), c.gone ? fmt.DASH : fmt.duration(c.connected)),
-				kv(_('Last activity', 'vantage'), c.inactive == null || c.gone ? fmt.DASH : c.inactive < 1000 ? _('now', 'vantage') : _('%s ago', 'vantage').format(fmt.duration(c.inactive / 1000))),
+				kv(_('Last activity', 'vantage'), c.inactive == null || c.gone ? fmt.DASH : fmt.ago(c.inactive)),
 				kv(_('Seen since'), c.firstSeen ? (c.isNew ? _('%s (new this session)').format(new Date(c.firstSeen).toLocaleTimeString()) : _('before this page opened')) : fmt.DASH)
 			]) ]),
 			this.section(_('Traffic'), [ E('dl', { 'class': 'vt-kvs' }, [
 				kv(_('Downloaded', 'vantage'), fmt.bytes(c.txBytes)),
 				kv(_('Uploaded', 'vantage'), fmt.bytes(c.rxBytes)),
-				kv(_('Frames to device'), c.txPackets ? _('%d sent · %s retried · %s failed').format(c.txPackets, fmt.pct(c.txRetries / Math.max(1, c.txPackets) * 100, 1), fmt.pct(c.txFailed / Math.max(1, c.txPackets + c.txFailed) * 100, 1)) : fmt.DASH)
+				kv(_('Frames to device'), c.txPackets ? _('%s sent · %s retried · %s failed').format(fmt.count(c.txPackets), fmt.pct(c.txRetries / Math.max(1, c.txPackets) * 100, 1), fmt.pct(c.txFailed / Math.max(1, c.txPackets + c.txFailed) * 100, 1)) : fmt.DASH)
 			]) ]),
 			this.section(_('Identity'), [ E('dl', { 'class': 'vt-kvs' }, [
 				kv(_('MAC address'), c.macLabel, true),
 				kv(_('Address type'), c.isPrivate ? _('Private Wi-Fi address (randomised by the device)') : (c.vendor ? _('Globally unique · %s').format(c.vendor) : _('Globally unique'))),
 				kv(_('IP addresses'), c.ips && c.ips.length ? c.ips.join('\n') : E('span', { 'class': 'vt-muted' }, [ _('not known to this AP') ]), true),
-				kv(_('Name from'), this.sourceText(c)),
+				madeName(c) ? '' : kv(_('Name from'), this.sourceText(c)),
 				c.wps && c.nameSource !== 'wps' ? kv(_('WPS device name'), c.wps) : ''
 			]) ])
 		];
@@ -3094,16 +3071,7 @@ return view.extend({
 
 	drawerWired: function(c) {
 		var self = this, r = this.portRate(c), shared = c.shared ? this.st.devRates[c.port] : null;
-		var title = [
-			avatar(c),
-			E('div', { 'class': 'vt-drawer-titles' }, [
-				E('div', { 'class': 'vt-drawer-name', 'id': 'vt-drawer-name' }, [ c.name ]),
-				E('div', { 'class': 'vt-drawer-sub' }, [
-					E('span', { 'class': 'vt-src vt-src-' + c.nameSource }, [ c.nameSourceLabel ]),
-					E('span', { 'class': 'vt-mono' }, [ c.secondary ])
-				])
-			])
-		];
+		var title = this.drawerWho(c);
 		var rename = this.canWrite ? E('button', { 'type': 'button', 'class': 'vt-btn vt-btn-ghost', 'click': function() { self.startRename(c); } }, [ icon('pencil'), E('span', {}, [ c.alias ? _('Rename', 'vantage') : _('Name this device') ]) ]) : '';
 		var speed = c.speed ? model.speedLabel(c.speed) : fmt.DASH;
 		var body = [
@@ -3126,7 +3094,7 @@ return view.extend({
 				kv(_('MAC address'), c.macLabel, true),
 				kv(_('Address type'), c.isPrivate ? _('Private address (randomised by the device)') : (c.vendor ? _('Globally unique · %s').format(c.vendor) : _('Globally unique'))),
 				kv(_('IP addresses'), c.ips && c.ips.length ? c.ips.join('\n') : E('span', { 'class': 'vt-muted' }, [ _('not known to this device') ]), true),
-				kv(_('Name from'), this.sourceText(c))
+				madeName(c) ? '' : kv(_('Name from'), this.sourceText(c))
 			]) ])
 		];
 		return { title: title, body: body };
@@ -3139,14 +3107,12 @@ return view.extend({
 		case 'mdns': return _('mDNS announcement');
 		case 'dhcp': return _('DHCP hostname');
 		case 'wps': return _('The name the device announces (WPS)');
-		case 'vendor': return _('Manufacturer of the network adapter');
-		case 'private': return _('Nothing better known; the address is randomised');
 		}
 		return _('Nothing better known');
 	},
 
-	ring: function(score, level) {
-		var s = svgRoot('vt-ring-svg vt-lvlc-' + level, '0 0 36 36');
+	ring: function(score) {
+		var s = svgRoot('vt-ring-svg', '0 0 36 36');
 		var c = 2 * Math.PI * 15.5, f = Math.max(0, Math.min(100, score)) / 100 * c;
 		var track = document.createElementNS(SVGNS, 'circle');
 		track.setAttribute('cx', '18'); track.setAttribute('cy', '18'); track.setAttribute('r', '15.5');
@@ -3265,7 +3231,9 @@ return view.extend({
 					kv(_('Mode'), [ r.htmode || fmt.DASH, r.hwmodes ? E('small', {}, [ r.hwmodes ]) : '' ]),
 					kv(_('Centre frequency'), r.spectrum ? _('%d MHz (%d–%d MHz)').format(r.spectrum.centre, r.spectrum.lo, r.spectrum.hi) : fmt.DASH),
 					kv(_('Tx power'), r.txpower != null ? _('%s dBm').format(r.txpower) + (r.txpowerCfg != null && r.txpowerCfg !== r.txpower ? ' ' + _('(configured %d dBm, limited by regulatory rules)').format(r.txpowerCfg) : '') : fmt.DASH),
-					kv(_('Noise floor'), r.noise != null ? fmt.dbm(r.noise) : E('span', { 'class': 'vt-muted' }, [ r.noiseRaw != null ? _('not reported (driver placeholder %s)').format(fmt.dbm(r.noiseRaw)) : _('not reported') ])),
+					/* a placeholder from the driver says why there is none */
+					r.noise != null ? kv(_('Noise floor'), fmt.dbm(r.noise))
+						: r.noiseRaw != null ? kv(_('Noise floor'), E('span', { 'class': 'vt-muted' }, [ _('not reported (driver placeholder %s)').format(fmt.dbm(r.noiseRaw)) ])) : '',
 					kv(_('Country'), r.country || fmt.DASH)
 				]) ]),
 				this.section(_('Clients on this radio'), clients.length ? [ E('div', { 'class': 'vt-dlist' }, clients.map(function(c) {
@@ -3273,13 +3241,14 @@ return view.extend({
 						avatar(c, true), E('span', { 'class': 'vt-dlist-name' }, [ c.name ]),
 						E('span', { 'class': 'vt-signal' }, [ signalGlyph(c.level), E('span', { 'class': 'vt-tn' }, [ fmt.dbm(c.signal) ]) ])
 					]);
-				})) ] : [ E('p', { 'class': 'vt-empty-inline' }, [ _('No clients; an idle radio is fine.') ]) ])
+				})) ] : [ E('p', { 'class': 'vt-empty-inline' }, [ _('No clients connected') ]) ])
 			]
 		};
 	},
 
 	drawerUplink: function() {
 		var up = this.m.uplink, r = this.st.uplinkRate;
+		function errors(n) { return N_(n, '%s error', '%s errors').format(fmt.count(n)); }
 		if (!up) return { title: [ E('span', { 'class': 'vt-drawer-name' }, [ _('Uplink', 'vantage') ]) ], body: [ E('p', { 'class': 'vt-empty-inline' }, [ _('No interface with a route is up.') ]) ] };
 		var s = up.stats || {};
 		return {
@@ -3307,9 +3276,9 @@ return view.extend({
 					kv(_('DNS'), up.dns.join('\n') || fmt.DASH, true)
 				]) ]),
 				this.section(_('Counters since boot'), [ E('dl', { 'class': 'vt-kvs' }, [
-					kv(_('Received', 'vantage'), fmt.bytes(s.rx_bytes) + ' · ' + _('%d errors').format(+s.rx_errors || 0)),
-					kv(_('Sent', 'vantage'), fmt.bytes(s.tx_bytes) + ' · ' + _('%d errors').format(+s.tx_errors || 0)),
-					kv(_('Dropped', 'vantage'), _('%d in · %d out').format(+s.rx_dropped || 0, +s.tx_dropped || 0))
+					kv(_('Received', 'vantage'), fmt.bytes(s.rx_bytes) + ' · ' + errors(+s.rx_errors || 0)),
+					kv(_('Sent', 'vantage'), fmt.bytes(s.tx_bytes) + ' · ' + errors(+s.tx_errors || 0)),
+					kv(_('Dropped', 'vantage'), _('%s in · %s out').format(fmt.count(+s.rx_dropped || 0), fmt.count(+s.tx_dropped || 0)))
 				]) ])
 			]
 		};
@@ -3333,7 +3302,7 @@ return view.extend({
 					kv(_('Local time'), d.localtime != null ? new Date(d.localtime * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '') : fmt.DASH, true)
 				]) ]),
 				this.section(_('Load'), [ E('dl', { 'class': 'vt-kvs' }, [
-					kv(_('CPU', 'vantage'), cpu ? _('%s over %d cores').format(fmt.pct(cpu.pct), cpu.cores.length || 1) : fmt.DASH),
+					kv(_('CPU', 'vantage'), cpu ? N_(cpu.cores.length || 1, '%s over %d core', '%s over %d cores').format(fmt.pct(cpu.pct), cpu.cores.length || 1) : fmt.DASH),
 					kv(_('Load average', 'vantage'), d.load.map(fmt.load).join(' · ')),
 					kv(_('Memory in use'), d.memory ? _('%s of %s').format(fmt.bytes(d.memory.used), fmt.bytes(d.memory.total)) : fmt.DASH)
 				]) ])
