@@ -8,6 +8,11 @@ Each release ships both packages, `luci-theme-vantage` and
 
 ## Unreleased
 
+- **The dashboard and LuCI's pages look like one product.** The dashboard
+  takes the theme's buttons, focus ring, tabs (the Wi-Fi/Wired switch),
+  tables, menus and phone sheet, one red for reject on every Firewall tab
+  and one blue meter for memory and storage, with one scale of weights
+  and corners in both packages.
 - **Vantage's dashboard goes with Vantage's theme** (#83,
   [@smallprogram](https://github.com/smallprogram)). With both packages
   installed and another theme selected, such as Argon, the dashboard

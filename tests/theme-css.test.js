@@ -258,6 +258,16 @@ test('firewall colours keep 4.5:1 on a hovered row, light and dark (badges, the 
 	}
 });
 
+test('ink on the status and accent fills keeps 4.5:1, light and dark (counts, warning tooltips, primary buttons)', () => {
+	assert.match(themeCss, /\.cbi-tooltip\.warning \{[^}]*color: var\(--warn-ink\)/);
+	assert.doesNotMatch(themeCss, /(?<!-)color:\s*#1a1200/, 'the warning ink is a token, not a literal');
+	for (const [ scheme, t ] of [ [ 'light', light ], [ 'dark', dark ] ])
+		for (const [ ink, fill ] of [ [ '--warn-ink', '--warn' ], [ '--err-ink', '--err' ], [ '--info-ink', '--info' ], [ '--accent-ink', '--accent' ], [ '--accent-ink', '--accent-hover' ] ]) {
+			const r = ratio(rgba(t, 'var(' + ink + ')'), rgba(t, 'var(' + fill + ')'));
+			assert.ok(r >= 4.5, scheme + ' ' + ink + ' on ' + fill + ': ' + r.toFixed(2));
+		}
+});
+
 test('switched-off rules are greyed, not faded: the name and match keep 4.5:1', () => {
 	assert.doesNotMatch(themeRules.filter((r) => r.sel.some((s) => /enabled"\]:not\(:checked\)/.test(s))).map((r) => r.body).join(';'), /opacity/);
 	const badges = themeRules.find((r) => r.sel.some((s) => /enabled"\]:not\(:checked\)/.test(s) && /var\[data-tooltip\], \.zonebadge/.test(s)));
