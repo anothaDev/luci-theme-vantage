@@ -21,7 +21,6 @@ var WEAK_DBM = -75;
 function num(v) { v = +v; return isFinite(v) ? v : 0; }
 function finite(v) { return typeof v === 'number' && isFinite(v); }
 function own(o, k) { return o != null && Object.prototype.hasOwnProperty.call(o, k); }
-function speedShort(mbps) { return mbps >= 1000 ? (mbps / 1000) + 'G' : mbps + 'M'; }
 function speedLong(mbps) { return mbps >= 1000 ? _('%s Gbit/s').format(mbps / 1000) : _('%s Mbit/s').format(mbps); }
 function rank(level) { return { err: 3, warn: 2, info: 1, ok: 0 }[level] || 0; }
 
@@ -53,8 +52,8 @@ return baseclass.extend({
 			detail: _('%s negotiated only %d Mbit/s; a cable pair or port may be faulty').format(up.dev, up.speed.mbps), page: PAGES.network });
 		else {
 			var rate = live.uplinkRate && finite(live.uplinkRate.rx) && finite(live.uplinkRate.tx) ? live.uplinkRate : null;
-			/* no-break spaces keep '↑ 2.9 Mbit/s' and '2.5G link' whole when the chip wraps */
-			var link = up.speed ? _('%s link').format(speedShort(up.speed.mbps)).replace(/ /g, '\u00a0') : null;
+			/* no-break spaces keep '↑ 2.9 Mbit/s' and '2.5 Gbit/s link' whole when the chip wraps */
+			var link = up.speed ? _('%s link').format(speedLong(up.speed.mbps)).replace(/ /g, '\u00a0') : null;
 			out.push({ id: 'uplink', level: 'ok', title: _('Uplink', 'vantage'), value: rate ? '↓ ' + fmt.bits(rate.rx) : _('Up', 'vantage'),
 				/* the device name only until there is a rate (the path names it) */
 				reason: [ rate ? ('↑ ' + fmt.bits(rate.tx)).replace(/ /g, '\u00a0') : up.dev, link ].filter(Boolean).join(' · '),
@@ -71,8 +70,9 @@ return baseclass.extend({
 		var hot = live.temps && live.temps[0] ? fmt.celsius(live.temps[0].celsius) : null;
 		if (cpu == null) out.push({ id: 'cpu', level: 'info', title: _('CPU', 'vantage'), value: fmt.DASH, reason: _('Measuring…'), detail: _('Measuring over the next poll'), page: PAGES.processes });
 		else out.push({ id: 'cpu', level: cpu >= 90 ? 'err' : cpu >= 70 ? 'warn' : 'ok', title: _('CPU', 'vantage'), value: fmt.pct(cpu),
-			reason: (cpu >= 70 ? _('Busy · load %s').format(fmt.load(load)) : _('Load %s · %d cores').format(fmt.load(load), cores)) + (hot ? ' · ' + hot : ''),
-			detail: (cpu >= 70 ? _('Busy; load %s on %d cores; see the busiest processes').format(fmt.load(load), cores) : _('Load %s on %d cores').format(fmt.load(load), cores)) +
+			reason: (cpu >= 70 ? _('Busy · load %s').format(fmt.load(load)) : N_(cores, 'Load %s · %d core', 'Load %s · %d cores').format(fmt.load(load), cores)) + (hot ? ' · ' + hot : ''),
+			detail: (cpu >= 70 ? N_(cores, 'Busy; load %s on %d core; see the busiest processes', 'Busy; load %s on %d cores; see the busiest processes').format(fmt.load(load), cores)
+				: N_(cores, 'Load %s on %d core', 'Load %s on %d cores').format(fmt.load(load), cores)) +
 				(hot ? ' · ' + _('Temperature %s').format(hot) : ''),
 			page: PAGES.processes });
 
@@ -97,7 +97,7 @@ return baseclass.extend({
 	},
 
 	/* the Wi-Fi and Signal checks, appended to out; an SSID without
-	   clients is normal, not a fault */
+	   clients is idle, not a fault */
 	wifiHealth: function(model, out) {
 		var radios = model.radios || [], nSsid = (model.ssids || []).length;
 		var off = radios.filter(function(r) { return r.disabled; }), down = radios.filter(function(r) { return !r.disabled && !r.up; });
@@ -108,8 +108,8 @@ return baseclass.extend({
 		else if (off.length) out.push({ id: 'radios', level: 'warn', title: _('Wi-Fi'), value: off.length === 1 ? _('1 radio off') : _('%d radios off').format(off.length), reason: _('%s is disabled').format(off[0].bandLabel),
 			detail: _('%s (%s) is disabled').format(off[0].id, off[0].bandLabel), page: PAGES.wireless });
 		else out.push({ id: 'radios', level: 'ok', title: _('Wi-Fi'), value: radios.length === 1 ? _('1 radio up') : _('%d radios up').format(radios.length),
-			reason: idle.length ? _('%d SSIDs · %d idle').format(nSsid, idle.length) : _('%d SSIDs on air').format(nSsid),
-			detail: idle.length ? _('%d SSIDs broadcasting; %d without clients, which is fine').format(nSsid, idle.length) : _('%d SSIDs broadcasting').format(nSsid),
+			reason: idle.length ? N_(nSsid, '%d SSID · %d idle', '%d SSIDs · %d idle').format(nSsid, idle.length) : N_(nSsid, '%d SSID on air', '%d SSIDs on air').format(nSsid),
+			detail: idle.length ? N_(nSsid, '%d SSID broadcasting, %d idle', '%d SSIDs broadcasting, %d idle').format(nSsid, idle.length) : N_(nSsid, '%d SSID broadcasting', '%d SSIDs broadcasting').format(nSsid),
 			page: PAGES.wireless });
 
 		/* signal */
@@ -254,8 +254,6 @@ return baseclass.extend({
 			else if (!r.up) notes.push({ level: 'err', text: _('Radio is enabled but not up') });
 			if (top === r.id && sum > 0 && (radios.length > 1)) notes.push({ level: 'info', text: _('Busiest radio: %s of Wi-Fi traffic').format(fmt.pct(v / sum * 100)) });
 			if (r.legacy) notes.push({ level: 'info', text: r.legacy === 1 ? _('1 older device (Wi-Fi 4 or earlier) slows airtime') : _('%d older devices (Wi-Fi 4 or earlier) slow airtime').format(r.legacy) });
-			if (r.noise == null && r.noiseRaw != null) notes.push({ level: 'muted', text: _('Noise floor not reported by the driver') });
-			if (r.up && !r.clients) notes.push({ level: 'muted', text: _('No clients; idle radios are fine') });
 			out[r.id] = { busiest: top === r.id && sum > 0, share: sum > 0 ? v / sum : 0, notes: notes };
 		});
 		return out;

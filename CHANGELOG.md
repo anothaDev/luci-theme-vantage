@@ -31,6 +31,23 @@ Each release ships both packages, `luci-theme-vantage` and
 - **The network path's background is under Appearance**, next to the
   login page's, instead of in the dashboard's Customize bar. A dashboard
   installed without the theme keeps it under Customize.
+- **Less repetition on the dashboard.** The four numbers under the network
+  path, which repeated the cards, are gone, and so are the hints and the
+  "which is fine" notes. A device without a name is "Private device" next
+  to its MAC address and "Private device 53:0F" where it has one line.
+  Rates in rows carry their unit, link speeds read "2.5 Gbit/s"
+  throughout, and only open or weak networks show a lock. Noise and
+  airtime rows appear only where the driver reports them. Nothing pulses
+  while everything is fine, and under the Vantage theme the dashboard's
+  own Live pill shows only when updates pause or fail.
+- **Firewall → Overview:** reject and drop are no longer painted red; only
+  an internet zone that accepts is. The admin warning names the service
+  and port it lets in (SSH, Telnet, HTTP, HTTPS), and addresses wrap
+  instead of losing their port on a phone.
+- **Fixes:** the memory bar clears when memory stops being reported,
+  switching Clients between Wi-Fi and Wired no longer leaves a tall empty
+  tile for 30 s, and the address follows when you open a client from a
+  radio's details.
 
 ## 1.0.14 - 2026-11-03
 

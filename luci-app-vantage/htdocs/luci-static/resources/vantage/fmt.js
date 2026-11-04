@@ -37,13 +37,31 @@ return baseclass.extend({
 		return p.u ? p.v + ' ' + p.u : p.v;
 	},
 
-	/* compact axis label: 400M, 1.5G, 20k */
-	bitsShort: function(bps) {
-		bps = num(bps);
-		if (bps == null || bps <= 0) return '0';
-		var u = [ '', 'k', 'M', 'G', 'T' ], i = 0;
-		while (bps >= 1000 && i < u.length - 1) { bps /= 1000; i++; }
-		return (bps >= 10 ? bps.toFixed(0) : String(+bps.toFixed(1))) + u[i];
+	/* a download and upload rate for a row, as { dn, up, unit }: one
+	   unit for both when they read in the same one ('376', '3.4',
+	   'Mbit/s'), else each with its own and unit '' */
+	rateParts: function(down, up) {
+		var a = this.bitsParts(down), b = this.bitsParts(up);
+		if (a.u && a.u === b.u) return { dn: a.v, up: b.v, unit: a.u };
+		return { dn: a.u ? a.v + ' ' + a.u : a.v, up: b.u ? b.v + ' ' + b.u : b.v, unit: '' };
+	},
+
+	/* '↓ 376  ↑ 3.4 Mbit/s', '↓ 12.3 Mbit/s  ↑ 800 bit/s'; 'idle' when
+	   nothing moves */
+	rates: function(down, up) {
+		if (num(down) === 0 && num(up) === 0) return _('idle');
+		var p = this.rateParts(down, up);
+		return '↓ ' + p.dn + '  ↑ ' + p.up + (p.unit ? ' ' + p.unit : '');
+	},
+
+	/* a count, its thousands set apart by a narrow no-break space (as SI
+	   writes them) from five digits on: 20224239 -> '20 224 239' */
+	count: function(n) {
+		n = num(n);
+		if (n == null) return DASH;
+		var s = String(Math.round(Math.abs(n)));
+		if (s.length > 4) s = s.replace(/\B(?=(\d{3})+$)/g, '\u202f');
+		return (n < 0 ? '−' : '') + s;
 	},
 
 	/* binary units for memory/storage */
@@ -115,10 +133,11 @@ return baseclass.extend({
 		return /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i.test(s) ? s.replace(/-/g, ':').toUpperCase() : s;
 	},
 
-	/* last three octets: '…00:53:C1' (the distinguishing part of a MAC) */
+	/* last two octets: '53:C1', what tells devices apart in a one-line
+	   name; '' for anything but a MAC */
 	macTail: function(mac) {
 		var m = this.mac(mac);
-		return /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(m) ? '…' + m.slice(9) : m;
+		return /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(m) ? m.slice(12) : '';
 	},
 
 	/* Client- or radio-supplied text for display: invisible/reordering

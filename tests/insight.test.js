@@ -17,11 +17,19 @@ function baseModel() {
 }
 const byId = (list, id) => list.filter(c => c.id === id)[0];
 
-test('health: healthy AP is all ok; idle SSID is explicitly fine', () => {
+test('health: healthy AP is all ok; an idle SSID is counted, not excused', () => {
 	const h = insight.health(baseModel(), { cpu: { pct: 7, cores: [ 1, 2, 3, 4 ] } });
 	assert.deepEqual(h.map(c => c.id), [ 'uplink', 'cpu', 'memory', 'radios', 'signal', 'storage' ]);
 	assert.ok(h.every(c => c.level === 'ok'), JSON.stringify(h.map(c => c.level)));
-	assert.match(byId(h, 'radios').detail, /without clients, which is fine/);
+	assert.equal(byId(h, 'radios').reason, '2 SSIDs · 1 idle');
+	assert.equal(byId(h, 'radios').detail, '2 SSIDs broadcasting, 1 idle');
+	assert.doesNotMatch(JSON.stringify(h), /fine/);
+	/* one SSID: singular */
+	const one = Object.assign(baseModel(), { ssids: [ { up: true, clients: 2 } ] });
+	assert.equal(byId(insight.health(one, {}), 'radios').reason, '1 SSID on air');
+	assert.equal(byId(insight.health(one, {}), 'radios').detail, '1 SSID broadcasting');
+	one.ssids[0].clients = 0;
+	assert.equal(byId(insight.health(one, {}), 'radios').reason, '1 SSID · 1 idle');
 	assert.match(byId(h, 'cpu').detail, /on 4 cores/);
 	assert.ok(h.every(c => Array.isArray(c.page) && c.page[0] === 'admin'), 'every check links to a page');
 	assert.equal(insight.summary(h).count, 0);
@@ -35,7 +43,9 @@ test('health: the CPU check adds the hottest sensor when there is one', () => {
 	assert.equal(hot.reason, 'Load 1.00 · 2 cores · 78\u00a0°C');
 	assert.equal(hot.detail, 'Load 1.00 on 2 cores · Temperature 78\u00a0°C');
 	assert.equal(hot.level, 'ok', 'a temperature alone never raises the level');
-	assert.equal(byId(insight.health(baseModel(), { cpu: { pct: 7, cores: [ 1 ] }, temps: [] }), 'cpu').reason, 'Load 1.00 · 1 cores');
+	const single = byId(insight.health(baseModel(), { cpu: { pct: 7, cores: [ 1 ] }, temps: [] }), 'cpu');
+	assert.deepEqual([ single.reason, single.detail ], [ 'Load 1.00 · 1 core', 'Load 1.00 on 1 core' ]);
+	assert.match(byId(insight.health(baseModel(), { cpu: { pct: 95, cores: [ 1 ] } }), 'cpu').detail, /^Busy; load 1\.00 on 1 core;/);
 });
 
 test('health: several weak clients open the list of them, the weakest first in the chip', () => {
@@ -74,8 +84,9 @@ test('health: chip text is short, framed like the System tile, with the full sen
 	/* the uplink value is live traffic; the link speed is context */
 	assert.equal(byId(h, 'uplink').value, '↓ 374 Mbit/s');
 	/* the path already names the device: with a rate, the reason doesn't */
-	assert.equal(byId(h, 'uplink').reason.replace(/\u00a0/g, ' '), '↑ 3.77 Mbit/s · 2.5G link');
-	assert.equal(byId(insight.health(baseModel(), {}), 'uplink').reason.replace(/\u00a0/g, ' '), 'eth0 · 2.5G link');
+	/* the link speed spelled as everywhere else ('2.5 Gbit/s') */
+	assert.equal(byId(h, 'uplink').reason.replace(/\u00a0/g, ' '), '↑ 3.77 Mbit/s · 2.5 Gbit/s link');
+	assert.equal(byId(insight.health(baseModel(), {}), 'uplink').reason.replace(/\u00a0/g, ' '), 'eth0 · 2.5 Gbit/s link');
 	assert.match(byId(h, 'uplink').detail, /eth0 up at 2\.5 Gbit\/s, gateway 192\.0\.2\.1/);
 	/* memory is framed as available, like the System tile; storage says used */
 	assert.equal(byId(h, 'memory').value, '60% available');
@@ -179,7 +190,7 @@ test('presence: baseline, new arrivals, gone kept for a while', () => {
 	assert.equal(p.isNew.d, true);
 });
 
-test('radioInsights: busiest radio, legacy, placeholder noise, idle radio', () => {
+test('radioInsights: busiest radio and legacy; nothing that only repeats the radio\'s rows', () => {
 	const radios = [
 		{ id: 'r0', up: true, clients: 2, legacy: 1, noise: -90, noiseRaw: -90 },
 		{ id: 'r1', up: true, clients: 2, legacy: 0, noise: null, noiseRaw: -121 },
@@ -190,8 +201,9 @@ test('radioInsights: busiest radio, legacy, placeholder noise, idle radio', () =
 	assert.equal(r.r0.busiest, false);
 	assert.equal(r.r1.share, 0.98);
 	assert.ok(r.r1.notes.some(n => /Busiest radio: 98%/.test(n.text)));
-	assert.ok(r.r1.notes.some(n => /not reported by the driver/.test(n.text)));
 	assert.ok(r.r0.notes.some(n => /1 older device/.test(n.text)));
-	assert.ok(!r.r0.notes.some(n => /not reported/.test(n.text)));
-	assert.ok(r.r2.notes.some(n => /idle radios are fine/.test(n.text)));
+	/* an unreported noise floor and an idle radio are no notes (the drawer
+	   says why there is no noise floor) */
+	assert.deepEqual(r.r2.notes, []);
+	assert.ok(!r.r1.notes.some(n => /not reported/.test(n.text)));
 });
