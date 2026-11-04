@@ -2,9 +2,9 @@
 /* vantage.css rules that broke once and are easy to break again: a class
    the theme styles that the dashboard also uses (rule 7: the theme does
    not style app internals), centring that hides the start of a scrolling
-   list, a breakpoint pair with a gap between them, pulse rings that cover
-   their dot, hit targets under the control height, and phone table cards
-   that only half apply. */
+   list, a breakpoint pair with a gap between them, endless pulses, a
+   reset that outweighed the button rule, hit targets under the control
+   height, and phone table cards that only half apply. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -120,18 +120,45 @@ test('720px: phone rules and desktop rules split without a gap, and the menu scr
 	assert.match(menuJs, /this\.mqMobile = window\.matchMedia\('\(max-width: 720px\)'\);/);
 });
 
-test('pulse rings sit behind their dot and stay invisible unless animated', () => {
-	const rings = themeRules.filter(r => r.sel.some(s => /::after$/.test(s)) && /animation:[^;]*infinite/.test(r.body));
-	assert.ok(rings.length >= 2, 'found the poll and login rings');
-	for (const r of rings) {
-		/* reduced motion runs the animation once, near-instantly, and the
-		   ring falls back to these base values */
-		assert.match(r.body, /(^|[;\s])opacity:\s*0\s*;/, r.sel.join(','));
-		assert.match(r.body, /z-index:\s*-1/, r.sel.join(','));
-	}
-	/* the stacking context that keeps z-index -1 above the pill and card */
-	assert.match(themeCss, /\[data-indicator="poll-status"\]\[data-style="active"\] \{ position: relative; isolation: isolate; \}/);
-	assert.match(themeCss, /\.vt-login-sub \{ isolation: isolate; \}/);
+test('nothing pulses: the only endless animations are spinners; the compact poll pill is a pause / play button', () => {
+	const endless = themeRules.filter(r => /animation(-iteration-count)?:[^;]*infinite/.test(r.body));
+	assert.ok(endless.length >= 2, 'found the spinners');
+	for (const r of endless)
+		for (const s of r.sel) assert.match(s, /spinning|^#modal_overlay > \.modal/, 'endless animation on ' + s);
+	assert.doesNotMatch(themeCss, /@keyframes vt-live\b/);
+	assert.doesNotMatch(themeCss, /vt-login-dot/);
+	/* the dot is a status colour, never the accent */
+	const dot = themeRules.find(r => !r.media && r.sel.includes('#indicators > span[data-indicator="poll-status"][data-style="active"]::before'));
+	assert.match(dot.body, /background:\s*var\(--ok\)/);
+	/* at 900 px and below the label goes: a pause sign while refreshing, play while paused */
+	const narrow = sel => themeRules.find(r => /max-width: 900px/.test(r.media) && r.sel.includes(sel));
+	assert.match(narrow('#indicators > span[data-indicator="poll-status"][data-style="active"]::before').body, /border-inline:\s*3px solid currentColor/);
+	assert.match(narrow('#indicators > span[data-indicator="poll-status"][data-style="inactive"]::before').body, /border-left:\s*9px solid currentColor/);
+});
+
+test('buttons: the input reset has zero specificity, so the theme\'s button rule sets their font', () => {
+	const reset = themeRules.find(r => !r.media && /font:\s*inherit;\s*color:\s*inherit/.test(r.body) && r.sel.some(s => /button/.test(s)));
+	assert.deepEqual(reset.sel, [ ':where(input, select, textarea, button)' ]);
+	/* (the rule splitter cuts this :where() at its inner commas) */
+	const btn = themeRules.find(r => !r.media && r.sel[0] === ':where(.btn' && /font:\s*500/.test(r.body));
+	assert.ok(btn, 'found the button rule');
+	assert.ok(themeRules.indexOf(btn) > themeRules.indexOf(reset), 'the button rule comes after the reset');
+});
+
+test('Status -> Overview: an up box draws no dot; a down one a hollow ring, never the accent', () => {
+	const own = sel => themeRules.filter(r => !r.media && r.sel.includes(sel)).map(r => r.body).join(';');
+	assert.match(own('.network-status-table .ifacebox-head.active::before'), /content:\s*none/);
+	assert.match(own('.network-status-table .ifacebox-head::before'), /box-shadow:\s*inset 0 0 0 1\.5px var\(--text-3\)/);
+	assert.match(own('.ifacebox:has(> .ifacebox-body > img[src$="_up.svg"]) > .ifacebox-head:first-child::before'), /content:\s*none/);
+	for (const r of themeRules)
+		if (r.sel.some(s => /ifacebox-head[^,]*::before/.test(s))) assert.doesNotMatch(r.body, /--accent|--v-chart-1/, r.sel.join(','));
+});
+
+test('one definition of LuCI\'s progress bar (a superseded copy lingered above it)', () => {
+	const plain = themeRules.filter(r => !r.media && r.sel.some(s => /^\.cbi-progressbar(\s*>\s*div|::before|::after)?$/.test(s)));
+	assert.deepEqual(plain.map(r => r.sel.join(',')), [ '.cbi-progressbar', '.cbi-progressbar > div', '.cbi-progressbar::before', '.cbi-progressbar::after' ]);
+	assert.match(plain[1].body, /transition:\s*width/);
+	assert.match(plain[2].body, /content:\s*attr\(title\)/);
 });
 
 test('hit targets: tabs, the crumb switch, its links and touch top-bar buttons are a control high', () => {

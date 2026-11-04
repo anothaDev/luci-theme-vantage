@@ -53,15 +53,20 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
 - **Icon rail** (left, 56 px) with the top-level categories from
   `ui.menu`; hover/click opens a **flyout** of that category's pages;
   the rail can be pinned open with labels (remembered per browser).
-- **Top bar**: breadcrumb (Category › Page › Tab), **command palette**
+- **Top bar**: breadcrumb (Category › Page › Tab; a crumb that only
+  repeats the one before it, "System › System", is shown once, with the
+  deeper link), **command palette**
   (Ctrl+K or `/`): fuzzy search over every menu page, recent pages first;
   later the app registers entities (clients, interfaces, radios) into it.
 - **Indicators** as pills; the unsaved-changes count is prominent and
   opens the changes dialog. When the bar runs short of room the host
-  chip gives way first, and at 900 px and below the pills shrink to a
-  dot and a count, so the breadcrumb is cut last.
+  chip gives way first, and at 900 px and below the pills shrink (the
+  auto-refresh pill to a pause or play sign, the changes pill to its
+  count), so the breadcrumb is cut last. Nothing in the shell pulses.
 - **Host chip**: hostname · model (board name when the model string is a
-  placeholder), from `system board` via rpc in the menu script.
+  placeholder), from `system board` via rpc in the menu script; a name
+  the other contains (compared without case and punctuation) is left
+  out.
 - **Theme toggle**: auto / light / dark, stored in `localStorage`, applied
   in `<head>` before CSS (no flash), exposed as `html[data-darkmode]`.
 - **Tabs**: one segmented control for every level: the menu's page tabs
@@ -101,8 +106,9 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
 
 ### Pages
 
-- Own **login** (`sysauth.ut`): brand, hostname, generic error, contract-
-  correct form. No system information for unauthenticated visitors.
+- Own **login** (`sysauth.ut`): the mark and an "Authorization Required"
+  heading, generic error, contract-correct form. No system information
+  (no hostname, model or version) for unauthenticated visitors.
 - All core widgets per contract §5 (dropdown state machine, tabs, modals
   incl. apply countdown, tooltips, dynlist, progress bars, file browser,
   notifications with real fade-out transition, changes dialog).
@@ -131,7 +137,8 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   (header row, memory and storage meters) and named table sections whose
   name is only the row's `data-title` (drawn as the name cell, the card
   title on phones). These rules match nothing on 25.12.
-- 404 / CSRF pages render in the theme without leaking anything.
+- 404 / CSRF pages render in the theme without leaking anything. A
+  logged-in 404 is titled "Not found", in the crumbs and the page title.
 - Focused fields show a 2 px `--focus` outline (border plus ring, at
   least 3:1 against field and card in both modes); text on coloured
   fills (danger buttons, error and info tooltips) uses an ink colour that

@@ -31,6 +31,18 @@ Each release ships both packages, `luci-theme-vantage` and
 - **The network path's background is under Appearance**, next to the
   login page's, instead of in the dashboard's Customize bar. A dashboard
   installed without the theme keeps it under Customize.
+- **Less repetition in the shell.** A breadcrumb title shows once
+  ("System", not "System › System"), the palette names each category
+  once and "wire" finds the Wireless pages rather than eight firewall
+  pages, the rail's flyouts drop their counts and Ctrl K footer, the host
+  chip leaves out a name the other contains, and the word "Vantage" is
+  gone from the rail and the login page. Storage bars label their total.
+- **The shell's dots stay still.** The auto-refresh pill has a still
+  dot (a pause or play sign on narrow screens), and Status → Overview
+  marks only boxes that are down, not every one that is up.
+- **Fixes:** theme buttons render at their intended weight, pages before
+  login are titled "LuCI" instead of "LuCI · LuCI", and a page that does
+  not exist says "Not found" instead of "Administration".
 
 ## 1.0.14 - 2026-11-03
 

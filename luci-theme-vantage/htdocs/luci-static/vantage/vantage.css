@@ -336,11 +336,6 @@ html[data-darkmode="true"] .vt-brand-tile { fill: #16181b; }
 	text-decoration: none !important;
 }
 .vt-brand svg { flex: none; }
-.vt-brand-word {
-	font-weight: 650; font-size: var(--fs-md); letter-spacing: .02em;
-	white-space: nowrap; overflow: hidden;
-	display: none;
-}
 
 .vt-rail-list {
 	list-style: none; margin: 0; padding: var(--sp-2) 0;
@@ -395,7 +390,6 @@ html[data-darkmode="true"] .vt-brand-tile { fill: #16181b; }
 
 /* pinned rail: labels + inline accordion instead of flyouts */
 html[data-rail="pinned"] .vt-rail { width: var(--rail-w-pinned); }
-html[data-rail="pinned"] .vt-brand-word,
 html[data-rail="pinned"] .vt-rail-label { display: block; }
 html[data-rail="pinned"] .vt-rail-caret { display: block; }
 html[data-rail="pinned"] .vt-rail-item.is-expanded > .vt-rail-link .vt-rail-caret { transform: rotate(90deg); }
@@ -436,9 +430,7 @@ html[data-rail="pinned"] .vt-frame { margin-left: var(--rail-w-pinned); }
 	border-bottom: 1px solid var(--line);
 	flex: none;
 }
-.vt-fly-head svg { width: 18px; height: 18px; color: var(--accent-text); }
 .vt-fly-title { font-size: var(--fs-md); font-weight: 600; }
-.vt-fly-count { margin-left: auto; font: var(--fs-micro)/1 var(--mono); color: var(--text-3); letter-spacing: .04em; }
 
 .vt-fly-list { list-style: none; margin: 0; padding: var(--sp-2); overflow-y: auto; flex: 1 1 auto; }
 .vt-fly-list > li + li { margin-top: 1px; }
@@ -451,7 +443,6 @@ html[data-rail="pinned"] .vt-frame { margin-left: var(--rail-w-pinned); }
 }
 .vt-fly-link:hover { background: var(--s3); }
 .vt-fly-link[aria-current] { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
-.vt-fly-link .vt-fly-meta { margin-left: auto; font: var(--fs-micro)/1 var(--mono); color: var(--text-3); }
 .vt-fly-sub { list-style: none; margin: 0 0 var(--sp-1) 18px; padding: 0; border-left: 1px solid var(--line-2); }
 .vt-fly-sub a {
 	display: block; padding: 4px 10px;
@@ -461,11 +452,6 @@ html[data-rail="pinned"] .vt-frame { margin-left: var(--rail-w-pinned); }
 }
 .vt-fly-sub a:hover { color: var(--text); background: var(--s3); }
 .vt-fly-sub a[aria-current] { color: var(--accent-text); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent-text); }
-.vt-fly-foot {
-	flex: none; padding: var(--sp-2) var(--sp-4);
-	border-top: 1px solid var(--line);
-	color: var(--text-3); font-size: var(--fs-micro); letter-spacing: .06em; text-transform: uppercase;
-}
 
 .vt-scrim { position: fixed; inset: 0; z-index: 280; background: var(--scrim); }
 
@@ -516,7 +502,7 @@ a.vt-crumb:hover { color: var(--text); }
 .vt-crumb-switch > svg { flex: none; width: 14px; height: 14px; color: var(--text-3); transition: transform .15s; }
 .vt-crumb-switch:hover, .vt-crumb-switch[aria-expanded="true"] { background: var(--s3); }
 .vt-crumb-switch:focus-visible { outline-offset: 0; }
-.vt-crumb-switch[aria-expanded="true"] > svg { transform: rotate(90deg); }
+.vt-crumb-switch[aria-expanded="true"] > svg { transform: rotate(180deg); }
 @media (width > 720px) {
 	/* the flyout as a dropdown under the crumb (left: set from the crumb) */
 	.vt-flyout.is-switch {
@@ -608,7 +594,7 @@ a.vt-crumb:hover { color: var(--text); }
 	font-size: var(--fs-sm);
 	white-space: nowrap;
 }
-.vt-host b { color: var(--text); font-weight: 600; font-family: var(--mono); font-size: var(--fs-micro); }
+.vt-host b { color: var(--text); font-weight: 600; }
 .vt-host span { overflow: hidden; text-overflow: ellipsis; }
 .vt-host-sep { color: var(--text-3); }
 
@@ -626,30 +612,14 @@ a.vt-crumb:hover { color: var(--text); }
 }
 #indicators > span[data-clickable] { cursor: pointer; }
 #indicators > span[data-clickable]:hover { border-color: var(--text-3); color: var(--text); }
-#indicators > span[data-indicator="poll-status"][data-style="active"] { position: relative; isolation: isolate; }
+/* auto-refresh on: a still dot (the label says it, a pulse only
+   distracted); paused: a square */
 #indicators > span[data-indicator="poll-status"][data-style="active"]::before {
 	content: ""; width: 7px; height: 7px; border-radius: 50%;
-	background: var(--accent-text);
-}
-/* the pulse is a ring of its own that scales and fades: the compositor
-   runs it, where an animated box-shadow repainted the page every frame.
-   It sits behind the dot (z-index -1 in the pill's isolated stack), so
-   the dot never lightens, and is invisible unless animated: with reduced
-   motion the one near-instant run ends on opacity 0. */
-#indicators > span[data-indicator="poll-status"][data-style="active"]::after {
-	content: ""; position: absolute; z-index: -1; left: 10px; top: calc(50% - 3.5px);
-	width: 7px; height: 7px; border-radius: 50%;
-	background: var(--accent-line);
-	opacity: 0;
-	pointer-events: none;
-	animation: vt-live 2s ease-out infinite;
+	background: var(--ok);
 }
 #indicators > span[data-indicator="poll-status"][data-style="inactive"]::before {
 	content: ""; width: 7px; height: 7px; border-radius: 1px; background: var(--text-3);
-}
-@keyframes vt-live {
-	0% { transform: scale(1); opacity: 1; }
-	70%, 100% { transform: scale(2.7); opacity: 0; }
 }
 /* "Unsaved Changes: N" -> label + prominent count (text node stays for LuCI) */
 #indicators > span[data-indicator][data-count] {
@@ -770,6 +740,10 @@ a.vt-crumb:hover { color: var(--text); }
 }
 .vt-pal-foot span { display: inline-flex; align-items: center; gap: 6px; }
 .vt-pal-foot .vt-pal-count { margin-left: auto; font-family: var(--mono); font-size: var(--fs-micro); }
+/* no keyboard, no key hints */
+@media (hover: none) {
+	.vt-pal kbd, .vt-pal-foot { display: none; }
+}
 
 /* ------------------------------------ 5. content: map, section, options */
 
@@ -1006,7 +980,8 @@ legend { font-size: var(--fs-md); font-weight: 600; padding: 0; margin-bottom: v
 
 /* ------------------------------------------------------------ 6. widgets */
 
-input, select, textarea, button { font: inherit; color: inherit; }
+/* zero specificity, like the button rule below, which must win over it */
+:where(input, select, textarea, button) { font: inherit; color: inherit; }
 
 .cbi-input-text, .cbi-input-password, .cbi-input-select, .cbi-input-textarea,
 .cbi-section-create-name, .vt-main select, .vt-main textarea,
@@ -1914,11 +1889,12 @@ div:has(> .ifacebox > .ifacebox-head.cbi-tooltip-container) > .ifacebox { width:
 .ifacebox-head.active { background: var(--accent-soft); color: var(--accent-text); }
 .ifacebox-body { padding: 8px 10px; font-size: var(--fs-sm); color: var(--text-2); }
 .ifacebox-body img { width: 18px; height: 18px; }
-/* Status -> Port status, each box: a link dot by the name (as on the
-   upstream and radio cards), the speed as its figure, the zone as a bare
-   bar and the counters' arrows in the dashboard's upload and download
-   colours (menu-vantage.js puts them in spans). LuCI's port picture only
-   repeats the link state: hidden. A port without link is muted throughout */
+/* Status -> Port status, each box: a ring by the name of a port without
+   link (as on the upstream and radio cards; a port with link has none),
+   the speed as its figure, the zone as a bare bar and the counters'
+   arrows in the dashboard's upload and download colours (menu-vantage.js
+   puts them in spans). LuCI's port picture only repeats the link state:
+   hidden. A port without link is muted throughout */
 .ifacebox:has(> .ifacebox-head.cbi-tooltip-container) > .ifacebox-head:first-child {
 	display: flex; align-items: center; gap: 8px;
 	padding: 10px 10px 2px;
@@ -1931,7 +1907,7 @@ div:has(> .ifacebox > .ifacebox-head.cbi-tooltip-container) > .ifacebox { width:
 	box-shadow: inset 0 0 0 1.5px var(--text-3);
 }
 .ifacebox:has(> .ifacebox-body > img[src$="_down.svg"]) > .ifacebox-head:first-child { color: var(--text-2); }
-.ifacebox:has(> .ifacebox-body > img[src$="_up.svg"]) > .ifacebox-head:first-child::before { background: var(--v-chart-1); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ifacebox:has(> .ifacebox-body > img[src$="_up.svg"]) > .ifacebox-head:first-child::before { content: none; }
 .ifacebox:has(> .ifacebox-head.cbi-tooltip-container) > .ifacebox-head:first-child + .ifacebox-body { padding: 2px 10px 6px; color: var(--text-3); }
 .ifacebox:has(> .ifacebox-body > img[src$="_up.svg"]) > .ifacebox-head:first-child + .ifacebox-body { color: var(--text-2); }
 .ifacebox:has(> .ifacebox-head.cbi-tooltip-container) > .ifacebox-head:first-child + .ifacebox-body > :is(img, br) { display: none; }
@@ -1963,12 +1939,14 @@ div:has(> .ifacebox > .ifacebox-head.cbi-tooltip-container) > .ifacebox { width:
 	font-size: var(--fs-md); text-align: left;
 }
 .network-status-table .ifacebox-head strong { font-weight: 650; font-family: var(--mono); letter-spacing: -.01em; }
+/* up is the normal case and draws nothing; a box that is down (an
+   upstream not connected, a radio off) gets a hollow ring */
 .network-status-table .ifacebox-head::before {
 	content: ""; flex: none;
 	width: 8px; height: 8px; border-radius: 50%;
-	background: var(--text-3);
+	box-shadow: inset 0 0 0 1.5px var(--text-3);
 }
-.network-status-table .ifacebox-head.active::before { background: var(--accent-text); box-shadow: 0 0 0 3px var(--accent-soft); }
+.network-status-table .ifacebox-head.active::before { content: none; }
 .network-status-table .ifacebox-head[data-v-band]::after {
 	content: attr(data-v-band);
 	margin-left: auto;
@@ -2031,34 +2009,6 @@ div:has(> .ifacebox > .ifacebox-head.cbi-tooltip-container) > .ifacebox { width:
 .zonebadge .ifacebadge { padding: 0 4px; border: 0; background: transparent; }
 .zone-forwards { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .zone-forwards > span { color: var(--text-3); }
-
-/* progress bar: text only exists in title */
-.cbi-progressbar {
-	position: relative;
-	width: 100%; max-width: 520px;
-	height: 22px;
-	background: var(--s2);
-	border: 1px solid var(--line);
-	border-radius: var(--r-sm);
-	overflow: hidden;
-}
-.cbi-progressbar > div {
-	height: 100%;
-	width: 0;
-	background: linear-gradient(90deg, color-mix(in srgb, var(--accent-text) 22%, transparent), color-mix(in srgb, var(--accent-text) 48%, transparent));
-	transition: width .3s ease-out;
-}
-.cbi-progressbar::before {
-	content: attr(title);
-	position: absolute; inset: 0;
-	display: flex; align-items: center;
-	padding: 0 8px;
-	color: var(--text);
-	font: 500 var(--fs-micro)/1 var(--mono);
-	font-variant-numeric: tabular-nums;
-	white-space: nowrap;
-	z-index: 1;
-}
 
 /* notifications */
 .alert-message {
@@ -2543,16 +2493,10 @@ body[data-page^="admin-status-channel_analysis"] #view [data-tab-title]:not([dat
 .vt-login-page {
 	display: flex; align-items: center; justify-content: center;
 	padding: var(--sp-4);
-	background:
-		radial-gradient(1200px 600px at 50% -10%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 60%),
-		linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 32px 32px,
-		linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 32px 32px,
-		var(--bg);
-	background-blend-mode: normal;
 }
 html[data-darkmode="true"] .vt-login-page {
 	background:
-		radial-gradient(900px 520px at 50% 0%, rgba(200, 240, 49, .06), transparent 60%),
+		radial-gradient(900px 520px at 50% 0%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 60%),
 		linear-gradient(rgba(255, 255, 255, .025) 1px, transparent 1px) 0 0 / 32px 32px,
 		linear-gradient(90deg, rgba(255, 255, 255, .025) 1px, transparent 1px) 0 0 / 32px 32px,
 		var(--bg);
@@ -2563,7 +2507,7 @@ html:not([data-darkmode="true"]) .vt-login-page {
 		linear-gradient(90deg, rgba(20, 23, 26, .04) 1px, transparent 1px) 0 0 / 32px 32px,
 		var(--bg);
 }
-/* the starfield (login.js), between the grid and the card */
+/* the backdrop (login.js: packets or starfield), between the grid and the card */
 .vt-login-sky { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .vt-login { position: relative; width: min(380px, 100%); }
 .vt-login-card {
@@ -2575,19 +2519,7 @@ html:not([data-darkmode="true"]) .vt-login-page {
 }
 .vt-login-head { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-6); }
 .vt-login-mark { flex: none; }
-.vt-login-title { margin: 0; font-size: var(--fs-lg); font-family: var(--mono); font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
-.vt-login-sub {
-	display: flex; align-items: center; gap: 6px;
-	margin: 2px 0 0;
-	color: var(--text-3);
-	font-size: var(--fs-micro); font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
-}
-.vt-login-sub { isolation: isolate; }
-/* the ring as on the poll pill: behind the dot (the dot itself makes no
-   stacking context, so z-index -1 lands under its background), opacity 0
-   unless animated */
-.vt-login-dot { position: relative; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-text); }
-.vt-login-dot::after { content: ""; position: absolute; z-index: -1; inset: 0; border-radius: 50%; background: var(--accent-line); opacity: 0; animation: vt-live 2s ease-out infinite; }
+.vt-login-title { margin: 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
 .vt-login-error {
 	margin: 0 0 var(--sp-4);
 	padding: var(--sp-2) var(--sp-3);
@@ -2611,7 +2543,6 @@ html:not([data-darkmode="true"]) .vt-login-page {
 }
 .vt-field input[name="luci_username"] { font-family: var(--mono); }
 .vt-login-submit { height: var(--ctl-h); margin-top: var(--sp-2); font-size: var(--fs-md) !important; width: 100%; }
-.vt-login-foot { margin: var(--sp-4) 0 0; text-align: center; color: var(--text-3); font: var(--fs-micro)/1.4 var(--mono); letter-spacing: .03em; }
 
 /* ------------------------------------------------ 9. stock page layouts */
 
@@ -2678,21 +2609,27 @@ body[data-page="admin-statistics-graphs"] p.controls > .nowrap > .cbi-button { m
 .cbi-section-table-row:has(> .td[data-name="_stat"] big):first-child > .td { border-top: 0; }
 .cbi-section-table-row:not(:has(big)) > .td[data-name="_badge"] { padding-left: calc(var(--card-px) + 16px); }
 
-/* progress bars: thin track, value text above it and in flow, so larger
-   browser fonts cannot run into the heading */
+/* progress bars (their text only exists in title): a thin track, the
+   value text above it and in flow, so larger browser fonts cannot run
+   into the heading */
 .cbi-progressbar {
+	position: relative;
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
 	grid-template-rows: auto 6px;
 	gap: 5px;
-	height: auto; margin: 0 0 2px;
-	background: none;
-	border: 0; border-radius: 3px;
-	overflow: visible;
+	width: 100%; max-width: 520px;
+	margin: 0 0 2px;
 }
-.cbi-progressbar > div { grid-area: 2 / 1; height: 6px; z-index: 1; border-radius: 3px; background: var(--accent-text); }
+.cbi-progressbar > div {
+	grid-area: 2 / 1; z-index: 1;
+	width: 0; height: 6px;
+	border-radius: 3px;
+	background: var(--accent-text);
+	transition: width .3s ease-out;
+}
 .cbi-progressbar::before {
-	position: static; inset: auto; padding: 0;
+	content: attr(title);
 	display: block;
 	color: var(--text-2);
 	font: 500 var(--fs-micro)/1.2 var(--mono);
@@ -2705,7 +2642,6 @@ body[data-page="admin-statistics-graphs"] p.controls > .nowrap > .cbi-button { m
 .v-meter { display: grid; gap: 10px; padding: 4px 0 6px; }
 .v-meter + .v-meter { margin-top: var(--sp-3); padding-top: var(--sp-4); border-top: 1px solid var(--line); }
 .v-meter-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
-.v-meter-title { color: var(--text); font-weight: 600; }
 .v-meter-big { font: 650 var(--fs-xl)/1 var(--mono); letter-spacing: -.02em; color: var(--text); }
 .v-meter-big small { margin-left: 6px; font: 500 var(--fs-sm) var(--font); letter-spacing: 0; color: var(--text-2); }
 .v-meter-sub { margin-left: auto; color: var(--text-2); font: var(--fs-sm)/1.4 var(--mono); font-variant-numeric: tabular-nums; }
@@ -2742,7 +2678,6 @@ body[data-page="admin-statistics-graphs"] p.controls > .nowrap > .cbi-button { m
 .v-meter-row > .v-meter-bar { grid-area: bar; }
 .v-meter-row > .v-meter-val { grid-area: val; color: var(--text-2); font: var(--fs-sm) var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .v-meter-row > .v-meter-val b { color: var(--text); font-weight: 600; }
-.v-sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* Share the widest table's intrinsic width with its headings and dividers. */
 @media (width > 720px) {
@@ -3175,17 +3110,26 @@ select[id^="widget.cbid.firewall."] > option { color: var(--text); font-weight: 
 
 @media (max-width: 900px) {
 	.vt-host { display: none !important; }
-	/* indicators go compact (dot, count) before the crumbs get cut; the
-	   label stays as text for screen readers and as the title */
+	/* indicators go compact (a sign, a count) before the crumbs get cut;
+	   the label stays as text for screen readers and as the title */
 	#indicators > span[data-indicator] { height: 28px; padding: 0 8px; }
 	#indicators > span[data-indicator="poll-status"] { font-size: 0; gap: 0; width: 28px; justify-content: center; padding: 0; }
-	#indicators > span[data-indicator="poll-status"][data-style="active"]::after { left: calc(50% - 3.5px); }
+	/* without its label the pill is the pause / resume button: a pause
+	   sign while it refreshes, a play sign while paused */
+	#indicators > span[data-indicator="poll-status"][data-style="active"]::before {
+		width: 8px; height: 10px; border-radius: 0;
+		background: none; border-inline: 3px solid currentColor;
+	}
+	#indicators > span[data-indicator="poll-status"][data-style="inactive"]::before {
+		width: 0; height: 0; margin-left: 2px; border-radius: 0;
+		background: none; border-left: 9px solid currentColor; border-block: 5px solid transparent;
+	}
 	#indicators > span[data-indicator][data-count] { padding: 0 3px; gap: 0; }
 	#indicators > span[data-indicator][data-count]::before { content: none; }
 	html[data-rail="pinned"] .vt-rail { width: var(--rail-w); }
 	html[data-rail="pinned"] .vt-frame { margin-left: var(--rail-w); }
 	html[data-rail="pinned"] body.vt-auth .vt-shell::before { width: var(--rail-w); }
-	html[data-rail="pinned"] .vt-brand-word, html[data-rail="pinned"] .vt-rail-label,
+	html[data-rail="pinned"] .vt-rail-label,
 	html[data-rail="pinned"] .vt-rail-caret, html[data-rail="pinned"] .vt-rail-sub { display: none !important; }
 	.vt-rail-pin { display: none; }
 }
@@ -3252,7 +3196,6 @@ select[id^="widget.cbid.firewall."] > option { color: var(--text); font-weight: 
 	}
 	.vt-fly-link { min-height: 44px; font-size: var(--fs-md); }
 	.vt-fly-sub a { padding: 8px 12px; font-size: var(--fs-base); }
-	.vt-fly-foot { display: none; }
 	@keyframes vt-sheet-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 	.vt-topbar { gap: var(--sp-2); padding: 0 var(--sp-3) 0 var(--sp-4); }
