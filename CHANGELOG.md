@@ -10,9 +10,9 @@ Each release ships both packages, `luci-theme-vantage` and
 
 - **The dashboard and LuCI's pages look like one product.** The dashboard
   takes the theme's buttons, focus ring, tabs (the Wi-Fi/Wired switch),
-  tables, menus and phone sheet, one red for reject on every Firewall tab
-  and one blue meter for memory and storage, with one scale of weights
-  and corners in both packages.
+  tables, menus and phone sheet, the same status colours on every
+  Firewall tab and one blue meter for memory and storage, with one scale
+  of weights and corners in both packages.
 - **Vantage's dashboard goes with Vantage's theme** (#83,
   [@smallprogram](https://github.com/smallprogram)). With both packages
   installed and another theme selected, such as Argon, the dashboard
@@ -23,11 +23,12 @@ Each release ships both packages, `luci-theme-vantage` and
   theme.
 - **Health cards with their own icons and a picture each.** The six
   cards above the network path all carried the same check mark. Each now
-  shows what it is about (port, CPU, memory, Wi-Fi, signal, storage),
-  coloured only when it needs attention, with the last five minutes of
-  uplink traffic and CPU, how full memory and storage are, each radio's
-  airtime where the driver reports it, and how the clients' signals
-  spread. Signal shows the weakest client instead of "All good".
+  has its own icon in the corner (port, CPU, memory, Wi-Fi, signal,
+  storage), coloured only when it needs attention, and a picture along
+  its bottom edge: the last minutes of download and CPU, how full memory
+  and storage are, the Wi-Fi clients by band (or each radio's airtime
+  where the driver reports it), and how the clients' signals spread.
+  Signal shows the weakest client instead of "All good".
 - **The throughput chart's minute labels stay put** (#71,
   [@HyperdrivzZ](https://github.com/HyperdrivzZ)). While the five minutes
   of history filled, the time axis stretched with it and "−2 min" slid
@@ -45,10 +46,16 @@ Each release ships both packages, `luci-theme-vantage` and
   airtime rows appear only where the driver reports them. Nothing pulses
   while everything is fine, and under the Vantage theme the dashboard's
   own Live pill shows only when updates pause or fail.
-- **Firewall → Overview:** reject and drop are no longer painted red; only
-  an internet zone that accepts is. The admin warning names the service
-  and port it lets in (SSH, Telnet, HTTP, HTTPS), and addresses wrap
-  instead of losing their port on a phone.
+- **The network path is open on phones.** It used to start folded, with
+  the four numbers that are now gone as its summary. I'd like feedback on
+  this one: tell me in an
+  [issue](https://github.com/anothaDev/luci-theme-vantage/issues) if
+  you'd rather it started folded. A fold you choose is still remembered.
+- **Firewall:** reject and drop are no longer painted red, on Overview or
+  in General Settings' policies; only an internet zone that accepts input
+  is, in red on both. Overview's admin warning names the service and port
+  it lets in (SSH, Telnet, HTTP, HTTPS), and addresses wrap instead of
+  losing their port on a phone.
 - **Less repetition in the shell.** A breadcrumb title shows once
   ("System", not "System › System"), the palette names each category
   once and "wire" finds the Wireless pages rather than eight firewall

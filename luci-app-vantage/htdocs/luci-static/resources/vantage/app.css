@@ -662,7 +662,11 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-chip-viz .vt-spark { height: 34px; }
 .vt-app .vt-chip-viz .vt-spark-line { stroke-width: 1.5; }
 .vt-app .vt-chip-viz .vt-sk { --vt-fill-op: .22; }
-.vt-app .vt-chip-k-radios .vt-chip-viz { position: static; margin-top: auto; padding-top: 10px; }
+.vt-app .vt-chip-k-radios .vt-chip-viz:has(.vt-chip-radios) { position: static; margin-top: auto; padding-top: 10px; }
+.vt-app .vt-chip-band.vt-band-2g { background: var(--vt-b2); }
+.vt-app .vt-chip-band.vt-band-5g { background: var(--vt-b5); }
+.vt-app .vt-chip-band.vt-band-6g { background: var(--vt-b6); }
+.vt-app .vt-chip-band { background: var(--vt-text-3); }
 .vt-app .vt-chip-bar { display: block; height: 3px; }
 .vt-app .vt-chip-k-radios .vt-chip-bar { height: 4px; border-radius: var(--vt-r-xs); }
 .vt-app .vt-chip-k-radios .vt-chip-bar .vt-bar-fill { border-radius: var(--vt-r-xs); }
@@ -779,6 +783,8 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-node-off { opacity: .6; border-style: dashed; }
 
 .vt-app .vt-dots { display: inline-flex; gap: 3px; }
+/* no clients, no dots: the count starts where the name does */
+.vt-app .vt-dots:empty { display: none; }
 .vt-app .vt-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vt-text-3); }
 .vt-app .vt-dot.vt-lvl-ok { background: var(--vt-ok); }
 .vt-app .vt-dot.vt-lvl-warn { background: var(--vt-warn); }

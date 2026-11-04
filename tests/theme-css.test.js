@@ -200,16 +200,18 @@ test('firewall: verdicts and policies are coloured by their raw value, off rules
 	assert.match(body((s) => /var\[data-tooltip="ACCEPT"\]/.test(s)), /--ok/);
 	assert.match(body((s) => /\[data-tooltip="REJECT"\]/.test(s) && /\[data-tooltip="DROP"\]/.test(s) && !/ACCEPT/.test(s)), /--err/);
 	assert.match(body((s) => /\[data-tooltip="DNAT"\]/.test(s) && !/ACCEPT/.test(s)), /--info/);
-	/* policies: by the selected option's value, live */
-	assert.match(body((s) => /select\[id\^="widget\.cbid\.firewall\."\]:has\(> option:checked:is\(\[value="REJECT"\], \[value="DROP"\]\)\)/.test(s)), /--err/);
-	assert.match(body((s) => /select\[id\^="widget\.cbid\.firewall\."\]:has\(> option:checked\[value="ACCEPT"\]\)/.test(s)), /--ok/);
+	/* policies stay plain (reject and drop are the safe values); only the
+	   internet-facing zone accepting input is coloured, in the error
+	   colours, by the selected option's value, live */
+	assert.ok(!themeRules.some((r) => r.sel.some((s) => /^select\[id\^="widget\.cbid\.firewall\."\]:has/.test(s))), 'no colour for every policy select');
+	assert.match(body((s) => /\.masq"\]:checked\) > \.td\[data-name="input"\] select:has\(> option:checked\[value="ACCEPT"\]\)$/.test(s)), /color: var\(--err-text\)[^]*border-color: var\(--err\)/);
 	/* a rule unticked looks off, but its switch and buttons stay as they are */
 	const off = themeRules.find((r) => r.sel.some((s) => /enabled"\]:not\(:checked\)\) > \.td:not\(\.cbi-section-actions\):not\(:has/.test(s)));
 	assert.ok(off && /color:\s*var\(--text-3\)/.test(off.body));
 	assert.ok(off.sel.every((s) => /:not\(\.cbi-section-actions\)/.test(s) && /:not\(:has\(input\[data-widget-id\$="\.enabled"\]\)\)/.test(s)));
 	/* accept is the risk on the masquerading (internet-facing) zone: input accept and its forwardings warn */
 	const risk = themeRules.filter((r) => r.sel.some((s) => /input\[data-widget-id\$="\.masq"\]:checked/.test(s)));
-	assert.ok(risk.some((r) => r.sel.some((s) => /data-name="input"\] select:has\(> option:checked\[value="ACCEPT"\]\)/.test(s)) && /--warn/.test(r.body)));
+	assert.ok(risk.some((r) => r.sel.some((s) => /data-name="input"\] select:has\(> option:checked\[value="ACCEPT"\]\)/.test(s)) && /--err-text/.test(r.body)));
 	assert.ok(risk.some((r) => r.sel.some((s) => /\.zone-dest > \.zonebadge:not\(\.zonebadge-empty\)/.test(s)) && /--warn/.test(r.body)));
 	/* the muted first line of a match only on firewall pages: other tables use <small><br> too */
 	for (const r of themeRules)
@@ -271,7 +273,7 @@ test('firewall colours keep 4.5:1 on a hovered row, light and dark (badges, the 
 	const body = (pred) => themeRules.filter((r) => r.sel.some(pred)).map((r) => r.body).join(';');
 	assert.match(body((s) => /\[data-tooltip="REJECT"\]/.test(s) && /\[data-tooltip="DROP"\]/.test(s) && !/ACCEPT/.test(s)), /color:\s*var\(--err-text\)/);
 	assert.match(body((s) => /\[data-tooltip="DNAT"\]/.test(s) && !/ACCEPT/.test(s)), /color:\s*var\(--info-text\)/);
-	assert.match(body((s) => /\.td\[data-name="input"\] select:has/.test(s)), /color:\s*var\(--warn-text\)/);
+	assert.match(body((s) => /\.td\[data-name="input"\] select:has/.test(s)), /color:\s*var\(--err-text\)/);
 	/* the row hover: --s3 at 55% over the card (--s1), as in the .tr:hover rule */
 	assert.match(themeCss, /:hover > \.td \{ background: color-mix\(in srgb, var\(--s3\) 55%, transparent\); \}/);
 	for (const [ scheme, t ] of [ [ 'light', light ], [ 'dark', dark ] ]) {

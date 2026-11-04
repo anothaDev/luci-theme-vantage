@@ -447,16 +447,22 @@ function writeStore(v) {
 }
 
 /* Sections that fold on narrow screens; the choice is remembered per
-   browser. Defaults keep the phone page short: radios and the network
-   path start condensed. */
-var FOLD_KEY = 'vantage.fold.v1';
-var FOLD_DEFAULT = { radios: true, hero: true, ssids: false, chart: false, sys: false };
+   browser. The radios start condensed; the network path starts open
+   (since the release after 1.0.14: v1 kept it folded, so its other
+   choices carry over without that one). */
+var FOLD_KEY = 'vantage.fold.v2';
+var FOLD_KEY_V1 = 'vantage.fold.v1';
+var FOLD_DEFAULT = { radios: true, hero: false, ssids: false, chart: false, sys: false };
 
 function readFolds() {
-	var out = Object.assign({}, FOLD_DEFAULT), v = null;
+	var out = Object.assign({}, FOLD_DEFAULT), v = null, old = false;
 	try { v = JSON.parse(window.localStorage.getItem(FOLD_KEY) || 'null'); } catch (e) { v = null; }
+	if (!v || typeof v !== 'object') {
+		try { v = JSON.parse(window.localStorage.getItem(FOLD_KEY_V1) || 'null'); } catch (e) { v = null; }
+		old = true;
+	}
 	if (v && typeof v === 'object')
-		Object.keys(FOLD_DEFAULT).forEach(function(k) { if (typeof v[k] === 'boolean') out[k] = v[k]; });
+		Object.keys(FOLD_DEFAULT).forEach(function(k) { if (typeof v[k] === 'boolean' && !(old && k === 'hero')) out[k] = v[k]; });
 	return out;
 }
 
@@ -1542,13 +1548,27 @@ return view.extend({
 	   its band; nothing where the driver doesn't report airtime */
 	radioPicture: function() {
 		var radios = ((this.m && this.m.radios) || []).filter(function(r) { return !r.disabled && r.airtime != null; });
-		if (!radios.length) return [];
+		if (!radios.length) return this.bandPicture();
 		return [ E('span', { 'class': 'vt-chip-radios' }, radios.map(function(r) {
 			return E('span', { 'class': 'vt-chip-radio vt-band-' + (r.band || 'x') }, [
 				E('span', { 'class': 'vt-chip-radio-top' }, [ E('span', {}, [ r.bandLabel || r.id ]), E('b', { 'class': 'vt-tn' }, [ fmt.pct(r.airtime) ]) ]),
 				/* in its band's colour; the figure says how busy */
 				fillBar(r.airtime, 'ok')
 			]);
+		})) ];
+	},
+
+	/* without airtime: the Wi-Fi clients by band along the card's bottom
+	   edge, in the bands' colours (as the other cards' lines) */
+	bandPicture: function() {
+		var clients = (this.m && this.m.clients) || [], by = {};
+		clients.forEach(function(c) { if (c.band) by[c.band] = (by[c.band] || 0) + 1; });
+		var bands = Object.keys(by).sort();
+		if (!bands.length) return [];
+		return [ E('span', { 'class': 'vt-chip-dist vt-chip-bands' }, bands.map(function(b) {
+			var x = E('span', { 'class': 'vt-chip-band vt-band-' + b });
+			setW(x, by[b] / clients.length * 100);
+			return x;
 		})) ];
 	},
 

@@ -2849,16 +2849,16 @@ html[data-darkmode="true"] :is(#ban-status, #ban-report) { --ban-ok: #63c79b; --
 }
 .zone-forwards :is(.zone-src, .zone-dest) { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .zonebadge.zonebadge-empty { background: transparent !important; border-style: dashed; color: var(--text-2) !important; box-shadow: none; }
-/* zone and default policies: reject and drop in red, accept in green */
-select[id^="widget.cbid.firewall."]:has(> option:checked:is([value="REJECT"], [value="DROP"])) { color: var(--err-text); font-weight: 600; }
-select[id^="widget.cbid.firewall."]:has(> option:checked[value="ACCEPT"]) { color: var(--ok-text); font-weight: 600; }
-select[id^="widget.cbid.firewall."] > option { color: var(--text); font-weight: 400; }
-/* except where accept is the risk: the masquerading (internet-facing)
-   zone accepting input, or forwarding into another zone. Green says
-   "passes", not "safe"; these two get the warning colour instead. */
+/* zone and default policies stay plain: reject and drop are the safe
+   values, accept between your own zones is normal (as on the Overview
+   tab). The one policy that is a risk is coloured: the masquerading
+   (internet-facing) zone accepting input, in the error colours the
+   Overview tab gives it. Forwarding from it into another zone is
+   outlined in the warning colour. */
 #cbi-firewall-zone .tr:has(input[data-widget-id$=".masq"]:checked) > .td[data-name="input"] select:has(> option:checked[value="ACCEPT"]) {
-	color: var(--warn-text); border-color: var(--warn); background-color: var(--warn-soft);
+	color: var(--err-text); border-color: var(--err); background-color: var(--err-soft); font-weight: 600;
 }
+#cbi-firewall-zone .tr:has(input[data-widget-id$=".masq"]:checked) > .td[data-name="input"] select:has(> option:checked[value="ACCEPT"]) > option { color: var(--text); font-weight: 400; }
 #cbi-firewall-zone .tr:has(input[data-widget-id$=".masq"]:checked) .zone-dest > .zonebadge:not(.zonebadge-empty) {
 	outline: 2px solid var(--warn); outline-offset: 1px;
 }

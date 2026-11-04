@@ -97,7 +97,7 @@ test('one recipe per component: primary fill, field focus, segmented switch, fir
 	   Firewall tabs do */
 	assert.match(appBody('.vt-app .vt-fg-pol'), /color:\s*var\(--vt-text-2\)/);
 	assert.match(appBody('.vt-app .vt-fg-pol.is-risk'), /color:\s*var\(--vt-err-text\)/);
-	assert.match(themeCss, /select\[id\^="widget\.cbid\.firewall\."\]:has\(> option:checked:is\(\[value="REJECT"\], \[value="DROP"\]\)\) \{ color: var\(--err-text\)/);
+	assert.match(themeCss, /\.masq"\]:checked\) > \.td\[data-name="input"\] select:has\(> option:checked\[value="ACCEPT"\]\) \{\s*color: var\(--err-text\)/);
 	/* memory and storage meters: one colour in both packages */
 	assert.match(themeCss, /\.v-seg-used \{ background: var\(--v-meter\); \}/);
 	assert.match(appCss, /--vt-meter: var\(--v-meter, /);
