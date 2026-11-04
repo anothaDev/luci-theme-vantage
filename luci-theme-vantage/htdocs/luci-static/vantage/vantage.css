@@ -798,8 +798,9 @@ a.vt-crumb:hover { color: var(--text); }
 .vt-pal-foot span { display: inline-flex; align-items: center; gap: 6px; }
 .vt-pal-foot .vt-pal-count { margin-left: auto; font-family: var(--mono); font-size: var(--fs-micro); }
 /* no keyboard, no key hints */
+/* no keyboard hints on touch; the result count stays */
 @media (hover: none) {
-	.vt-pal kbd, .vt-pal-foot { display: none; }
+	.vt-pal kbd, .vt-pal-foot > span:not(.vt-pal-count) { display: none; }
 }
 
 /* ------------------------------------ 5. content: map, section, options */

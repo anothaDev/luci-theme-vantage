@@ -1522,7 +1522,8 @@ return view.extend({
 	   ("Example AX3000", "example-ax3000"), compared in lower case on
 	   letters and digits only */
 	identity: function(d) {
-		var key = function(v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ''); };
+		/* letters and digits of any script, as the theme's host chip compares them */
+		var key = function(v) { return String(v || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''); };
 		var a = key(d.model), b = key(d.hostname);
 		if (a && b && a.indexOf(b) >= 0) return [ d.model ];
 		if (a && b && b.indexOf(a) >= 0) return [ d.hostname ];
@@ -2332,7 +2333,8 @@ return view.extend({
 						E('b', { 'class': 'vt-tn' }, [ dirArrow('up'), ' ', fresh && su.now != null ? fmt.bits(last[s.up]) : fmt.DASH ]) ]),
 					E('span', { 'class': 'vt-mult-stats vt-tn' }, sd.n > 1 ? [
 						/* each direction its own item, so they wrap in the narrow readout column */
-						E('span', {}, [ _('peak', 'vantage'), ' ', E('b', {}, [ dirArrow('dn'), ' ' + pk.dn ]) ]),
+						/* the shared unit on both, so a wrapped line keeps its own */
+						E('span', {}, [ _('peak', 'vantage'), ' ', E('b', {}, [ dirArrow('dn'), ' ' + pk.dn ]), pk.unit ? ' ' + pk.unit : '' ]),
 						E('span', {}, [ E('b', {}, [ dirArrow('up'), ' ' + pk.up ]), pk.unit ? ' ' + pk.unit : '' ])
 					] : [ E('span', {}, [ _('measuring…') ]) ])
 				]),
