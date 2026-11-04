@@ -23,6 +23,16 @@ var UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17
 return baseclass.extend({
 	DASH: DASH,
 
+	/* N_() with English's rule where no catalogue has the string: LuCI
+	   picks the form by the language's rule even then, and a one-form
+	   language (Japanese, Korean...) would show "2 radio up" */
+	N_: function(n, singular, plural, ctx) {
+		var t = N_(n, singular, plural, ctx);
+		if (n !== 1 && t === singular) return plural;
+		if (n === 1 && t === plural) return singular;
+		return t;
+	},
+
 	/* bits per second -> { v: '372', u: 'Mbit/s' } */
 	bitsParts: function(bps) {
 		bps = num(bps);

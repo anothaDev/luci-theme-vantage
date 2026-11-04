@@ -145,6 +145,17 @@ function ignoredWhy(i) {
 	return _('ignored: option %s has a value firewall4 refuses').format(i.bad);
 }
 
+/* N_() with English's rule where no catalogue has the string (as
+   vantage.fmt's, which this view doesn't load) */
+var tr = {
+	N_: function(n, singular, plural, ctx) {
+		var t = N_(n, singular, plural, ctx);
+		if (n !== 1 && t === singular) return plural;
+		if (n === 1 && t === plural) return singular;
+		return t;
+	}
+};
+
 return view.extend({
 	handleSave: null,
 	handleSaveApply: null,
@@ -225,7 +236,7 @@ return view.extend({
 		}
 		else {
 			head = _('Nothing is open in your firewall rules');
-			sub = fw.standard.length ? N_(fw.standard.length, 'Only standard housekeeping (ping, DHCP renewals and the like): %d rule', 'Only standard housekeeping (ping, DHCP renewals and the like): %d rules').format(fw.standard.length) : _('Internet-facing: %s').format(facing);
+			sub = fw.standard.length ? tr.N_(fw.standard.length, 'Only standard housekeeping (ping, DHCP renewals and the like): %d rule', 'Only standard housekeeping (ping, DHCP renewals and the like): %d rules').format(fw.standard.length) : _('Internet-facing: %s').format(facing);
 		}
 		return this.head(fw.level, head, sub);
 	},
@@ -322,7 +333,7 @@ return view.extend({
 				: _('Nothing is open in your firewall rules.') ]));
 		if (fw.standard.length)
 			body.push(E('details', { 'class': 'vt-fg-std' }, [
-				E('summary', {}, [ N_(fw.standard.length, 'Standard housekeeping: %d rule', 'Standard housekeeping: %d rules').format(fw.standard.length) ]),
+				E('summary', {}, [ tr.N_(fw.standard.length, 'Standard housekeeping: %d rule', 'Standard housekeeping: %d rules').format(fw.standard.length) ]),
 				E('p', { 'class': 'vt-hint' }, [ _('Ping and other control messages, multicast, DHCP renewals and IPsec passed on to your network: what every router lets in.') ]),
 				E('div', { 'class': 'vt-fg-rows' }, fw.standard.map(function(i) {
 					return self.row(page('rules'), named(i), [ what(i) ]);

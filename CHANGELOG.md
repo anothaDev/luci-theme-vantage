@@ -46,8 +46,8 @@ Each release ships both packages, `luci-theme-vantage` and
   path, which repeated the cards, are gone, and so are the hints and the
   "which is fine" notes. A device without a name is "Private device" next
   to its MAC address and "Private device 53:0F" where it has one line.
-  Rates in rows carry their unit, link speeds read "2.5 Gbit/s"
-  throughout, and only open or weak networks show a lock. Noise and
+  Rates in rows carry their unit, link speeds read "2.5 Gbit/s" on the
+  cards and in the details, and only open or weak networks show a lock. Noise and
   airtime rows appear only where the driver reports them. Nothing pulses
   while everything is fine, and under the Vantage theme the dashboard's
   own Live pill shows only when updates pause or fail.

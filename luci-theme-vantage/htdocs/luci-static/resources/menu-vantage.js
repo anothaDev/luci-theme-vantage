@@ -771,6 +771,12 @@ return baseclass.extend({
 		if (!admin) return;
 
 		this.admin = admin;
+		/* Appearance opened before the menu came in lacks the network
+		   path's group (hasDashboard): add it now */
+		if (this.appear && this.hasDashboard() && !this.appear.querySelector('input[name="vt-backdrop"]')) {
+			this.appear.appendChild(this.backdropGroup());
+			this.syncAppearance();
+		}
 		this.dp = (L.env.dispatchpath || []).slice();
 		this.missing = notFound(L.env.nodespec);
 
@@ -1501,9 +1507,9 @@ return baseclass.extend({
 	   within it) drawn as segments. Choices apply at once and stay open;
 	   Escape, Tab out of either end, a click outside, resizing or
 	   scrolling the page close it. */
-	appearanceEl() {
-		if (this.appear) return this.appear;
-		const group = (name, legend, opts, set) => E('fieldset', { 'class': 'vt-appear-set' }, [
+	/* one of Appearance's radio groups */
+	appearGroup(name, legend, opts, set) {
+		return E('fieldset', { 'class': 'vt-appear-set' }, [
 			E('legend', {}, [ legend ]),
 			E('div', { 'class': 'vt-appear-track' }, opts.map(o => {
 				const input = E('input', { 'type': 'radio', 'name': name, 'value': o[0] });
@@ -1511,15 +1517,24 @@ return baseclass.extend({
 				return E('label', { 'class': 'vt-appear-opt' }, [ input ].concat(o[2] ? [ svg(o[2], 16) ] : [], [ E('span', {}, [ o[1] ]) ]));
 			}))
 		]);
+	},
+
+	/* the network path's group, once the menu says the dashboard is here */
+	backdropGroup() {
+		const n = this.loginNames();
+		return this.appearGroup('vt-backdrop', _('Network path background'), [ [ 'grid', n.grid ], [ 'stars', n.stars ], [ 'none', n.none ] ], v => this.setBackdropPref(v));
+	},
+
+	appearanceEl() {
+		if (this.appear) return this.appear;
+		const group = (name, legend, opts, set) => this.appearGroup(name, legend, opts, set);
 		const login = this.loginNames();
 		const box = E('div', { 'id': 'vt-appearance', 'class': 'vt-appearance', 'role': 'dialog', 'aria-label': _('Appearance', 'vantage-theme'), 'hidden': 'hidden' }, [
 			group('vt-colour', _('Colour theme'), [
 				[ 'auto', _('Auto', 'vantage-theme'), 'auto' ], [ 'light', _('Light', 'vantage-theme'), 'sun' ], [ 'dark', _('Dark', 'vantage-theme'), 'moon' ]
 			], v => this.setTheme(v)),
 			group('vt-login', _('Login background'), [ [ 'grid', login.grid ], [ 'stars', login.stars ], [ 'none', login.none ] ], v => this.setLoginPref(v))
-		].concat(this.hasDashboard()
-			? [ group('vt-backdrop', _('Network path background'), [ [ 'grid', login.grid ], [ 'stars', login.stars ], [ 'none', login.none ] ], v => this.setBackdropPref(v)) ]
-			: []));
+		].concat(this.hasDashboard() ? [ this.backdropGroup() ] : []));
 		box.addEventListener('keydown', ev => {
 			if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); this.closeAppearance(true); }
 			else if (ev.key === 'Tab') {

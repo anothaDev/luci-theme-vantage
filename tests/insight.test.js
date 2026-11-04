@@ -108,7 +108,7 @@ test('health: all fine, Signal shows the weakest client and Wi-Fi counts radios'
 	one.clients = [ { mac: 'a', name: 'A', signal: -52 } ];
 	one.radios = [ one.radios[0] ];
 	const h1 = insight.health(one, {});
-	assert.equal(byId(h1, 'signal').reason, '1 client');
+	assert.equal(byId(h1, 'signal').reason, 'The only measured client');
 	assert.equal(byId(h1, 'radios').value, '1 radio up');
 	/* nobody there: no reason line that only repeats the value */
 	const none = Object.assign(baseModel(), { clients: [] });
@@ -206,4 +206,18 @@ test('radioInsights: busiest radio and legacy; nothing that only repeats the rad
 	   says why there is no noise floor) */
 	assert.deepEqual(r.r2.notes, []);
 	assert.ok(!r.r1.notes.some(n => /not reported/.test(n.text)));
+});
+
+/* LuCI's N_() picks the form by the page language's rule even where no
+   catalogue has the string: in a one-form language that is always the
+   singular, so vantage.fmt's N_ falls back to English's rule */
+test('fmt.N_: English plural when the page language has one form and no translation', () => {
+	const fmt = load('vantage.fmt'), saved = global.N_;
+	try {
+		global.N_ = (n, s) => s;                 /* plural=0, no catalogue */
+		assert.equal(fmt.N_(2, '%d radio up', '%d radios up'), '%d radios up');
+		assert.equal(fmt.N_(1, '%d radio up', '%d radios up'), '%d radio up');
+		global.N_ = () => '%d 个射频已上线';     /* translated */
+		assert.equal(fmt.N_(2, '%d radio up', '%d radios up'), '%d 个射频已上线');
+	} finally { global.N_ = saved; }
 });

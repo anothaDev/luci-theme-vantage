@@ -160,12 +160,14 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   when the screen or the phone bar leaves no room below, and on the
   roomier side, scrolling, when neither side fits.
 - **Firewall**: a rule's or forward's verdict is a coloured badge (accept
-  green, reject and drop red, forward and NAT blue) and zone or default
-  policies are coloured in their dropdowns, both keyed on LuCI's raw
+  green, reject and drop red, forward and NAT blue), keyed on LuCI's raw
   target values, never on the translated labels; badge and warning text
-  keeps 4.5:1 on a hovered row too. Green means "passes", not "safe": on
-  the masquerading (internet-facing) zone, an accepting input policy and
-  any forwarding into another zone get the warning colour instead. A
+  keeps 4.5:1 on a hovered row too. Zone and default policies stay plain
+  (reject and drop are the safe values, accept between your own zones is
+  normal), except the one that is a risk: the masquerading
+  (internet-facing) zone accepting input, in the error colours, as on
+  the Overview tab; a forwarding from it into another zone is outlined
+  in the warning colour. A
   rule that is switched off is greyed (not faded, so its name and match
   keep 4.5:1) from the moment it is unticked. The match reads From/To
   first, the family/protocol line quieter. The zones table's long

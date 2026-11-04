@@ -732,12 +732,18 @@ return view.extend({
 		var now = raw.at || Date.now();
 		st.clock = model.sampleClock(st.clock, now, raw.info && raw.info.localtime);
 		var at = st.clock.at;
+		/* how far the device's timeline runs from the browser's: the fast
+		   lane stamps its samples on the same timeline (a clock step on
+		   the device moves every row of the chart together) */
+		st.skew = at - Date.now();
 
-		/* CPU, unless the fast lane samples it (refreshFast) */
+		/* CPU, unless the fast lane samples it (refreshFast); the times
+		   are kept either way, so a reading after the lane stops covers
+		   the last poll, not the time since the page opened */
 		var fast = this.fastLive();
-		var stat = fast ? null : model.parseStat(raw.stat);
+		var stat = model.parseStat(raw.stat);
 		if (stat) {
-			var cpu = model.cpuUsage(st.stat, stat);
+			var cpu = fast ? null : model.cpuUsage(st.stat, stat);
 			if (cpu) { st.cpu = cpu; series.push(st.hist.cpu, [ at, cpu.pct ], WINDOW_MS, HIST_FAST); }
 			if (!st.stat || stat.all.total !== st.stat.all.total) st.stat = stat;
 		}
@@ -772,12 +778,14 @@ return view.extend({
 		m.radios.forEach(function(r) { var v = sum(r.ifnames); if (v) st.radioRates[r.id] = v; });
 		st.ssidRates = Object.create(null);
 		m.ssids.forEach(function(s) { var v = s.ifname ? sum([ s.ifname ]) : null; if (v) st.ssidRates[s.id] = v; });
-		/* the uplink: the fast lane's own when it runs */
-		var upRate = fast ? st.uplinkRate : (m.uplink ? st.devRates[m.uplink.statsDev] : null);
+		/* the uplink: the fast lane's own while it samples this uplink's
+		   device; else (no uplink, a new device, the lane stopped) this poll's */
+		var upFast = fast && !!m.uplink && st.fastDev === m.uplink.statsDev;
+		var upRate = upFast ? st.uplinkRate : (m.uplink ? st.devRates[m.uplink.statsDev] : null);
 		st.uplinkRate = upRate || null;
 
 		/* throughput history (only for ticks that produced a rate) */
-		if (upRate && !fast) this.pushNet('uplink', at, upRate);
+		if (upRate && !upFast) this.pushNet('uplink', at, upRate);
 		m.radios.forEach(function(r) { if (st.radioRates[r.id]) self.pushNet(r.id, at, st.radioRates[r.id]); });
 
 		/* station counters, per-station history */
@@ -870,7 +878,14 @@ return view.extend({
 			L.resolveDefault(callRead('/proc/stat'), ''),
 			dev ? L.resolveDefault(callDev(dev), null) : Promise.resolve(null)
 		]).then(function(r) {
-			var at = Date.now(), changed = false;
+			/* rates from the browser's clock, samples on the device's timeline */
+			var now = Date.now(), at = now + (st.skew || 0), changed = false;
+			/* back after a pause (a hidden tab) or on another device: start
+			   over, so the first reading isn't an average over the gap */
+			if (!self.fastLive() || st.fastDev !== dev) { st.fastStat = null; st.fastPrev = null; }
+			/* no uplink, or another device: no rate until this one has two samples */
+			if (st.fastDev !== (dev || null) && st.uplinkRate) { st.uplinkRate = null; changed = true; }
+			st.fastDev = dev || null;
 			var stat = model.parseStat(r[0]);
 			if (stat) {
 				var cpu = model.cpuUsage(st.fastStat, stat);
@@ -879,11 +894,11 @@ return view.extend({
 			}
 			var s = r[1] && r[1].statistics, counters = Object.create(null);
 			if (dev && s) counters[dev] = { rx: s.rx_bytes, tx: s.tx_bytes };
-			var dr = model.rates(st.fastPrev, counters, at);
+			var dr = model.rates(st.fastPrev, counters, now);
 			st.fastPrev = dr.next;
 			if (dev && dr.rates[dev]) { st.uplinkRate = dr.rates[dev]; self.pushNet('uplink', at, st.uplinkRate); changed = true; }
 			/* both answered: the full poll leaves CPU and the uplink to this lane */
-			if (stat && (!dev || s)) st.fastAt = at;
+			if (stat && (!dev || s)) st.fastAt = now;
 			if (changed) self.paintFast();
 		});
 	},
@@ -969,6 +984,9 @@ return view.extend({
 	refresh: function() {
 		var self = this;
 		if (document.hidden) { this.st.paused = true; this.paintLive(); return Promise.resolve(); }
+		/* back from a hidden tab: CPU starts over, rather than read as the
+		   average over the time nobody was looking */
+		if (this.st.paused) this.st.stat = null;
 		this.st.paused = false;
 		return this.fetch().then(function(raw) {
 			self.ingest(raw);
@@ -1546,7 +1564,10 @@ return view.extend({
 				};
 				var body = [
 					E('span', { 'class': 'vt-chip-ico' }, [ icon(CHECK_ICONS[c.id] || 'info') ]),
-					E('span', { 'class': 'vt-chip-main' }, [ E('span', { 'class': 'vt-chip-top' }, [ cell.title, cell.value ]), cell.reason, cell.viz ])
+					/* the level in words too, for screen readers (the card says it in colour) */
+					E('span', { 'class': 'vt-chip-main' }, [ E('span', { 'class': 'vt-chip-top' }, [
+						c.level === 'err' || c.level === 'warn' ? E('span', { 'class': 'vt-sr' }, [ c.level === 'err' ? _('Error') : _('Warning') ]) : '',
+						cell.title, cell.value ]), cell.reason, cell.viz ])
 				];
 				if (c.client || c.list)
 					cell.el = E('button', { 'type': 'button', 'class': 'vt-chip vt-chip-' + c.level + ' vt-chip-k-' + c.id, 'role': 'listitem',
@@ -3338,7 +3359,7 @@ return view.extend({
 
 	drawerUplink: function() {
 		var up = this.m.uplink, r = this.st.uplinkRate;
-		function errors(n) { return N_(n, '%s error', '%s errors').format(fmt.count(n)); }
+		function errors(n) { return fmt.N_(n, '%s error', '%s errors').format(fmt.count(n)); }
 		if (!up) return { title: [ E('span', { 'class': 'vt-drawer-name' }, [ _('Uplink', 'vantage') ]) ], body: [ E('p', { 'class': 'vt-empty-inline' }, [ _('No interface with a route is up.') ]) ] };
 		var s = up.stats || {};
 		return {
@@ -3392,7 +3413,7 @@ return view.extend({
 					kv(_('Local time'), d.localtime != null ? new Date(d.localtime * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '') : fmt.DASH, true)
 				]) ]),
 				this.section(_('Load'), [ E('dl', { 'class': 'vt-kvs' }, [
-					kv(_('CPU', 'vantage'), cpu ? N_(cpu.cores.length || 1, '%s over %d core', '%s over %d cores').format(fmt.pct(cpu.pct), cpu.cores.length || 1) : fmt.DASH),
+					kv(_('CPU', 'vantage'), cpu ? fmt.N_(cpu.cores.length || 1, '%s over %d core', '%s over %d cores').format(fmt.pct(cpu.pct), cpu.cores.length || 1) : fmt.DASH),
 					kv(_('Load average', 'vantage'), d.load.map(fmt.load).join(' · ')),
 					kv(_('Memory in use'), d.memory ? _('%s of %s').format(fmt.bytes(d.memory.used), fmt.bytes(d.memory.total)) : fmt.DASH)
 				]) ])
