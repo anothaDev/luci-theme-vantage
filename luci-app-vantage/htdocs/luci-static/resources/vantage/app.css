@@ -637,25 +637,38 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-chip-warn { --vt-cc: var(--vt-warn); background: color-mix(in oklab, var(--vt-warn) 7%, var(--vt-surface)); border-color: color-mix(in oklab, var(--vt-warn) 35%, var(--vt-line)); }
 .vt-app .vt-chip-err { --vt-cc: var(--vt-err); background: color-mix(in oklab, var(--vt-err) 7%, var(--vt-surface)); border-color: color-mix(in oklab, var(--vt-err) 35%, var(--vt-line)); }
 .vt-app .vt-chip-info { --vt-cc: var(--vt-text-3); }
-/* the check's own icon: plain while all is well, in the level's colour
-   when it needs attention */
+/* the check's own icon, in the card's top right corner so the text
+   runs from its left edge: plain while all is well, in the level's
+   colour when it needs attention */
 .vt-app .vt-chip-ico {
-	flex: none; width: 26px; height: 26px; border-radius: 8px;
+	position: absolute; top: 10px; right: 10px;
+	width: 26px; height: 26px; border-radius: var(--vt-r);
 	display: inline-flex; align-items: center; justify-content: center;
-	background: var(--vt-surface-2); color: var(--vt-text-2);
+	background: var(--vt-surface-2); color: var(--vt-text-3);
 }
+.vt-app .vt-chip-top { padding-right: 30px; }
 .vt-app :is(.vt-chip-warn, .vt-chip-err) .vt-chip-ico { background: color-mix(in oklab, var(--vt-cc) 15%, transparent); color: var(--vt-cc); }
 .vt-app .vt-chip-ico .vt-ico { width: 16px; height: 16px; stroke-width: 1.7; }
-.vt-app .vt-chip { align-self: stretch; }
+.vt-app .vt-chip { align-self: stretch; position: relative; overflow: hidden; }
 .vt-app .vt-chip-main { display: flex; flex-direction: column; min-width: 0; flex: 1; align-self: stretch; }
-/* the picture sits on the card's bottom edge, level across a row */
-.vt-app .vt-chip-viz { display: block; margin-top: auto; padding-top: 8px; }
+/* The picture is part of the card, on its bottom edge from border to
+   border: an area for what moves (uplink, CPU), under room the card
+   keeps for it, and a 3 px line for what fills (memory, storage, the
+   clients' signals). Each radio's airtime stays in the text, labelled. */
+.vt-app .vt-chip-viz { position: absolute; left: 0; right: 0; bottom: 0; display: block; pointer-events: none; }
 .vt-app .vt-chip-viz:empty { display: none; }
-.vt-app .vt-chip-viz .vt-spark { height: 22px; }
-.vt-app .vt-chip-viz .vt-sk-dot { width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; }
-.vt-app .vt-chip-bar { display: block; height: 4px; border-radius: var(--vt-r-xs); }
-.vt-app .vt-chip-bar .vt-bar-fill { border-radius: var(--vt-r-xs); }
-.vt-app .vt-chip-mem { display: flex; gap: 1px; overflow: hidden; background: var(--vt-surface-3); }
+.vt-app .vt-chip:is(.vt-chip-k-uplink, .vt-chip-k-cpu) { padding-bottom: 40px; }
+.vt-app .vt-chip-viz .vt-sk { height: 34px; }
+.vt-app .vt-chip-viz .vt-spark { height: 34px; }
+.vt-app .vt-chip-viz .vt-spark-line { stroke-width: 1.5; }
+.vt-app .vt-chip-viz .vt-sk { --vt-fill-op: .22; }
+.vt-app .vt-chip-k-radios .vt-chip-viz { position: static; margin-top: auto; padding-top: 10px; }
+.vt-app .vt-chip-bar { display: block; height: 3px; }
+.vt-app .vt-chip-k-radios .vt-chip-bar { height: 4px; border-radius: var(--vt-r-xs); }
+.vt-app .vt-chip-k-radios .vt-chip-bar .vt-bar-fill { border-radius: var(--vt-r-xs); }
+.vt-app :is(.vt-chip-k-memory, .vt-chip-k-storage) .vt-chip-bar { background: color-mix(in oklab, var(--vt-line) 70%, transparent); }
+.vt-app :is(.vt-chip-k-memory, .vt-chip-k-storage) .vt-chip-bar .vt-bar-fill { border-radius: 0; }
+.vt-app .vt-chip-mem { display: flex; gap: 1px; overflow: hidden; }
 .vt-app .vt-chip-mem > span { display: block; height: 100%; }
 .vt-app .vt-chip-mem-used { background: var(--vt-meter); }
 .vt-app .vt-chip-mem-cache { background: color-mix(in oklab, var(--vt-meter) 35%, var(--vt-surface-3)); }
@@ -669,8 +682,8 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-chip-radio.vt-band-2g .vt-bar-fill { background: var(--vt-b2); }
 .vt-app .vt-chip-radio.vt-band-5g .vt-bar-fill { background: var(--vt-b5); }
 .vt-app .vt-chip-radio.vt-band-6g .vt-bar-fill { background: var(--vt-b6); }
-.vt-app .vt-chip-dist { display: flex; gap: 2px; height: 4px; }
-.vt-app .vt-chip-dist > span { flex: 0 1 auto; min-width: 4px; border-radius: var(--vt-r-xs); }
+.vt-app .vt-chip-dist { display: flex; gap: 2px; height: 3px; }
+.vt-app .vt-chip-dist > span { flex: 0 1 auto; min-width: 4px; }
 .vt-app .vt-dist-4 { background: var(--vt-ok); }
 .vt-app .vt-dist-3 { background: color-mix(in oklab, var(--vt-ok) 55%, var(--vt-surface-3)); }
 .vt-app .vt-dist-2 { background: var(--vt-warn); }

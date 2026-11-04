@@ -219,7 +219,8 @@ function pos(el, xPct, yPct) {
    axis maximum with its unit. Before a minute of history the data is
    drawn from the right edge. opts: { min: axis floor, scale: fn(max),
    thresh: value for a dashed reference line, threshLabel, quiet: no
-   'collecting…' note before there is a line } */
+   'collecting…' note before there is a line, bare: the line and its
+   area only (no grid, baseline or end marker) } */
 function sparkline(data, cols, vmax, cls, opts) {
 	opts = opts || {};
 	var W = 100, H = 26;
@@ -227,15 +228,20 @@ function sparkline(data, cols, vmax, cls, opts) {
 	var s = svgRoot('vt-spark', '0 0 ' + W + ' ' + H);
 	s.setAttribute('preserveAspectRatio', 'none');
 	wrap.appendChild(s);
-	s.appendChild(svgPath('M0 0H' + W, 'vt-spark-grid'));
-	s.appendChild(svgPath('M0 ' + H + 'H' + W, 'vt-spark-base'));
+	if (!opts.bare) {
+		s.appendChild(svgPath('M0 0H' + W, 'vt-spark-grid'));
+		s.appendChild(svgPath('M0 ' + H + 'H' + W, 'vt-spark-base'));
+	}
 	if (!data || data.length < 2) {
 		wrap.classList.add('vt-sk-empty');
 		if (!opts.quiet) wrap.appendChild(E('span', { 'class': 'vt-sk-note' }, [ _('collecting…') ]));
 		return wrap;
 	}
-	var t1 = data[data.length - 1][0], t0 = Math.min(data[0][0], t1 - 60000);
-	var max = vmax > 0 ? vmax : series.niceCeil(Math.max(series.max(data, cols) * 1.05, opts.min || 0));
+	/* bare (a card's edge): whatever history there is, across the width,
+	   with headroom so a steady rate doesn't run along the top */
+	var t1 = data[data.length - 1][0], t0 = opts.bare ? data[0][0] : Math.min(data[0][0], t1 - 60000);
+	var max = vmax > 0 ? vmax : opts.bare ? Math.max(series.max(data, cols) * 1.35, opts.min || 0)
+		: series.niceCeil(Math.max(series.max(data, cols) * 1.05, opts.min || 0));
 	if (opts.thresh != null) {
 		var ty = H - Math.max(0, Math.min(1, opts.thresh / max)) * H;
 		s.appendChild(svgPath('M0 ' + ty.toFixed(1) + 'H' + W, 'vt-spark-thresh'));
@@ -255,7 +261,7 @@ function sparkline(data, cols, vmax, cls, opts) {
 		s.appendChild(g);
 		if (k === 0) {
 			var last = segs.length ? segs[segs.length - 1] : null, pt = last && last[last.length - 1];
-			if (pt) wrap.appendChild(pos(E('span', { 'class': 'vt-sk-dot' }), pt[0] / W * 100, pt[1] / H * 100));
+			if (pt && !opts.bare) wrap.appendChild(pos(E('span', { 'class': 'vt-sk-dot' }), pt[0] / W * 100, pt[1] / H * 100));
 		}
 	});
 	if (opts.scale) wrap.appendChild(E('span', { 'class': 'vt-sk-max vt-tn' }, [ opts.scale(max) ]));
@@ -1479,12 +1485,12 @@ return view.extend({
 					E('span', { 'class': 'vt-chip-main' }, [ E('span', { 'class': 'vt-chip-top' }, [ cell.title, cell.value ]), cell.reason, cell.viz ])
 				];
 				if (c.client || c.list)
-					cell.el = E('button', { 'type': 'button', 'class': 'vt-chip vt-chip-' + c.level, 'role': 'listitem',
+					cell.el = E('button', { 'type': 'button', 'class': 'vt-chip vt-chip-' + c.level + ' vt-chip-k-' + c.id, 'role': 'listitem',
 						'click': function() { self.openCheck(cell.check); } }, body);
 				else {
 					/* without its page (no block-mount), a check links to the status overview */
 					var to = hasPage(c.page) ? c.page : [ 'admin', 'status', 'overview' ];
-					cell.el = E('a', { 'class': 'vt-chip vt-chip-' + c.level, 'role': 'listitem', 'href': L.url.apply(L, to) }, body);
+					cell.el = E('a', { 'class': 'vt-chip vt-chip-' + c.level + ' vt-chip-k-' + c.id, 'role': 'listitem', 'href': L.url.apply(L, to) }, body);
 				}
 				return cell;
 			});
@@ -1507,10 +1513,13 @@ return view.extend({
 	checkPicture: function(c) {
 		var st = this.st, d = (this.m && this.m.device) || {};
 		switch (c.id) {
+		/* the download (the card says the upload) and CPU as an area along
+		   the card's bottom edge; CPU scaled to at least 20 % so a quiet
+		   device still shows its shape */
 		case 'uplink':
-			return [ sparkline(st.hist.net.uplink || [], [ 1, 2 ], 0, 'vt-spark-up', { min: 1000, quiet: true }) ];
+			return [ sparkline(st.hist.net.uplink || [], [ 1 ], 0, 'vt-spark-up', { min: 1000, quiet: true, bare: true }) ];
 		case 'cpu':
-			return [ sparkline(st.hist.cpu || [], [ 1 ], 100, 'vt-spark-cpu', { quiet: true }) ];
+			return [ sparkline(st.hist.cpu || [], [ 1 ], 0, 'vt-spark-cpu', { min: 20, quiet: true, bare: true }) ];
 		case 'memory':
 			/* in use, then the reclaimable cache (part of what is available), as in the System tile */
 			if (!d.memory || !d.memory.segments) return [];
