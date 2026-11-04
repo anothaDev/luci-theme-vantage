@@ -1537,7 +1537,8 @@ return view.extend({
 		return [ E('span', { 'class': 'vt-chip-radios' }, radios.map(function(r) {
 			return E('span', { 'class': 'vt-chip-radio vt-band-' + (r.band || 'x') }, [
 				E('span', { 'class': 'vt-chip-radio-top' }, [ E('span', {}, [ r.bandLabel || r.id ]), E('b', { 'class': 'vt-tn' }, [ fmt.pct(r.airtime) ]) ]),
-				fillBar(r.airtime, r.airtime >= 80 ? 'err' : r.airtime >= 60 ? 'warn' : 'ok')
+				/* in its band's colour; the figure says how busy */
+				fillBar(r.airtime, 'ok')
 			]);
 		})) ];
 	},

@@ -610,13 +610,14 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-chip-mem-cache { background: color-mix(in oklab, var(--vt-mem) 35%, var(--vt-surface-3)); }
 .vt-app .vt-chip-mem-warn .vt-chip-mem-used { background: var(--vt-warn); }
 .vt-app .vt-chip-mem-err .vt-chip-mem-used { background: var(--vt-err); }
-.vt-app .vt-chip-radios { display: flex; gap: 10px; }
-.vt-app .vt-chip-radio { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+/* two to a row: up to two radios stay one line, four make two */
+.vt-app .vt-chip-radios { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 8px; }
+.vt-app .vt-chip-radio { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .vt-app .vt-chip-radio-top { display: flex; justify-content: space-between; gap: 4px; font-size: var(--vt-fs-micro); line-height: 1.2; color: var(--vt-text-3); white-space: nowrap; }
 .vt-app .vt-chip-radio-top b { color: var(--vt-text-2); font-weight: 600; }
-.vt-app .vt-chip-radio.vt-band-2g .vt-bar-fill:not(.vt-bg-warn, .vt-bg-err) { background: var(--vt-b2); }
-.vt-app .vt-chip-radio.vt-band-5g .vt-bar-fill:not(.vt-bg-warn, .vt-bg-err) { background: var(--vt-b5); }
-.vt-app .vt-chip-radio.vt-band-6g .vt-bar-fill:not(.vt-bg-warn, .vt-bg-err) { background: var(--vt-b6); }
+.vt-app .vt-chip-radio.vt-band-2g .vt-bar-fill { background: var(--vt-b2); }
+.vt-app .vt-chip-radio.vt-band-5g .vt-bar-fill { background: var(--vt-b5); }
+.vt-app .vt-chip-radio.vt-band-6g .vt-bar-fill { background: var(--vt-b6); }
 .vt-app .vt-chip-dist { display: flex; gap: 2px; height: 4px; }
 .vt-app .vt-chip-dist > span { flex: 0 1 auto; min-width: 4px; border-radius: 2px; }
 .vt-app .vt-dist-4 { background: var(--vt-ok); }
