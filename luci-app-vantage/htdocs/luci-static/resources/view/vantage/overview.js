@@ -88,8 +88,13 @@ function reducedMotion() {
 }
 
 /* is the page rendered by the Vantage theme (L.env.media '/luci-static/vantage')? */
+/* the media path of the Vantage theme ('/luci-static/vantage'). Not a
+   literal after `return`, and no slash-star in it: LuCI's jsmin takes
+   both for a division and a comment, and the minified view stops parsing */
+var VANTAGE_MEDIA = /(^|[/])vantage[/]*$/;
 function vantageTheme() {
-	return /(^|\/)vantage\/*$/.test(L.env.media || '');
+	var media = L.env.media || '';
+	return VANTAGE_MEDIA.test(media);
 }
 
 /* ------------------------------------------------------------- SVG kit */
