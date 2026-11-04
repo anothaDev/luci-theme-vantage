@@ -20,8 +20,13 @@
    text nodes; no string is ever parsed as markup. */
 
 var POLL_S = 5;
+/* uplink traffic and CPU are sampled every FAST_S on their own: two
+   small reads (/proc/stat, the uplink device's counters), where the full
+   poll makes eight */
+var FAST_S = 2;
 var WINDOW_MS = 5 * 60 * 1000;        /* throughput history shown */
 var HIST_MAX = 90;
+var HIST_FAST = 160;                  /* five minutes at FAST_S, and some */
 var GONE_KEEP_MS = 5 * 60 * 1000;     /* disconnected stations stay listed */
 var TALKERS = 3;                      /* top talkers shown; the tile keeps room for all */
 var SWITCH_MS = 30 * 1000;            /* LuCI runs swconfig for each switch's link state: at most this often */
@@ -34,6 +39,7 @@ var callInfo = rpc.declare({ object: 'system', method: 'info' });
 var callRead = rpc.declare({ object: 'file', method: 'read', params: [ 'path' ], expect: { data: '' } });
 var callIfDump = rpc.declare({ object: 'network.interface', method: 'dump', expect: { 'interface': [] } });
 var callDevs = rpc.declare({ object: 'network.device', method: 'status', expect: { '': {} } });
+var callDev = rpc.declare({ object: 'network.device', method: 'status', params: [ 'name' ], expect: { '': {} } });
 /* luci.vantage is the app's own rpcd ucode plugin: network.wireless status
    without keys or RADIUS secrets, and the validated alias write */
 var callWifi = rpc.declare({ object: 'luci.vantage', method: 'wireless', expect: { '': {} } });
@@ -671,7 +677,7 @@ return view.extend({
 		var net = Object.create(null);
 		if (stored.net && typeof stored.net === 'object')
 			Object.keys(stored.net).forEach(function(k) {
-				if (/^[A-Za-z0-9_.:-]{1,40}$/.test(k)) net[k] = series.valid(stored.net[k], 3, HIST_MAX, now, model.MAX_BPS);
+				if (/^[A-Za-z0-9_.:-]{1,40}$/.test(k)) net[k] = series.valid(stored.net[k], 3, k === 'uplink' ? HIST_FAST : HIST_MAX, now, model.MAX_BPS);
 			});
 		var clientHist = Object.create(null);
 		if (stored.clients && typeof stored.clients === 'object')
@@ -684,7 +690,7 @@ return view.extend({
 		this.st = {
 			clock: null, stat: null, cpu: null,
 			devPrev: null, staPrev: null, devRates: Object.create(null), staRates: Object.create(null), radioRates: Object.create(null), ssidRates: Object.create(null),
-			hist: { net: net, cpu: series.valid(stored.cpu, 2, HIST_MAX, now), mem: series.valid(stored.mem, 2, HIST_MAX, now) },
+			hist: { net: net, cpu: series.valid(stored.cpu, 2, HIST_FAST, now), mem: series.valid(stored.mem, 2, HIST_MAX, now) },
 			clientHist: clientHist, bestStd: Object.create(null),
 			presence: null, isNew: Object.create(null), gone: [],
 			rdns: Object.create(null), rdnsBusy: false, rdnsOff: !data.canRdns,
@@ -727,11 +733,12 @@ return view.extend({
 		st.clock = model.sampleClock(st.clock, now, raw.info && raw.info.localtime);
 		var at = st.clock.at;
 
-		/* CPU */
-		var stat = model.parseStat(raw.stat);
+		/* CPU, unless the fast lane samples it (refreshFast) */
+		var fast = this.fastLive();
+		var stat = fast ? null : model.parseStat(raw.stat);
 		if (stat) {
 			var cpu = model.cpuUsage(st.stat, stat);
-			if (cpu) { st.cpu = cpu; series.push(st.hist.cpu, [ at, cpu.pct ], WINDOW_MS, HIST_MAX); }
+			if (cpu) { st.cpu = cpu; series.push(st.hist.cpu, [ at, cpu.pct ], WINDOW_MS, HIST_FAST); }
 			if (!st.stat || stat.all.total !== st.stat.all.total) st.stat = stat;
 		}
 		st.temps = model.temps(raw.thermal);
@@ -765,11 +772,12 @@ return view.extend({
 		m.radios.forEach(function(r) { var v = sum(r.ifnames); if (v) st.radioRates[r.id] = v; });
 		st.ssidRates = Object.create(null);
 		m.ssids.forEach(function(s) { var v = s.ifname ? sum([ s.ifname ]) : null; if (v) st.ssidRates[s.id] = v; });
-		var upRate = m.uplink ? st.devRates[m.uplink.statsDev] : null;
+		/* the uplink: the fast lane's own when it runs */
+		var upRate = fast ? st.uplinkRate : (m.uplink ? st.devRates[m.uplink.statsDev] : null);
 		st.uplinkRate = upRate || null;
 
 		/* throughput history (only for ticks that produced a rate) */
-		if (upRate) this.pushNet('uplink', at, upRate);
+		if (upRate && !fast) this.pushNet('uplink', at, upRate);
 		m.radios.forEach(function(r) { if (st.radioRates[r.id]) self.pushNet(r.id, at, st.radioRates[r.id]); });
 
 		/* station counters, per-station history */
@@ -842,7 +850,56 @@ return view.extend({
 
 	pushNet: function(key, at, r) {
 		var h = this.st.hist.net[key] || (this.st.hist.net[key] = []);
-		series.push(h, [ at, r.rx, r.tx ], WINDOW_MS, HIST_MAX);
+		series.push(h, [ at, r.rx, r.tx ], WINDOW_MS, key === 'uplink' ? HIST_FAST : HIST_MAX);
+	},
+
+	/* ------------------------------------------------------- fast lane */
+
+	/* the fast lane answered within the last three of its periods: until
+	   then (or if it stops) the full poll samples CPU and the uplink */
+	fastLive: function() {
+		return !!(this.st.fastAt && Date.now() - this.st.fastAt < FAST_S * 3000);
+	},
+
+	/* every FAST_S: CPU from /proc/stat and the uplink device's counters,
+	   with their own previous samples, so the two lanes never mix */
+	refreshFast: function() {
+		var self = this, st = this.st, up = this.m && this.m.uplink, dev = up && up.statsDev;
+		if (document.hidden || !this.el) return Promise.resolve();
+		return Promise.all([
+			L.resolveDefault(callRead('/proc/stat'), ''),
+			dev ? L.resolveDefault(callDev(dev), null) : Promise.resolve(null)
+		]).then(function(r) {
+			var at = Date.now(), changed = false;
+			var stat = model.parseStat(r[0]);
+			if (stat) {
+				var cpu = model.cpuUsage(st.fastStat, stat);
+				if (cpu) { st.cpu = cpu; series.push(st.hist.cpu, [ at, cpu.pct ], WINDOW_MS, HIST_FAST); changed = true; }
+				if (!st.fastStat || stat.all.total !== st.fastStat.all.total) st.fastStat = stat;
+			}
+			var s = r[1] && r[1].statistics, counters = Object.create(null);
+			if (dev && s) counters[dev] = { rx: s.rx_bytes, tx: s.tx_bytes };
+			var dr = model.rates(st.fastPrev, counters, at);
+			st.fastPrev = dr.next;
+			if (dev && dr.rates[dev]) { st.uplinkRate = dr.rates[dev]; self.pushNet('uplink', at, st.uplinkRate); changed = true; }
+			/* both answered: the full poll leaves CPU and the uplink to this lane */
+			if (stat && (!dev || s)) st.fastAt = at;
+			if (changed) self.paintFast();
+		});
+	},
+
+	/* what a fast sample moves: the cards, the verdict, the path's uplink
+	   wire and backdrop, the System tile's CPU, the throughput chart */
+	paintFast: function() {
+		var st = this.st;
+		if (!this.m || !this.el || !this.el.root) return;
+		st.health = insight.health(this.m, { cpu: st.cpu, uplinkRate: st.uplinkRate, temps: st.temps });
+		st.summary = insight.summary(st.health);
+		this.paintHead();
+		this.paintHealth();
+		if (this.hero) this.updateHero();
+		this.paintSystem();
+		this.paintChart();
 	},
 
 	/* names beyond what one poll carries: reverse DNS once per new
@@ -953,6 +1010,7 @@ return view.extend({
 		this.paint();
 
 		poll.add(L.bind(this.refresh, this), POLL_S);
+		poll.add(L.bind(this.refreshFast, this), FAST_S);
 		document.addEventListener('visibilitychange', function() {
 			if (!document.hidden && self.st.paused) self.refresh();
 			else self.paintLive();

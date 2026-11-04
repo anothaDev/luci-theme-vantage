@@ -346,6 +346,11 @@ text around it so it looks the same size.
   intended, since the dashboard only gets about 600–700 px there and its
   two-column tiles clip below that (measured).
 - Polling via `poll.add` with sane intervals; pauses when the tab is hidden.
+  The full poll runs every 5 s; uplink traffic and CPU have a lane of
+  their own every 2 s (`/proc/stat` and the uplink device's counters,
+  about 3 KB a reply), with their own previous samples. While that lane
+  answers, the full poll leaves both to it; if it stops, the full poll
+  samples them again.
   A poll updates only what changed and lays nothing out unless a tile
   changes size. Idle animations (the Live beat, the flow on busy wires)
   use transform and opacity only, so the compositor runs them; with

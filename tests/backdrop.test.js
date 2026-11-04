@@ -278,3 +278,18 @@ test('folds: the network path starts open, older choices keep everything but the
 		assert.equal(self.folds.hero, true, 'a choice made since is kept');
 	});
 });
+
+/* uplink and CPU have a 2 s lane of their own; the full poll takes them
+   back when that lane stops answering */
+test('fast lane: live for three of its periods, then the full poll samples again', () => {
+	const view = loadView();
+	withStorage({}, () => {
+		const self = Object.create(view);
+		self.initState({});
+		assert.equal(self.fastLive(), false, 'not before its first answer');
+		self.st.fastAt = Date.now() - 1000;
+		assert.equal(self.fastLive(), true);
+		self.st.fastAt = Date.now() - 7000;
+		assert.equal(self.fastLive(), false, 'stopped answering');
+	});
+});

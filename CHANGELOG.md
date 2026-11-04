@@ -29,6 +29,11 @@ Each release ships both packages, `luci-theme-vantage` and
   and storage are, the Wi-Fi clients by band (or each radio's airtime
   where the driver reports it), and how the clients' signals spread.
   Signal shows the weakest client instead of "All good".
+- **Uplink traffic and CPU update every 2 seconds** instead of every 5,
+  on the cards, the network path and the throughput chart. They are two
+  small reads of their own (CPU times and the uplink's counters); the
+  rest of the dashboard still refreshes every 5 seconds, and nothing
+  polls while the tab is hidden.
 - **The throughput chart's minute labels stay put** (#71,
   [@HyperdrivzZ](https://github.com/HyperdrivzZ)). While the five minutes
   of history filled, the time axis stretched with it and "−2 min" slid
