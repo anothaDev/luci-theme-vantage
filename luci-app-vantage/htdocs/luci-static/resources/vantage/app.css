@@ -75,7 +75,7 @@
 	--vt-accent-text: var(--v-accent-text, color-mix(in oklab, var(--vt-accent) 58%, var(--vt-text)));
 	--vt-accent-line: var(--v-accent-line, color-mix(in oklab, var(--vt-accent) 78%, var(--vt-text)));
 	--vt-accent-fill: var(--v-accent-fill, var(--vt-accent));         /* primary buttons, pressed picks */
-	--vt-accent-fill-hover: var(--v-accent-fill-hover, color-mix(in oklab, var(--vt-accent-fill) 92%, #ffffff));
+	--vt-accent-fill-hover: var(--v-accent-fill-hover, color-mix(in oklab, var(--vt-accent-fill) 90%, #000000));
 	--vt-accent-fill-ink: var(--v-accent-fill-ink, var(--vt-accent-ink));
 	/* status colours as text on their soft fills */
 	--vt-ok-text: var(--v-ok-text, color-mix(in oklab, var(--vt-ok) 72%, var(--vt-text)));
@@ -664,7 +664,7 @@ html[data-darkmode="true"] .vt-app {
 /* two to a row: up to two radios stay one line, four make two */
 .vt-app .vt-chip-radios { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 8px; }
 .vt-app .vt-chip-radio { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.vt-app .vt-chip-radio-top { display: flex; justify-content: space-between; gap: 4px; font-size: var(--vt-fs-micro); line-height: 1.2; color: var(--vt-text-3); white-space: nowrap; }
+.vt-app .vt-chip-radio-top { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: 4px; font-size: var(--vt-fs-micro); line-height: 1.2; color: var(--vt-text-3); white-space: nowrap; }
 .vt-app .vt-chip-radio-top b { color: var(--vt-text-2); font-weight: var(--vt-fw-semibold); }
 .vt-app .vt-chip-radio.vt-band-2g .vt-bar-fill { background: var(--vt-b2); }
 .vt-app .vt-chip-radio.vt-band-5g .vt-bar-fill { background: var(--vt-b5); }

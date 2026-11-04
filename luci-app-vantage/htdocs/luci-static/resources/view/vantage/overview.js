@@ -1196,7 +1196,7 @@ return view.extend({
 	/* the network path's backdrop, picked under Customize; under the
 	   Vantage theme it is in Appearance instead (menu-vantage.js) */
 	buildBackdropPick: function() {
-		if (vantageTheme()) return null;
+		if (vantageTheme()) return '';
 		var self = this, names = { 'grid': _('Grid packets'), 'stars': _('Starfield'), 'none': _('None') };
 		var pick = E('select', { 'class': 'vt-select', 'id': 'vt-backdrop-style', 'change': function(ev) { self.setBackdrop(ev.target.value); } },
 			backdrop.STYLES.map(function(k) { return E('option', { 'value': k }, [ names[k] ]); }));
@@ -2219,7 +2219,9 @@ return view.extend({
 					E('span', { 'class': 'vt-mult-now vt-mult-now-up', 'title': _('Upload') }, [ dirKey('up'),
 						E('b', { 'class': 'vt-tn' }, [ dirArrow('up'), ' ', fresh && su.now != null ? fmt.bits(last[s.up]) : fmt.DASH ]) ]),
 					E('span', { 'class': 'vt-mult-stats vt-tn' }, sd.n > 1 ? [
-						E('span', {}, [ _('peak', 'vantage'), ' ', E('b', {}, [ dirArrow('dn'), ' ' + pk.dn ]), ' ', E('b', {}, [ dirArrow('up'), ' ' + pk.up ]), pk.unit ? ' ' + pk.unit : '' ])
+						/* each direction its own item, so they wrap in the narrow readout column */
+						E('span', {}, [ _('peak', 'vantage'), ' ', E('b', {}, [ dirArrow('dn'), ' ' + pk.dn ]) ]),
+						E('span', {}, [ E('b', {}, [ dirArrow('up'), ' ' + pk.up ]), pk.unit ? ' ' + pk.unit : '' ])
 					] : [ E('span', {}, [ _('measuring…') ]) ])
 				]),
 				E('div', { 'class': 'vt-mult-plot vt-chart-' + style }, [
