@@ -6,7 +6,7 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
-## Unreleased
+## 1.0.15 - 2026-11-04
 
 - **The dashboard and LuCI's pages look like one product.** The dashboard
   takes the theme's buttons, focus ring, tabs (the Wi-Fi/Wired switch),

@@ -454,7 +454,7 @@ function writeStore(v) {
 
 /* Sections that fold on narrow screens; the choice is remembered per
    browser. The radios start condensed; the network path starts open
-   (since the release after 1.0.14: v1 kept it folded, so its other
+   (since 1.0.15: v1 kept it folded, so its other
    choices carry over without that one). */
 var FOLD_KEY = 'vantage.fold.v2';
 var FOLD_KEY_V1 = 'vantage.fold.v1';
