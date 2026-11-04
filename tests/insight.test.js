@@ -53,7 +53,7 @@ test('health: several weak clients open the list of them, the weakest first in t
 	m.clients.push({ mac: 'c', name: 'Weak one', signal: -79 }, { mac: 'd', name: 'Weaker', signal: -84 }, { mac: 'e', name: 'Third', signal: -77 });
 	const s = byId(insight.health(m, { cpu: { pct: 7, cores: [ 1 ] } }), 'signal');
 	assert.equal(s.value, '3 weak');
-	assert.match(s.reason, /Weaker · −84 dBm/);
+	assert.match(s.reason.replace(/\u00a0/g, ' '), /Weaker · −84 dBm/);
 	assert.equal(s.list, 'weak');
 	assert.equal(s.client, 'd', 'the weakest, for a layout without the list');
 });
@@ -66,7 +66,7 @@ test('health: weak client, slow uplink, disabled radio, high memory', () => {
 	m.device.memory.usedPct = 93;
 	const h = insight.health(m, { cpu: { pct: 95, cores: [ 1 ] } });
 	assert.equal(byId(h, 'signal').level, 'warn');
-	assert.match(byId(h, 'signal').reason, /Weak one · −81 dBm/);
+	assert.match(byId(h, 'signal').reason.replace(/\u00a0/g, ' '), /Weak one · −81 dBm/);
 	assert.match(byId(h, 'signal').detail, /Weak one at −81 dBm; below −75 dBm/);
 	assert.equal(byId(h, 'signal').client, 'c');
 	assert.equal(byId(h, 'signal').list, null);

@@ -641,15 +641,17 @@ html[data-darkmode="true"] .vt-app {
    runs from its left edge: plain while all is well, in the level's
    colour when it needs attention */
 .vt-app .vt-chip-ico {
-	position: absolute; top: 10px; right: 10px;
-	width: 26px; height: 26px; border-radius: var(--vt-r);
+	flex: none; width: 26px; height: 26px; border-radius: var(--vt-r);
 	display: inline-flex; align-items: center; justify-content: center;
 	background: var(--vt-surface-2); color: var(--vt-text-3);
 }
-.vt-app .vt-chip-top { padding-right: 30px; }
+/* (the health cards only: Firewall -> Overview's warnings share .vt-chip
+   and keep their icon before the title) */
+.vt-app .vt-health .vt-chip-ico { position: absolute; top: 10px; right: 10px; }
+.vt-app .vt-health .vt-chip-top { padding-right: 30px; }
 .vt-app :is(.vt-chip-warn, .vt-chip-err) .vt-chip-ico { background: color-mix(in oklab, var(--vt-cc) 15%, transparent); color: var(--vt-cc); }
 .vt-app .vt-chip-ico .vt-ico { width: 16px; height: 16px; stroke-width: 1.7; }
-.vt-app .vt-chip { align-self: stretch; position: relative; overflow: hidden; }
+.vt-app .vt-health .vt-chip { align-self: stretch; position: relative; overflow: hidden; }
 .vt-app .vt-chip-main { display: flex; flex-direction: column; min-width: 0; flex: 1; align-self: stretch; }
 /* The picture is part of the card, on its bottom edge from border to
    border: an area for what moves (uplink, CPU), under room the card
@@ -667,8 +669,8 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-chip-band.vt-band-5g { background: var(--vt-b5); }
 .vt-app .vt-chip-band.vt-band-6g { background: var(--vt-b6); }
 .vt-app .vt-chip-band { background: var(--vt-text-3); }
-.vt-app .vt-chip-bar { display: block; height: 3px; }
-.vt-app .vt-chip-k-radios .vt-chip-bar { height: 4px; border-radius: var(--vt-r-xs); }
+.vt-app .vt-chip-bar, .vt-app .vt-bar.vt-chip-bar { display: block; height: 3px; border-radius: 0; }
+.vt-app .vt-chip-k-radios .vt-chip-bar.vt-bar { height: 4px; border-radius: var(--vt-r-xs); }
 .vt-app .vt-chip-k-radios .vt-chip-bar .vt-bar-fill { border-radius: var(--vt-r-xs); }
 .vt-app :is(.vt-chip-k-memory, .vt-chip-k-storage) .vt-chip-bar { background: color-mix(in oklab, var(--vt-line) 70%, transparent); }
 .vt-app :is(.vt-chip-k-memory, .vt-chip-k-storage) .vt-chip-bar .vt-bar-fill { border-radius: 0; }
@@ -1220,7 +1222,7 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-talk-sub b { color: var(--vt-text); font-weight: var(--vt-fw-semibold); }
 .vt-app .vt-talk-bar { height: 5px; border-radius: var(--vt-r-xs); background: var(--vt-surface-3); overflow: hidden; }
 .vt-app .vt-talk-fill { display: block; height: 100%; background: var(--vt-meter); }
-.vt-app .vt-talk-sub { display: flex; gap: 8px; align-items: baseline; font-size: var(--vt-fs-micro); color: var(--vt-text-3); white-space: nowrap; overflow: hidden; }
+.vt-app .vt-talk-sub { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; font-size: var(--vt-fs-micro); color: var(--vt-text-3); white-space: nowrap; min-width: 0; }
 
 .vt-app .vt-ssids { display: flex; flex-direction: column; gap: 2px; }
 .vt-app .vt-ssid-main { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }

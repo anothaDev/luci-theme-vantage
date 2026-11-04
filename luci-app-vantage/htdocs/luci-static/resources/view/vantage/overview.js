@@ -1628,9 +1628,13 @@ return view.extend({
 	radioPicture: function() {
 		var radios = ((this.m && this.m.radios) || []).filter(function(r) { return !r.disabled && r.airtime != null; });
 		if (!radios.length) return this.bandPicture();
+		/* two radios on one band: each by its channel too */
+		var perBand = {};
+		radios.forEach(function(r) { perBand[r.band] = (perBand[r.band] || 0) + 1; });
 		return [ E('span', { 'class': 'vt-chip-radios' }, radios.map(function(r) {
+			var name = (r.bandLabel || r.id) + (perBand[r.band] > 1 && r.channel ? ' · ' + r.channel : '');
 			return E('span', { 'class': 'vt-chip-radio vt-band-' + (r.band || 'x') }, [
-				E('span', { 'class': 'vt-chip-radio-top' }, [ E('span', {}, [ r.bandLabel || r.id ]), E('b', { 'class': 'vt-tn' }, [ fmt.pct(r.airtime) ]) ]),
+				E('span', { 'class': 'vt-chip-radio-top' }, [ E('span', {}, [ name ]), E('b', { 'class': 'vt-tn' }, [ fmt.pct(r.airtime) ]) ]),
 				/* in its band's colour; the figure says how busy */
 				fillBar(r.airtime, 'ok')
 			]);

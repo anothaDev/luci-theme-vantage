@@ -471,7 +471,8 @@ function enhanceStorage() {
 				           'aria-label': '%s: %s %s, %s %s, %s %s'.format(r.label, fmtBytes(used), _('used'), fmtBytes(size - used), _('free'), fmtBytes(size), _('total')) },
 					segment('v-seg-used' + (p >= 95 ? ' is-crit' : p >= 80 ? ' is-warn' : ''), used, size)),
 				E('span', { 'class': 'v-meter-val' }, [
-					E('b', {}, [ fmtBytes(used) ]), ' ' + _('used') + ' · ' + fmtBytes(size - used) + ' ' + _('free') + ' · ' + fmtBytes(size) + ' ' + _('total')
+					/* a figure and its word stay on one line */
+					E('b', {}, [ fmtBytes(used) ]), '\u00a0' + _('used') + ' · ' + fmtBytes(size - used) + '\u00a0' + _('free') + ' · ' + fmtBytes(size) + '\u00a0' + _('total')
 				])
 			]);
 		})));
