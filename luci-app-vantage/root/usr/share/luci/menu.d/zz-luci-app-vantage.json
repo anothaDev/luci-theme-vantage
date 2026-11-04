@@ -4,7 +4,7 @@
 		"order": 1,
 		"action": {
 			"type": "view",
-			"path": "vantage/overview"
+			"path": "vantage/dashboard"
 		},
 		"depends": {
 			"acl": [ "luci-app-vantage" ]

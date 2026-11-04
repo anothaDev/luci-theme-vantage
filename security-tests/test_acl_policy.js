@@ -437,6 +437,11 @@ const FIREWALL_REQUIRES = [ 'baseclass', 'rpc', 'ui', 'vantage.fwglance', 'view'
 /* LuCI modules that load uci configs when required (network: network,
    wireless, luci; firewall and tools.*: firewall, network, ...) */
 const CONFIG_LOADERS = /^(network|firewall|tools\..*|form|uci|fs)$/;
+/* the dashboard router (view/vantage/dashboard.js) is the one file that
+   loads views by name: Vantage's own and luci-mod-dashboard's, whichever
+   suits the selected theme. It reads no config itself. */
+const ROUTER_VIEWS = /(^|\/)view\/vantage\/dashboard\.js$/;
+const ROUTER_TARGETS = /^'view\.(vantage\.overview|dashboard\.index)'\s*\)$/;
 
 /* the modules LuCI loads for a class file: like luci.js, the leading
    string literals ('...' or "...", comments skipped) that are require
@@ -474,7 +479,8 @@ function requireProblems(srcs) {
 		   argument: the literal must close the call, so a literal prefix
 		   followed by an expression ('vantage.x' + y) is not one */
 		for (const m of text.matchAll(/\bL\s*\.\s*require\b\s*(\(\s*('[^']*'\s*\)|[^)]*))?/g))
-			if (!m[2] || !/^'vantage\.[\w-]+'\s*\)$/.test(m[2].trim())) out.push(`${file}: L.require(${m[2] || ''})`);
+			if (!m[2] || !(/^'vantage\.[\w-]+'\s*\)$/.test(m[2].trim()) || ROUTER_VIEWS.test(file) && ROUTER_TARGETS.test(m[2].trim())))
+				out.push(`${file}: L.require(${m[2] || ''})`);
 	}
 	/* the firewall overview's closure */
 	const seen = new Set(), luci = new Set();
@@ -557,7 +563,11 @@ test('negative controls: requiring a module that loads other configs fails', () 
 		[ 'view/vantage/overview.js', t => t + "\nvar m = 'network'; L.require(m);\n", /L\.require\(m/ ],
 		/* a literal prefix followed by an expression names any module */
 		[ 'view/vantage/overview.js', t => t + "\nvar y = ''; L.require('vantage.x' + y);\n", /L\.require\('vantage\.x' \+ y/ ],
-		[ 'view/vantage/overview.js', t => t + "\nL.require('vantage.x', 'network');\n", /L\.require\('vantage\.x', 'network'/ ]
+		[ 'view/vantage/overview.js', t => t + "\nL.require('vantage.x', 'network');\n", /L\.require\('vantage\.x', 'network'/ ],
+		/* the router's exception is its two views, in its file only */
+		[ 'view/vantage/dashboard.js', t => t + "\nL.require('network');\n", /L\.require\('network'/ ],
+		[ 'view/vantage/dashboard.js', t => t + "\nL.require('view.dashboard.other');\n", /L\.require\('view\.dashboard\.other'/ ],
+		[ 'view/vantage/overview.js', t => t + "\nL.require('view.dashboard.index');\n", /L\.require\('view\.dashboard\.index'/ ]
 	]) {
 		const mutant = mutate(file, edit);
 		assert.notDeepEqual(mutant, sources, 'the mutation applied');

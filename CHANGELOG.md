@@ -6,6 +6,14 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
+## Unreleased
+
+- **Vantage's dashboard opens only under the Vantage theme.** With another
+  theme selected, `admin/dashboard` showed Vantage's dashboard in a page
+  that theme's styles could scramble. It now opens `luci-mod-dashboard`'s
+  dashboard there, or Status → Overview where that is not installed, and
+  Vantage's again as soon as the Vantage theme is chosen.
+
 ## 1.0.14 - 2026-11-03
 
 - **The spinner while changes are applied turns smoothly** (#71,

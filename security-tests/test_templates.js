@@ -357,7 +357,7 @@ const TREE = {
 			title: 'Administration', order: 10, satisfied: true, action: { type: 'firstchild' },
 			auth: { methods: [ 'cookie:sysauth_https', 'cookie:sysauth_http' ], login: true },
 			children: {
-				dashboard: { title: SECRET.title, satisfied: true, action: { type: 'view', path: 'vantage/overview' }, depends: { acl: [ 'luci-app-vantage' ] } },
+				dashboard: { title: SECRET.title, satisfied: true, action: { type: 'view', path: 'vantage/dashboard' }, depends: { acl: [ 'luci-app-vantage' ] } },
 				network: { title: 'Network', satisfied: true, depends: { fs: { '/sbin/fw3': 'executable' }, uci: { network: true } } }
 			}
 		}

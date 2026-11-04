@@ -19,7 +19,7 @@ const config = fs.readFileSync(path.join(APP, 'root/etc/config/vantage'), 'utf8'
 test('menu: top-level dashboard, first by order, gated by the app ACL', () => {
 	const d = menu['admin/dashboard'];
 	assert.equal(d.order, 1);
-	assert.deepEqual(d.action, { type: 'view', path: 'vantage/overview' });
+	assert.deepEqual(d.action, { type: 'view', path: 'vantage/dashboard' });
 	assert.deepEqual(d.depends.acl, [ 'luci-app-vantage' ]);
 });
 
