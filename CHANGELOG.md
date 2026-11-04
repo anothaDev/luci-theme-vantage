@@ -70,6 +70,10 @@ Each release ships both packages, `luci-theme-vantage` and
 - **The shell's dots stay still.** The auto-refresh pill has a still
   dot (a pause or play sign on narrow screens), and Status → Overview
   marks only boxes that are down, not every one that is up.
+- **File Manager in dark mode** (#84, [@QiuSimons](https://github.com/QiuSimons)).
+  `luci-app-filemanager` brings a light palette of its own, so its status
+  bar was a white band with unreadable text and a hovered row washed out;
+  they take the theme's colours now.
 - **Fixes:** theme buttons render at their intended weight, pages before
   login are titled "LuCI" instead of "LuCI · LuCI", a page that does not
   exist says "Not found" instead of "Administration", the memory bar
