@@ -119,7 +119,7 @@ test('--multiwan: a backup WAN beside the recorded uplink, also on top of --wire
 	] });
 	for (const dumpReply of [ recorded, wired.transform('network.interface', 'dump', {}, recorded) ]) {
 		const dump = multiwan.transform('network.interface', 'dump', {}, dumpReply).result[1].interface;
-		assert.deepEqual(dump.slice(-2).map(i => [ i.interface, i.l3_device ]), [ [ 'wanb', 'eth1' ], [ 'wanb6', 'eth1' ] ]);
+		assert.deepEqual(dump.slice(-2).map(i => [ i.interface, i.l3_device ]), [ [ 'wanb', 'eth9' ], [ 'wanb6', 'eth9' ] ]);
 		/* the recorded uplink stays the main line, wanb (and its wanb6) one more */
 		const main = model.resolveUplink(dump, {});
 		assert.ok(main.iface === 'lan' || main.iface === 'wan', main.iface);
@@ -128,15 +128,19 @@ test('--multiwan: a backup WAN beside the recorded uplink, also on top of --wire
 		assert.equal(multiwan.transform('network.interface', 'dump', {}, ok({ interface: dump })).result[1].interface.filter(i => i.interface === 'wanb').length, 1);
 	}
 	const devs = () => multiwan.transform('network.device', 'status', {}, ok({ 'br-lan': {} })).result[1];
-	const a = devs().eth1.statistics;
+	/* a device none of the other modes uses (--big has eth1 under eth1.1) */
+	const big = require('../dev/replay/big');
+	assert.ok(!big.PORTS.some(p => p.dev === multiwan.LINE.dev || p.dev.split('.')[0] === multiwan.LINE.dev) && !wired.PORTS.some(p => p.dev === multiwan.LINE.dev));
+	assert.ok(!Object.keys(big.transform('network.device', 'status', {}, ok({}), {}).result[1]).some(d => d === multiwan.LINE.dev || d.split('.')[0] === multiwan.LINE.dev));
+	const a = devs().eth9.statistics;
 	assert.ok('br-lan' in devs());
-	assert.equal(devs().eth1.speed, '1000F');
-	assert.ok(devs().eth1.statistics.rx_bytes >= a.rx_bytes && Number.isSafeInteger(a.rx_bytes));
+	assert.equal(devs().eth9.speed, '1000F');
+	assert.ok(devs().eth9.statistics.rx_bytes >= a.rx_bytes && Number.isSafeInteger(a.rx_bytes));
 	assert.ok(a.rx_bytes < 1e12, 'counted from the line\'s uptime, not from 1970');
 	/* documentation addresses only; errors and one device by name untouched */
 	const L = multiwan.LINE;
 	assert.ok([ L.addr, L.gateway ].concat(L.dns).every(x => /^203\.0\.113\./.test(x)) && /^2001:db8:/.test(L.addr6));
-	assert.deepEqual(multiwan.transform('network.device', 'status', { name: 'eth1' }, ok({ up: true })), ok({ up: true }));
+	assert.deepEqual(multiwan.transform('network.device', 'status', { name: 'eth9' }, ok({ up: true })), ok({ up: true }));
 	assert.deepEqual(multiwan.transform('network.interface', 'dump', {}, { error: 'x' }), { error: 'x' });
 	assert.deepEqual(multiwan.transform('luci.vantage', 'wireless', {}, ok({ radio0: {} })), ok({ radio0: {} }));
 });

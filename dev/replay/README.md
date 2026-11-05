@@ -231,12 +231,12 @@ cannot be combined with `--wired`.
 ## A second line to the internet (`--multiwan`)
 
 Adds a backup WAN beside the uplink, to work on the network path's other
-lines (`multiwan.js`): `wanb` (DHCP, on a synthetic `eth1` at 1 Gbit/s)
-with an IPv4 default route of metric 20, above the recorded uplink's, and
-`wanb6` (DHCPv6) on the same device, which stays part of that line. Its
-counters grow with the clock, about 30 Mbit/s down and 4 Mbit/s up.
-Combine it with `--wired` (a router without Wi-Fi) or `--big`;
-addresses are documentation values.
+lines (`multiwan.js`): `wanb` (DHCP, on a synthetic `eth9` at 1 Gbit/s, a
+device none of the other modes uses) with an IPv4 default route of metric
+20, above the recorded uplink's, and `wanb6` (DHCPv6) on the same device,
+which stays part of that line. Its counters grow with the clock, about
+30 Mbit/s down and 4 Mbit/s up. Combine it with `--wired` (a router
+without Wi-Fi) or `--big`; addresses are documentation values.
 
 ## Translation preview (`--lang`)
 

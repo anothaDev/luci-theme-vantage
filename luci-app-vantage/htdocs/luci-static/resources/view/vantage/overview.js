@@ -29,7 +29,6 @@ var HIST_MAX = 90;
 var HIST_FAST = 160;                  /* five minutes at FAST_S, and some */
 var GONE_KEEP_MS = 5 * 60 * 1000;     /* disconnected stations stay listed */
 var TALKERS = 3;                      /* top talkers shown; the tile keeps room for all */
-var MAX_LINES = 4;                    /* lines to the internet beside the main one, in the path and the chart */
 var SWITCH_MS = 30 * 1000;            /* LuCI runs swconfig for each switch's link state: at most this often */
 var STORE_KEY = 'vantage.hist.v1';
 var SVGNS = 'http://www.w3.org/2000/svg';
@@ -297,9 +296,12 @@ var CHECK_ICONS = { uplink: 'port', cpu: 'cpu', memory: 'memory', radios: 'wifi'
 function txt(el, s) { s = (s == null ? '' : String(s)); if (el.textContent !== s) el.textContent = s; return el; }
 function setClass(el, c) { if (el.getAttribute('class') !== c) el.setAttribute('class', c); }
 function setTitle(el, v) { if (el.getAttribute('title') !== v) el.setAttribute('title', v); }
-/* the history key of another line to the internet: ':' keeps it apart
-   from a radio's (a uci section name) */
+/* the throughput history of a line to the internet, the main one too,
+   by its interface: a failover starts the new main line's own history
+   instead of continuing the old one's. ':' keeps it apart from a radio's
+   (a uci section name). */
 function lineKey(x) { return 'up:' + x.iface; }
+function histMax(key) { return /^up:/.test(key) ? HIST_FAST : HIST_MAX; }
 
 /* an element's own tag and attributes, or a text node's text */
 function nodeSig(n) {
@@ -686,7 +688,8 @@ return view.extend({
 		var net = Object.create(null);
 		if (stored.net && typeof stored.net === 'object')
 			Object.keys(stored.net).forEach(function(k) {
-				if (/^[A-Za-z0-9_.:-]{1,40}$/.test(k)) net[k] = series.valid(stored.net[k], 3, k === 'uplink' ? HIST_FAST : HIST_MAX, now, model.MAX_BPS);
+				/* 'uplink' (before #88) belongs to an interface nobody noted */
+				if (/^[A-Za-z0-9_.:-]{1,40}$/.test(k) && k !== 'uplink') net[k] = series.valid(stored.net[k], 3, histMax(k), now, model.MAX_BPS);
 			});
 		var clientHist = Object.create(null);
 		if (stored.clients && typeof stored.clients === 'object')
@@ -794,10 +797,16 @@ return view.extend({
 		st.uplinkRate = upRate || null;
 
 		/* throughput history (only for ticks that produced a rate) */
-		if (upRate && !upFast) this.pushNet('uplink', at, upRate);
+		if (upRate && !upFast) this.pushNet(lineKey(m.uplink), at, upRate);
 		/* the other lines to the internet: this poll's (the fast lane
 		   samples the main one only) */
 		this.extraLines(m).forEach(function(x) { var r = st.devRates[x.statsDev]; if (r) self.pushNet(lineKey(x), at, r); });
+		/* a line gone for longer than the chart shows leaves no history */
+		var lineKeys = m.uplinks.map(lineKey);
+		Object.keys(st.hist.net).forEach(function(k) {
+			var h = st.hist.net[k];
+			if (/^up:/.test(k) && lineKeys.indexOf(k) < 0 && !(h.length && h[h.length - 1][0] > at - WINDOW_MS)) delete st.hist.net[k];
+		});
 		m.radios.forEach(function(r) { if (st.radioRates[r.id]) self.pushNet(r.id, at, st.radioRates[r.id]); });
 
 		/* station counters, per-station history */
@@ -870,7 +879,7 @@ return view.extend({
 
 	pushNet: function(key, at, r) {
 		var h = this.st.hist.net[key] || (this.st.hist.net[key] = []);
-		series.push(h, [ at, r.rx, r.tx ], WINDOW_MS, key === 'uplink' ? HIST_FAST : HIST_MAX);
+		series.push(h, [ at, r.rx, r.tx ], WINDOW_MS, histMax(key));
 	},
 
 	/* ------------------------------------------------------- fast lane */
@@ -908,7 +917,7 @@ return view.extend({
 			if (dev && s) counters[dev] = { rx: s.rx_bytes, tx: s.tx_bytes };
 			var dr = model.rates(st.fastPrev, counters, now);
 			st.fastPrev = dr.next;
-			if (dev && dr.rates[dev]) { st.uplinkRate = dr.rates[dev]; self.pushNet('uplink', at, st.uplinkRate); changed = true; }
+			if (dev && dr.rates[dev]) { st.uplinkRate = dr.rates[dev]; self.pushNet(lineKey(up), at, st.uplinkRate); changed = true; }
 			/* both answered: the full poll leaves CPU and the uplink to this lane */
 			if (stat && (!dev || s)) st.fastAt = now;
 			if (changed) self.paintFast();
@@ -1615,7 +1624,7 @@ return view.extend({
 		   the card's bottom edge; CPU scaled to at least 20 % so a quiet
 		   device still shows its shape */
 		case 'uplink':
-			return [ sparkline(st.hist.net.uplink || [], [ 1 ], 0, 'vt-spark-up', { min: 1000, quiet: true, bare: true }) ];
+			return [ sparkline((this.m && this.m.uplink && st.hist.net[lineKey(this.m.uplink)]) || [], [ 1 ], 0, 'vt-spark-up', { min: 1000, quiet: true, bare: true }) ];
 		case 'cpu':
 			return [ sparkline(st.hist.cpu || [], [ 1 ], 0, 'vt-spark-cpu', { min: 20, quiet: true, bare: true }) ];
 		case 'memory':
@@ -1712,23 +1721,29 @@ return view.extend({
 		}).join('\n') + '\nwired=' + this.wiredPorts().join(',') + lines;
 	},
 
-	/* the lines to the internet beside the main one (failover, mwan3) */
+	/* the lines to the internet beside the main one (failover, mwan3;
+	   at most model.MAX_LINES) */
 	extraLines: function(m) {
 		m = m || this.m;
-		return ((m && m.uplinks) || []).slice(1, 1 + MAX_LINES);
+		return ((m && m.uplinks) || []).slice(1);
 	},
 
 	/* the ports with wired hosts downstream of this device, at most 8:
-	   hosts on the uplink's port are the way to the gateway, not clients
+	   hosts on a line's port are the way to its gateway, not clients
 	   (on a bridge with several ports whose gateway port is unknown, only
 	   the gateway is left out) */
 	wiredPorts: function() {
-		var m = this.m, up = m.uplink, out = [];
+		var m = this.m, out = [], self = this;
 		(m.wiredHosts || []).forEach(function(c) {
-			if (c.gateway || (up && up.port && c.port === up.port)) return;
+			if (c.gateway || self.linePort(c.port)) return;
 			if (out.indexOf(c.port) < 0) out.push(c.port);
 		});
 		return out.sort().slice(0, 8);
+	},
+
+	/* the port is one a line to the internet leaves through */
+	linePort: function(port) {
+		return ((this.m && this.m.uplinks) || []).some(function(x) { return x.port && x.port === port; });
 	},
 
 	/* the Clients tile on its wired list, on one port's hosts or all */
@@ -1775,20 +1790,20 @@ return view.extend({
 		/* more than one line to the internet: each by its interface, the
 		   main one (the default route the kernel takes) marked */
 		var extra = this.extraLines();
-		h.gwKicker = extra.length ? E('span') : span('vt-node-kicker'); h.gwTitle = span('vt-node-title'); h.gwSub = span('vt-node-sub');
-		h.gw = E('button', { 'type': 'button', 'class': 'vt-node vt-node-gw', 'click': function() { self.openDrawer('uplink', 'uplink'); } }, [
+		h.gwKicker = span(extra.length ? 'vt-node-name' : 'vt-node-kicker'); h.gwTitle = span('vt-node-title'); h.gwSub = span('vt-node-sub');
+		h.gw = E('button', { 'type': 'button', 'class': 'vt-node vt-node-gw', 'click': function() { self.openDrawer('uplink', ''); } }, [
 			E('span', { 'class': 'vt-node-ico' }, [ icon('globe') ]),
 			E('span', { 'class': 'vt-node-body' }, [
-				extra.length ? E('span', { 'class': 'vt-node-kicker' }, [ h.gwKicker, E('span', { 'class': 'vt-node-tag' }, [ _('default route') ]) ]) : h.gwKicker,
+				extra.length ? E('span', { 'class': 'vt-node-kicker vt-node-kicker-tag' }, [ h.gwKicker, E('span', { 'class': 'vt-node-tag' }, [ _('default route') ]) ]) : h.gwKicker,
 				h.gwTitle, h.gwSub
 			])
 		]);
 		h.lines = extra.map(function(x) {
 			/* its rates as two items, so a narrow node wraps them rather than cut them */
-			var ln = { id: x.iface, kicker: span('vt-node-kicker'), title: span('vt-node-title'), dn: E('span'), up: E('span') };
+			var ln = { id: x.iface, kicker: span('vt-node-name'), title: span('vt-node-title'), dn: E('span'), up: E('span') };
 			ln.el = E('button', { 'type': 'button', 'class': 'vt-node vt-node-gw vt-node-line', 'click': function() { self.openDrawer('uplink', ln.id); } }, [
 				E('span', { 'class': 'vt-node-ico' }, [ icon('globe') ]),
-				E('span', { 'class': 'vt-node-body' }, [ ln.kicker, ln.title, E('span', { 'class': 'vt-node-sub vt-node-rates vt-tn' }, [ ln.dn, ln.up ]) ])
+				E('span', { 'class': 'vt-node-body' }, [ E('span', { 'class': 'vt-node-kicker' }, [ ln.kicker ]), ln.title, E('span', { 'class': 'vt-node-sub vt-node-rates vt-tn' }, [ ln.dn, ln.up ]) ])
 			]);
 			return ln;
 		});
@@ -2313,7 +2328,7 @@ return view.extend({
 	   download, a radio sends it. */
 	chartSeries: function() {
 		var m = this.m;
-		var list = [ { key: 'uplink', label: m.uplink ? _('Uplink %s').format(m.uplink.dev) : _('Uplink', 'vantage'), dn: 1, up: 2 } ];
+		var list = [ { key: m.uplink ? lineKey(m.uplink) : 'uplink', label: m.uplink ? _('Uplink %s').format(m.uplink.dev) : _('Uplink', 'vantage'), dn: 1, up: 2 } ];
 		this.extraLines().forEach(function(x) { list.push({ key: lineKey(x), label: _('Uplink %s').format(x.dev), dn: 1, up: 2 }); });
 		m.radios.forEach(function(r) { list.push({ key: r.id, label: _('%s radio').format(r.bandLabel), dn: 2, up: 1 }); });
 		return list;
@@ -2912,9 +2927,8 @@ return view.extend({
 		var bar = E('span', { 'class': 'vt-mini-fill' });
 		setW(bar, maxRate > 0 ? total / maxRate * 100 : 0);
 		var tags = [];
-		var up = this.m && this.m.uplink;
 		if (c.gateway) tags.push(pill(_('Gateway'), 'accent', _('The router this device sends its traffic to')));
-		else if (up && up.port && c.port === up.port) tags.push(pill(_('Upstream'), 'muted', _('Reached through the uplink port %s, not connected to this device').format(c.port)));
+		else if (this.linePort(c.port)) tags.push(pill(_('Upstream'), 'muted', _('Reached through the uplink port %s, not connected to this device').format(c.port)));
 		if (c.vlan != null) tags.push(pill(_('VLAN %d').format(c.vlan), 'muted'));
 		var speed = c.speed ? fmt.phyRate(c.speed.mbps * 1000) : fmt.DASH;
 		var link = E('td', { 'class': 'vt-td-link', 'data-title': _('Link', 'vantage') }, [
@@ -3088,7 +3102,7 @@ return view.extend({
 		this.ui.editing = null;
 		/* the address names what is shown, also when the open drawer
 		   moves on (from a radio to one of its clients) */
-		try { history.replaceState(null, '', '#' + kind + '=' + encodeURIComponent(id)); } catch (e) {}
+		try { history.replaceState(null, '', '#' + kind + (kind === 'uplink' && !id ? '' : '=' + encodeURIComponent(id))); } catch (e) {}
 		if (!el.drawer.hidden) { this.paintDrawer(); this.paintClients(); return; }
 		this.lastFocus = document.activeElement;
 		el.drawer.hidden = false;
@@ -3111,18 +3125,19 @@ return view.extend({
 	},
 
 	/* A deep link names an existing thing or nothing: a client by a
-	   station MAC, a radio this device reports, another line to the
-	   internet by its interface; the main uplink and the device take no
-	   id. Anything else is dropped from the address bar, so a crafted link
-	   cannot put its own text in the drawer title. */
+	   station MAC, a radio this device reports, a line to the internet by
+	   its interface (#uplink alone: the main one, whichever it is); the
+	   device takes no id. Anything else is dropped from the address bar,
+	   so a crafted link cannot put its own text in the drawer title. */
 	openFromHash: function() {
 		var hash = location.hash || '', m = /^#(client|radio|uplink|device)=(.{1,128})$/.exec(hash), id = null;
+		if (hash === '#uplink') { this.openDrawer('uplink', ''); return; }
 		if (m) {
 			try { id = decodeURIComponent(m[2]); } catch (e) { id = null; }
 			if (id == null) { /* malformed escape */ }
 			else if (m[1] === 'client') id = names.normMac(id);
 			else if (m[1] === 'radio') id = this.m && this.m.radios.some(function(r) { return r.id === id; }) ? id : null;
-			else if (m[1] === 'uplink') id = this.extraLines().some(function(x) { return x.iface === id; }) ? id : 'uplink';
+			else if (m[1] === 'uplink') id = ((this.m && this.m.uplinks) || []).some(function(x) { return x.iface === id; }) ? id : '';
 			else id = m[1];
 		}
 		if (id != null) { this.openDrawer(m[1], id); return; }
@@ -3425,13 +3440,25 @@ return view.extend({
 		};
 	},
 
-	/* the main line ('uplink'), or another line to the internet by its
-	   interface while it has a default route */
+	/* the main line (id ''), whichever interface it is, or one line by
+	   its interface: still that one after a failover makes it the main
+	   line, and said to be down when it is no line any more (never
+	   another interface under its name) */
 	drawerUplink: function(id) {
-		var up = this.m.uplink, r = this.st.uplinkRate, hist = this.st.hist.net.uplink, several = this.extraLines().length > 0;
-		this.extraLines().forEach(function(x) { if (x.iface === id) up = x; });
-		if (up && up !== this.m.uplink) { r = this.st.devRates[up.statsDev] || null; hist = this.st.hist.net[lineKey(up)]; }
+		var m = this.m, st = this.st, lines = m.uplinks || [];
+		var up = id ? lines.filter(function(x) { return x.iface === id; })[0] : m.uplink;
+		var r = up && up === m.uplink ? st.uplinkRate : up ? st.devRates[up.statsDev] || null : null;
+		var hist = up ? st.hist.net[lineKey(up)] : null, several = lines.length > 1;
 		function errors(n) { return fmt.N_(n, '%s error', '%s errors').format(fmt.count(n)); }
+		if (id && !up) return {
+			title: [ E('span', { 'class': 'vt-drawer-ico' }, [ icon('globe') ]), E('div', { 'class': 'vt-drawer-titles' }, [
+				E('div', { 'class': 'vt-drawer-name' }, [ _('Uplink · %s').format(id) ])
+			]) ],
+			body: [
+				E('div', { 'class': 'vt-dactions' }, [ pageLink(insight.PAGES.network, _('Interfaces')) ]),
+				E('p', { 'class': 'vt-empty-inline' }, [ _('This line is down or has no default route now.') ])
+			]
+		};
 		if (!up) return { title: [ E('span', { 'class': 'vt-drawer-name' }, [ _('Uplink', 'vantage') ]) ], body: [ E('p', { 'class': 'vt-empty-inline' }, [ _('No interface with a route is up.') ]) ] };
 		var s = up.stats || {};
 		return {

@@ -5,15 +5,15 @@
    path's other lines. Works on top of --wired and --big.
 
    Replies are rewritten after the store (and --wired / --big) answered:
-     network.interface dump   SYNTHETIC 'wanb' (dhcp, eth1) with an IPv4
+     network.interface dump   SYNTHETIC 'wanb' (dhcp, eth9) with an IPv4
                               default route of metric 20, and 'wanb6'
                               (dhcpv6) on the same device: one line
-     network.device status    SYNTHETIC eth1 with counters growing with
+     network.device status    SYNTHETIC eth9 with counters growing with
                               the clock (about 30 Mbit/s down, 4 up)
    Added addresses are documentation ranges only. */
 
 const LINE = {
-	iface: 'wanb', iface6: 'wanb6', dev: 'eth1', speed: '1000F', metric: 20,
+	iface: 'wanb', iface6: 'wanb6', dev: 'eth9', speed: '1000F', metric: 20,
 	addr: '203.0.113.202', mask: 29, gateway: '203.0.113.201',
 	addr6: '2001:db8:b::2', mask6: 64, dns: [ '203.0.113.53' ],
 	down: 30e6, up: 4e6

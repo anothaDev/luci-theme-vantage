@@ -14,11 +14,18 @@ Each release ships both packages, `luci-theme-vantage` and
   without Wi-Fi the others appeared among the local networks. Every up
   interface with a default route of its own now sits on the internet
   side, each with its own wire into the device and its live rates, and
-  opens its own details; the one the kernel takes for ordinary traffic is
-  marked "default route". IPv6 on the same device (`wan6`) stays part of
-  its line, and a VPN or DS-Lite tunnel is not counted as one. The
-  throughput chart has a row per line. A WAN that is down shows nowhere
-  until it comes up again. With one line the path is as before.
+  opens its own details; the one whose default route has the lowest
+  metric is marked "default route" (with mwan3, its own rules decide where
+  traffic goes). IPv6 on the same device, or on the port under a PPPoE
+  session (`wan6`), stays part of its line. The throughput chart has a row
+  per line, and each line keeps its own history across a failover. A WAN
+  that is down shows nowhere until it comes up again. With one line the
+  path is as before.
+- **The internet side shows the line, not a tunnel over it.** A
+  full-tunnel VPN whose default route has a lower metric than the WAN's
+  was shown as the uplink; now the WAN is, and the VPN stays among the
+  networks, as a DS-Lite tunnel already did. A VPN is the uplink only when
+  it holds the only default route.
 - **The throughput chart stops flipping to "collecting".** With five
   minutes of history, its subtitle kept switching between "last 5 min" and
   "collecting · 4 min of data", because the oldest sample kept is usually a

@@ -76,10 +76,14 @@ test('found on a real router: links to absent pages, a wrapping handle bar, clip
 
 test('other lines to the internet (#88): the main row as with one line, the others under it; on a phone one column again', () => {
 	const rule = sel => rules.find(r => r.sel === sel);
-	assert.match(rule('.vt-app .vt-path-lines').body, /grid-template-rows:\s*auto auto/);
-	for (const [ sel, area ] of [ [ '.vt-node-gw', '1 / 1' ], [ '.vt-link-label', '1 / 2' ], [ '.vt-node-ap', '1 / 3' ], [ '.vt-branches', '1 / 4 / 3 / 5' ] ])
+	/* a tall branch column grows the outer rows, not the gap between the lines */
+	assert.match(rule('.vt-app .vt-path-lines').body, /grid-template-rows:\s*1fr auto auto 1fr/);
+	for (const [ sel, area ] of [ [ '.vt-node-gw', '2 / 1' ], [ '.vt-link-label', '2 / 2' ], [ '.vt-node-ap', '2 / 3' ], [ '.vt-branches', '1 / 4 / -1 / 5' ] ])
 		assert.match(rule('.vt-app .vt-path-lines > ' + sel).body, new RegExp('grid-area:\\s*' + area.replace(/ /g, '\\s*') + '\\s*;'), sel);
-	assert.match(rule('.vt-app .vt-lines').body, /grid-area:\s*2\s*\/\s*1\s*;/);
+	assert.match(rule('.vt-app .vt-lines').body, /grid-area:\s*3\s*\/\s*1\s*;/);
+	/* a narrow node: the tag under the name, a long name ellipsized */
+	assert.match(rule('.vt-app .vt-node-kicker-tag').body, /flex-wrap:\s*wrap/);
+	assert.match(rule('.vt-app .vt-node-name').body, /text-overflow:\s*ellipsis/);
 	/* the phone layout puts every part back in the one column */
 	const phone = /@container vthero \(max-width: 700px\) \{([\s\S]*?)\n\}/.exec(css)[1];
 	assert.match(phone, /\.vt-path-lines \{ grid-template-rows: none; \}/);

@@ -25,6 +25,10 @@ function arr(v) { return Array.isArray(v) ? v : []; }
 
 /* ------------------------------------------------------ default routes */
 
+/* lines to the internet the path and the chart show beside the main one;
+   any further one stays a network */
+var MAX_LINES = 4;
+
 /* netifd protocols, and kernel device types, of tunnels that ride over
    another line: a full-tunnel VPN is not a second way out. PPTP and L2TP
    are left out: some ISPs give their access through them. */
@@ -61,16 +65,84 @@ function upIfaces(ifaces) {
 		return i && i.up && i.interface !== 'loopback' && (i.l3_device || i.device);
 	});
 }
-/* the interfaces with a default route, as the kernel prefers them:
-   IPv4 before IPv6 before a softwire (family 0, 1, 2), then the lowest
-   metric, wan/wan6/*wan* on a tie, then the order netifd lists them */
-function rankRouted(up) {
+function isTunnel(i, devs) {
+	var d = devs[i.l3_device || i.device];
+	return TUNNEL.test(i.proto || '') || !!(d && (TUNNEL_DEV.test(d.devtype || '') || d.type === 'tunnel'));
+}
+/* the interfaces with a default route, as the kernel prefers them for
+   ordinary traffic: real lines before tunnels (a full-tunnel VPN rides
+   over one, whatever its metric), IPv4 before IPv6 (a softwire's IPv4
+   route among the IPv4 ones), then the lowest metric, wan/wan6/*wan* on
+   a tie, then the order netifd lists them */
+function rankRouted(up, devs) {
 	return up.map(function(i, n) {
 		var r = defRoute(i);
-		return r ? { i: i, family: SOFTWIRE.test(i.proto) ? 2 : r.target === '::' ? 1 : 0, metric: metric(i, r), wan: wanRank(i), n: n } : null;
+		return r ? { i: i, tunnel: isTunnel(i, devs), softwire: SOFTWIRE.test(i.proto), family: r.target === '::' ? 1 : 0,
+			metric: metric(i, r), wan: wanRank(i), n: n } : null;
 	}).filter(Boolean).sort(function(a, b) {
-		return a.family - b.family || a.metric - b.metric || a.wan - b.wan || a.n - b.n;
+		return a.tunnel - b.tunnel || a.family - b.family || a.metric - b.metric || a.wan - b.wan || a.n - b.n;
 	});
+}
+/* The lines to the internet, the main one first: { r, members, metric }
+   with the interfaces each is made of. A softwire (DS-Lite, MAP-E,
+   464XLAT) that wins carries IPv4 over the IPv6 line, so that line is
+   the main one, at the softwire's metric; it is never a line of its own,
+   nor a tunnel unless nothing else has a default. One line per L3
+   device: wan6 on wan's device (or an @wan alias) is part of wan's, and
+   so is an IPv6 interface on the device a PPPoE line runs over (its
+   counters hold the PPP session's). Two IPv4 lines that only share a
+   parent device (two PPPoE sessions on eth0) stay two. */
+function groupLines(ifaces, devs) {
+	var ranked = rankRouted(upIfaces(ifaces), devs), main = ranked[0], groups = [];
+	if (!main) return groups;
+	var at = main.metric;
+	if (main.softwire)
+		main = ranked.filter(function(r) { return !r.tunnel && !r.softwire && r.family === 1; })[0] || main;
+	/* l3: the members' L3 devices; dev4: the devices their IPv4 runs over */
+	function add(g, r) {
+		g.members.push(r.i);
+		g.l3.push(r.i.l3_device || r.i.device);
+		if (r.family === 0 && typeof r.i.device === 'string') g.dev4.push(r.i.device);
+	}
+	function start(r, m) {
+		var g = { r: r, members: [], metric: m, l3: [], dev4: [] };
+		add(g, r);
+		groups.push(g);
+	}
+	start(main, at);
+	ranked.forEach(function(r) {
+		if (r === main || r.softwire || r.tunnel) return;
+		var l3 = r.i.l3_device || r.i.device;
+		var g = groups.filter(function(x) { return x.l3.indexOf(l3) >= 0 || (r.family === 1 && x.dev4.indexOf(l3) >= 0); })[0];
+		if (g) add(g, r);
+		else start(r, r.metric);
+	});
+	return groups;
+}
+function cidrs(list) {
+	return arr(list).map(function(a) { return a && a.address ? a.address + '/' + a.mask : null; }).filter(Boolean);
+}
+/* a line's other interfaces add their addresses and DNS to it (wan6's
+   IPv6 on wan's line) */
+function absorb(x, g) {
+	function more(list, add) { add.forEach(function(v) { if (list.indexOf(v) < 0) list.push(v); }); }
+	g.members.slice(1).forEach(function(i) {
+		more(x.ipv4, cidrs(i['ipv4-address']));
+		more(x.ipv6, cidrs(i['ipv6-address']));
+		more(x.dns, arr(i['dns-server']).filter(function(v) { return typeof v === 'string'; }));
+	});
+	x.metric = g.metric;
+	x.ifaces = g.members.map(function(i) { return i.interface; });
+	return x;
+}
+/* Two lines on DSA ports of one switch: the conduit carries both (and
+   the other ports), so each keeps its own port's counters. */
+function ownConduits(lines) {
+	var shared = lines.map(function(x, k) {
+		return x.statsDev !== x.dev && lines.some(function(y, j) { return j !== k && (y.statsDev === x.statsDev || y.dev === x.statsDev); });
+	});
+	lines.forEach(function(x, k) { if (shared[k]) x.statsDev = x.dev; });
+	return lines;
 }
 
 return baseclass.extend({
@@ -263,13 +335,17 @@ return baseclass.extend({
 		return v + (sp.duplex === 'full' ? ' · ' + _('full duplex') : sp.duplex === 'half' ? ' · ' + _('half duplex') : '');
 	},
 
+	/* lines beside the main one that the model lists (m.uplinks) */
+	MAX_LINES: MAX_LINES,
+
 	/* Pick the interface carrying traffic in/out of this device, and the
 	   physical device its counters live on. Prefer interfaces with a default
-	   route in the main table, as the kernel picks among them: IPv4 before IPv6, then the
-	   lowest metric (multi-WAN: the backup uplink has the higher one), with
+	   route in the main table, as the kernel picks among them (groupLines):
+	   real lines before tunnels, IPv4 before IPv6, then the lowest metric
+	   (multi-WAN: the backup uplink has the higher one), with
 	   wan/wan6/*wan* priority only on a tie. A softwire (DS-Lite, MAP-E,
-	   464XLAT) carries IPv4 over the IPv6 uplink, so it ranks after IPv6:
-	   the uplink shown is the line, not the tunnel. Fall back to WAN names, then
+	   464XLAT) carries IPv4 over the IPv6 uplink: the uplink shown is
+	   the line, not the tunnel. Fall back to WAN names, then
 	   the first up interface. A bridge, or a VLAN on one (br-lan.10), is
 	   followed to its wired member (wireless members skipped): the port
 	   given as `via` (where the bridge learned the gateway), else one with
@@ -278,43 +354,43 @@ return baseclass.extend({
 	   several and the gateway's port is unknown. DSA with hardware
 	   offload uses the conduit's counters. */
 	resolveUplink: function(ifaces, devs, wirelessNames, via) {
-		var up = upIfaces(ifaces);
-		function named(list, re) { return list.filter(function(i) { return re.test(i.interface); })[0]; }
-		function preferredWan(list) {
-			return named(list, /^wan$/) || named(list, /^wan6$/) || named(list, /wan/i);
-		}
+		devs = obj(devs);
+		var g = groupLines(ifaces, devs)[0], up = upIfaces(ifaces);
+		if (g) return absorb(this.line(g.r.i, devs, wirelessNames, via), g);
+		function named(re) { return up.filter(function(i) { return re.test(i.interface); })[0]; }
 		/* An AP may retain an up, unmanaged WAN port without any routes. */
-		var routed = rankRouted(up);
-		var pick = routed.length ? routed[0].i : preferredWan(up) || up[0];
-		return pick ? this.line(pick, obj(devs), wirelessNames, via) : null;
+		var pick = named(/^wan$/) || named(/^wan6$/) || named(/wan/i) || up[0];
+		return pick ? this.line(pick, devs, wirelessNames, via) : null;
 	},
 
 	/* The other lines to the internet beside `main` (resolveUplink's):
 	   every other up interface with a default route in the main table
-	   (failover by metric, mwan3), in the kernel's order, one per L3
-	   device (wan6 on wan's device is part of wan's line). A softwire
-	   or a tunnel (WireGuard, OpenVPN, GRE, 6in4, ...) rides over
-	   another line and is not one of its own; a default in another
-	   table (policy routing) is not ordinary traffic's. A WAN that is
-	   down has no route: it stays a network until it comes up.
+	   (failover by metric, mwan3), in the kernel's order, as groupLines
+	   makes them: a softwire or a tunnel (WireGuard, OpenVPN, GRE,
+	   6in4, ...) rides over another line and is not one of its own; a
+	   default in another table (policy routing) is not ordinary
+	   traffic's. A WAN that is down has no route: it stays a network
+	   until it comes up. On a bridge, `viaOf(next hop)` names the port
+	   the bridge learned that gateway on; without it a bridge with
+	   several wired ports keeps its own counters.
 	   -> [ line, ... ] as resolveUplink's, without main */
-	extraUplinks: function(ifaces, devs, wirelessNames, main) {
-		var self = this, seen = Object.create(null);
+	extraUplinks: function(ifaces, devs, wirelessNames, main, viaOf) {
+		var self = this;
 		if (!main) return [];
 		devs = obj(devs);
-		seen[main.l3dev] = true;
-		return rankRouted(upIfaces(ifaces)).filter(function(r) {
-			var i = r.i, l3 = i.l3_device || i.device, d = devs[l3];
-			if (i.interface === main.iface || seen[l3] || r.family === 2 || TUNNEL.test(i.proto || '') ||
-			    (d && (TUNNEL_DEV.test(d.devtype || '') || d.type === 'tunnel'))) return false;
-			seen[l3] = true;
-			return true;
-		}).map(function(r) { return self.line(r.i, devs, wirelessNames, null); });
+		return groupLines(ifaces, devs).slice(1).filter(function(g) {
+			return g.l3.indexOf(main.l3dev) < 0 && !g.members.some(function(i) { return i.interface === main.iface; });
+		}).map(function(g) {
+			var r = defRoute(g.r.i), hop = r && r.nexthop;
+			return absorb(self.line(g.r.i, devs, wirelessNames, hop && typeof viaOf === 'function' ? viaOf(hop) : null, true), g);
+		});
 	},
 
 	/* one line: the interface, the device its counters live on (see
-	   resolveUplink), its addresses and its default route */
-	line: function(pick, devs, wirelessNames, via) {
+	   resolveUplink), its addresses and its default route. `own`: on a
+	   bridge with several wired ports and the gateway's port unknown,
+	   the bridge's (or its VLAN's) own counters, not a guessed port's. */
+	line: function(pick, devs, wirelessNames, via, own) {
 		var self = this;
 		devs = obj(devs);
 		var l3 = pick.l3_device || pick.device, dev = l3, d = devs[dev], port = dev;
@@ -327,9 +403,12 @@ return baseclass.extend({
 			var eth = wired.filter(function(m) { return devs[m] && devs[m].devtype === 'ethernet'; });
 			var lit = function(m) { return devs[m] && devs[m].carrier === true; };
 			var known = typeof via === 'string' && wired.indexOf(via) >= 0 ? via : null;
-			var next = known || eth.filter(lit)[0] || wired.filter(lit)[0] || eth[0] || wired[0] || members[0];
-			if (next) { dev = next; d = devs[dev] || null; }
-			port = known || (wired.length === 1 ? wired[0] : null);
+			if (!known && own && wired.length > 1) port = null;
+			else {
+				var next = known || eth.filter(lit)[0] || wired.filter(lit)[0] || eth[0] || wired[0] || members[0];
+				if (next) { dev = next; d = devs[dev] || null; }
+				port = known || (wired.length === 1 ? wired[0] : null);
+			}
 		}
 
 		var statsDev = dev;
@@ -349,21 +428,23 @@ return baseclass.extend({
 			up: !!pick.up,
 			carrier: d ? d.carrier !== false : null,
 			speed: d ? this.parseSpeed(d.speed) : null,
-			ipv4: arr(pick['ipv4-address']).map(function(a) { return a && a.address ? a.address + '/' + a.mask : null; }).filter(Boolean),
-			ipv6: arr(pick['ipv6-address']).map(function(a) { return a && a.address ? a.address + '/' + a.mask : null; }).filter(Boolean),
+			ipv4: cidrs(pick['ipv4-address']),
+			ipv6: cidrs(pick['ipv6-address']),
 			gateway: hop && hop !== '0.0.0.0' && hop !== '::' ? hop : null,
 			/* a tunnel's default route has no next hop: routed, without a gateway address */
 			defaultRoute: !!route,
 			metric: route ? metric(pick, route) : null,
 			dns: arr(pick['dns-server']).filter(function(s) { return typeof s === 'string'; }),
+			/* the interfaces the line is made of (wan, wan6) */
+			ifaces: [ pick.interface ],
 			stats: d && d.statistics ? d.statistics : null
 		};
 	},
 
 	/* The device's other networks (lan, guest, a VPN, ...): every
-	   interface except loopback and the uplinks (a line or a list of
-	   them; wan6 shares wan's device). One entry per device, by
-	   interface name.
+	   interface except loopback and the uplinks shown (a line or a list
+	   of them, with the interfaces each is made of; wan6 shares wan's
+	   device). One entry per device, by interface name.
 	   -> [ { name, proto, dev, up, ipv4 } ] */
 	networks: function(ifaces, uplinks) {
 		var seen = Object.create(null);
@@ -383,7 +464,7 @@ return baseclass.extend({
 				ipv4: a4 ? a4.address + '/' + a4.mask : null
 			};
 		}).filter(function(n) {
-			if (uplinks.some(function(u) { return n.name === u.iface || (n.dev && n.dev === u.l3dev); })) return false;
+			if (uplinks.some(function(u) { return n.name === u.iface || arr(u.ifaces).indexOf(n.name) >= 0 || (n.dev && n.dev === u.l3dev); })) return false;
 			if (n.dev && seen[n.dev]) return false;
 			if (n.dev) seen[n.dev] = true;
 			return true;
@@ -563,18 +644,25 @@ return baseclass.extend({
 			if (!prev) wiredMacs.push(mac);
 			fdb[mac] = { port: h.port, bridge: typeof h.bridge === 'string' ? h.bridge : null, vlan: finite(h.vlan) ? h.vlan : null, seen: seen };
 		});
-		/* the gateway, by the address the host hints give it; on a bridge
-		   with several ports the uplink is the port it was learned on */
-		var gwMac = null;
-		if (uplink && uplink.gateway) Object.keys(hints).forEach(function(k) {
-			var mac = names.normMac(k);
-			if (mac && arr(obj(hints[k]).ipaddrs).concat(arr(obj(hints[k]).ip6addrs)).indexOf(uplink.gateway) >= 0) gwMac = mac;
-		});
+		/* a gateway, by the address the host hints give it; on a bridge
+		   with several ports a line is the port it was learned on */
+		function macOf(addr) {
+			var found = null;
+			if (addr) Object.keys(hints).forEach(function(k) {
+				var mac = names.normMac(k);
+				if (mac && arr(obj(hints[k]).ipaddrs).concat(arr(obj(hints[k]).ip6addrs)).indexOf(addr) >= 0) found = mac;
+			});
+			return found;
+		}
+		var gwMac = uplink ? macOf(uplink.gateway) : null;
 		if (uplink && gwMac && fdb[gwMac] && uplink.port !== fdb[gwMac].port) {
 			var via = this.resolveUplink(raw.ifaces, devs, wlNames, fdb[gwMac].port);
 			if (via && via.port === fdb[gwMac].port) uplink = via;
 		}
-		var uplinks = uplink ? [ uplink ].concat(this.extraUplinks(raw.ifaces, devs, wlNames, uplink)) : [];
+		var uplinks = uplink ? ownConduits([ uplink ].concat(this.extraUplinks(raw.ifaces, devs, wlNames, uplink, function(hop) {
+			var mac = macOf(hop);
+			return mac && fdb[mac] ? fdb[mac].port : null;
+		}).slice(0, MAX_LINES))) : [];
 		/* the network on each bridge (or bridge VLAN: br-lan.10), and its
 		   IPv4 subnets for the hosts' addresses */
 		var lans = Object.create(null);
@@ -717,7 +805,8 @@ return baseclass.extend({
 				storage: [ this.mount(info.root, _('Root (overlay)')), this.mount(info.tmp, _('Temporary (RAM)')) ].filter(Boolean)
 			},
 			uplink: uplink,
-			/* the main line first, then the others to the internet */
+			/* the main line first, then up to MAX_LINES others to the
+			   internet; networks leaves out only these */
 			uplinks: uplinks,
 			networks: this.networks(raw.ifaces, uplinks),
 			radios: radios,
