@@ -301,7 +301,7 @@ function setTitle(el, v) { if (el.getAttribute('title') !== v) el.setAttribute('
    instead of continuing the old one's. ':' keeps it apart from a radio's
    (a uci section name). */
 function lineKey(x) { return 'up:' + x.iface; }
-function histMax(key) { return /^up:/.test(key) ? HIST_FAST : HIST_MAX; }
+function histMax(key) { return key.indexOf('up:') === 0 ? HIST_FAST : HIST_MAX; }
 
 /* an element's own tag and attributes, or a text node's text */
 function nodeSig(n) {
