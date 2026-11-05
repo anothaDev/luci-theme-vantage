@@ -11,6 +11,7 @@
    A box is { l, r, t, b, cy } relative to the path element. */
 
 var STEPS = 32;            /* points per curve before resampling */
+var LANE = 10;             /* px between the main line's drop and the other lines', stacked */
 var GAP = 16;              /* px between dots, as the old dash pattern */
 var STRIDE = 32;           /* px a dot travels per period */
 var PERIOD = { 1: 1600, 2: 1050, 3: 600 };   /* ms per STRIDE by speed */
@@ -54,8 +55,10 @@ return baseclass.extend({
 	   one) into the device (b), clear of the main line's rates: side by
 	   side and below the device, along a's middle and up into b's bottom
 	   edge, each further line 14 px further in, so the wires nest
-	   without crossing; stacked (a phone), from a's left edge into the
-	   main line's drop down b's left side. Otherwise as curve(). */
+	   without crossing; stacked (a phone), from a's left edge down a lane
+	   of their own beside the main line's drop (LANE px to its right, so
+	   no line runs inside another's wire or a tunnel's pipe) into b's top
+	   edge. Otherwise as curve(). */
 	line: function(a, b, k) {
 		var x1, y1, x2, y2, rad, i, s, v, pts = [];
 		if (b.l >= a.r - 2 && a.cy > b.b) {
@@ -74,7 +77,7 @@ return baseclass.extend({
 			}
 		}
 		if (b.l < a.r - 2 && a.b <= b.t) {
-			x1 = a.l; y1 = a.cy; x2 = b.l + 18; y2 = b.t;
+			x1 = a.l; y1 = a.cy; x2 = b.l + 18 + LANE; y2 = b.t;
 			rad = Math.min(8, x1 - x2, y2 - y1);
 			if (rad > 0) {
 				pts.push([ x1, y1 ]);

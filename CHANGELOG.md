@@ -21,11 +21,23 @@ Each release ships both packages, `luci-theme-vantage` and
   per line, and each line keeps its own history across a failover. A WAN
   that is down shows nowhere until it comes up again. With one line the
   path is as before.
-- **The internet side shows the line, not a tunnel over it.** A
-  full-tunnel VPN whose default route has a lower metric than the WAN's
-  was shown as the uplink; now the WAN is, and the VPN stays among the
-  networks, as a DS-Lite tunnel already did. A VPN is the uplink only when
-  it holds the only default route.
+- **A full-tunnel VPN is drawn as a tunnel through the line.** When
+  ordinary traffic goes through a VPN (WireGuard, OpenVPN, GRE, ...), the
+  path shows the line it leaves by with the tunnel on its wire: a lock and
+  the VPN's name under the line's rates, "default route via vpn" beside
+  other lines, and the tunnel and its own rates in the line's details. The
+  VPN no longer stands in for the line, and it shows on routers with
+  Wi-Fi too, where the networks are not listed. Which route wins comes
+  from the kernel (a new read-only `luci.vantage routes` asks it which
+  route it takes to the internet, as `ip route get` does, one lookup for
+  IPv4 and one for IPv6): with a VPN and a WAN of the same metric, as
+  WireGuard and DHCP leave them, the kernel keeps the route added last,
+  which netifd's list cannot tell, and OpenVPN adds its own. Without that
+  answer, only a VPN with a lower metric than the line's counts. An IPv4
+  VPN over an IPv6-only line rides it too. A VPN that holds the only
+  default route is still the uplink; a backup VPN, one in its own routing
+  table, and OpenVPN's `redirect-gateway def1` stay among the networks.
+  With several lines the tunnel is drawn on the main one.
 - **The throughput chart stops flipping to "collecting".** With five
   minutes of history, its subtitle kept switching between "last 5 min" and
   "collecting · 4 min of data", because the oldest sample kept is usually a

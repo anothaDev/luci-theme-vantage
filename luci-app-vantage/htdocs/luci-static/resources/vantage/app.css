@@ -110,6 +110,7 @@
 	--vt-b60: var(--vt-text-2);
 	--vt-band-ink: 60%;   /* band colour in a chip's text: 4.5:1 on light surfaces */
 	--vt-series-up: var(--vt-chart-1);
+	--vt-tunnel: var(--vt-chart-4);  /* a VPN's pipe on the line: apart from the accent, which the packets in it keep */
 	/* throughput directions: download keeps the uplink colour, upload
 	   takes one that no band uses */
 	--vt-dir-dn: var(--vt-chart-1);
@@ -812,6 +813,20 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-link-up .vt-ico { color: var(--vt-text-3); }
 .vt-app .vt-link-meta { font-size: var(--vt-fs-micro); color: var(--vt-text-3); font-family: var(--vt-mono); white-space: nowrap; margin-top: 2px;
 	padding: 0 6px; border-radius: 6px; background: var(--vt-surface); }
+/* a full-tunnel VPN over the main line: its wire drawn as a pipe in its
+   own colour around the traffic, the tunnel named under the line's rates */
+.vt-app .vt-wire-tunnel { stroke-width: 9; stroke-linecap: round; stroke: color-mix(in oklab, var(--vt-tunnel) 24%, transparent); }
+.vt-app .vt-wire-tunnel.vt-wire-on { stroke: color-mix(in oklab, var(--vt-tunnel) 36%, transparent); }
+.vt-app .vt-link-tunnel {
+	display: inline-flex; align-items: center; gap: 4px; max-width: 100%; margin-top: 4px; padding: 1px 6px;
+	border: 1px solid color-mix(in oklab, var(--vt-tunnel) 60%, var(--vt-line)); border-radius: 6px;
+	background: var(--vt-surface); color: var(--vt-text-2); font-size: var(--vt-fs-micro); white-space: nowrap;
+}
+.vt-app .vt-link-tunnel[hidden] { display: none; }
+.vt-app .vt-link-tunnel .vt-ico { width: 11px; height: 11px; flex: none; color: var(--vt-tunnel); stroke-width: 2; }
+.vt-app .vt-link-tunnel-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: var(--vt-fw-semibold); }
+.vt-app .vt-link-tunnel-proto { flex: none; color: var(--vt-text-3); text-transform: uppercase; letter-spacing: .04em; }
+.vt-app .vt-link-tunnel-proto:empty { display: none; }
 
 /* more than one line to the internet (failover, mwan3): the main line,
    its rates and the device in one row as with one, the other lines

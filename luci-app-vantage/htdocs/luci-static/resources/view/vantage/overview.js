@@ -47,6 +47,9 @@ var callThermal = rpc.declare({ object: 'luci.vantage', method: 'thermal', expec
 /* { hosts, crowded, switches }: crowded when a bridge holds too many
    entries to list; switches, the swconfig switch ports behind a port */
 var callWired = rpc.declare({ object: 'luci.vantage', method: 'wired', expect: { '': {} } });
+/* the route the kernel takes to the internet: which one it kept of two
+   with one metric; { routes: null } when it could not be asked */
+var callRoutes = rpc.declare({ object: 'luci.vantage', method: 'routes', expect: { '': {} } });
 /* LuCI's own (its switch page's): link and speed of a switch's ports, in
    result. The whole reply, and a failed call rejected: a default [] would
    read as every port down */
@@ -622,7 +625,9 @@ return view.extend({
 			L.resolveDefault(callWifi(), null),
 			L.resolveDefault(callHints(), {}),
 			L.resolveDefault(callThermal(), []),
-			L.resolveDefault(callWired(), {})
+			L.resolveDefault(callWired(), {}),
+			/* null when the call fails (an older plugin): netifd's metrics decide */
+			L.resolveDefault(callRoutes(), null)
 		]).then(function(r) {
 			var wifiDevs = (r[4] && typeof r[4] === 'object') ? r[4] : null;
 			var wiredReply = (r[7] && typeof r[7] === 'object') ? r[7] : {};
@@ -675,6 +680,9 @@ return view.extend({
 				Object.keys(swState).forEach(function(n) { switchState[n] = swState[n].ports; });
 				return { info: r[0] || {}, stat: r[1] || '', ifaces: r[2] || [], devs: r[3] || {}, wifi: wifiDevs, hints: r[5] || {}, thermal: r[6] || [],
 					fdb: Array.isArray(wiredReply.hosts) ? wiredReply.hosts : [], fdbCrowded: wiredReply.crowded === true, switches: switches, switchState: switchState,
+					/* no answer (an older plugin, a lookup not sent, a failed call)
+					   keeps the last one: no tunnel blinking off */
+					routes: r[8] && Array.isArray(r[8].routes) ? (self.kernelRoutes = r[8].routes) : (self.kernelRoutes || null),
 					assoc: assoc, hapd: hapd, hapdStatus: hapdStatus, iwinfo: iwinfo, at: Date.now(), started: started };
 			});
 		});
@@ -764,7 +772,7 @@ return view.extend({
 		var m = model.build({
 			board: this.board, info: raw.info, ifaces: raw.ifaces, devs: raw.devs, wifi: raw.wifi, iwinfo: raw.iwinfo,
 			assoc: raw.assoc, hapd: raw.hapd, hapdStatus: raw.hapdStatus, hints: raw.hints, fdb: raw.fdb,
-			switches: raw.switches, switchState: raw.switchState,
+			switches: raw.switches, switchState: raw.switchState, routes: raw.routes,
 			aliases: this.aliases, rdns: st.rdns, mdns: st.mdns,
 			vendor: st.oui ? function(k) { return k ? st.oui.lookup(k) : null; } : null
 		});
@@ -988,7 +996,7 @@ return view.extend({
 		var m = model.build({
 			board: this.board, info: raw.info, ifaces: raw.ifaces, devs: raw.devs, wifi: raw.wifi, iwinfo: raw.iwinfo,
 			assoc: raw.assoc, hapd: raw.hapd, hapdStatus: raw.hapdStatus, hints: raw.hints, fdb: raw.fdb,
-			switches: raw.switches, switchState: raw.switchState,
+			switches: raw.switches, switchState: raw.switchState, routes: raw.routes,
 			aliases: this.aliases, rdns: st.rdns, mdns: st.mdns,
 			vendor: st.oui ? function(k) { return k ? st.oui.lookup(k) : null; } : null
 		});
@@ -1791,10 +1799,11 @@ return view.extend({
 		   main one (the default route the kernel takes) marked */
 		var extra = this.extraLines();
 		h.gwKicker = span(extra.length ? 'vt-node-name' : 'vt-node-kicker'); h.gwTitle = span('vt-node-title'); h.gwSub = span('vt-node-sub');
+		h.gwTag = extra.length ? E('span', { 'class': 'vt-node-tag' }, [ _('default route') ]) : null;
 		h.gw = E('button', { 'type': 'button', 'class': 'vt-node vt-node-gw', 'click': function() { self.openDrawer('uplink', ''); } }, [
 			E('span', { 'class': 'vt-node-ico' }, [ icon('globe') ]),
 			E('span', { 'class': 'vt-node-body' }, [
-				extra.length ? E('span', { 'class': 'vt-node-kicker vt-node-kicker-tag' }, [ h.gwKicker, E('span', { 'class': 'vt-node-tag' }, [ _('default route') ]) ]) : h.gwKicker,
+				h.gwTag ? E('span', { 'class': 'vt-node-kicker vt-node-kicker-tag' }, [ h.gwKicker, h.gwTag ]) : h.gwKicker,
 				h.gwTitle, h.gwSub
 			])
 		]);
@@ -1811,11 +1820,15 @@ return view.extend({
 		setClass(path, 'vt-path' + (extra.length ? ' vt-path-lines' : ''));
 
 		h.dnVal = E('b'); h.dnUnit = E('small'); h.upVal = E('b'); h.upUnit = E('small'); h.linkMeta = span('vt-link-meta');
+		/* a full-tunnel VPN over the line: named on the link it runs through */
+		h.tunName = span('vt-link-tunnel-name'); h.tunProto = span('vt-link-tunnel-proto');
+		h.tunnel = E('span', { 'class': 'vt-link-tunnel', 'hidden': '' }, [ icon('lock'), h.tunName, h.tunProto ]);
 		h.link = E('div', { 'class': 'vt-link-label' }, [
 			E('span', { 'class': 'vt-link-rate vt-link-down' }, [ icon('down'), h.dnVal, h.dnUnit ]),
 			E('span', { 'class': 'vt-link-below' }, [
 				E('span', { 'class': 'vt-link-rate vt-link-up' }, [ icon('up'), h.upVal, h.upUnit ]),
-				h.linkMeta
+				h.linkMeta,
+				h.tunnel
 			])
 		]);
 
@@ -1918,6 +1931,13 @@ return view.extend({
 		txt(h.upVal, upR ? fmt.bitsParts(upR.tx).v : fmt.DASH);
 		txt(h.upUnit, upR ? fmt.bitsParts(upR.tx).u : '');
 		txt(h.linkMeta, up ? [ up.dev, up.speed ? (up.speed.mbps >= 1000 ? (up.speed.mbps / 1000) + 'G' : up.speed.mbps + 'M') + (up.speed.duplex === 'full' ? ' FD' : up.speed.duplex === 'half' ? ' HD' : '') : null ].filter(Boolean).join(' · ') : _('no uplink'));
+		var tun = up && up.tunnel, tunR = tun ? st.devRates[tun.dev] : null;
+		if (h.tunnel.hidden !== !tun) h.tunnel.hidden = !tun;
+		txt(h.tunName, tun ? tun.iface : '');
+		txt(h.tunProto, tun && tun.proto ? tun.proto : '');
+		setTitle(h.tunnel, tun ? _('Traffic to the internet goes through %s, a tunnel over this line').format(tun.iface) +
+			(tunR ? ' · ↓ ' + fmt.bits(tunR.rx) + ' · ↑ ' + fmt.bits(tunR.tx) : '') : '');
+		if (h.gwTag) txt(h.gwTag, tun ? _('default route via %s').format(tun.iface) : _('default route'));
 
 		txt(h.apKicker, m.wired ? _('This device') : _('This access point'));
 		txt(h.apTitle, d.model);
@@ -2040,7 +2060,7 @@ return view.extend({
 	wireList: function() {
 		var h = this.hero, out = [];
 		if (!h) return out;
-		out.push({ key: 'gw', from: h.gw, to: h.ap, active: h.upActive, speed: wires.speed(h.upRate), main: true });
+		out.push({ key: 'gw', from: h.gw, to: h.ap, active: h.upActive, speed: wires.speed(h.upRate), main: true, tunnel: !!(this.m && this.m.uplink && this.m.uplink.tunnel) });
 		h.lines.forEach(function(ln, k) { out.push({ key: 'l:' + ln.id, from: ln.el, to: h.ap, active: ln.active, speed: wires.speed(ln.rate), line: k }); });
 		h.radios.forEach(function(b) {
 			out.push({ key: 'r:' + b.id, from: h.ap, to: b.el, active: b.active, speed: wires.speed(b.rate) });
@@ -2117,7 +2137,7 @@ return view.extend({
 		this.wireList().forEach(function(w) {
 			var g = map[w.key];
 			if (!g) return;
-			setClass(g.base, 'vt-wire' + (w.main ? ' vt-wire-main' : '') + (w.active ? ' vt-wire-on' : ''));
+			setClass(g.base, 'vt-wire' + (w.main ? ' vt-wire-main' : '') + (w.tunnel ? ' vt-wire-tunnel' : '') + (w.active ? ' vt-wire-on' : ''));
 			setClass(g.flow, 'vt-flow vt-flow-' + w.speed + (w.active ? ' vt-flow-on' : ''));
 			self.syncFlow(g, !!(w.active && !still && g.d), w.speed);
 		});
@@ -3449,6 +3469,7 @@ return view.extend({
 		var up = id ? lines.filter(function(x) { return x.iface === id; })[0] : m.uplink;
 		var r = up && up === m.uplink ? st.uplinkRate : up ? st.devRates[up.statsDev] || null : null;
 		var hist = up ? st.hist.net[lineKey(up)] : null, several = lines.length > 1;
+		var tunR = up && up.tunnel ? st.devRates[up.tunnel.dev] || null : null;
 		function errors(n) { return fmt.N_(n, '%s error', '%s errors').format(fmt.count(n)); }
 		if (id && !up) return {
 			title: [ E('span', { 'class': 'vt-drawer-ico' }, [ icon('globe') ]), E('div', { 'class': 'vt-drawer-titles' }, [
@@ -3477,7 +3498,10 @@ return view.extend({
 					kv(_('Carrier'), up.carrier === false ? _('No link') : _('Up', 'vantage')),
 					kv(_('Speed', 'vantage'), model.speedLabel(up.speed)),
 					kv(_('Protocol'), up.proto || fmt.DASH),
-					kv(_('Interface up for'), up.uptime != null ? fmt.duration(up.uptime) : fmt.DASH)
+					kv(_('Interface up for'), up.uptime != null ? fmt.duration(up.uptime) : fmt.DASH),
+					/* a full-tunnel VPN over this line: ordinary traffic goes through it */
+					up.tunnel ? kv(_('Tunnel'), up.tunnel.iface + (up.tunnel.proto ? ' · ' + up.tunnel.proto : '')) : '',
+					up.tunnel ? kv(_('In the tunnel'), tunR ? '↓ ' + fmt.bits(tunR.rx) + ' · ↑ ' + fmt.bits(tunR.tx) : fmt.DASH) : ''
 				]) ]),
 				this.section(_('Addresses'), [ E('dl', { 'class': 'vt-kvs' }, [
 					kv(_('IPv4'), up.ipv4.join('\n') || fmt.DASH, true),

@@ -69,20 +69,49 @@ function isTunnel(i, devs) {
 	var d = devs[i.l3_device || i.device];
 	return TUNNEL.test(i.proto || '') || !!(d && (TUNNEL_DEV.test(d.devtype || '') || d.type === 'tunnel'));
 }
-/* the interfaces with a default route, as the kernel prefers them for
-   ordinary traffic: real lines before tunnels (a full-tunnel VPN rides
-   over one, whatever its metric), IPv4 before IPv6 (a softwire's IPv4
-   route among the IPv4 ones), then the lowest metric, wan/wan6/*wan* on
-   a tie, then the order netifd lists them */
+/* the interfaces with a default route, the line first: real lines
+   before tunnels (a full-tunnel VPN rides over a line, see ridingTunnel),
+   IPv4 before IPv6 (a softwire's IPv4 route among the IPv4 ones), then
+   the lowest metric, wan/wan6/*wan* on a tie, then the order netifd lists
+   them */
 function rankRouted(up, devs) {
 	return up.map(function(i, n) {
 		var r = defRoute(i);
-		return r ? { i: i, tunnel: isTunnel(i, devs), softwire: SOFTWIRE.test(i.proto), family: r.target === '::' ? 1 : 0,
+		/* a softwire's device is a tunnel's (ip6tnl), but it carries the line's IPv4, not a VPN */
+		var sw = SOFTWIRE.test(i.proto || '');
+		return r ? { i: i, tunnel: !sw && isTunnel(i, devs), softwire: sw, family: r.target === '::' ? 1 : 0,
 			metric: metric(i, r), wan: wanRank(i), n: n } : null;
 	}).filter(Boolean).sort(function(a, b) {
 		return a.tunnel - b.tunnel || a.family - b.family || a.metric - b.metric || a.wan - b.wan || a.n - b.n;
 	});
 }
+/* A full-tunnel VPN over the line: the tunnel holding the default route
+   that ordinary traffic takes, IPv4's whenever there is one, else IPv6's
+   (an IPv4 VPN over an IPv6-only line rides it too). `kernel` is the
+   kernel's own answer (luci.vantage routes: [ { family, dev, metric } ],
+   the route it takes to the internet, at most one a family), which
+   decides: of two routes with the same metric the kernel keeps the one
+   added last, which netifd's list cannot tell, and a VPN daemon may add
+   its own (OpenVPN's tun0) that netifd never lists. Over several next
+   hops (dev null), no tunnel. Without it, only a tunnel whose metric is
+   below that family's best line's, or the family's only default.
+   -> { i, metric } of the tunnel, or null */
+function ridingTunnel(ifaces, ranked, devs, kernel) {
+	if (Array.isArray(kernel)) {
+		var pick = function(fam) { return kernel.filter(function(x) { return x && x.family === fam && finite(x.metric); })[0]; };
+		var k = pick(4) || pick(6);
+		if (!k || typeof k.dev !== 'string') return null;
+		var i = upIfaces(ifaces).filter(function(x) {
+			return (x.l3_device || x.device) === k.dev && !SOFTWIRE.test(x.proto || '') && isTunnel(x, devs);
+		})[0];
+		return i ? { i: i, metric: k.metric } : null;
+	}
+	var fam = ranked.some(function(r) { return r.family === 0; }) ? 0 : 1;
+	var of = ranked.filter(function(r) { return r.family === fam; });
+	var t = of.filter(function(r) { return r.tunnel; })[0], line = of.filter(function(r) { return !r.tunnel; })[0];
+	return t && (!line || t.metric < line.metric) ? { i: t.i, metric: t.metric } : null;
+}
+
 /* The lines to the internet, the main one first: { r, members, metric }
    with the interfaces each is made of. A softwire (DS-Lite, MAP-E,
    464XLAT) that wins carries IPv4 over the IPv6 line, so that line is
@@ -91,11 +120,12 @@ function rankRouted(up, devs) {
    device: wan6 on wan's device (or an @wan alias) is part of wan's, and
    so is an IPv6 interface on the device a PPPoE line runs over (its
    counters hold the PPP session's). Two IPv4 lines that only share a
-   parent device (two PPPoE sessions on eth0) stay two. */
-function groupLines(ifaces, devs) {
+   parent device (two PPPoE sessions on eth0) stay two. The main line
+   carries the full-tunnel VPN over it, if any (tunnel; ridingTunnel). */
+function groupLines(ifaces, devs, kernel) {
 	var ranked = rankRouted(upIfaces(ifaces), devs), main = ranked[0], groups = [];
 	if (!main) return groups;
-	var at = main.metric;
+	var at = main.metric, rider = main.tunnel ? null : ridingTunnel(ifaces, ranked, devs, kernel);
 	if (main.softwire)
 		main = ranked.filter(function(r) { return !r.tunnel && !r.softwire && r.family === 1; })[0] || main;
 	/* l3: the members' L3 devices; dev4: the devices their IPv4 runs over */
@@ -110,6 +140,7 @@ function groupLines(ifaces, devs) {
 		groups.push(g);
 	}
 	start(main, at);
+	groups[0].tunnel = rider;
 	ranked.forEach(function(r) {
 		if (r === main || r.softwire || r.tunnel) return;
 		var l3 = r.i.l3_device || r.i.device;
@@ -352,11 +383,17 @@ return baseclass.extend({
 	   a link, netifd 'ethernet' preferred. `port` is the member known to lead to the
 	   gateway: `via`, or the bridge's only wired member; null when it has
 	   several and the gateway's port is unknown. DSA with hardware
-	   offload uses the conduit's counters. */
-	resolveUplink: function(ifaces, devs, wirelessNames, via) {
+	   offload uses the conduit's counters. `kernel`: the kernel's
+	   default routes (luci.vantage routes), or null; with a full-tunnel
+	   VPN over the line, `tunnel` names it (ridingTunnel). */
+	resolveUplink: function(ifaces, devs, wirelessNames, via, kernel) {
 		devs = obj(devs);
-		var g = groupLines(ifaces, devs)[0], up = upIfaces(ifaces);
-		if (g) return absorb(this.line(g.r.i, devs, wirelessNames, via), g);
+		var g = groupLines(ifaces, devs, kernel)[0], up = upIfaces(ifaces);
+		if (g) {
+			var x = absorb(this.line(g.r.i, devs, wirelessNames, via), g), t = g.tunnel && g.tunnel.i;
+			x.tunnel = t ? { iface: t.interface, proto: t.proto && t.proto !== 'none' ? t.proto : null, dev: t.l3_device || t.device, metric: g.tunnel.metric } : null;
+			return x;
+		}
 		function named(re) { return up.filter(function(i) { return re.test(i.interface); })[0]; }
 		/* An AP may retain an up, unmanaged WAN port without any routes. */
 		var pick = named(/^wan$/) || named(/^wan6$/) || named(/wan/i) || up[0];
@@ -444,7 +481,8 @@ return baseclass.extend({
 	/* The device's other networks (lan, guest, a VPN, ...): every
 	   interface except loopback and the uplinks shown (a line or a list
 	   of them, with the interfaces each is made of; wan6 shares wan's
-	   device). One entry per device, by interface name.
+	   device) and the full-tunnel VPN drawn on the main one. One entry
+	   per device, by interface name.
 	   -> [ { name, proto, dev, up, ipv4 } ] */
 	networks: function(ifaces, uplinks) {
 		var seen = Object.create(null);
@@ -464,7 +502,10 @@ return baseclass.extend({
 				ipv4: a4 ? a4.address + '/' + a4.mask : null
 			};
 		}).filter(function(n) {
-			if (uplinks.some(function(u) { return n.name === u.iface || arr(u.ifaces).indexOf(n.name) >= 0 || (n.dev && n.dev === u.l3dev); })) return false;
+			if (uplinks.some(function(u) {
+				return n.name === u.iface || arr(u.ifaces).indexOf(n.name) >= 0 || (n.dev && n.dev === u.l3dev) ||
+					!!(u.tunnel && (n.name === u.tunnel.iface || (n.dev && n.dev === u.tunnel.dev)));
+			})) return false;
 			if (n.dev && seen[n.dev]) return false;
 			if (n.dev) seen[n.dev] = true;
 			return true;
@@ -534,6 +575,7 @@ return baseclass.extend({
 	          assoc: { ifname: [ station ] }, hapd: { ifname: { clients } },
 	          hapdStatus: { ifname: status }, hints, aliases, rdns, mdns,
 	          fdb: [ luci.vantage wired host ] (-> wiredHosts),
+	          routes: [ luci.vantage routes route ] or null,
 	          vendor: fn(mac) -> name|null } */
 	build: function(raw) {
 		raw = raw || {};
@@ -618,7 +660,8 @@ return baseclass.extend({
 			radios.push(radio);
 		});
 
-		var uplink = this.resolveUplink(raw.ifaces, devs, wlNames);
+		var kernel = Array.isArray(raw.routes) ? raw.routes : null;
+		var uplink = this.resolveUplink(raw.ifaces, devs, wlNames, null, kernel);
 		var subnets = uplink ? uplink.ipv4 : [];
 
 		function hintOf(mac) { return obj(hints[mac.toUpperCase()] || hints[mac]); }
@@ -656,7 +699,7 @@ return baseclass.extend({
 		}
 		var gwMac = uplink ? macOf(uplink.gateway) : null;
 		if (uplink && gwMac && fdb[gwMac] && uplink.port !== fdb[gwMac].port) {
-			var via = this.resolveUplink(raw.ifaces, devs, wlNames, fdb[gwMac].port);
+			var via = this.resolveUplink(raw.ifaces, devs, wlNames, fdb[gwMac].port, kernel);
 			if (via && via.port === fdb[gwMac].port) uplink = via;
 		}
 		var uplinks = uplink ? ownConduits([ uplink ].concat(this.extraUplinks(raw.ifaces, devs, wlNames, uplink, function(hop) {

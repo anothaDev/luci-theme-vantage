@@ -48,12 +48,13 @@ test('line: another line below the device runs along its middle and up into the 
 	assert.deepEqual(wires.line(box(0, 20, 240, 60), dev, 0), wires.curve(box(0, 20, 240, 60), dev));
 });
 
-test('line: stacked (a phone), from the line\'s left edge into the main line\'s drop down the device\'s left side', () => {
+test('line: stacked (a phone), from the line\'s left edge down a lane of its own beside the main line\'s drop', () => {
 	const dev = box(0, 300, 260, 90);
 	const c = wires.line(box(34, 200, 220, 60), dev, 0);
-	assert.equal(c.d, 'M34.0 230.0H26.0Q18.0 230.0 18.0 238.0V300.0');
+	/* 10 px right of the main line's drop (x 18): never inside its wire or a tunnel's pipe */
+	assert.equal(c.d, 'M34.0 230.0H34.0Q28.0 230.0 28.0 236.0V300.0');
 	assert.deepEqual(c.pts[0], [ 34, 230 ]);
-	assert.deepEqual(c.pts[c.pts.length - 1], [ 18, 300 ]);
+	assert.deepEqual(c.pts[c.pts.length - 1], [ 28, 300 ]);
 	/* not set in: the elbow of curve() */
 	assert.deepEqual(wires.line(box(0, 200, 220, 60), dev, 0), wires.curve(box(0, 200, 220, 60), dev));
 	/* the points follow the path without a jump */
