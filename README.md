@@ -4,7 +4,7 @@
 
 # Vantage
 
-**A dark-first LuCI theme and a live dashboard for OpenWrt 25.12 and 24.10: health, network path, throughput and every client on one screen, with LuCI's own pages restyled to match.**
+**A theme for LuCI, OpenWrt's web interface, plus a dashboard that opens when you log in: who's connected, how busy the uplink is, and what needs fixing. Every other LuCI page gets the same look. For OpenWrt 25.12 and 24.10.**
 
 ![OpenWrt 25.12 and 24.10](https://img.shields.io/badge/OpenWrt-25.12%20%7C%2024.10-00B5E2?style=flat-square) ![LuCI theme + app](https://img.shields.io/badge/LuCI-theme%20%2B%20app-5a6472?style=flat-square) ![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-3d8b40?style=flat-square)
 
@@ -116,8 +116,9 @@ ready-made prompt for installing with a coding agent.
 
 ## What you get
 
-Two packages. The app works under any LuCI theme; the theme is useful
-without the app.
+Two packages. Installed on its own, the app works under any LuCI theme;
+with both installed, the dashboard goes with the Vantage theme and LuCI's
+own page opens under another one. The theme is useful without the app.
 
 **`luci-theme-vantage`**, the shell:
 

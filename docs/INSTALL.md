@@ -142,7 +142,8 @@ fonts, scripts or CDNs are loaded, so the UI works without internet access.
 You need three files: `luci-theme-vantage-<version>.apk`,
 `luci-app-vantage-<version>.apk` and `SHA256SUMS`. Install either package
 on its own or both together; the theme doesn't need the app, and the app
-works under any LuCI theme. For a translation, add its language packages
+on its own works under any LuCI theme (with both, see
+[Switch themes](#switch-themes)). For a translation, add its language packages
 (see [Languages](#languages)).
 
 ### From a GitHub release
