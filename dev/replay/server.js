@@ -10,6 +10,7 @@
    usage: node server.js --mirror <dir> [--port 8025] [--theme-dir <htdocs/luci-static/name>]
                          [--theme <name>] [--templates <ucode/template dir>] [--rootfs <dir>]
                          [--app-dir <package dir>]... [--keep-uniwrt] [--[no-]synthetic] [--demo]
+                         [--wired | --big] [--multiwan]
                          [--lang <LuCI language, e.g. de or zh_Hans>] [--fixtures <dir>]...
 
    Pages are rendered like the device does: the dispatcher logic below
@@ -25,6 +26,9 @@
 
    --big serves the device as a larger access point (big.js): four radios,
    ten networks, 74 stations, five wired ports with hosts behind them.
+
+   --multiwan adds a second line to the internet (multiwan.js): a backup
+   WAN with a default route of a higher metric; with --wired or --big too.
 
    --fixtures <dir> (repeatable) adds hand-written data for pages the
    recording lacks (fixtures.js): rpcd plugin stand-ins, uci configs, a small
@@ -61,6 +65,7 @@ const i18n = require('../i18n/catalog');
 const policy = require('./policy');
 const wired = require('./wired');
 const big = require('./big');
+const multiwan = require('./multiwan');
 
 /* ------------------------------------------------------------ arguments */
 
@@ -68,7 +73,7 @@ function parseArgs(argv) {
 	const o = { port: 8025, synthetic: true };
 	for (let i = 0; i < argv.length; i++) {
 		const m = /^--(mirror|port|theme-dir|theme|templates|rootfs|app-dir|lang|fixtures)(?:=(.*))?$/.exec(argv[i]);
-		if (!m) { if (argv[i] === '--keep-uniwrt') o.keepUniwrt = true; else if (argv[i] === '--synthetic') o.synthetic = true; else if (argv[i] === '--no-synthetic') o.synthetic = false; else if (argv[i] === '--demo') o.demo = true; else if (argv[i] === '--wired') o.wired = true; else if (argv[i] === '--big') o.big = true; else if (argv[i] === '-h' || argv[i] === '--help') o.help = true; else o.bad = argv[i]; continue; }
+		if (!m) { if (argv[i] === '--keep-uniwrt') o.keepUniwrt = true; else if (argv[i] === '--synthetic') o.synthetic = true; else if (argv[i] === '--no-synthetic') o.synthetic = false; else if (argv[i] === '--demo') o.demo = true; else if (argv[i] === '--wired') o.wired = true; else if (argv[i] === '--big') o.big = true; else if (argv[i] === '--multiwan') o.multiwan = true; else if (argv[i] === '-h' || argv[i] === '--help') o.help = true; else o.bad = argv[i]; continue; }
 		const v = (m[2] !== undefined) ? m[2] : argv[++i];
 		if (m[1] === 'app-dir') (o.appDirs = o.appDirs || []).push(v);
 		else if (m[1] === 'fixtures') (o.fixtures = o.fixtures || []).push(v);
@@ -77,7 +82,7 @@ function parseArgs(argv) {
 	return o;
 }
 
-const USAGE = 'usage: server.js --mirror <dir> [--port 8025] [--theme-dir <htdocs/luci-static/name>] [--theme <name>] [--templates <dir>] [--rootfs <dir>] [--app-dir <pkg>]... [--keep-uniwrt] [--no-synthetic] [--demo] [--wired | --big] [--lang <lang>] [--fixtures <dir>]...';
+const USAGE = 'usage: server.js --mirror <dir> [--port 8025] [--theme-dir <htdocs/luci-static/name>] [--theme <name>] [--templates <dir>] [--rootfs <dir>] [--app-dir <pkg>]... [--keep-uniwrt] [--no-synthetic] [--demo] [--wired | --big] [--multiwan] [--lang <lang>] [--fixtures <dir>]...';
 const opts = parseArgs(process.argv.slice(2));
 if (opts.help || opts.bad || !opts.mirror) {
 	console.error(opts.bad ? `unknown argument ${opts.bad}\n${USAGE}` : USAGE);
@@ -581,7 +586,8 @@ function ubusReply(msg) {
 		return Object.assign(reply, { result: devs && Object.prototype.hasOwnProperty.call(devs, args.name) ? [ 0, devs[args.name] ] : [ 4 ] });
 	}
 	const r = store.call(object, method, args || {});
-	return Object.assign(reply, opts.wired ? wired.transform(object, method, args, r) : opts.big ? big.transform(object, method, args, r) : r);
+	const dev = opts.wired ? wired.transform(object, method, args, r) : opts.big ? big.transform(object, method, args, r) : r;
+	return Object.assign(reply, opts.multiwan ? multiwan.transform(object, method, args, dev) : dev);
 }
 
 async function handleUbus(req, res) {

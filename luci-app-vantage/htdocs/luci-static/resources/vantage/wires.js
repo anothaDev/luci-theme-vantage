@@ -50,6 +50,46 @@ return baseclass.extend({
 		return { d: 'M' + f1(x1) + ' ' + f1(y1) + 'V' + f1(y2 - rad) + 'Q' + f1(x1) + ' ' + f1(y2) + ' ' + f1(x1 + rad) + ' ' + f1(y2) + 'H' + f1(x2), pts: pts };
 	},
 
+	/* from another line to the internet (a, the k-th beside the main
+	   one) into the device (b), clear of the main line's rates: side by
+	   side and below the device, along a's middle and up into b's bottom
+	   edge, each further line 14 px further in, so the wires nest
+	   without crossing; stacked (a phone), from a's left edge into the
+	   main line's drop down b's left side. Otherwise as curve(). */
+	line: function(a, b, k) {
+		var x1, y1, x2, y2, rad, i, s, v, pts = [];
+		if (b.l >= a.r - 2 && a.cy > b.b) {
+			x1 = a.r; y1 = a.cy; y2 = b.b;
+			x2 = Math.min(b.l + 18 + 14 * (k || 0), (b.l + b.r) / 2);
+			rad = Math.min(8, y1 - y2, x2 - x1);
+			if (rad > 0) {
+				pts.push([ x1, y1 ]);
+				for (i = 0; i <= 8; i++) {
+					/* quadratic corner from (x2 - rad, y1) via (x2, y1) to (x2, y1 - rad) */
+					s = i / 8; v = 1 - s;
+					pts.push([ v * v * (x2 - rad) + 2 * v * s * x2 + s * s * x2, v * v * y1 + 2 * v * s * y1 + s * s * (y1 - rad) ]);
+				}
+				pts.push([ x2, y2 ]);
+				return { d: 'M' + f1(x1) + ' ' + f1(y1) + 'H' + f1(x2 - rad) + 'Q' + f1(x2) + ' ' + f1(y1) + ' ' + f1(x2) + ' ' + f1(y1 - rad) + 'V' + f1(y2), pts: pts };
+			}
+		}
+		if (b.l < a.r - 2 && a.b <= b.t) {
+			x1 = a.l; y1 = a.cy; x2 = b.l + 18; y2 = b.t;
+			rad = Math.min(8, x1 - x2, y2 - y1);
+			if (rad > 0) {
+				pts.push([ x1, y1 ]);
+				for (i = 0; i <= 8; i++) {
+					/* quadratic corner from (x2 + rad, y1) via (x2, y1) to (x2, y1 + rad) */
+					s = i / 8; v = 1 - s;
+					pts.push([ v * v * (x2 + rad) + 2 * v * s * x2 + s * s * x2, v * v * y1 + 2 * v * s * y1 + s * s * (y1 + rad) ]);
+				}
+				pts.push([ x2, y2 ]);
+				return { d: 'M' + f1(x1) + ' ' + f1(y1) + 'H' + f1(x2 + rad) + 'Q' + f1(x2) + ' ' + f1(y1) + ' ' + f1(x2) + ' ' + f1(y1 + rad) + 'V' + f1(y2), pts: pts };
+			}
+		}
+		return this.curve(a, b);
+	},
+
 	/* points at equal distances along a polyline, about `step` px apart,
 	   each with the direction of travel in degrees (unwrapped, so the
 	   keyframes never turn the long way round); { pts: [[x, y, deg]], len } */

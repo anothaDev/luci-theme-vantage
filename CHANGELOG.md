@@ -6,6 +6,24 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
+## Unreleased
+
+- **Dashboard: every line to the internet in the network path** (#88,
+  [@Bryce199805](https://github.com/Bryce199805)). With two or more WANs
+  (failover by metric, or mwan3) the path showed one, and on a router
+  without Wi-Fi the others appeared among the local networks. Every up
+  interface with a default route of its own now sits on the internet
+  side, each with its own wire into the device and its live rates, and
+  opens its own details; the one the kernel takes for ordinary traffic is
+  marked "default route". IPv6 on the same device (`wan6`) stays part of
+  its line, and a VPN or DS-Lite tunnel is not counted as one. The
+  throughput chart has a row per line. A WAN that is down shows nowhere
+  until it comes up again. With one line the path is as before.
+- **The throughput chart stops flipping to "collecting".** With five
+  minutes of history, its subtitle kept switching between "last 5 min" and
+  "collecting · 4 min of data", because the oldest sample kept is usually a
+  few seconds short of five minutes.
+
 ## 1.0.15 - 2026-11-04
 
 - **The dashboard and LuCI's pages look like one product.** The dashboard

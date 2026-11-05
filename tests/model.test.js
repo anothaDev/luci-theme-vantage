@@ -206,6 +206,111 @@ test('resolveUplink: multi-WAN picks the lowest metric, not the name (#56)', () 
 	assert.equal(model.resolveUplink([ ...ifaces, { ...vpn, route: [ { ...vpn.route[0], table: 254 } ] } ], {}).iface, 'vpn');
 });
 
+/* Other lines to the internet (#88): every other up interface with a
+   default route in the main table, one per L3 device, never a tunnel */
+const wanIf = (name, dev, metric, extra) => ({ interface: name, up: true, proto: 'dhcp', device: dev, l3_device: dev, metric,
+	'ipv4-address': [ { address: '203.0.113.' + (metric + 2), mask: 29 } ], 'dns-server': [ '203.0.113.53' ],
+	route: [ { target: '0.0.0.0', mask: 0, nexthop: '203.0.113.' + (metric + 1) } ], ...extra });
+const LAN = { interface: 'lan', up: true, proto: 'static', device: 'br-lan', l3_device: 'br-lan', 'ipv4-address': [ { address: '198.51.100.1', mask: 24 } ], route: [] };
+const lines = (ifaces, devs) => {
+	const main = model.resolveUplink(ifaces, devs || {});
+	return [ main, ...model.extraUplinks(ifaces, devs || {}, [], main) ];
+};
+
+test('extraUplinks: failover by metric, the backup line beside the main one with the same fields', () => {
+	const devs = { eth1: { devtype: 'ethernet', speed: '1000F', carrier: true, statistics: { rx_bytes: 5, tx_bytes: 6 } },
+		eth2: { devtype: 'dsa', 'hw-tc-offload': true, conduit: 'eth0', speed: '2500F', carrier: true }, eth0: {} };
+	const ifaces = [ LAN, wanIf('wanb', 'eth2', 20), wanIf('wan', 'eth1', 10) ];
+	for (const list of [ ifaces, [ ...ifaces ].reverse() ]) {
+		const [ main, ...extra ] = lines(list, devs);
+		assert.equal(main.iface, 'wan');
+		assert.equal(main.metric, 10);
+		assert.deepEqual(extra.map(x => x.iface), [ 'wanb' ]);
+		const x = extra[0];
+		assert.deepEqual([ x.l3dev, x.dev, x.statsDev, x.proto, x.up, x.carrier, x.metric, x.gateway ], [ 'eth2', 'eth2', 'eth0', 'dhcp', true, true, 20, '203.0.113.21' ]);
+		assert.deepEqual(x.speed, { mbps: 2500, duplex: 'full' });
+		assert.deepEqual([ x.ipv4, x.ipv6, x.dns, x.defaultRoute ], [ [ '203.0.113.22/29' ], [], [ '203.0.113.53' ], true ]);
+		assert.deepEqual(model.networks(list, [ main, ...extra ]).map(n => n.name), [ 'lan' ], 'neither line is a local network');
+	}
+	/* several backups in the kernel's order */
+	const three = lines([ LAN, wanIf('lte', 'wwan0', 30), wanIf('wanb', 'eth2', 20), wanIf('wan', 'eth1', 10) ]);
+	assert.deepEqual(three.map(x => x.iface), [ 'wan', 'wanb', 'lte' ]);
+	/* nothing routed: the fallback pick has no other lines */
+	assert.deepEqual(model.extraUplinks([ LAN, { interface: 'wan', up: true, device: 'eth1' } ], {}, [], model.resolveUplink([ LAN ], {})), []);
+	assert.deepEqual(model.extraUplinks(ifaces, {}, [], null), []);
+});
+
+test('extraUplinks: two lines with equal metrics (mwan3) are both lines, wan the main one by name', () => {
+	const [ main, ...extra ] = lines([ wanIf('isp2', 'eth2', 0), wanIf('wan', 'eth1', 0), LAN ]);
+	assert.equal(main.iface, 'wan');
+	assert.deepEqual(extra.map(x => x.iface), [ 'isp2' ]);
+});
+
+test('extraUplinks: wan6 on wan\'s device, or a PPPoE line\'s IPv6 alias, is part of that line', () => {
+	const wan6 = { interface: 'wan6', up: true, proto: 'dhcpv6', device: 'eth1', l3_device: 'eth1', route: [ { target: '::', mask: 0, nexthop: 'fe80::1' } ] };
+	assert.deepEqual(lines([ wan6, wanIf('wan', 'eth1', 0), LAN ]).map(x => x.iface), [ 'wan' ]);
+	/* an IPv6-only line on a device of its own is a line */
+	assert.deepEqual(lines([ { ...wan6, interface: 'isp6', device: 'eth2', l3_device: 'eth2' }, wanIf('wan', 'eth1', 0) ]).map(x => x.iface), [ 'wan', 'isp6' ]);
+});
+
+test('extraUplinks: a DS-Lite softwire, a full-tunnel VPN and a tunnel device ride over the line', () => {
+	const wan6 = { interface: 'wan6', up: true, proto: 'dhcpv6', device: 'eth1', l3_device: 'eth1', route: [ { target: '::', mask: 0, nexthop: 'fe80::1' } ] };
+	const dslite = { interface: 'wan6_4', up: true, proto: 'dslite', l3_device: 'ds-wan6_4', route: [ { target: '0.0.0.0', mask: 0, nexthop: '0.0.0.0' } ] };
+	const ds = lines([ { interface: 'wan', up: true, proto: 'dhcp', device: 'eth1' }, wan6, dslite ]);
+	assert.deepEqual(ds.map(x => x.iface), [ 'wan6' ]);
+	/* WireGuard with allowed_ips 0.0.0.0/0: its default route (no next
+	   hop, metric above wan's) is the tunnel's, not a second WAN */
+	const vpn = { interface: 'vpn', up: true, proto: 'wireguard', l3_device: 'wg0', metric: 5, 'ipv4-address': [ { address: '203.0.113.99', mask: 32 } ],
+		route: [ { target: '0.0.0.0', mask: 0, nexthop: '0.0.0.0' } ] };
+	const wan = wanIf('wan', 'eth1', 0);
+	const full = lines([ LAN, wan, vpn ]);
+	assert.deepEqual(full.map(x => x.iface), [ 'wan' ]);
+	assert.deepEqual(model.networks([ LAN, wan, vpn ], full).map(n => n.name), [ 'lan', 'vpn' ], 'the VPN stays a network');
+	for (const proto of [ 'openvpn', 'gre', 'vti', 'xfrm', '6in4', 'ipip' ])
+		assert.deepEqual(lines([ wan, { ...vpn, proto } ]).map(x => x.iface), [ 'wan' ], proto);
+	/* L2TP is also an ISP's access: a line */
+	assert.deepEqual(lines([ wan, { ...vpn, proto: 'l2tp', l3_device: 'l2tp-isp2' } ]).map(x => x.iface), [ 'wan', 'vpn' ]);
+	/* an unmanaged tunnel (proto none) told by its device */
+	assert.deepEqual(lines([ wan, { ...vpn, proto: 'none', l3_device: 'tun0' } ], { tun0: { devtype: 'tun' } }).map(x => x.iface), [ 'wan' ]);
+});
+
+test('extraUplinks: a WAN that is down, or routed in another table, is no line', () => {
+	const down = { ...wanIf('wanb', 'eth2', 20), up: false };
+	const ifaces = [ LAN, wanIf('wan', 'eth1', 10), down ];
+	const l = lines(ifaces);
+	assert.deepEqual(l.map(x => x.iface), [ 'wan' ]);
+	assert.deepEqual(model.networks(ifaces, l).map(n => [ n.name, n.up ]), [ [ 'lan', true ], [ 'wanb', false ] ], 'a down WAN reads like any down network');
+	/* policy routing: a default in a table of its own */
+	const own = wanIf('wanb', 'eth2', 20, { route: [ { target: '0.0.0.0', mask: 0, nexthop: '203.0.113.21', table: 100 } ] });
+	assert.deepEqual(lines([ LAN, wanIf('wan', 'eth1', 10), own ]).map(x => x.iface), [ 'wan' ]);
+	assert.deepEqual(lines([ LAN, wanIf('wan', 'eth1', 10), { ...own, route: [ { ...own.route[0], table: undefined } ], ip4table: 'wanb' } ]).map(x => x.iface), [ 'wan' ]);
+	assert.deepEqual(lines([ LAN, wanIf('wan', 'eth1', 10), { ...own, route: [ { ...own.route[0], table: 'main' } ] } ]).map(x => x.iface), [ 'wan', 'wanb' ]);
+});
+
+test('extraUplinks: two PPPoE lines (#56), usb by metric the main one, wan beside it, each IPv6 alias part of its line', () => {
+	const pppoe = (name, metric, addr) => ({ interface: name, up: true, proto: 'pppoe', device: 'eth0', l3_device: 'pppoe-' + name, metric,
+		'ipv4-address': [ { address: addr, mask: 32 } ], route: [ { target: '0.0.0.0', mask: 0, nexthop: '198.51.100.1', source: '0.0.0.0/0' } ] });
+	const alias = (name, of) => ({ interface: name, up: true, proto: 'dhcpv6', device: '@' + of, l3_device: 'pppoe-' + of, metric: 0,
+		route: [ { target: '::', mask: 0, nexthop: '2001:db8::1' } ] });
+	const ifaces = [
+		{ ...LAN, route: [ { target: '198.51.100.0', mask: 24 } ] },
+		{ interface: 'mao', up: true, proto: 'dhcp', l3_device: 'eth0', metric: 0, route: [] },
+		pppoe('wan', 20, '203.0.113.20'), alias('wan6', 'wan'),
+		pppoe('usb', 10, '203.0.113.10'), alias('usb6', 'usb')
+	];
+	for (const list of [ ifaces, [ ...ifaces ].reverse() ]) {
+		const l = lines(list);
+		assert.deepEqual(l.map(x => [ x.iface, x.l3dev, x.metric ]), [ [ 'usb', 'pppoe-usb', 10 ], [ 'wan', 'pppoe-wan', 20 ] ]);
+		assert.deepEqual(model.networks(list, l).map(n => n.name), [ 'lan', 'mao' ]);
+	}
+	/* the model: the main line first in uplinks, the others out of networks */
+	const m = model.build({ ifaces, devs: {} });
+	assert.equal(m.uplinks[0], m.uplink);
+	assert.deepEqual(m.uplinks.map(x => x.iface), [ 'usb', 'wan' ]);
+	assert.deepEqual(m.networks.map(n => n.name), [ 'lan', 'mao' ]);
+	assert.deepEqual(model.build({}).uplinks, []);
+});
+
 test('resolveUplink: an IPv6 metric of 0 counts as 1024, as the kernel stores it', () => {
 	const v6 = (name, metric) => ({ interface: name, up: true, device: 'eth' + metric, metric, route: [ { target: '::', mask: 0, nexthop: '2001:db8::1' } ] });
 	assert.equal(model.resolveUplink([ v6('backup6', 0), v6('wan6', 100) ], {}).iface, 'wan6');

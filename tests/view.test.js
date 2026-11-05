@@ -537,7 +537,8 @@ function withDom(fn) {
 	const saved = { E: global.E, document: global.document };
 	const node = () => ({ setAttribute() {}, appendChild() {}, style: { setProperty() {} } });
 	global.document = { createElementNS: node };
-	global.E = (tag, attrs, children) => ({ tag, attrs: attrs || {}, children: [].concat(children == null ? [] : children), style: { setProperty() {} } });
+	global.E = (tag, attrs, children) => ({ tag, attrs: attrs || {}, children: [].concat(children == null ? [] : children), style: { setProperty() {} },
+		classList: { add() {}, remove() {}, toggle() {} }, appendChild(c) { this.children.push(c); return c; } });
 	try { return fn(); }
 	finally {
 		if (saved.E === undefined) delete global.E; else global.E = saved.E;
@@ -563,5 +564,89 @@ test('names made up from the MAC: the plain name beside the MAC, no source badge
 		/* a real name keeps its source */
 		assert.deepEqual(texts(self.whoCell(named, [])), [ 'phone', 'DHCP', '192.0.2.44' ]);
 		assert.deepEqual(texts(self.drawerWho(named)[1]), [ 'phone', 'DHCP', '192.0.2.44' ]);
+	});
+});
+
+/* other lines to the internet (#88): failover and mwan3 lines beside the main one */
+const LINE = (iface, dev, metric) => ({ iface, l3dev: dev, dev, statsDev: dev, port: dev, proto: 'dhcp', up: true, carrier: true, speed: { mbps: 1000, duplex: 'full' },
+	ipv4: [ '203.0.113.' + (metric + 2) + '/29' ], ipv6: [], gateway: '203.0.113.' + (metric + 1), defaultRoute: true, metric, dns: [], stats: { rx_bytes: 10, tx_bytes: 20 }, isWan: true, uptime: 60 });
+
+test('other lines: in the path\'s key, one chart row each, at most four; one line keeps both as they were', () => {
+	const self = Object.create(view);
+	const wan = LINE('wan', 'eth1', 10);
+	self.m = { wired: true, networks: [ { name: 'lan', up: true } ], radios: [ { id: 'radio0', bandLabel: '5 GHz' } ], ssids: [], wiredHosts: [], uplink: wan, uplinks: [ wan ] };
+	const one = self.heroKey();
+	assert.deepEqual(self.extraLines(), []);
+	assert.deepEqual(self.chartSeries().map(s => s.key), [ 'uplink', 'radio0' ]);
+	self.m.uplinks = [ wan, LINE('wanb', 'eth2', 20) ];
+	assert.notEqual(self.heroKey(), one, 'a line that comes or goes rebuilds the path');
+	assert.deepEqual(self.chartSeries().map(s => [ s.key, s.label, s.dn, s.up ]), [
+		[ 'uplink', 'Uplink eth1', 1, 2 ], [ 'up:wanb', 'Uplink eth2', 1, 2 ], [ 'radio0', '5 GHz radio', 2, 1 ] ]);
+	self.m.wired = false;
+	assert.match(self.heroKey(), /lines=wanb$/);
+	self.m.uplinks = [ wan ].concat([ 2, 3, 4, 5, 6, 7 ].map(n => LINE('wan' + n, 'eth' + n, 10 * n)));
+	assert.deepEqual(self.extraLines().map(x => x.iface), [ 'wan2', 'wan3', 'wan4', 'wan5' ]);
+	assert.deepEqual(self.extraLines({ uplinks: null }), []);
+});
+
+test('other lines: a deep link opens a line the device has; any other name opens the main one', () => {
+	const at = (hash, uplinks) => {
+		const self = Object.create(view);
+		self.m = { radios: [], uplinks };
+		self.opened = [];
+		self.openDrawer = function(kind, id) { this.opened.push([ kind, id ]); };
+		withLocation(hash, () => self.openFromHash());
+		return self.opened;
+	};
+	const lines = [ LINE('wan', 'eth1', 10), LINE('wanb', 'eth2', 20) ];
+	assert.deepEqual(at('#uplink=wanb', lines), [ [ 'uplink', 'wanb' ] ]);
+	assert.deepEqual(at('#uplink=wan', lines), [ [ 'uplink', 'uplink' ] ], 'the main line by its own name');
+	assert.deepEqual(at('#uplink=%3Cb%3Ewanb', lines), [ [ 'uplink', 'uplink' ] ]);
+	assert.deepEqual(at('#uplink=wanb', lines.slice(0, 1)), [ [ 'uplink', 'uplink' ] ], 'a line that is gone');
+});
+
+test('other lines: each node shows its name, gateway and live rates, wired into the device; the main one is marked', () => {
+	const self = Object.create(view);
+	const el = () => ({ textContent: '', attrs: {}, getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }, setAttribute(k, v) { this.attrs[k] = v; } });
+	const ln = id => ({ id, el: el(), kicker: el(), title: el(), dn: el(), up: el() });
+	const wan = LINE('wan', 'eth1', 10), wanb = LINE('wanb', 'eth2', 20), lte = Object.assign(LINE('lte', 'wwan0', 30), { gateway: null, carrier: false, speed: null });
+	const h = new Proxy({ lines: [ ln('wanb'), ln('lte'), ln('gone') ], radios: [] }, { get: (t, k) => k in t ? t[k] : (t[k] = el()) });
+	self.hero = h;
+	self.m = { wired: true, networks: [], radios: [], ssids: [], wiredHosts: [], device: { model: 'Router', uptime: 1 }, uplink: wan, uplinks: [ wan, wanb, lte ] };
+	self.st = { uplinkRate: { rx: 2e6, tx: 1e5 }, devRates: { eth2: { rx: 12345678, tx: 3000 }, wwan0: { rx: 0, tx: 0 } } };
+	self.updateHero();
+	assert.equal(h.gwKicker.textContent, 'wan', 'beside other lines the main one goes by its name');
+	const [ b, l ] = h.lines;
+	assert.deepEqual([ b.kicker.textContent, b.title.textContent, b.dn.textContent, b.up.textContent ], [ 'wanb', '203.0.113.21', '↓ 12.3 Mbit/s', '↑ 3 kbit/s' ]);
+	assert.equal(b.el.attrs.title, 'wanb · eth2 · 1 Gbit/s · full duplex');
+	assert.equal(b.el.attrs['class'], 'vt-node vt-node-gw vt-node-line');
+	assert.deepEqual([ l.title.textContent, l.dn.textContent, l.up.textContent ], [ 'wwan0', 'idle', '' ], 'no gateway address: the device; nothing moving: idle');
+	assert.equal(l.el.attrs['class'], 'vt-node vt-node-gw vt-node-line vt-node-off', 'no carrier');
+	assert.deepEqual([ b.active, l.active ], [ true, false ]);
+	/* one wire per line into the device, numbered for nesting */
+	assert.deepEqual(self.wireList().filter(w => w.line != null).map(w => [ w.key, w.from === h.lines[w.line].el, w.to === h.ap, w.speed ]),
+		[ [ 'l:wanb', true, true, 2 ], [ 'l:lte', true, true, 1 ], [ 'l:gone', true, true, 1 ] ]);
+	/* one line: the gateway's own kicker */
+	h.lines = [];
+	self.m.uplinks = [ wan ];
+	self.updateHero();
+	assert.equal(h.gwKicker.textContent, 'Internet');
+});
+
+test('other lines: the uplink drawer shows the line asked for, its rates and route metric', () => {
+	const self = Object.create(view);
+	const wan = LINE('wan', 'eth1', 10), wanb = LINE('wanb', 'eth2', 20);
+	self.m = { uplink: wan, uplinks: [ wan, wanb ] };
+	self.st = { uplinkRate: { rx: 1e6, tx: 2e6 }, devRates: { eth2: { rx: 3e6, tx: 4e6 } }, hist: { net: { uplink: [], 'up:wanb': [] } } };
+	withDom(() => {
+		const d = self.drawerUplink('wanb'), all = texts({ children: d.title.concat(d.body) });
+		assert.ok(all.includes('Uplink · wanb'));
+		assert.ok(all.includes('3 Mbit/s') && all.includes('4 Mbit/s'), 'its own rates');
+		assert.deepEqual(all.slice(all.indexOf('Route metric'), all.indexOf('Route metric') + 2), [ 'Route metric', '20' ]);
+		const main = texts({ children: [].concat(self.drawerUplink('uplink').title, self.drawerUplink('uplink').body) });
+		assert.ok(main.includes('Uplink · wan') && main.includes('1 Mbit/s') && main.includes('10'));
+		/* one line: no metric row */
+		self.m.uplinks = [ wan ];
+		assert.ok(!texts({ children: self.drawerUplink('uplink').body }).includes('Route metric'));
 	});
 });
