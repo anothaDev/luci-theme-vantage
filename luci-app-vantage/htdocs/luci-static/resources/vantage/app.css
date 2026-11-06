@@ -775,6 +775,8 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-node-ap { justify-self: stretch; align-self: center; padding: 12px; border-color: color-mix(in oklab, var(--vt-accent-line) 40%, var(--vt-line)); }
 .vt-app .vt-node-ap .vt-node-ico { background: var(--vt-accent-fill); color: var(--vt-accent-fill-ink); }
 .vt-app .vt-node-ap .vt-node-title { font-size: var(--vt-fs-md); }
+/* plain text, unlike a radio's: a wider font or language stays inside */
+.vt-app .vt-node-ap .vt-node-kicker { display: block; overflow: hidden; text-overflow: ellipsis; }
 .vt-app .vt-node-gen { text-transform: none; letter-spacing: 0; font-weight: var(--vt-fw-medium); }
 .vt-app .vt-node-radio { padding: 8px 12px; }
 .vt-app .vt-node-net, .vt-app .vt-node-net:hover { text-decoration: none; color: var(--vt-text); }
@@ -867,9 +869,9 @@ html[data-darkmode="true"] .vt-app {
    to give; what a radio or the Wired node leads to goes under it, too
    narrow beside it */
 @container vthero (max-width: 1020px) {
-	.vt-app .vt-path { grid-template-columns: minmax(150px, 1.05fr) minmax(136px, .9fr) minmax(170px, 1.1fr) minmax(204px, 2fr); }
+	.vt-app .vt-path { grid-template-columns: minmax(150px, 1.05fr) minmax(136px, .9fr) minmax(190px, 1.1fr) minmax(204px, 2fr); }
 	.vt-app .vt-branch { grid-template-columns: minmax(0, 1fr); row-gap: 8px; }
-	.vt-app .vt-branch > .vt-node { justify-self: start; min-width: 200px; max-width: 100%; }
+	.vt-app .vt-branch > .vt-node { justify-self: start; min-width: min(200px, 100%); }
 	.vt-app .vt-branch-ssids { padding-left: 34px; }
 }
 @container vthero (max-width: 700px) {
