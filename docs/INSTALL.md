@@ -871,7 +871,7 @@ Then reload the page. To remove Vantage entirely, see
   separate group (`luci-app-vantage-names`), is the plugin method
   `luci.vantage set_alias`, which checks each name on the device and
   writes nothing but `/etc/config/vantage` (at most 512 names). Details
-  in the README's [Security](../README.md#security) section.
+  in the [spec](SPEC.md#6-security-requirements).
 - **The theme's Appearance.** The theme's own permission group,
   `luci-theme-vantage`, may write `/etc/config/vantage_theme` and nothing
   else: the colour mode and backgrounds saved for every browser. A user
