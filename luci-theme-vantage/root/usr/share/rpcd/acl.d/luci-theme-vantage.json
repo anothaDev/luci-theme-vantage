@@ -1,6 +1,6 @@
 {
 	"luci-theme-vantage": {
-		"description": "Vantage theme: save its Appearance (colour mode, login and network path backgrounds) for every browser, in /etc/config/vantage_theme only",
+		"description": "Vantage theme: save its Appearance (colour mode, login and network path backgrounds) and the dashboard's chart style and layouts for every browser, in /etc/config/vantage_theme only",
 		"write": {
 			"ubus": {
 				"uci": [ "set", "commit", "revert" ]

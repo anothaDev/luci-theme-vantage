@@ -85,7 +85,15 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   (those keys are dropped); Appearance says when picks stay in the
   browser. This browser's last pick (`vantage.theme`, `vantage.login`,
   `vantage.backdrop.v1`, what the dashboard reads under another theme)
-  counts until the router has one.
+  counts until the router has one. The dashboard's chart style and layouts
+  go the same way, in options `chart` and `layout_<class>[_wired]`: Done
+  under Customize hands what changed to the theme (`vantage:view-save`),
+  which writes it once; Customize stays open with a note if that fails.
+  The template passes them on as `data-vt-look-chart` and
+  `data-vt-look-layout`, logged in only and in their form only, and
+  `vantage.layout` validates them again. The router's come first for a
+  login that may save; any other keeps this browser's, and sees the
+  router's where it has none. Without the theme they stay in the browser.
 - **Tabs**: one segmented control for every level: the menu's page tabs
   (depth ≥ 3, at the top of the content column), tabs at page level, in a
   form or modal, and tabs inside a tab. Nesting shows by where a control
@@ -267,9 +275,11 @@ text around it so it looks the same size.
   each tile has a column, a width and a place in the order, and stacks
   under the earlier tiles in its columns. "Customize" lets the viewer drag
   tiles, move them with buttons or arrow keys, change their width within
-  a per-tile minimum and hide them. Saved in `localStorage` per screen
-  class (and separately for wired devices), validated on read; never on
-  the device. A tile whose content shrinks keeps its height for 30 s,
+  a per-tile minimum and hide them. Saved per screen class (and
+  separately for wired devices) and validated on read: under the Vantage
+  theme with the chart style on the router (see the theme toggle), else
+  in `localStorage`, which also keeps this browser's copy. A tile whose
+  content shrinks keeps its height for 30 s,
   then the layout settles on its own; while arranging, each tile's
   content starts below its handle bar.
 - **Throughput chart**: one row per link (uplink, then each radio), each

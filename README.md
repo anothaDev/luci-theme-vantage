@@ -44,8 +44,9 @@ dashboard, and the dashboard works under any LuCI theme.
 - **Firewall overview.** What's open from the internet, which zones reach
   which, and warnings for risky setups. Every item links to the LuCI page
   that changes it.
-- **Your own layout.** Drag, resize or hide tiles. Your browser remembers
-  the layout for each screen size.
+- **Your own layout.** Drag, resize or hide tiles, with one layout per
+  screen size. With the Vantage theme, your layout and chart style are
+  saved on the router, so every browser matches.
 
 **The theme** (`luci-theme-vantage`) restyles every LuCI page.
 
@@ -148,9 +149,9 @@ the [spec](docs/SPEC.md#6-security-requirements).
   `/etc/config/vantage`.
 - **Wi-Fi keys stay out.** Wireless settings come through Vantage's own
   plugin, which leaves out Wi-Fi keys, SAE passwords and RADIUS secrets.
-- **The theme writes one file.** Appearance goes to
-  `/etc/config/vantage_theme` and nowhere else. A user without that
-  permission keeps their picks in their own browser.
+- **The theme writes one file.** Appearance, and the dashboard's layout
+  and chart style, go to `/etc/config/vantage_theme` and nowhere else. A
+  user without that permission keeps their picks in their own browser.
 - **Extras are separate permissions.** Renaming devices
   (`luci-app-vantage-names`) and reverse DNS (`luci-app-vantage-rdns`) are
   their own groups, so you can leave them out. The firewall overview only

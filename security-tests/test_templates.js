@@ -326,6 +326,23 @@ test('Appearance saved for every browser: only values the theme knows reach the 
 		assert.deepEqual(looks(renderPage({ path: ADMIN, authed: true, look: o }).html),
 			{ 'data-vt-look-theme': '', 'data-vt-look-login': '', 'data-vt-look-backdrop': '' }, `header ${JSON.stringify(odd)}`);
 	}
+	/* the dashboard's chart style and layouts: logged in only, in their form only */
+	const view = (html, n) => attrOf(html, 'html', 'data-vt-look-' + n);
+	const lay = { chart: 'log', layout_wide: 'hero:0:4 chart:0:2:h', layout_mid: 'default', layout_narrow_wired: 'sys:0:1' };
+	const mine = renderPage({ path: ADMIN, authed: true, look: lay }).html;
+	assert.equal(view(mine, 'chart'), 'log');
+	assert.equal(view(mine, 'layout'), 'wide=hero:0:4 chart:0:2:h;mid=default;narrow_wired=sys:0:1');
+	for (const o of [ renderPage({ path: [ 'admin', 'x' ], authed: false, look: lay }).html ]) {
+		assert.equal(view(o, 'chart'), '', 'anonymous');
+		assert.equal(view(o, 'layout'), '', 'anonymous');
+	}
+	assert.ok(!/data-vt-look-(chart|layout)/.test(renderLogin({ path: ADMIN, look: lay }).html), 'the login page has no use for them');
+	for (const odd of [ HOSTILE, 'hero:0:4;mid=x', 'hero:0:4"', 'Hero:0:4', 'hero:9:9', 'hero:0:4 ', ' hero:0:4', 'hero', 'default x',
+		Array(9).fill('hero:0:1').join(' '), 'x'.repeat(9) + ':0:1', [ 'hero:0:4' ], {}, 1, '' ]) {
+		const page = renderPage({ path: ADMIN, authed: true, look: { chart: odd, layout_wide: odd } }).html;
+		assert.equal(view(page, 'chart'), '', `chart ${JSON.stringify(odd)}`);
+		assert.equal(view(page, 'layout'), '', `layout ${JSON.stringify(odd)}`);
+	}
 	/* may this login save it: held now, granted at a new login, or not at all */
 	const save = o => attrOf(renderPage(Object.assign({ path: ADMIN, authed: true }, o)).html, 'html', 'data-vt-look-save');
 	const held = { 'access-group': { 'luci-theme-vantage': [ 'read', 'write' ] } };
@@ -340,7 +357,7 @@ test('Appearance saved for every browser: only values the theme knows reach the 
 	assert.equal(attrOf(renderPage({ path: [ 'admin', 'x' ], authed: false, acl: held, logins: root }).html, 'html', 'data-vt-look-save'), 'no', 'anonymous');
 	/* the inline scripts stay data-free: they read the attributes */
 	assert.deepEqual(inlineScripts(renderLogin({ path: ADMIN, look }).html), inlineScripts(renderLogin({ path: ADMIN }).html));
-	assert.deepEqual(inlineScripts(renderPage({ path: ADMIN, authed: true, look }).html), inlineScripts(renderPage({ path: ADMIN, authed: true }).html));
+	assert.deepEqual(inlineScripts(renderPage({ path: ADMIN, authed: true, look: Object.assign({}, look, lay) }).html), inlineScripts(renderPage({ path: ADMIN, authed: true }).html));
 });
 
 test('login form: post back without action, contract field names and autocomplete', () => {

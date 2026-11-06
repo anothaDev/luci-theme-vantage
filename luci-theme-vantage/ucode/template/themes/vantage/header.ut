@@ -23,6 +23,19 @@
 	const look_theme = look('theme', [ 'auto', 'light', 'dark' ]);
 	const look_login = look('login', [ 'grid', 'stars', 'none' ]);
 	const look_backdrop = look('backdrop', [ 'grid', 'stars', 'none' ]);
+	/* The dashboard's chart style and layouts, saved with it. A layout passes
+	   only in the form vantage.layout reads, 'wide=hero:0:4 chart:0:2:h;mid=default' */
+	const look_chart = look('chart', [ 'overlay', 'log', 'mirror', 'mirror-split', 'lanes' ]);
+	const look_layout = (() => {
+		let out = [];
+		if (authed)
+			for (let k in [ 'wide', 'mid', 'narrow', 'wide_wired', 'mid_wired', 'narrow_wired' ]) {
+				const v = uci.get('vantage_theme', 'appearance', 'layout_' + k);
+				if (type(v) == 'string' && match(v, /^(default|[a-z]{1,8}:[0-3]:[1-4](:h)?( [a-z]{1,8}:[0-3]:[1-4](:h)?){0,7})$/))
+					push(out, k + '=' + v);
+			}
+		return join(';', out);
+	})();
 	/* May this login save it for every browser? 'yes'; 'relogin' when rpcd
 	   would grant the theme's group at a new login and no reload of rpcd
 	   has given it to this one yet (the install's reload reaches open
@@ -42,7 +55,7 @@
 	})();
 -%}
 <!DOCTYPE html>
-<html lang="{{ lang }}" data-darkmode="true" data-vt-look-theme="{{ look_theme }}" data-vt-look-login="{{ look_login }}" data-vt-look-backdrop="{{ look_backdrop }}" data-vt-look-save="{{ look_save }}">
+<html lang="{{ lang }}" data-darkmode="true" data-vt-look-theme="{{ look_theme }}" data-vt-look-login="{{ look_login }}" data-vt-look-backdrop="{{ look_backdrop }}" data-vt-look-chart="{{ look_chart }}" data-vt-look-layout="{{ look_layout }}" data-vt-look-save="{{ look_save }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">

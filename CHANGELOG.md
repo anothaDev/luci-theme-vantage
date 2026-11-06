@@ -14,9 +14,12 @@ Each release ships both packages, `luci-theme-vantage` and
   network path background were kept in each browser, so another computer
   showed the defaults. They are now saved in `/etc/config/vantage_theme`
   and the same in every browser, the login page included, from the first
-  paint. A browser keeps its earlier picks until someone changes the
-  setting. Saving needs the theme's new rpcd group, `luci-theme-vantage`
-  (root has it), which may write that one config only; without it a
+  paint. With the theme installed, the dashboard's layout and chart style
+  are saved there too, when you press Done under Customize; each screen
+  size keeps its own layout. A browser keeps its earlier picks until
+  someone changes the setting. Saving needs the theme's new rpcd group,
+  `luci-theme-vantage` (root has it), which may write that one config
+  only; without it a
   change stays in that browser, as before, and Appearance says so. Logins
   already open get the group too, when the install reloads rpcd.
 - **Dashboard: every line to the internet in the network path** (#88,

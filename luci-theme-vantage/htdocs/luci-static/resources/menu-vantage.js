@@ -47,6 +47,12 @@ const LOOK = {
 };
 const LOOK_SYNC = 'vantage.look';         /* another tab saved one: { name, value } */
 const LOOK_SET_EVENT = 'vantage:backdrop-set';   /* the dashboard's own picker hands its pick over */
+/* The dashboard's Customize saves its chart style and layouts with the
+   Appearance, in one write when it is done: { values, done(ok) }. The
+   template reads them back with these same rules. */
+const VIEW_SAVE_EVENT = 'vantage:view-save';
+const VIEW_CHARTS = [ 'overlay', 'log', 'mirror', 'mirror-split', 'lanes' ];
+const VIEW_LAYOUT = /^(default|[a-z]{1,8}:[0-3]:[1-4](:h)?( [a-z]{1,8}:[0-3]:[1-4](:h)?){0,7})$/;
 const callLookSet = rpc.declare({ object: 'uci', method: 'set', params: [ 'config', 'section', 'values' ], reject: true });
 const callLookCommit = rpc.declare({ object: 'uci', method: 'commit', params: [ 'config' ], reject: true });
 /* While an apply awaits its rollback, rpcd refuses commit and revert alike, but not set: a pick set
@@ -154,6 +160,15 @@ function storageGet(k) { try { return localStorage.getItem(k); } catch (e) { ret
 function lookValue(ok, list) {
 	for (const v of list) if (ok.indexOf(v) >= 0) return v;
 	return ok[0];
+}
+function lookWrite(values) {
+	return callLookRevert('vantage_theme')
+		.then(() => callLookSet('vantage_theme', 'appearance', values))
+		.then(() => callLookCommit('vantage_theme').catch(e => callLookRevert('vantage_theme').then(() => { throw e; }, () => { throw e; })));
+}
+function viewValue(name, value) {
+	if (name === 'chart') return VIEW_CHARTS.indexOf(value) >= 0;
+	return /^layout_(wide|mid|narrow)(_wired)?$/.test(name) && typeof value === 'string' && VIEW_LAYOUT.test(value);
 }
 
 /* the router's value of one, as the templates set it (literal names) */
@@ -1494,9 +1509,7 @@ return baseclass.extend({
 		const latest = () => seqs[name] === seq;
 		this.lookChain = (this.lookChain || Promise.resolve()).then(() => {
 			if (!latest()) return;
-			return callLookRevert('vantage_theme')
-				.then(() => callLookSet('vantage_theme', 'appearance', { [name]: value }))
-				.then(() => callLookCommit('vantage_theme').catch(e => callLookRevert('vantage_theme').then(() => { throw e; }, () => { throw e; })))
+			return lookWrite({ [name]: value })
 				.then(() => {
 					/* the router's value first, so other tabs never see a gap */
 					setLookAttr(this.root, name, value);
@@ -1604,6 +1617,17 @@ return baseclass.extend({
 				ev.preventDefault();
 				this.setBackdropPref(ev.detail);
 			}
+		});
+		/* Customize's Done, for a login that may save; for any other it
+		   stays in that browser, which the dashboard says */
+		window.addEventListener(VIEW_SAVE_EVENT, ev => {
+			const d = ev.detail, values = {};
+			if (this.lookState() !== 'yes' || !d || !d.values || typeof d.done !== 'function') return;
+			Object.keys(d.values).forEach(n => { if (viewValue(n, d.values[n])) values[n] = d.values[n]; });
+			if (!Object.keys(values).length) return;
+			ev.preventDefault();
+			this.lookChain = (this.lookChain || Promise.resolve()).then(() => lookWrite(values))
+				.then(() => d.done(true), () => d.done(false)).catch(() => {});
 		});
 		this.applyTheme();
 		this.applyBackdrop();

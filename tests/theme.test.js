@@ -346,7 +346,36 @@ test('Appearance: the templates and the login page read the same keys, in the sa
 	assert.match(src, /callLookRevert\('vantage_theme'\)\s*\.then\(\(\) => callLookSet\(/);
 	/* a commit that fails later is reverted, never left in the session */
 	assert.match(src, /callLookCommit\('vantage_theme'\)\.catch\(e => callLookRevert\('vantage_theme'\)/);
-	assert.match(src, /callLookSet\('vantage_theme', 'appearance', \{ \[name\]: value \}\)/);
+	assert.match(src, /callLookSet\('vantage_theme', 'appearance', values\)/);
+	assert.match(src, /lookWrite\(\{ \[name\]: value \}\)/);
+});
+
+test('Customize: the theme, the template and the dashboard keep the same chart styles and layout form', () => {
+	const { load } = require('./luci-stub');
+	const layout = load('vantage.layout'), series = load('vantage.series');
+	const header = fs.readFileSync(path.join(__dirname, '..', 'luci-theme-vantage/ucode/template/themes/vantage/header.ut'), 'utf8');
+	const charts = new Function('return ' + /const VIEW_CHARTS = (\[[^\]]*\]);/.exec(src)[1])();
+	assert.deepEqual(charts, series.CHART_STYLES);
+	assert.ok(header.includes(`look('chart', ${JSON.stringify(charts).replace(/"/g, "'").replace(/,/g, ', ').replace('[', '[ ').replace(']', ' ]')})`));
+	const form = /const VIEW_LAYOUT = (\/.*\/);/.exec(src)[1];
+	assert.ok(header.includes(`match(v, ${form})`), 'the template reads what the theme writes');
+	const re = new Function('return ' + form)();
+	/* every tile of every default layout, shown and hidden, fits the form and comes back */
+	for (const tier of [ 'wide', 'mid', 'narrow' ]) for (const wired of [ false, true ]) {
+		for (const hide of [ false, true ]) {
+			const list = layout.compact(layout.defaults(tier, wired).map(e => Object.assign({}, e, { hide })));
+			const text = layout.encode(list);
+			assert.match(text, re, text);
+			const k = layout.key(tier, wired), opt = layout.option(k);
+			assert.match(opt, /^layout_(wide|mid|narrow)(_wired)?$/);
+			assert.ok(header.includes(`'${opt.slice(7)}'`), `the template reads ${opt}`);
+			assert.deepEqual([ ...layout.decode(`${opt.slice(7)}=${text}`)[k] ], list);
+		}
+	}
+	/* the longest tile name still fits */
+	for (const id of layout.TILES) assert.match(`${id}:0:1`, re, id);
+	/* only a login that may save hands it to the router, in one write */
+	assert.match(src, /VIEW_SAVE_EVENT, ev => \{[\s\S]{0,120}this\.lookState\(\) !== 'yes'[\s\S]{0,300}lookWrite\(values\)/);
 });
 
 test('Appearance: the theme\'s rpcd group writes config vantage_theme only, which ships empty', () => {
@@ -356,6 +385,8 @@ test('Appearance: the theme\'s rpcd group writes config vantage_theme only, whic
 	const g = acl['luci-theme-vantage'];
 	assert.deepEqual(Object.keys(g).sort(), [ 'description', 'write' ], 'a write group only, no read grants');
 	assert.deepEqual(g.write, { ubus: { uci: [ 'set', 'commit', 'revert' ] }, uci: [ 'vantage_theme' ] });
+	/* no read of its own: the dashboard gets these through the template */
+	assert.deepEqual(Object.keys(g).sort(), [ 'description', 'write' ]);
 	const conf = fs.readFileSync(path.join(T, 'root/etc/config/vantage_theme'), 'utf8');
 	assert.deepEqual(conf.split('\n').filter(l => l.trim() && !/^\s*#/.test(l)), [ "config appearance 'appearance'" ], 'one section, nothing set');
 	const mk = fs.readFileSync(path.join(T, 'Makefile'), 'utf8');

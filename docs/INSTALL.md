@@ -538,7 +538,8 @@ In LuCI: **System → System → Language and Style → Design**, pick a theme,
 then **Save & Apply**. Vantage is listed as `Vantage`. The light / dark /
 auto switch in Vantage's top bar (Appearance, with the login and network
 path backgrounds) is saved on the router for every browser, in
-`/etc/config/vantage_theme`; it doesn't touch any other configuration.
+`/etc/config/vantage_theme`, and so are the dashboard's layout and chart
+style; it doesn't touch any other configuration.
 
 From SSH:
 
@@ -874,7 +875,8 @@ Then reload the page. To remove Vantage entirely, see
   in the [spec](SPEC.md#6-security-requirements).
 - **The theme's Appearance.** The theme's own permission group,
   `luci-theme-vantage`, may write `/etc/config/vantage_theme` and nothing
-  else: the colour mode and backgrounds saved for every browser. A user
+  else: the colour mode, the backgrounds, and the dashboard's layout and
+  chart style, saved for every browser. A user
   without it keeps their picks in their own browser. rpcd grants groups at
   login, and again to open logins when it reloads, as every package
   install makes it do; a login that could have the group but doesn't yet
