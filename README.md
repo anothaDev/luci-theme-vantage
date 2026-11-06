@@ -126,7 +126,9 @@ own page opens under another one. The theme is useful without the app.
 - Breadcrumb, page tabs (the current crumb also switches between them),
   and a <kbd>Ctrl</kbd>+<kbd>K</kbd> / <kbd>/</kbd> command palette with
   fuzzy search over every page you can open and the Appearance choices
-- Light, dark and auto modes, applied before first paint (no flash)
+- Light, dark and auto modes, applied before first paint (no flash); the
+  mode and the login and network path backgrounds are saved on the router,
+  the same in every browser
 - Host chip (hostname and model), LuCI's indicators (including the unsaved
   changes count) as keyboard-accessible pills
 - Its own login page, and restyled stock pages, forms, tables, charts and
@@ -246,12 +248,17 @@ node security-tests/test_acl_policy.js
   separate, optional group, `luci-app-vantage-rdns`. The one write, device
   names, goes through the plugin's `set_alias`, which validates the name
   and MAC on the device and writes only `/etc/config/vantage` (at most 512
-  names); it is in its own group, `luci-app-vantage-names`. No group grants
-  uci writes. The firewall overview reads the `firewall` config (and the
+  names); it is in its own group, `luci-app-vantage-names`. None of the
+  app's groups grants uci writes. The firewall overview reads the `firewall` config (and the
   interface status, to find the uplink) and is
   shown only to sessions that hold LuCI's own `luci-app-firewall` group,
   which already reads and changes that config; the app grants nothing for
   it.
+- **Theme Appearance.** The theme's own rpcd group, `luci-theme-vantage`,
+  may write one config, `/etc/config/vantage_theme` (uci `set`, `commit`
+  and `revert`, nothing else): the Appearance saved for every browser. The
+  templates take only values the theme knows from it. A user without the
+  group keeps their picks in their own browser.
 - **No markup from data.** Every DOM node is built with `E()` and text
   nodes; `check_dom_sinks.js` rejects `innerHTML` and other HTML sinks.
 - **Templates.** `test_templates.js` renders the theme's templates with

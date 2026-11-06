@@ -536,8 +536,9 @@ The dashboard's URL is `http://192.0.2.1/cgi-bin/luci/admin/dashboard`.
 
 In LuCI: **System → System → Language and Style → Design**, pick a theme,
 then **Save & Apply**. Vantage is listed as `Vantage`. The light / dark /
-auto switch in Vantage's top bar is a per-browser setting and doesn't
-change the router's configuration.
+auto switch in Vantage's top bar (Appearance, with the login and network
+path backgrounds) is saved on the router for every browser, in
+`/etc/config/vantage_theme`; it doesn't touch any other configuration.
 
 From SSH:
 
@@ -871,6 +872,13 @@ Then reload the page. To remove Vantage entirely, see
   `luci.vantage set_alias`, which checks each name on the device and
   writes nothing but `/etc/config/vantage` (at most 512 names). Details
   in the README's [Security](../README.md#security) section.
+- **The theme's Appearance.** The theme's own permission group,
+  `luci-theme-vantage`, may write `/etc/config/vantage_theme` and nothing
+  else: the colour mode and backgrounds saved for every browser. A user
+  without it keeps their picks in their own browser. rpcd grants groups at
+  login, and again to open logins when it reloads, as every package
+  install makes it do; a login that could have the group but doesn't yet
+  is asked to log in again.
 - **Wi-Fi keys.** The dashboard reads the wireless configuration through
   its own plugin method (`luci.vantage wireless`), which returns SSIDs,
   channels and the encryption mode but no Wi-Fi passwords, SAE passwords or

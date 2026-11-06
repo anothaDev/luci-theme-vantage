@@ -67,8 +67,25 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   placeholder), from `system board` via rpc in the menu script; a name
   the other contains (compared without case and punctuation) is left
   out.
-- **Theme toggle**: auto / light / dark, stored in `localStorage`, applied
-  in `<head>` before CSS (no flash), exposed as `html[data-darkmode]`.
+- **Theme toggle**: auto / light / dark, applied in `<head>` before CSS
+  (no flash), exposed as `html[data-darkmode]`. Appearance (this mode, the
+  login and network path backgrounds) is saved on the router for every
+  browser, in `/etc/config/vantage_theme` (section `appearance`), by
+  sessions holding the theme's rpcd group `luci-theme-vantage` (uci `set`,
+  `commit` and `revert` on that config only; rpcd refuses commit and
+  revert alike while a rollback is pending, so a save starts with a
+  revert and stops there, leaving nothing in the session); the
+  templates pass only known values on, as `data-vt-look-*`, and
+  `data-vt-look-save` says whether this login may save: `yes`, `relogin`
+  (rpcd would grant the group at a new login, and no reload of rpcd has
+  given it to this one yet; the install's reload reaches open logins) or
+  `no`. Saves queue and only the latest pick is written. A
+  pick made without the group stays in that browser (`localStorage`,
+  `vantage.<name>.own`) and wins there, but not for a login that may save
+  (those keys are dropped); Appearance says when picks stay in the
+  browser. This browser's last pick (`vantage.theme`, `vantage.login`,
+  `vantage.backdrop.v1`, what the dashboard reads under another theme)
+  counts until the router has one.
 - **Tabs**: one segmented control for every level: the menu's page tabs
   (depth ≥ 3, at the top of the content column), tabs at page level, in a
   form or modal, and tabs inside a tab. Nesting shows by where a control
@@ -278,8 +295,9 @@ text around it so it looks the same size.
   it is drawn, not on every display refresh), and stops while another
   window has the focus, the tab is hidden, the tile is out of view or
   folded; with
-  reduced motion it is one still frame. Saved in `localStorage` like the
-  chart style.
+  reduced motion it is one still frame. Under the Vantage theme it is
+  saved with the theme's Appearance (on the router for every browser);
+  otherwise in `localStorage` like the chart style.
 - **Firewall overview** (Network → Firewall → Overview, first tab):
   read-only, from uci `firewall`, read the way firewall4 (fw4, as 25.12
   ships it) reads it: its boolean spellings (1/on/true/yes, 0/off/false/

@@ -1,0 +1,10 @@
+# Vantage theme settings (luci-theme-vantage).
+#
+# Appearance for every browser on this router, as picked under the theme's
+# Appearance button; an option left out keeps each browser's own pick:
+#
+#   option theme 'auto'       auto, light or dark
+#   option login 'grid'       the login page's background: grid, stars or none
+#   option backdrop 'grid'    the dashboard's network path background, likewise
+
+config appearance 'appearance'

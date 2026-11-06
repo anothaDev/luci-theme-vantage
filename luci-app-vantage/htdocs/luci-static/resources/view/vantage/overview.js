@@ -527,17 +527,25 @@ function writeChartStyle(v) {
 	} catch (e) {}
 }
 
-/* The network path's backdrop the viewer picked (backdrop.STYLES), in
-   this browser */
+/* The network path's backdrop the viewer picked (backdrop.STYLES). Under
+   the Vantage theme its Appearance decides (saved for every browser on
+   the router where the viewer may) and keeps the one in force in
+   data-vt-backdrop; elsewhere this browser keeps it. */
 var BACKDROP_KEY = 'vantage.backdrop.v1';
 
 function readBackdrop() {
-	var v = null;
+	var root = typeof document !== 'undefined' ? document.documentElement : null;
+	var v = root && root.getAttribute ? root.getAttribute('data-vt-backdrop') : null;
+	if (backdrop.STYLES.indexOf(v) >= 0) return v;
 	try { v = window.localStorage.getItem(BACKDROP_KEY); } catch (e) { v = null; }
 	return backdrop.STYLES.indexOf(v) >= 0 ? v : backdrop.STYLES[0];
 }
 
 function writeBackdrop(v) {
+	/* the theme takes it (and cancels the event) */
+	var ev = null;
+	try { ev = new CustomEvent('vantage:backdrop-set', { detail: v, cancelable: true }); } catch (e) { ev = null; }
+	if (ev && typeof window.dispatchEvent === 'function' && !window.dispatchEvent(ev)) return;
 	try {
 		if (v === backdrop.STYLES[0]) window.localStorage.removeItem(BACKDROP_KEY);
 		else window.localStorage.setItem(BACKDROP_KEY, v);
@@ -728,7 +736,7 @@ return view.extend({
 		this.backdropStyle = readBackdrop();
 		/* picked under the theme's Appearance (menu-vantage.js), here or
 		   in another tab */
-		var self = this, follow = function() { self.setBackdrop(readBackdrop()); };
+		var self = this, follow = function() { self.showBackdrop(readBackdrop()); };
 		if (window.addEventListener) {
 			window.addEventListener('vantage:backdrop', follow);
 			window.addEventListener('storage', function(ev) { if (ev.key === BACKDROP_KEY) follow(); });
@@ -1322,10 +1330,18 @@ return view.extend({
 		return E('div', { 'class': 'vt-edit-field' }, [ E('label', { 'for': 'vt-backdrop-style' }, [ _('Network path background') ]), pick ]);
 	},
 
+	/* picked here (Customize): saved, and shown */
 	setBackdrop: function(v) {
 		if (backdrop.STYLES.indexOf(v) < 0 || v === this.backdropStyle) return;
-		this.backdropStyle = v;
 		writeBackdrop(v);
+		this.showBackdrop(v);
+	},
+
+	/* picked elsewhere (the theme's Appearance, another tab): shown only,
+	   never saved back */
+	showBackdrop: function(v) {
+		if (backdrop.STYLES.indexOf(v) < 0 || v === this.backdropStyle) return;
+		this.backdropStyle = v;
 		if (this.backdrop) this.backdrop.style(v);
 		if (this.backdropPick && this.backdropPick.value !== v) this.backdropPick.value = v;
 	},
