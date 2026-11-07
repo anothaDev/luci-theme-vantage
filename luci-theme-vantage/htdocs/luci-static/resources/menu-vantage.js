@@ -22,6 +22,9 @@
 
 const callBoard = rpc.declare({ object: 'system', method: 'board' });
 const callWirelessDevices = rpc.declare({ object: 'luci-rpc', method: 'getWirelessDevices' });
+/* every mount, not just the overlay root: the Overview's Storage section only
+   reports the root (luci-mod-status asks with root_only=true) */
+const callMountPoints = rpc.declare({ object: 'luci', method: 'getMountPoints', params: [ 'root_only' ], nobatch: true, expect: { result: [] } });
 
 const THEME_KEY = 'vantage.theme';
 const RAIL_KEY = 'vantage.rail';
@@ -459,14 +462,30 @@ function enhanceMemory() {
 		if (!table) return;
 		const rows = barRows(table), get = l => (rows.find(r => r.label === l) || {}).pair;
 		const avail = get(_('Total Available')), used = get(_('Used')),
-		      buffered = get(_('Buffered')), cached = get(_('Cached')), swap = get(_('Swap free'));
+		      buffered = get(_('Buffered')), cached = get(_('Cached')), swap = get(_('Swap free')),
+		      swapUsedRow = get(_('Swap used'));
 		const total = (used || avail || {}).total;
 		if (!total || !used) return;
 
-		const free = Math.max(0, total - used.value);
-		let available = avail ? avail.value : free + (buffered ? buffered.value : 0) + (cached ? cached.value : 0);
-		available = Math.min(total, Math.max(available, free));
-		const inuse = total - available, reclaim = available - free;
+		/* Older luci-mod-status tables carry a cumulative "Total Available"
+		   row, and their "Used" row excludes the page cache. The table in
+		   luci-mod-status 27.3xx dropped "Total Available" and made "Used"
+		   already total - MemAvailable, so its cache must not be added on
+		   top of free = total - Used: that overshoots total and the clamp
+		   would report 100% available and 0 B in use. */
+		let free, available, inuse, reclaim;
+		if (avail) {
+			free = Math.max(0, total - used.value);
+			available = Math.min(total, Math.max(avail.value, free));
+			inuse = total - available;
+			reclaim = available - free;
+		}
+		else {
+			available = Math.max(0, Math.min(total, total - used.value));
+			reclaim = Math.min(cached ? cached.value : 0, available);
+			free = Math.max(0, available - reclaim);
+			inuse = total - available;
+		}
 		const usedPct = pctOf(inuse, total);
 
 		const summary = '%s: %s %s, %s %s (%s), %s %s, %s %s'.format(_('Memory'),
@@ -489,18 +508,65 @@ function enhanceMemory() {
 			])
 		];
 
-		if (swap) {
-			const swapUsed = swap.total - swap.value;
+		/* "Swap free" in older tables, "Swap used" in luci-mod-status 27.3xx */
+		const swapPair = swap ? { used: Math.max(0, swap.total - swap.value), total: swap.total } :
+			(swapUsedRow && swapUsedRow.total > 0 ? { used: swapUsedRow.value, total: swapUsedRow.total } : null);
+		if (swapPair) {
+			const swapUsed = swapPair.used, swapTotal = swapPair.total;
 			children.push(E('div', { 'class': 'v-meter-rows v-meter-swap' }, E('div', { 'class': 'v-meter-row' }, [
 				E('span', { 'class': 'v-meter-label' }, [ _('Swap', 'vantage-theme') ]),
 				E('div', { 'class': 'v-meter-bar is-thin', 'role': 'img',
-				           'aria-label': '%s: %s / %s'.format(_('Swap', 'vantage-theme'), fmtBytes(swapUsed), fmtBytes(swap.total)) },
-					segment('v-seg-used', swapUsed, swap.total)),
-				E('span', { 'class': 'v-meter-val' }, [ E('b', {}, [ fmtBytes(swapUsed) ]), ' / ' + fmtBytes(swap.total) ])
+				           'aria-label': '%s: %s / %s'.format(_('Swap', 'vantage-theme'), fmtBytes(swapUsed), fmtBytes(swapTotal)) },
+					segment('v-seg-used', swapUsed, swapTotal)),
+				E('span', { 'class': 'v-meter-val' }, [ E('b', {}, [ fmtBytes(swapUsed) ]), ' / ' + fmtBytes(swapTotal) ])
 			])));
 		}
 
 		replaceTable(table, E('div', { 'class': 'v-meter v-meter-mem' }, children));
+	});
+}
+
+/* one mount row: label, a thin bar and "used · free · total" */
+function diskBar(label, used, size) {
+	const p = pctOf(used, size);
+	return E('div', { 'class': 'v-meter-row' }, [
+		E('span', { 'class': 'v-meter-label' }, Array.isArray(label) ? label : [ label ]),
+		E('div', { 'class': 'v-meter-bar is-thin', 'role': 'img',
+		           'aria-label': '%s: %s %s, %s %s, %s %s'.format(Array.isArray(label) ? label[0] : label, fmtBytes(used), _('used'), fmtBytes(size - used), _('free'), fmtBytes(size), _('total')) },
+			segment('v-seg-used' + (p >= 95 ? ' is-crit' : p >= 80 ? ' is-warn' : ''), used, size)),
+		E('span', { 'class': 'v-meter-val' }, [
+			/* a figure and its word stay on one line */
+			E('b', {}, [ fmtBytes(used) ]), '\u00a0' + _('used') + ' · ' + fmtBytes(size - used) + '\u00a0' + _('free') + ' · ' + fmtBytes(size) + '\u00a0' + _('total')
+		])
+	]);
+}
+
+/* the real disks LuCI leaves out: block-device mounts other than the root,
+   top-level ones only (so /opt, not every /opt/docker overlay below it) */
+function extraMounts(shown) {
+	const seen = shown.map(r => {
+		const m = /^(.*) \((\/.*)\)$/.exec(r.label);
+		return m ? m[2] : r.label;
+	});
+	return L.resolveDefault(callMountPoints(false), []).then(reply => {
+		const list = Array.isArray(reply) ? reply : (reply && Array.isArray(reply.result) ? reply.result : []);
+		const cand = [];
+		list.forEach(m => {
+			if (!m || typeof m.mount !== 'string' || typeof m.device !== 'string') return;
+			/* a block device, not tmpfs / overlayfs / proc / the merged view */
+			if (m.device.indexOf('/dev/') !== 0 || !(m.size > 0)) return;
+			/* the root is what LuCI already draws; /rom and /boot are firmware */
+			if (m.mount === '/' || m.mount === '/rom' || m.mount === '/boot') return;
+			if (seen.indexOf(m.mount) >= 0) return;
+			/* the same mount is reported more than once on some setups */
+			if (cand.some(o => o.mount === m.mount)) return;
+			cand.push(m);
+		});
+		/* top level only: /opt stays, /opt/docker and /overlay/foo go */
+		const above = seen.concat(cand.map(o => o.mount));
+		return cand
+			.filter(m => !above.some(p => p !== m.mount && m.mount.indexOf(p + '/') === 0))
+			.sort((a, b) => a.mount < b.mount ? -1 : a.mount > b.mount ? 1 : 0);
 	});
 }
 
@@ -512,23 +578,20 @@ function enhanceStorage() {
 		const rows = barRows(table);
 		if (!rows.length) return;
 
-		replaceTable(table, E('div', { 'class': 'v-meter-rows v-meter-disk' }, rows.map(r => {
+		const box = E('div', { 'class': 'v-meter-rows v-meter-disk' }, rows.map(r => {
 			const m = /^(.*) \((\/.*)\)$/.exec(r.label);
-			const label = E('span', { 'class': 'v-meter-label' }, m ? [ m[2], E('small', {}, [ m[1] ]) ] : [ r.label ]);
+			const label = m ? [ m[2], E('small', {}, [ m[1] ]) ] : [ r.label ];
 			if (!r.pair)
-				return E('div', { 'class': 'v-meter-row' }, [ label, E('div', { 'class': 'v-meter-bar is-thin' }), E('span', { 'class': 'v-meter-val' }, [ '?' ]) ]);
-			const used = r.pair.value, size = r.pair.total, p = pctOf(used, size);
-			return E('div', { 'class': 'v-meter-row' }, [
-				label,
-				E('div', { 'class': 'v-meter-bar is-thin', 'role': 'img',
-				           'aria-label': '%s: %s %s, %s %s, %s %s'.format(r.label, fmtBytes(used), _('used'), fmtBytes(size - used), _('free'), fmtBytes(size), _('total')) },
-					segment('v-seg-used' + (p >= 95 ? ' is-crit' : p >= 80 ? ' is-warn' : ''), used, size)),
-				E('span', { 'class': 'v-meter-val' }, [
-					/* a figure and its word stay on one line */
-					E('b', {}, [ fmtBytes(used) ]), '\u00a0' + _('used') + ' · ' + fmtBytes(size - used) + '\u00a0' + _('free') + ' · ' + fmtBytes(size) + '\u00a0' + _('total')
-				])
-			]);
-		})));
+				return E('div', { 'class': 'v-meter-row' }, [ E('span', { 'class': 'v-meter-label' }, label), E('div', { 'class': 'v-meter-bar is-thin' }), E('span', { 'class': 'v-meter-val' }, [ '?' ]) ]);
+			return diskBar(label, r.pair.value, r.pair.total);
+		}));
+		replaceTable(table, box);
+
+		/* the block devices LuCI's own section leaves out (a data disk, an
+		   SSD the containers live on): add them once the reply arrives */
+		extraMounts(rows).then(list => {
+			list.forEach(m => box.appendChild(diskBar(m.mount, Math.max(0, m.size - m.free), m.size)));
+		}).catch(() => {});
 	});
 }
 
