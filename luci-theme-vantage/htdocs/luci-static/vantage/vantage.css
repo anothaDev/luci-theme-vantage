@@ -1752,6 +1752,10 @@ table { border-collapse: separate; border-spacing: 0; width: 100%; }
 .cbi-section-table-descr > .th { font-weight: 400; text-transform: none; letter-spacing: 0; font-size: var(--fs-sm); }
 .cbi-section-table-cell, .cbi-section-table-row > .td { vertical-align: middle; }
 .td.cbi-value-field .cbi-dropdown, .td.cbi-value-field input:not([type="checkbox"]), .td.cbi-value-field select { max-width: 220px; }
+/* A text field is width:100%, which an auto table layout counts as 0 wide, so
+   a column with a short header (Name and Path in Services > Network Shares)
+   shrank to a sliver and hid its value. Give the field a floor. */
+.td.cbi-value-field input[type="text"], .td.cbi-value-field input:not([type]) { min-width: 11em; }
 
 /* key/value tables (status pages): quiet label column */
 .table:not(:has(.table-titles)) .tr > .td:first-child:nth-last-child(2) {
