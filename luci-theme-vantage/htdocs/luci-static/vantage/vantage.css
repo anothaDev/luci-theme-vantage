@@ -55,7 +55,7 @@
 	--ctl-h: 36px;              /* every control: inputs, selects, buttons, tabs, chips */
 	--label-w: 180px;           /* form label column */
 	--field-max: 360px;         /* widest single-line field */
-	--content-max: 1320px;
+	--content-max: 2400px;      /* content column cap; narrower windows fill it */
 
 	/* light: cool paper grey, olive accent text */
 	--bg: #e9ecef;
