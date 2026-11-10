@@ -685,6 +685,19 @@ return baseclass.extend({
 		var kernel = Array.isArray(raw.routes) ? raw.routes : null;
 		var uplink = this.resolveUplink(raw.ifaces, devs, wlNames, null, kernel);
 		var subnets = uplink ? uplink.ipv4 : [];
+		/* a station's addresses are in its network's subnets (the SSID's
+		   network, 'lan'), not the uplink's: on a router the uplink is the
+		   WAN, and its subnet would leave a station only its IPv6 ones */
+		var netSubnets = Object.create(null);
+		arr(raw.ifaces).forEach(function(i) {
+			if (i && typeof i.interface === 'string' && !netSubnets[i.interface])
+				netSubnets[i.interface] = arr(i['ipv4-address']).map(function(a) { return a && a.address ? a.address + '/' + a.mask : null; }).filter(Boolean);
+		});
+		function ssidSubnets(ss) {
+			var out = [];
+			arr(ss.networks).forEach(function(n) { arr(netSubnets[n]).forEach(function(s) { if (out.indexOf(s) < 0) out.push(s); }); });
+			return out.length ? out : subnets;
+		}
 
 		function hintOf(mac) { return obj(hints[mac.toUpperCase()] || hints[mac]); }
 
@@ -693,7 +706,7 @@ return baseclass.extend({
 		ssids.forEach(function(ss) {
 			if (ss.ifname) arr(assoc[ss.ifname]).forEach(function(s) {
 				var mac = s && names.normMac(s.mac);
-				if (mac) everyone.push({ mac: mac, ips: self.hintAddrs(hintOf(mac), subnets) });
+				if (mac) everyone.push({ mac: mac, ips: self.hintAddrs(hintOf(mac), ssidSubnets(ss)) });
 			});
 		});
 		/* wired hosts: what the bridges learned on ports that are not
@@ -751,7 +764,7 @@ return baseclass.extend({
 				if (!mac) return;
 				var h = hmap[mac] || {}, rx = obj(s.rx), tx = obj(s.tx);
 				var hint = hintOf(mac);
-				var ips = self.hintAddrs(hint, subnets);
+				var ips = self.hintAddrs(hint, ssidSubnets(ss));
 				var std = wifi.clientStd(rx, tx, h);
 				var alias = raw.aliases && raw.aliases[mac];
 				var nm = names.resolve({

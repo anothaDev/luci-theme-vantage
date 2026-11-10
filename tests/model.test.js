@@ -911,3 +911,27 @@ test('PPPoE on a DSA port stays on that port: the conduit carries the other port
 	const ifaces = [ { interface: 'wan', up: true, proto: 'pppoe', device: 'wan', l3_device: 'pppoe-wan', route: [ { target: '0.0.0.0', mask: 0, nexthop: '192.0.2.1' } ] } ];
 	assert.equal(model.resolveUplink(ifaces, devs, [], null, null).statsDev, 'wan');
 });
+
+/* #110: on a router the uplink is the WAN; a station's IPv4 address is in
+   its own network's subnet (the SSID's 'lan'), not the WAN's */
+test('build: on a router, stations keep their LAN IPv4 address (not only IPv6)', () => {
+	const r = raw();
+	r.ifaces = [
+		{ interface: 'loopback', up: true, l3_device: 'lo', device: 'lo' },
+		{ interface: 'wan', up: true, l3_device: 'eth1', device: 'eth1', proto: 'dhcp', uptime: 100,
+		  'ipv4-address': [ { address: '203.0.113.10', mask: 24 } ],
+		  route: [ { target: '0.0.0.0', mask: 0, nexthop: '203.0.113.1' } ], 'dns-server': [ '203.0.113.1' ] },
+		{ interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', proto: 'static', uptime: 100,
+		  'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ] }
+	];
+	r.devs = Object.assign({}, DEVS, { eth1: { devtype: 'ethernet', speed: '1000F', carrier: true, statistics: { rx_bytes: 1, tx_bytes: 2 } } });
+	r.hints = { '00:00:5E:00:53:01': { name: 'office-printer', ipaddrs: [ '192.0.2.44' ], ip6addrs: [ '2001:db8::44' ] } };
+	const m = model.build(r);
+	assert.equal(m.uplink.iface, 'wan', 'a router: the WAN is the uplink');
+	const printer = m.clients.filter(c => c.mac === '00:00:5e:00:53:01')[0];
+	assert.deepEqual(printer.ips, [ '192.0.2.44', '2001:db8::44' ]);
+	/* a network without an IPv4 address of its own: the uplink's, as before */
+	r.ifaces[2]['ipv4-address'] = [];
+	r.ifaces[1]['ipv4-address'] = [ { address: '192.0.2.200', mask: 24 } ];
+	assert.deepEqual(model.build(r).clients.filter(c => c.mac === '00:00:5e:00:53:01')[0].ips[0], '192.0.2.44');
+});
