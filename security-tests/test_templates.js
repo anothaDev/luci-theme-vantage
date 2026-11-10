@@ -82,7 +82,7 @@ function environment(o) {
 			getenv: k => ({ PATH_INFO: '/' + o.path.join('/'), REQUEST_URI: '/cgi-bin/luci/' + o.path.join('/'),
 				HTTP_HOST: o.hostile ? HOSTILE : 'ap.example', HTTP_REFERER: o.hostile ? HOSTILE : null,
 				QUERY_STRING: o.hostile ? HOSTILE : '' })[k] ?? null,
-			formvalue: () => o.hostile ? HOSTILE : null,
+			formvalue: key => o.form?.[key] ?? (o.hostile ? HOSTILE : null),
 			getcookie: () => null
 		},
 		ubus: {
@@ -156,7 +156,10 @@ function renderPage(o) {
 
 function renderLogin(o) {
 	const { env, calls } = environment(o);
-	const html = engine.render(THEME + '/sysauth', env, { duser: o.hostile ? 'root' + HOSTILE : 'root', fuser: o.fuser ?? null });
+	const html = engine.render(THEME + '/sysauth', env, {
+		duser: o.hostile ? 'root' + HOSTILE : 'root', fuser: o.fuser ?? null,
+		auth_fields: o.auth_fields, auth_plugin: o.auth_plugin, auth_message: o.auth_message
+	});
 	return { html, calls };
 }
 
@@ -300,6 +303,42 @@ test('header: the contract hooks and script order are in place', () => {
 		for (const m of src.matchAll(/(?:href|src)="([^"]*\.(?:css|js))"/g))
 			assert.match(m[1], /^\{\{ (media|resource) \}\}\/[\w.-]+$/, `${t}.ut: asset URL ${m[1]} is not in the cache-busting form`);
 	}
+});
+
+test('login: authentication challenge posts the OTP with credentials and escapes plugin text', () => {
+	const field = { name: 'luci_otp', label: 'One-Time Password', type: 'text',
+		placeholder: '000000', inputmode: 'numeric', pattern: '[0-9]{6}', maxlength: 6,
+		autocomplete: 'one-time-code', required: true };
+	const render = (changes = {}) => renderLogin({ path: ADMIN, fuser: 'root',
+		auth_plugin: 'Two-Factor Authentication', auth_message: 'Please enter your one-time password.',
+		auth_fields: [ field ], ...changes }).html;
+	const html = render();
+	const form = html.match(/<form\b[^>]*>([\s\S]*?)<\/form>/)[1];
+	const inputs = tokenize(form).tags.filter(t => t.name === 'input').map(t => Object.fromEntries(t.attrs));
+	assert.deepEqual(inputs.map(i => i.name), [ 'luci_username', 'luci_password', 'luci_otp' ]);
+	assert.deepEqual(inputs.map(i => i.id), [ 'luci_username', 'luci_password', 'luci_otp' ]);
+	assert.deepEqual(inputs.map(i => i.autocomplete), [ 'username', 'current-password', 'one-time-code' ]);
+	const labels = tokenize(form).tags.filter(t => t.name === 'label' && !t.close).map(t => Object.fromEntries(t.attrs).for);
+	assert.deepEqual(labels, inputs.map(i => i.id), 'explicit labels identify all autofill fields');
+	assert.equal(inputs[2].autocomplete, 'one-time-code');
+	assert.equal(inputs[2].inputmode, 'numeric');
+	assert.equal(inputs[2].pattern, '[0-9]{6}');
+	assert.equal(inputs[2].maxlength, '6');
+	assert.ok(Object.hasOwn(inputs[2], 'required'));
+	assert.ok(!html.includes('Invalid username and/or password!'), 'valid password is not reported as wrong');
+	assert.ok(html.includes('Please enter your one-time password.'));
+	assert.match(html, /class="vt-login-info" role="status">Please enter your one-time password\./);
+	assert.ok(form.indexOf('name="luci_otp"') < form.indexOf('class="vt-login-info"'), 'guidance follows the OTP input');
+	assert.ok(form.indexOf('class="vt-login-info"') < form.indexOf('type="submit"'), 'guidance precedes the login button');
+	const failed = render({ form: { luci_otp: '123456' }, auth_message: 'Invalid one-time password. Please try again.' });
+	assert.match(failed, /class="vt-login-error" role="alert">Invalid one-time password\./);
+	assert.ok(render({ auth_plugin: null }).includes('Invalid username and/or password!'), 'wrong password remains visible');
+	const hostileField = Object.fromEntries(Object.entries(field).map(([k, v]) => [ k, k === 'required' ? v : HOSTILE ]));
+	const evil = render({ auth_fields: [ hostileField ], auth_message: HOSTILE });
+	assert.deepEqual(skeleton(evil), skeleton(html), 'plugin text cannot inject markup or attributes');
+	assert.ok(!evil.includes(HOSTILE));
+	assert.deepEqual(inlineScripts(evil), inlineScripts(html));
+	assert.match(html, /var input = form && form.querySelector\('input\[name="luci_password"\]'\)/, 'initial focus matches Bootstrap');
 });
 
 test('login: fuser is never echoed, hostile inputs change no markup, the hostname and nothing else about the device', () => {
