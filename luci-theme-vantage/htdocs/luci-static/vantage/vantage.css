@@ -711,6 +711,9 @@ a.vt-crumb:hover { color: var(--text); }
 	background: color-mix(in oklab, var(--ok) 50%, transparent);
 	opacity: 0; pointer-events: none;
 	animation: vt-live-soft 5s ease-out infinite;
+	/* its layer stays while the animation stands paused between the
+	   theme's clock ticks (menu-vantage.js stepPulses) */
+	will-change: transform, opacity;
 }
 html[data-vt-live="err"] #indicators > span[data-indicator="poll-status"][data-style="active"]::after, html[data-vt-alert="warn"] #indicators > span[data-indicator="poll-status"][data-style="active"]::after {
 	background: color-mix(in oklab, var(--warn) 50%, transparent);

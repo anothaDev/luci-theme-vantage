@@ -34,6 +34,28 @@ var LOW_SLOW_MS = 30 * 1000;
    poll every LOW_IDLE_POLL_MS and no fast lane, until the next input */
 var LOW_IDLE_MS = 5 * 60 * 1000;
 var LOW_IDLE_POLL_MS = 30 * 1000;
+/* luci-rpc getHostHints reads the DHCP leases and the ARP table: asked
+   again after HINTS_MS, and on each of the HINTS_HOT polls after a
+   station or wired host first appears, since its lease follows its
+   association by a moment; in between, its last reply */
+var HINTS_MS = 30 * 1000;
+var HINTS_HOT = 3;
+/* One clock for everything that moves (the status circle's ring, the Live
+   beat, the flow dots, the backdrop): a compositor animation makes the
+   browser draw a frame on every display refresh, sixty a second, however
+   slow the motion; here the pulses (CSS animations) and the dots are paused
+   through the Web Animations API and stepped MOTION_MS apart, 20 frames a
+   second, or at the backdrop's own rate (up to 30) while it draws. Under
+   the Vantage theme the ticks go out as vantage:tick, so the theme's
+   refresh dot moves on the same frames (menu-vantage.js) */
+var MOTION_MS = 50;
+/* the flow dots too (false: they stay compositor animations, as before) */
+var STEP_DOTS = false;
+var MOTION_EVENT = 'vantage:tick';
+/* the pulses' animation names (app.css vt-ring, vt-ring-soft, vt-beat,
+   vt-beat-soft); spelled without a class-like token for the theme's
+   class scan (tests/theme-css.test.js) */
+var PULSE_NAME = new RegExp('^vt' + '-(?:ring|beat)');
 var WINDOW_MS = 5 * 60 * 1000;        /* throughput history shown */
 var HIST_MAX = 90;
 var HIST_FAST = 160;                  /* five minutes at FAST_S, and some */
@@ -100,6 +122,23 @@ function loadCss() {
 
 function reducedMotion() {
 	return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+/* an animation's iteration length in ms, 0 when unknown */
+function pulseDuration(a) {
+	var tm = a.effect && typeof a.effect.getTiming === 'function' ? a.effect.getTiming() : null;
+	return tm && typeof tm.duration === 'number' && tm.duration > 0 ? tm.duration : 0;
+}
+
+/* a paused animation dt ms on. The time is kept here (x.at), never read
+   back: reading a CSS animation's currentTime makes the browser bring
+   the style up to date first, once per animation. An endless one is kept
+   within one iteration (the same phase, so the numbers never grow) */
+function stepAnim(x, dt) {
+	var t = (x.at || 0) + dt;
+	if (x.dur > 0 && t >= x.dur) t -= Math.floor(t / x.dur) * x.dur;
+	x.at = t;
+	x.a.currentTime = t;
 }
 
 /* is the page rendered by the Vantage theme (L.env.media '/luci-static/vantage')? */
@@ -706,6 +745,9 @@ return view.extend({
 		var age = started - this.slowAt;
 		var slow = !lowPower() || !this.slowCache || !(age >= 0 && age < LOW_SLOW_MS);
 		var kept = this.slowCache || {};
+		/* the host hints: their last reply until they are due */
+		var hintsAge = started - (this.hintsAt || 0);
+		var hintsDue = !this.hintsCache || this.hintsHot > 0 || !(hintsAge >= 0 && hintsAge < HINTS_MS);
 		return Promise.all([
 			L.resolveDefault(callInfo(), {}),
 			L.resolveDefault(callRead('/proc/stat'), ''),
@@ -714,7 +756,7 @@ return view.extend({
 			/* null when the call fails: no answer is not "no radios" (nor
 			   no sensors or no wired hosts, which then read as none) */
 			slow ? L.resolveDefault(callWifi(), null) : Promise.resolve(kept.wifi),
-			L.resolveDefault(callHints(), {}),
+			hintsDue ? L.resolveDefault(callHints(), null) : Promise.resolve(this.hintsCache),
 			slow ? L.resolveDefault(callThermal(), null) : Promise.resolve(kept.thermal),
 			slow ? L.resolveDefault(callWired(), null) : Promise.resolve(kept.wired),
 			/* null when the call fails (an older plugin): netifd's metrics decide */
@@ -744,6 +786,11 @@ return view.extend({
 			   its own iwinfo info. Each costs the router ~15 ms. */
 			var hapdKnown = self.hapdBss || {};
 			var per = [];
+			if (hintsDue) {
+				/* a failed call keeps the last reply and is asked again next poll */
+				if (r[5] && typeof r[5] === 'object') { self.hintsCache = r[5]; self.hintsAt = started; }
+				if (self.hintsHot > 0) self.hintsHot--;
+			}
 			/* the link state of a switch with hosts behind it, every
 			   SWITCH_MS: each answer runs swconfig on the device. Asked
 			   on the side, so a slow switch holds up no poll; the answer
@@ -786,6 +833,16 @@ return view.extend({
 					self.slowAt = started;
 					self.slowCache = { wifi: r[4], thermal: r[6], wired: r[7], hapd: hapd, iwinfo: iwinfo };
 				}
+				/* a station or wired host seen for the first time: its name
+				   may be in the next host hints */
+				var known = self.knownMacs || (self.knownMacs = new Set()), fresh = false, first = !self.macsSeen;
+				var note = function(s) { if (s && typeof s.mac === 'string' && !known.has(s.mac)) { known.add(s.mac); fresh = true; } };
+				Object.keys(assoc).forEach(function(ifn) { (Array.isArray(assoc[ifn]) ? assoc[ifn] : []).forEach(note); });
+				(Array.isArray(wiredReply.hosts) ? wiredReply.hosts : []).forEach(note);
+				/* bounded: a flood of made-up addresses starts the set over */
+				if (known.size > 4096) self.knownMacs = null;
+				self.macsSeen = true;
+				if (fresh && !first) self.hintsHot = HINTS_HOT;
 				self.hapdBss = Object.create(null);
 				Object.keys(hapdStatus).forEach(function(ifn) {
 					var h = hapdStatus[ifn];
@@ -793,7 +850,7 @@ return view.extend({
 				});
 				var switchState = Object.create(null);
 				Object.keys(swState).forEach(function(n) { switchState[n] = swState[n].ports; });
-				return { info: r[0] || {}, stat: r[1] || '', ifaces: r[2] || [], devs: r[3] || {}, wifi: wifiDevs, hints: r[5] || {}, thermal: r[6] || [],
+				return { info: r[0] || {}, stat: r[1] || '', ifaces: r[2] || [], devs: r[3] || {}, wifi: wifiDevs, hints: r[5] || self.hintsCache || {}, thermal: r[6] || [],
 					fdb: Array.isArray(wiredReply.hosts) ? wiredReply.hosts : [], fdbCrowded: wiredReply.crowded === true, switches: switches, switchState: switchState,
 					/* no answer (an older plugin, a lookup not sent, a failed call)
 					   keeps the last one: no tunnel blinking off */
@@ -1170,7 +1227,7 @@ return view.extend({
 	applyPower: function() {
 		var low = lowPower();
 		if (this.el && this.el.root) this.el.root.classList.toggle('vt-low', low);
-		if (this.backdrop) this.backdrop.style(low ? 'none' : this.backdropStyle);
+		if (this.backdrop) { this.backdrop.style(low ? 'none' : this.backdropStyle); this.kickMotion(); }
 		this.paintWireState();
 		this.paintLive();
 	},
@@ -1197,6 +1254,17 @@ return view.extend({
 		]);
 		this.el.root = root;
 		root.classList.toggle('vt-low', lowPower());
+		this.clock = { anims: [], raf: 0, timer: 0, last: 0 };
+		root.addEventListener('animationstart', function(ev) { if (PULSE_NAME.test(ev.animationName || '')) self.adoptPulses(ev.target); });
+		/* a pulse CSS took away (.vt-still, reduced motion): dropped here,
+		   on its event, since asking an animation's playState on every
+		   tick makes the browser bring the style up to date each time */
+		var dropPulses = function(ev) {
+			if (!PULSE_NAME.test(ev.animationName || '') || !self.clock) return;
+			self.clock.anims = self.clock.anims.filter(function(x) { return x.a.playState !== 'idle'; });
+		};
+		root.addEventListener('animationcancel', dropPulses);
+		root.addEventListener('animationend', dropPulses);
 		/* wires follow the nodes' geometry: redrawn when the path or a
 		   node changes size (observer callbacks run after layout, so the
 		   reads there force nothing), never on a poll that moves nothing */
@@ -1561,7 +1629,7 @@ return view.extend({
 	showBackdrop: function(v) {
 		if (backdrop.STYLES.indexOf(v) < 0 || v === this.backdropStyle) return;
 		this.backdropStyle = v;
-		if (this.backdrop) this.backdrop.style(lowPower() ? 'none' : v);
+		if (this.backdrop) { this.backdrop.style(lowPower() ? 'none' : v); this.kickMotion(); }
 		if (this.backdropPick && this.backdropPick.value !== v) this.backdropPick.value = v;
 	},
 
@@ -1831,11 +1899,81 @@ return view.extend({
 		if (this.motionOn === on) return;
 		this.motionOn = on;
 		if (this.el && this.el.root) this.el.root.classList.toggle('vt-still', !on);
-		var map = this.wireMap || {};
-		Object.keys(map).forEach(function(k) {
-			map[k].anims.forEach(function(a) { if (on) a.play(); else a.pause(); });
-		});
 		if (this.backdrop) this.backdrop.pause(!on);
+		if (!STEP_DOTS) {
+			var map = this.wireMap || {};
+			Object.keys(map).forEach(function(k) { map[k].anims.forEach(function(a) { if (on) a.play(); else a.pause(); }); });
+		}
+		/* the dots and the pulses stand where they are: the clock stops */
+		this.kickMotion();
+	},
+
+	/* ----------------------------------------------------- motion clock */
+
+	/* a CSS pulse that just started (the status circle's ring, the Live
+	   beat; animationstart bubbles from the element the pseudo-element
+	   belongs to): paused, and stepped by the clock from now on. One
+	   that CSS takes away (.vt-still, reduced motion) goes idle and is
+	   dropped at the next step */
+	adoptPulses: function(el) {
+		var c = this.clock;
+		if (!c || !el || typeof el.getAnimations !== 'function') return;
+		el.getAnimations({ subtree: true }).forEach(function(a) {
+			if (!a.effect || !PULSE_NAME.test(a.animationName || '') || a.playState !== 'running') return;
+			if (c.anims.some(function(x) { return x.a === a; })) return;
+			a.pause();
+			c.anims.push({ a: a, dur: pulseDuration(a), at: 0 });
+		});
+		this.kickMotion();
+	},
+
+	/* is there anything for the clock to move? */
+	motionBusy: function() {
+		var c = this.clock, map = this.wireMap || {};
+		if (!c || !this.motionOn) return false;
+		if (c.anims.length || (this.backdrop && this.backdrop.wants())) return true;
+		return STEP_DOTS && Object.keys(map).some(function(k) { return map[k].steps.length > 0; });
+	},
+
+	/* start the clock when it has work and is not running; it stops by
+	   itself when the work is gone */
+	kickMotion: function() {
+		var self = this, c = this.clock;
+		if (!c || c.raf || c.timer || !this.motionBusy()) return;
+		c.last = 0;
+		c.raf = window.requestAnimationFrame(function(t) { self.tickMotion(t); });
+	},
+
+	tickMotion: function(t) {
+		var self = this, c = this.clock;
+		c.raf = 0;
+		if (!this.motionBusy()) { c.last = 0; return; }
+		/* the first tick after a rest, or a frame the browser held back
+		   (a hidden tab), moves nothing far */
+		var dt = c.last ? Math.min(t - c.last, 4 * MOTION_MS) : 0;
+		c.last = t;
+		this.stepMotion(dt, t);
+		var period = this.backdrop && this.backdrop.wants() ? this.backdrop.period() : MOTION_MS;
+		/* the wait ends a little early, the browser's next frame is the one */
+		c.timer = window.setTimeout(function() {
+			c.timer = 0;
+			if (!c.raf) c.raf = window.requestAnimationFrame(function(t) { self.tickMotion(t); });
+		}, Math.max(0, period - 12));
+	},
+
+	/* dt ms on: the pulses, the dots at their wires' speeds, the
+	   backdrop's frame; then the theme's clock (vantage:tick) */
+	stepMotion: function(dt, t) {
+		var c = this.clock, map = this.wireMap || {};
+		c.anims.forEach(function(x) { stepAnim(x, dt); });
+		if (STEP_DOTS) Object.keys(map).forEach(function(k) {
+			var g = map[k], rate = wires.rate(g.speed);
+			g.steps.forEach(function(x) { stepAnim(x, dt * rate); });
+		});
+		if (this.backdrop) this.backdrop.frame(t);
+		var ev = null;
+		try { ev = new CustomEvent(MOTION_EVENT, { detail: { dt: dt, t: t } }); } catch (e) { ev = null; }
+		if (ev && typeof window.dispatchEvent === 'function') window.dispatchEvent(ev);
 	},
 
 	/* ----------------------------------------------------------- health */
@@ -1980,7 +2118,7 @@ return view.extend({
 			el.path
 		]));
 		/* packets or stars behind the path, moved by the uplink's rate */
-		this.backdrop = backdrop.mount(tile, el.path, lowPower() ? 'none' : this.backdropStyle);
+		this.backdrop = backdrop.mount(tile, el.path, lowPower() ? 'none' : this.backdropStyle, { external: true });
 		return tile;
 	},
 
@@ -2211,7 +2349,7 @@ return view.extend({
 		txt(h.apUp, d.uptime != null ? _('up %s').format(fmt.duration(d.uptime)) : '');
 		h.upActive = !!(upR && upR.rx + upR.tx > 50e3);
 		h.upRate = upR ? upR.rx + upR.tx : 0;
-		if (this.backdrop) this.backdrop.update({ down: upR ? upR.rx : null, up: upR ? upR.tx : null, origin: h.ap });
+		if (this.backdrop) { this.backdrop.update({ down: upR ? upR.rx : null, up: upR ? upR.tx : null, origin: h.ap }); this.kickMotion(); }
 
 		var lines = Object.create(null);
 		this.extraLines().forEach(function(x) { lines[x.iface] = x; });
@@ -2370,7 +2508,7 @@ return view.extend({
 			seen[w.key] = true;
 			var g = map[w.key];
 			if (!g) {
-				g = map[w.key] = { base: svgPath('', 'vt-wire'), flow: svgPath('', 'vt-flow'), fw: E('div', { 'class': 'vt-fwire' }), dots: [], anims: [], d: null };
+				g = map[w.key] = { base: svgPath('', 'vt-wire'), flow: svgPath('', 'vt-flow'), fw: E('div', { 'class': 'vt-fwire' }), dots: [], anims: [], steps: [], d: null };
 				svg.appendChild(g.base);
 				svg.appendChild(g.flow);
 				self.el.flows.appendChild(g.fw);
@@ -2435,16 +2573,21 @@ return view.extend({
 		g.dotsFor = g.d;
 		if (!g.samples || g.samples.length < 2 || !(g.len >= 8) || typeof g.fw.animate !== 'function') return;
 		var n = wires.dots(g.len), dur = wires.trip(g.len), rate = wires.rate(speed);
+		g.steps = [];
 		for (var i = 0; i < n; i++) {
 			var dot = E('span', { 'class': 'vt-fdot' });
 			g.fw.appendChild(dot);
-			/* every dot takes the whole trip, started i/n of the way along */
-			var a = dot.animate(wires.keyframes(g.samples), { duration: dur, delay: -dur * i / n, iterations: Infinity, easing: 'linear' });
+			/* every dot takes the whole trip, started i/n of the way along;
+			   paused: the clock moves it (stepMotion), at the wire's rate */
+			var a = dot.animate(wires.keyframes(g.samples), { duration: dur, iterations: Infinity, easing: 'linear' });
 			a.playbackRate = rate;
-			if (this.motionOn === false) a.pause();
+			a.currentTime = dur * i / n;
+			if (STEP_DOTS) { a.pause(); g.steps.push({ a: a, dur: dur, at: dur * i / n }); }
+			else if (this.motionOn === false) a.pause();
 			g.dots.push(dot);
 			g.anims.push(a);
 		}
+		this.kickMotion();
 	},
 
 	clearDots: function(g) {
@@ -2452,6 +2595,7 @@ return view.extend({
 		g.anims.forEach(function(a) { a.cancel(); });
 		g.dots.forEach(function(d) { if (d.parentNode) d.parentNode.removeChild(d); });
 		g.anims = [];
+		g.steps = [];
 		g.dots = [];
 		g.dotsFor = null;
 	},

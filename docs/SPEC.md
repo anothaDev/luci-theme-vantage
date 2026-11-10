@@ -423,7 +423,9 @@ text around it so it looks the same size.
   poll again right after the page fetched it, and two CPU samples under
   a second apart give none. `iwinfo info` is asked once a radio (its
   first interface: channel, power, noise); another network's BSSID and
-  SSID come from hostapd's `get_status`, which the poll asks anyway.
+  SSID come from hostapd's `get_status`, which the poll asks anyway. The
+  host hints (DHCP leases, ARP) every 30 s, and on each of the three
+  polls after a station or wired host first appears.
 - **Low-power router** (#101), under the theme's Appearance with the
   dashboard, off by default: the live numbers as always (the 2 s lane and
   the 5 s poll); Wi-Fi state, the radios' `iwinfo`, client capabilities,
@@ -444,7 +446,12 @@ text around it so it looks the same size.
   changes size. Idle animations (the status circle's ring, the Live beat,
   the flow on busy wires)
   use transform and opacity only, so the compositor runs them; with
-  reduced motion they stop and busy wires show a static dotted line.
+  reduced motion they stop and busy wires show a static dotted line. The
+  ring, the Live beat and the backdrop move on one clock of the
+  dashboard's, 20 frames a second (the backdrop's own rate, up to 30,
+  while it draws), and the theme's refresh dot on its own 15 a second
+  (the dashboard's frames while it runs): left to the compositor, a
+  five-second pulse would have the browser draw sixty frames a second.
 - ACL: three groups for the app, and the theme's own, below. `luci-app-vantage` (read): `system info/board`,
   `network.interface dump`, `network.device status`, `iwinfo
   info/assoclist`, `hostapd.* get_status/get_clients`, `luci-rpc

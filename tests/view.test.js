@@ -603,9 +603,15 @@ test('live pill: under the Vantage theme only when not live; under another theme
 });
 
 test('paused from LuCI\'s indicator: the pill says so (once, under the Vantage theme) and nothing moves', () => {
-	const saved = { L: global.L, document: global.document };
+	const saved = { L: global.L, document: global.document, window: global.window };
 	const root = { attrs: {}, setAttribute(k, v) { this.attrs[k] = v; } };
+	/* the flow dots are compositor animations, paused and played with the
+	   motion; the pulses (the ring, the beat) stand paused and the clock
+	   (tickMotion) moves them while it runs, and stops when nothing may move */
 	const anim = () => ({ state: 'running', play() { this.state = 'running'; }, pause() { this.state = 'paused'; } });
+	const pulse = () => ({ currentTime: 0, playState: 'paused' });
+	const frames = [], timers = [];
+	global.window = { requestAnimationFrame: fn => frames.push(fn), setTimeout: fn => timers.push(fn), dispatchEvent() {} };
 	const make = media => {
 		global.L = { env: { media } };
 		global.document = { hidden: false, documentElement: root };
@@ -614,8 +620,9 @@ test('paused from LuCI\'s indicator: the pill says so (once, under the Vantage t
 		self.st = { paused: false, lastErr: null, lastOk: Date.now() };
 		self.el = { live: { className: '', hidden: false, setAttribute() {} }, liveText: { textContent: '' },
 			root: { classList: { toggle: (c, on) => on ? cls.add(c) : cls.delete(c) } } };
-		self.wireMap = { a: { anims: [ anim(), anim() ] } };
-		self.backdrop = { paused: false, pause(on) { this.paused = on; } };
+		self.wireMap = { a: { anims: [ anim(), anim() ], steps: [], speed: 1 } };
+		self.clock = { anims: [ { a: pulse(), dur: 5000, at: 0 } ], raf: 0, timer: 0, last: 0 };
+		self.backdrop = { paused: false, pause(on) { this.paused = on; }, wants() { return false; }, period() { return 50; }, frame() { return false; } };
 		self.cls = cls;
 		return self;
 	};
@@ -629,12 +636,21 @@ test('paused from LuCI\'s indicator: the pill says so (once, under the Vantage t
 		assert.equal(root.attrs['data-vt-live'], 'paused');
 		assert.ok(self.cls.has('vt-still'), 'the status circle stands still');
 		assert.deepEqual(self.wireMap.a.anims.map(a => a.state), [ 'paused', 'paused' ], 'the flow dots stop where they are');
+		assert.equal(frames.length, 0, 'the clock does not start');
+		self.tickMotion(100);
+		assert.deepEqual([ frames.length, timers.length, self.clock.anims[0].a.currentTime ], [ 0, 0, 0 ], 'a tick moves nothing and asks for no frame');
 		assert.equal(self.backdrop.paused, true, 'the backdrop keeps its last frame');
 		POLL.on = true;
 		self.paintLive();
 		assert.equal(self.el.live.className, 'vt-livepill vt-live-ok');
 		assert.ok(!self.cls.has('vt-still'));
 		assert.deepEqual(self.wireMap.a.anims.map(a => a.state), [ 'running', 'running' ], 'and go on from there');
+		assert.equal(frames.length, 1, 'the clock starts');
+		frames.pop()(100);
+		frames.pop() && assert.fail('a tick asks for its next frame through a timer, not at once');
+		assert.equal(timers.length, 1, 'the next frame waits for the clock');
+		self.tickMotion(150);
+		assert.equal(self.clock.anims[0].a.currentTime, 50, 'the pulse goes on from there, 50 ms a tick');
 		assert.equal(self.backdrop.paused, false);
 		POLL.on = false;
 		self = make('/luci-static/bootstrap');
@@ -643,6 +659,7 @@ test('paused from LuCI\'s indicator: the pill says so (once, under the Vantage t
 	} finally {
 		POLL.on = true;
 		global.L = saved.L;
+		if (saved.window === undefined) delete global.window; else global.window = saved.window;
 		if (saved.document === undefined) delete global.document; else global.document = saved.document;
 	}
 });
@@ -1205,5 +1222,40 @@ test('#110: a rebuilt quiet row shows the last attempt\'s error and stays disabl
 		assert.equal(self.quietRow({ mac }, false), '', 'no grant, not set: nothing');
 	} finally {
 		if (saved.E === undefined) delete global.E; else global.E = saved.E;
+	}
+});
+
+/* luci-rpc getHostHints reads the leases and the ARP table: every 30 s,
+   and for the three polls after a station or wired host first appears */
+test('host hints: every 30 s, and again for three polls when a station or host is new', async () => {
+	let hints = 0, stations = [ { mac: '00:00:5e:00:53:01' } ];
+	REPLIES['luci-rpc getHostHints'] = () => { hints++; return Promise.resolve({ '00:00:5e:00:53:01': { name: 'one' } }); };
+	REPLIES['luci.vantage wireless'] = () => Promise.resolve({ radio0: { up: true, config: {}, interfaces: [ { ifname: 'wl0', config: { mode: 'ap' } } ] } });
+	REPLIES['iwinfo assoclist'] = () => Promise.resolve(stations);
+	const self = Object.create(view);
+	const savedL = global.L, now = Date.now;
+	let t = 1e12;
+	Date.now = () => t;
+	global.L = { resolveDefault: (p, d) => Promise.resolve(p).then(v => v == null ? d : v, () => d) };
+	const poll = async ms => { t += ms; return self.fetch(); };
+	try {
+		let r = await poll(0);
+		assert.equal(hints, 1);
+		r = await poll(5e3);
+		assert.equal(hints, 1, 'kept');
+		assert.equal(r.hints['00:00:5e:00:53:01'].name, 'one', 'the last reply');
+		await poll(25e3);
+		assert.equal(hints, 2, 'again after 30 s');
+		stations = stations.concat([ { mac: '00:00:5e:00:53:02' } ]);
+		await poll(5e3);
+		assert.equal(hints, 2, 'the new station is this poll\'s');
+		await poll(5e3); await poll(5e3); await poll(5e3);
+		assert.equal(hints, 5, 'then three polls in a row');
+		await poll(5e3);
+		assert.equal(hints, 5, 'and kept again');
+	}
+	finally {
+		global.L = savedL; Date.now = now;
+		for (const k of Object.keys(REPLIES)) if (/^(luci-rpc getHostHints|luci\.vantage wireless|iwinfo assoclist)/.test(k)) delete REPLIES[k];
 	}
 });
