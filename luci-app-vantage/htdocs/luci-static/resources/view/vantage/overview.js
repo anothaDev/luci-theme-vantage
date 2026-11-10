@@ -34,6 +34,13 @@ var LOW_SLOW_MS = 30 * 1000;
    poll every LOW_IDLE_POLL_MS and no fast lane, until the next input */
 var LOW_IDLE_MS = 5 * 60 * 1000;
 var LOW_IDLE_POLL_MS = 30 * 1000;
+/* iwinfo info costs the router 15-22 ms an interface: asked again after
+   IWINFO_MS, or at once when the interface's state moved (its radio up,
+   down, pending or reconfigured in luci.vantage wireless; its channel,
+   frequency, BSSID or SSID in hostapd's get_status, asked every poll).
+   The noise floor, which moves, comes every poll from iwinfo survey
+   (1.5-2 ms a radio), its entry for the radio's channel */
+var IWINFO_MS = 30 * 1000;
 /* luci-rpc getHostHints reads the DHCP leases and the ARP table: asked
    again after HINTS_MS, and on each of the HINTS_HOT polls after a
    station or wired host first appears, since its lease follows its
@@ -90,6 +97,9 @@ var callSwitchPorts = rpc.declare({ object: 'luci', method: 'getSwconfigPortStat
 var callHints = rpc.declare({ object: 'luci-rpc', method: 'getHostHints', expect: { '': {} } });
 var callIwInfo = rpc.declare({ object: 'iwinfo', method: 'info', params: [ 'device' ], expect: { '': {} } });
 var callAssoc = rpc.declare({ object: 'iwinfo', method: 'assoclist', params: [ 'device' ], expect: { results: [] } });
+/* the channels' survey: the noise floor of the radio's own (model.js
+   surveyNoise); null when the call fails */
+var callSurvey = rpc.declare({ object: 'iwinfo', method: 'survey', params: [ 'device' ], expect: { results: [] } });
 var callRrdns = rpc.declare({ object: 'network.rrdns', method: 'lookup', params: [ 'addrs', 'timeout', 'limit' ], expect: { '': {} } });
 var callMdns = rpc.declare({ object: 'umdns', method: 'hosts' });
 var callUciGet = rpc.declare({ object: 'uci', method: 'get', params: [ 'config' ], expect: { values: {} } });
@@ -764,7 +774,7 @@ return view.extend({
 		]).then(function(r) {
 			var wifiDevs = (r[4] && typeof r[4] === 'object') ? r[4] : null;
 			var wiredReply = (r[7] && typeof r[7] === 'object') ? r[7] : {};
-			var ifnames = [], radioFirst = Object.create(null);
+			var ifnames = [], radioFirst = Object.create(null), surveyFor = Object.create(null);
 			Object.keys(wifiDevs || {}).forEach(function(rn) {
 				var ifs = (wifiDevs[rn] && Array.isArray(wifiDevs[rn].interfaces)) ? wifiDevs[rn].interfaces : [], first = true;
 				/* a radio read from the config has no run state: each of
@@ -774,6 +784,7 @@ return view.extend({
 					if (i && typeof i.ifname === 'string' && HOSTAPD_OBJ.test(i.ifname) && ifnames.indexOf(i.ifname) < 0) {
 						ifnames.push(i.ifname);
 						if (first || cfg) radioFirst[i.ifname] = true;
+						if (first) surveyFor[i.ifname] = true;
 						first = false;
 					}
 				});
@@ -784,12 +795,30 @@ return view.extend({
 			   asked anyway, once it answered with them. An interface hostapd
 			   did not answer for (a client or mesh, a vendor driver) keeps
 			   its own iwinfo info. Each costs the router ~15 ms. */
-			var hapdKnown = self.hapdBss || {};
+			var hapdKnown = self.hapdBss || {}, hapdLast = self.hapdLast || {};
 			var per = [];
 			if (hintsDue) {
 				/* a failed call keeps the last reply and is asked again next poll */
 				if (r[5] && typeof r[5] === 'object') { self.hintsCache = r[5]; self.hintsAt = started; }
 				if (self.hintsHot > 0) self.hintsHot--;
+			}
+			/* the state an interface's iwinfo reading belongs to: asked
+			   again when this moves, else after IWINFO_MS */
+			var iwc = self.iwCache || (self.iwCache = Object.create(null)), radioOf = Object.create(null);
+			Object.keys(wifiDevs || {}).forEach(function(rn) {
+				((wifiDevs[rn] && wifiDevs[rn].interfaces) || []).forEach(function(i) { if (i && typeof i.ifname === 'string') radioOf[i.ifname] = rn; });
+			});
+			function iwKey(ifn) {
+				var rd = (wifiDevs && wifiDevs[radioOf[ifn]]) || {}, c = rd.config || {}, h = hapdLast[ifn];
+				var st = h && typeof h === 'object' ? [ h.channel, h.freq, h.bssid, h.ssid ].map(String).join('|') : '';
+				return [ rd.up, rd.pending, rd.disabled, c.channel, c.htmode, c.txpower, c.country ].map(String).join('|') + '\n' + st;
+			}
+			function iwDue(ifn) {
+				var e = iwc[ifn], iwAge = e ? started - e.at : -1, key = iwKey(ifn);
+				/* hostapd's first status for the interface, asked after
+				   the reading was taken: the reading's state, not a move */
+				if (e && e.key !== key && e.key.indexOf('\n') === e.key.length - 1 && e.key === key.slice(0, e.key.length)) e.key = key;
+				return !e || e.key !== key || !(iwAge >= 0 && iwAge < IWINFO_MS);
 			}
 			/* the link state of a switch with hosts behind it, every
 			   SWITCH_MS: each answer runs swconfig on the device. Asked
@@ -815,23 +844,36 @@ return view.extend({
 				per.push(L.resolveDefault(callAssoc(ifn), []).then(function(v) { return [ 'assoc', ifn, v ]; }));
 				if (slow) per.push(hostapd(ifn, 'get_clients').then(function(v) { return [ 'hapd', ifn, v ]; }));
 				per.push(hostapd(ifn, 'get_status').then(function(v) { return [ 'hapdStatus', ifn, v ]; }));
-				if (slow && (radioFirst[ifn] || !hapdKnown[ifn]))
+				if (slow && (radioFirst[ifn] || !hapdKnown[ifn]) && iwDue(ifn))
 					per.push(L.resolveDefault(callIwInfo(ifn), {}).then(function(v) { return [ 'iwinfo', ifn, v ]; }));
+				if (slow && surveyFor[ifn])
+					per.push(L.resolveDefault(callSurvey(ifn), null).then(function(v) { return [ 'survey', ifn, v ]; }));
 			});
 			return Promise.all(per).then(function(parts) {
 				var assoc = Object.create(null), hapdStatus = Object.create(null);
 				var hapd = slow ? Object.create(null) : kept.hapd, iwinfo = slow ? Object.create(null) : kept.iwinfo;
+				var survey = slow ? Object.create(null) : (kept.survey || Object.create(null));
 				parts.forEach(function(p) {
 					if (p[0] === 'assoc') assoc[p[1]] = p[2];
 					else if (p[0] === 'hapd') hapd[p[1]] = p[2];
 					else if (p[0] === 'hapdStatus') hapdStatus[p[1]] = p[2];
-					else iwinfo[p[1]] = p[2];
+					else if (p[0] === 'survey') { if (Array.isArray(p[2])) survey[p[1]] = p[2]; }
+					else {
+						iwinfo[p[1]] = p[2];
+						/* a failed call ({}) is asked again at the next poll */
+						if (p[2] && typeof p[2] === 'object' && Object.keys(p[2]).length) iwc[p[1]] = { at: started, key: iwKey(p[1]), reply: p[2] };
+						else delete iwc[p[1]];
+					}
 				});
+				/* the readings kept for the interfaces not asked this poll */
+				if (slow) Object.keys(iwc).forEach(function(ifn) { if (!(ifn in iwinfo) && ifnames.indexOf(ifn) >= 0) iwinfo[ifn] = iwc[ifn].reply; });
+				Object.keys(iwc).forEach(function(ifn) { if (ifnames.indexOf(ifn) < 0) delete iwc[ifn]; });
+				self.hapdLast = hapdStatus;
 				/* kept only when all three answered: a failure is asked again
 				   at the next poll, not shown for LOW_SLOW_MS */
 				if (slow && r[4] != null && r[6] != null && r[7] != null) {
 					self.slowAt = started;
-					self.slowCache = { wifi: r[4], thermal: r[6], wired: r[7], hapd: hapd, iwinfo: iwinfo };
+					self.slowCache = { wifi: r[4], thermal: r[6], wired: r[7], hapd: hapd, iwinfo: iwinfo, survey: survey };
 				}
 				/* a station or wired host seen for the first time: its name
 				   may be in the next host hints */
@@ -855,7 +897,7 @@ return view.extend({
 					/* no answer (an older plugin, a lookup not sent, a failed call)
 					   keeps the last one: no tunnel blinking off */
 					routes: r[8] && Array.isArray(r[8].routes) ? (self.kernelRoutes = r[8].routes) : (self.kernelRoutes || null),
-					assoc: assoc, hapd: hapd, hapdStatus: hapdStatus, iwinfo: iwinfo, at: Date.now(), started: started };
+					assoc: assoc, hapd: hapd, hapdStatus: hapdStatus, iwinfo: iwinfo, survey: survey, at: Date.now(), started: started };
 			});
 		});
 	},

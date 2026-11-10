@@ -612,6 +612,33 @@ test('build: radios, SSIDs and stations with names, bands and generations', () =
 	assert.equal(phone.level.level, 'crit');
 });
 
+/* iwinfo survey: the noise floor every poll for 1.5-2 ms a radio, where
+   iwinfo info costs 15-22 ms; rpcd sends it as an unsigned byte */
+test('surveyNoise: the radio\'s channel, a signed byte, 0 as none', () => {
+	const sv = [ { mhz: 2412, noise: 0 }, { mhz: 2437, noise: 146 }, { mhz: 5180, noise: -95 }, { mhz: 5975, noise: 135 }, { mhz: 5200, noise: 300 } ];
+	assert.equal(model.surveyNoise(sv, 2437), -110, 'ath12k: 146 is -110 dBm');
+	assert.equal(model.surveyNoise(sv, 5180), -95, 'already signed');
+	assert.equal(model.surveyNoise(sv, 2412), null, '0: none');
+	assert.equal(model.surveyNoise(sv, 5200), null, 'out of range');
+	assert.equal(model.surveyNoise(sv, 2462), null, 'no entry for the channel');
+	assert.equal(model.surveyNoise(sv, 0), null);
+	assert.equal(model.surveyNoise(null, 2437), null);
+});
+
+test('build: the survey\'s noise floor wins, on the channel hostapd reports', () => {
+	const r = raw();
+	r.survey = { 'phy2g-ap0': [ { mhz: 2437, noise: 164 }, { mhz: 2462, noise: 160 } ] };
+	assert.equal(model.build(r).radios[0].noise, -92, 'iwinfo info said -87');
+	r.hapdStatus = { 'phy2g-ap0': { freq: 2462, channel: 11, bssid: '00:00:5e:00:53:aa' } };
+	assert.equal(model.build(r).radios[0].noiseRaw, -96, 'moved to channel 11 before iwinfo info knew');
+	r.survey = { 'phy2g-ap0': [ { mhz: 2462, noise: 0 } ] };
+	assert.equal(model.build(r).radios[0].noise, -87, 'nothing there: iwinfo info\'s');
+	r.survey = { 'phy6g-ap0': [ { mhz: 5975, noise: 135 } ] };
+	const m = model.build(r);
+	assert.equal(m.radios[1].noise, null, 'ath12k\'s placeholder stays unknown');
+	assert.equal(m.radios[1].noiseRaw, -121, 'and is shown as one');
+});
+
 test('build: user alias wins over every other source', () => {
 	const r = raw();
 	r.aliases = { '00:00:5e:00:53:01': { sid: 'cfg01', name: 'Hall printer', icon: 'printer' } };

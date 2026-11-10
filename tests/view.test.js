@@ -302,35 +302,56 @@ test('wired reply: hosts kept, a crowded bridge flagged, anything else read as n
 	finally { global.L = savedL; delete REPLIES['luci.vantage wired']; }
 });
 
-/* iwinfo info costs the router ~15 ms an interface: asked for a radio's
-   first interface, and for another only until hostapd gives its BSSID */
-test('iwinfo info: once a radio, and for a network hostapd does not answer for', async () => {
-	const asked = [], hapdOff = new Set();
+/* iwinfo info costs the router 15-22 ms an interface: asked for a radio's
+   first interface, and for another only until hostapd gives its BSSID;
+   each reading stands for 30 s, unless the interface's state moves (its
+   channel in hostapd's status, its radio in luci.vantage wireless) */
+test('iwinfo info: once a radio, and for a network hostapd does not answer for; kept 30 s unless the state moves', async () => {
+	const asked = [], hapdOff = new Set(), chan = {};
+	let radioUp = true;
 	const ifc = (ifname, mode) => ({ ifname, section: ifname, config: { mode: mode || 'ap', ssid: 'S-' + ifname } });
 	REPLIES['luci.vantage wireless'] = () => Promise.resolve({
 		radio0: { up: true, config: { band: '2g' }, interfaces: [ ifc('wl0'), ifc('wl0-1'), ifc('wl0-sta', 'sta') ] },
-		radio1: { up: true, config: { band: '5g' }, interfaces: [ ifc('wl1') ] }
+		radio1: { up: radioUp, config: { band: '5g' }, interfaces: [ ifc('wl1') ] }
 	});
 	REPLIES['iwinfo info'] = device => { asked.push(device); return Promise.resolve({ channel: 6, bssid: '00:00:5E:00:53:0' + device.length }); };
 	for (const ifn of [ 'wl0', 'wl0-1', 'wl0-sta', 'wl1' ])
-		REPLIES['hostapd.' + ifn + ' get_status'] = () => (ifn === 'wl0-sta' || hapdOff.has(ifn)) ? Promise.reject(new Error('not found')) : Promise.resolve({ bssid: '00:00:5e:00:53:a' + ifn.length, ssid: 'S-' + ifn });
+		REPLIES['hostapd.' + ifn + ' get_status'] = () => (ifn === 'wl0-sta' || hapdOff.has(ifn)) ? Promise.reject(new Error('not found')) : Promise.resolve({ bssid: '00:00:5e:00:53:a' + ifn.length, ssid: 'S-' + ifn, channel: chan[ifn] || 1 });
 	const self = Object.create(view);
-	const savedL = global.L;
+	const savedL = global.L, now = Date.now;
+	let t = 1e12;
+	Date.now = () => t;
 	global.L = { resolveDefault: (p, d) => Promise.resolve(p).then(v => v == null ? d : v, () => d) };
+	const poll = async ms => { t += ms; return self.fetch(); };
 	try {
-		let r = await self.fetch();
+		let r = await poll(0);
 		assert.deepEqual(asked.splice(0).sort(), [ 'wl0', 'wl0-1', 'wl0-sta', 'wl1' ], 'the first poll asks every interface');
-		r = await self.fetch();
-		assert.deepEqual(asked.splice(0).sort(), [ 'wl0', 'wl0-sta', 'wl1' ], 'then a radio\'s first, and the one hostapd does not serve');
+		r = await poll(5e3);
+		assert.deepEqual(asked.splice(0), [], 'then nothing for 30 s');
+		assert.equal(r.iwinfo.wl0.channel, 6, 'the reading stands');
 		assert.equal(r.hapdStatus['wl0-1'].bssid, '00:00:5e:00:53:a5', 'its BSSID comes from hostapd');
+		await poll(25e3);
+		assert.deepEqual(asked.splice(0).sort(), [ 'wl0', 'wl0-sta', 'wl1' ], 'after 30 s: a radio\'s first, and the one hostapd does not serve');
+		/* hostapd reports wl1 on another channel: asked at the next poll */
+		chan.wl1 = 44;
+		await poll(5e3);
+		assert.deepEqual(asked.splice(0), [], 'the new status is this poll\'s');
+		await poll(5e3);
+		assert.deepEqual(asked.splice(0), [ 'wl1' ], 'the channel moved: wl1 again');
+		/* its radio goes down: asked at once */
+		radioUp = false;
+		await poll(5e3);
+		assert.deepEqual(asked.splice(0), [ 'wl1' ], 'the radio went down: wl1 again');
+		await poll(5e3);
+		assert.deepEqual(asked.splice(0), [], 'and kept again');
 		hapdOff.add('wl0-1');
-		await self.fetch();
-		asked.splice(0);
-		await self.fetch();
-		assert.deepEqual(asked.splice(0).sort(), [ 'wl0', 'wl0-1', 'wl0-sta', 'wl1' ], 'hostapd gone quiet: asked again');
+		await poll(5e3);
+		await poll(5e3);
+		/* 30 s have passed for wl0 and wl0-sta as well */
+		assert.deepEqual(asked.splice(0).sort(), [ 'wl0', 'wl0-1', 'wl0-sta' ], 'hostapd gone quiet: asked again');
 	}
 	finally {
-		global.L = savedL;
+		global.L = savedL; Date.now = now;
 		for (const k of Object.keys(REPLIES)) if (/^(luci\.vantage wireless|iwinfo info|hostapd\.)/.test(k)) delete REPLIES[k];
 	}
 });
@@ -344,6 +365,7 @@ test('Low-power router: Wi-Fi state, temperatures, wired hosts, iwinfo and clien
 	reply('luci.vantage thermal', [ { zone: 'thermal_zone0', type: 'cpu', temp: 50000 } ]);
 	reply('luci.vantage wired', { hosts: [ { mac: '00:00:5e:00:53:01', port: 'lan1', bridge: 'br-lan', seen: 1 } ] });
 	reply('iwinfo info', { channel: 6 });
+	reply('iwinfo survey', [ { mhz: 2437, noise: 146 } ]);
 	reply('hostapd.wl0 get_clients', { clients: {} });
 	reply('hostapd.wl0 get_status', { bssid: '00:00:5e:00:53:aa' });
 	reply('system info', {});
@@ -353,7 +375,7 @@ test('Low-power router: Wi-Fi state, temperatures, wired hosts, iwinfo and clien
 	Date.now = () => t;
 	global.document = { hidden: false, documentElement: { getAttribute: n => n === 'data-vt-power' ? power : null } };
 	global.L = { resolveDefault: (p, d) => Promise.resolve(p).then(v => v == null ? d : v, () => d) };
-	const slowKeys = [ 'luci.vantage wireless', 'luci.vantage thermal', 'luci.vantage wired', 'iwinfo info', 'hostapd.wl0 get_clients' ];
+	const slowKeys = [ 'luci.vantage wireless', 'luci.vantage thermal', 'luci.vantage wired', 'iwinfo survey', 'hostapd.wl0 get_clients' ];
 	const slowCount = () => slowKeys.map(k => count[k] || 0);
 	try {
 		const first = await self.fetch();
@@ -363,19 +385,23 @@ test('Low-power router: Wi-Fi state, temperatures, wired hosts, iwinfo and clien
 		assert.deepEqual(slowCount(), [ 1, 1, 1, 1, 1 ], 'not again within 30 s');
 		assert.equal(count['system info'], 2, 'the rest every poll');
 		assert.equal(count['hostapd.wl0 get_status'], 2);
-		assert.deepEqual([ kept.wifi, kept.thermal, kept.fdb, kept.iwinfo, kept.hapd ], [ first.wifi, first.thermal, first.fdb, first.iwinfo, first.hapd ], 'their last replies');
+		assert.deepEqual([ kept.wifi, kept.thermal, kept.fdb, kept.iwinfo, kept.hapd, kept.survey ], [ first.wifi, first.thermal, first.fdb, first.iwinfo, first.hapd, first.survey ], 'their last replies');
+		assert.equal(count['iwinfo info'], 1);
 		t += 20e3;
 		await self.fetch();
 		assert.deepEqual(slowCount(), [ 2, 2, 2, 2, 2 ], 'again after 30 s');
+		assert.equal(count['iwinfo info'], 2);
 		power = 'normal';
 		t += 1e3;
-		await self.fetch();
+		const off = await self.fetch();
 		assert.deepEqual(slowCount(), [ 3, 3, 3, 3, 3 ], 'off: every poll');
+		assert.equal(count['iwinfo info'], 2, 'iwinfo info on its own 30 s');
+		assert.deepEqual(off.survey.wl0, [ { mhz: 2437, noise: 146 } ], 'the survey every poll');
 	}
 	finally {
 		global.L = saved.L; Date.now = saved.now;
 		if (saved.document === undefined) delete global.document; else global.document = saved.document;
-		for (const k of Object.keys(REPLIES)) if (/^(luci\.vantage (wireless|thermal|wired)|iwinfo info|hostapd\.|system info)/.test(k)) delete REPLIES[k];
+		for (const k of Object.keys(REPLIES)) if (/^(luci\.vantage (wireless|thermal|wired)|iwinfo (info|survey)|hostapd\.|system info)/.test(k)) delete REPLIES[k];
 	}
 });
 

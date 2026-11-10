@@ -423,7 +423,14 @@ text around it so it looks the same size.
   poll again right after the page fetched it, and two CPU samples under
   a second apart give none. `iwinfo info` is asked once a radio (its
   first interface: channel, power, noise); another network's BSSID and
-  SSID come from hostapd's `get_status`, which the poll asks anyway. The
+  SSID come from hostapd's `get_status`, which the poll asks anyway.
+  `iwinfo info` (15-22 ms an interface on the NWA50BE) is asked again
+  after 30 s, or at the next poll when the interface's state moves (its
+  radio up, down, pending or reconfigured; its channel, frequency, BSSID
+  or SSID in hostapd's status); the noise floor comes every poll from
+  `iwinfo survey` (1.5-2 ms a radio), its entry for the radio's channel,
+  read as a signed byte (ath12k sends 146 for -110 dBm, 0 for none),
+  falling back to `iwinfo info`'s. The
   host hints (DHCP leases, ARP) every 30 s, and on each of the three
   polls after a station or wired host first appears.
 - **Low-power router** (#101), under the theme's Appearance with the
@@ -454,7 +461,7 @@ text around it so it looks the same size.
   five-second pulse would have the browser draw sixty frames a second.
 - ACL: three groups for the app, and the theme's own, below. `luci-app-vantage` (read): `system info/board`,
   `network.interface dump`, `network.device status`, `iwinfo
-  info/assoclist`, `hostapd.* get_status/get_clients`, `luci-rpc
+  info/assoclist/survey`, `hostapd.* get_status/get_clients`, `luci-rpc
   getHostHints`, `luci.vantage wireless/thermal/wired/routes`, `umdns hosts`, `file read` of
   `/proc/stat`, `uci get` for `vantage`, and LuCI's own `luci
   getSwconfigPortState` (the link state of a swconfig switch's ports: LuCI
