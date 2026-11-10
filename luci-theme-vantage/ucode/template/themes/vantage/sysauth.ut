@@ -11,9 +11,11 @@
  data attributes of values the theme knows only.
  LuCI's authentication plugins (25.12 has none; luci-plugin-2fa after it)
  add auth_fields, auth_message and auth_plugin (set once the password was
- right), encoded like the rest, and auth_html and auth_assets, printed as
- LuCI's Bootstrap prints them: the HTML is the installed plugin's own, and
- LuCI keeps the scripts to /luci-static/plugins/<uuid>/.
+ right), encoded like the rest, and auth_html, printed as LuCI's
+ Bootstrap prints it (the installed plugin's own HTML), and auth_assets,
+ as plain script tags (LuCI keeps them to /luci-static/plugins/<uuid>/;
+ this page loads no luci.js, so a plugin script that needs L or ui would
+ not run here; luci-plugin-2fa has none).
 -#}
 {%
 	let tls = uci.get('uhttpd', 'main', 'listen_https') ?? [];

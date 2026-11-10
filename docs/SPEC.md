@@ -152,8 +152,9 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   shows it too; generic error, contract-correct form. No other system
   information (no model or version) for unauthenticated visitors. With
   LuCI's authentication plugins (luci-plugin-2fa, after 25.12) it shows
-  their fields and guidance (an error once a wrong code was sent), and
-  their own HTML and scripts as Bootstrap does.
+  their fields and guidance (an error once a wrong code was sent), their
+  own HTML as Bootstrap prints it, and their scripts as plain script tags
+  (the login page has no LuCI runtime; luci-plugin-2fa needs none).
 - All core widgets per contract §5 (dropdown state machine, tabs, modals
   incl. apply countdown, tooltips, dynlist, progress bars, file browser,
   notifications with real fade-out transition, changes dialog).
@@ -526,7 +527,9 @@ text around it so it looks the same size.
 
 - Templates escape everything request-derived; never echo `fuser`; the
   theme's own markup for unauthenticated renders (login, 404, CSRF) adds
-  nothing about the device but the login page's hostname. Not in the theme's control: LuCI's core
+  nothing about the device but the login page's hostname, and of the
+  Appearance only the colour mode, the login background and whether
+  Low-power router is on. Not in the theme's control: LuCI's core
   `header.ut` prints `L = new LuCI({...})` after the theme header on every
   page, with the LuCI build and package-database time in the `luci.js`
   URL and `nodespec: dispatched`, which on an anonymous 404 is the whole

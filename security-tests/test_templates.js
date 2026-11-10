@@ -356,6 +356,10 @@ test('login with an authentication plugin: its fields, guidance and errors, enco
 	const calm = renderLogin({ path: ADMIN, auth: { auth_message: 'x', auth_fields: [ Object.fromEntries(Object.keys(otp).map(k => [ k, k === 'required' ? true : 'x' ])) ] } }).html;
 	assertNoPayload(evil, 'login with a plugin');
 	assert.deepEqual(skeleton(evil), skeleton(calm), 'plugin values changed the markup');
+	/* a script path with markup in it stays an attribute value (LuCI also refuses quotes and <> there) */
+	const odd = renderLogin({ path: ADMIN, auth: { auth_assets: [ { type: 'script', src: '/luci-static/plugins/u/a.js"><x>' } ] } }).html;
+	assert.ok(odd.includes('src="/luci-static/plugins/u/a.js&#34;&#62;&#60;x&#62;"'), 'the script path encoded');
+	assert.ok(!odd.includes('<x>'));
 
 	const extra = renderLogin({ path: ADMIN, auth: { ...pending, auth_html: '<div class="cbi-value-description">Plugin UI</div>',
 		auth_assets: [ { type: 'script', src: '/luci-static/plugins/0123/ui.js' }, { type: 'style', src: '/luci-static/plugins/0123/ui.css' } ] } }).html;

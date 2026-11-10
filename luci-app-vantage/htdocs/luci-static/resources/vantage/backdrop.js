@@ -237,7 +237,7 @@ function mount(host, band, style) {
 	var down = null, up = null, originEl = null;
 	var scene = null, cur = 'none', raf = 0, timer = 0, last = 0, dpr = 1, inView = true, hidden = false, still = false, paused = false, mq = null;
 	var focused = typeof document.hasFocus === 'function' ? document.hasFocus() : true;
-	var ro = null, io = null, onMq = null, stillRated = false, mo = null, scheme = null, onScheme = null, stale = false;
+	var ro = null, io = null, onMq = null, stillRated = false, mo = null, scheme = null, onScheme = null, stale = false, coloured = false;
 
 	cv.className = 'vt-backdrop';
 	cv.setAttribute('aria-hidden', 'true');
@@ -263,9 +263,12 @@ function mount(host, band, style) {
 		return ctx.fillStyle !== '#010203' ? v : fallback;
 	}
 
+	/* read once the canvas is in the page (mounted before, it has none),
+	   then again on a theme switch only */
 	function colours() {
 		env.colour = token('--vt-accent-line', env.colour);
 		env.muted = token('--vt-text-3', env.muted);
+		coloured = !!cv.isConnected;
 	}
 
 	function measure() {
@@ -414,8 +417,10 @@ function mount(host, band, style) {
 			down = o.down; up = o.up;
 			if (o.origin !== undefined) originEl = o.origin;
 			stale = true;
-			/* a still frame, or none to draw yet: now */
-			if (still || !usable()) refit();
+			if (!coloured) colours();
+			/* a still frame: now; nothing to draw (none, folded, out of
+			   view): nothing read, the resize observer measures */
+			if (still && scene) refit();
 			run();
 		},
 		running: running,

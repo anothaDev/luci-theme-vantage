@@ -152,9 +152,14 @@ test('mount: one frame loop, 20 a second on a quiet uplink, none in the backgrou
 		pending = Math.max(pending, rafs.size + timers.size); } };
 	const frames = ms => { const p = painted; run(ms); return painted - p; };
 	try {
+		/* mounted before the tile is in the page, as render() does: the
+		   theme's colours are read once it is */
+		canvas.isConnected = false;
 		const b = bd.mount(host, band, 'grid');
+		canvas.isConnected = true;
 		b.update({ down: 2e4, up: 1e4 });
 		const quiet = frames(1000);
+		assert.equal(ctx.strokeStyle, 'rgb(1, 2, 3)', 'the theme\'s colour, not the fallback');
 		assert.ok(quiet >= 18 && quiet <= 22, 'about 20 a second: ' + quiet);
 		b.update({ down: 5e7, up: 1e7 });
 		const busy = frames(1000);
