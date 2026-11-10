@@ -11,11 +11,12 @@ Each release ships both packages, `luci-theme-vantage` and
 - **Dashboard: much less work for the router** (#101,
   [@Groupguanfang](https://github.com/Groupguanfang)). The dashboard's
   server side rebuilt its text patterns on every check, which cost
-  milliseconds each on a router: on a 4-core access point a poll went
-  from about 120 ms of CPU to 15 ms, with the same answers. A reload no
-  longer polls twice or reads the page's own build as the CPU load, so
-  the CPU card stops jumping to 100% on every refresh. Radio details are
-  asked once a radio instead of once a network.
+  milliseconds each on a router, and radio details were asked once a
+  network instead of once a radio: on a 4-core access point a whole
+  5-second poll went from about 180 ms of CPU to 70 ms (the dashboard's
+  own calls from about 120 ms to 15 ms), with the same answers. A reload
+  no longer polls twice or reads the page's own build as the CPU load, so
+  the CPU card stops jumping to 100% on every refresh.
 - **Dashboard: Low-power router** (#101). Appearance → Low-power router
   (with the dashboard; off by default) keeps the live numbers but asks
   for the slow parts (Wi-Fi state, radio details, temperatures, wired
