@@ -71,12 +71,27 @@ test('health: weak client, slow uplink, disabled radio, high memory', () => {
 	assert.equal(byId(h, 'signal').client, 'c');
 	assert.equal(byId(h, 'signal').list, null);
 	assert.equal(byId(h, 'uplink').level, 'warn');
-	assert.equal(byId(h, 'radios').level, 'warn');
+	/* switched off on purpose: shown, not counted (#110) */
+	assert.equal(byId(h, 'radios').level, 'info');
+	assert.equal(byId(h, 'radios').value, '1 radio off');
 	assert.equal(byId(h, 'memory').level, 'err');
 	assert.equal(byId(h, 'cpu').level, 'err');
 	const s = insight.summary(h);
 	assert.equal(s.level, 'err');
-	assert.equal(s.count, 5);
+	assert.equal(s.count, 4);
+});
+
+test('health: a radio switched off is no warning; one enabled but down is an error', () => {
+	const m = baseModel();
+	m.radios[1].disabled = true;
+	let h = insight.health(m, { cpu: { pct: 5, cores: [ 1 ] } });
+	assert.equal(byId(h, 'radios').level, 'info');
+	assert.match(byId(h, 'radios').reason, /is disabled/);
+	assert.deepEqual([ insight.summary(h).level, insight.summary(h).count ], [ 'ok', 0 ]);
+	m.radios[0].up = false;
+	h = insight.health(m, { cpu: { pct: 5, cores: [ 1 ] } });
+	assert.equal(byId(h, 'radios').level, 'err');
+	assert.equal(insight.summary(h).count, 1);
 });
 
 test('health: chip text is short, framed like the System tile, with the full sentence as detail', () => {

@@ -2728,7 +2728,7 @@ return view.extend({
 		dom.content(this.el.radioSum, m.radios.map(function(r) {
 			var rr = st.radioRates[r.id];
 			return E('button', { 'type': 'button', 'class': 'vt-rsum', 'click': function() { self.openDrawer('radio', r.id); } }, [
-				E('span', { 'class': 'vt-status vt-status-' + (r.disabled ? 'warn' : r.up ? 'ok' : 'err'), 'aria-hidden': 'true' }),
+				E('span', { 'class': 'vt-status vt-status-' + (r.disabled ? 'off' : r.up ? 'ok' : 'err'), 'aria-hidden': 'true' }),
 				bandBadge(r.band),
 				E('span', { 'class': 'vt-rsum-main vt-tn' }, [ r.channel ? _('Ch %d · %d MHz').format(r.channel, r.width || 20) : fmt.DASH ]),
 				E('span', { 'class': 'vt-rsum-sub vt-tn' }, [ r.clients === 1 ? _('1 client') : _('%d clients').format(r.clients) ]),
@@ -2757,7 +2757,7 @@ return view.extend({
 				E('header', { 'class': 'vt-radio-head' }, [
 					bandBadge(r.band),
 					E('span', { 'class': 'vt-radio-name' }, [ r.gen || r.id ]),
-					E('span', { 'class': 'vt-status vt-status-' + (r.disabled ? 'warn' : r.up ? 'ok' : 'err') }, [ r.disabled ? _('Disabled') : r.up ? _('Up', 'vantage') : _('Down', 'vantage') ]),
+					E('span', { 'class': 'vt-status vt-status-' + (r.disabled ? 'off' : r.up ? 'ok' : 'err') }, [ r.disabled ? _('Disabled') : r.up ? _('Up', 'vantage') : _('Down', 'vantage') ]),
 					E('button', { 'type': 'button', 'class': 'vt-icon-action', 'title': _('Radio details'), 'aria-label': _('Radio details'),
 						'click': function() { self.openDrawer('radio', r.id); } }, [ icon('chevron') ])
 				]),

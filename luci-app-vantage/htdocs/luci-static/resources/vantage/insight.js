@@ -105,7 +105,9 @@ return baseclass.extend({
 		if (!radios.length) out.push({ id: 'radios', level: 'info', title: _('Wi-Fi'), value: _('None'), reason: _('No radios reported'), detail: _('This device reports no radios'), page: PAGES.wireless });
 		else if (down.length) out.push({ id: 'radios', level: 'err', title: _('Wi-Fi'), value: fmt.N_(down.length, '%d radio down', '%d radios down').format(down.length), reason: _('%s is not up').format(down[0].bandLabel),
 			detail: _('%s (%s) is enabled but not up').format(down[0].id, down[0].bandLabel), page: PAGES.wireless });
-		else if (off.length) out.push({ id: 'radios', level: 'warn', title: _('Wi-Fi'), value: fmt.N_(off.length, '%d radio off', '%d radios off').format(off.length), reason: _('%s is disabled').format(off[0].bandLabel),
+		/* a radio switched off in the configuration is a choice, not a
+		   fault: shown, never tinted or counted as needing attention */
+		else if (off.length) out.push({ id: 'radios', level: 'info', title: _('Wi-Fi'), value: fmt.N_(off.length, '%d radio off', '%d radios off').format(off.length), reason: _('%s is disabled').format(off[0].bandLabel),
 			detail: _('%s (%s) is disabled').format(off[0].id, off[0].bandLabel), page: PAGES.wireless });
 		else out.push({ id: 'radios', level: 'ok', title: _('Wi-Fi'), value: fmt.N_(radios.length, '%d radio up', '%d radios up').format(radios.length),
 			reason: idle.length ? fmt.N_(nSsid, '%d SSID · %d idle', '%d SSIDs · %d idle').format(nSsid, idle.length) : fmt.N_(nSsid, '%d SSID on air', '%d SSIDs on air').format(nSsid),
@@ -252,7 +254,7 @@ return baseclass.extend({
 		(radios || []).forEach(function(r) {
 			var v = own(rates, r.id) ? num(rates[r.id].rx) + num(rates[r.id].tx) : 0;
 			var notes = [];
-			if (r.disabled) notes.push({ level: 'warn', text: _('Radio is disabled') });
+			if (r.disabled) notes.push({ level: 'info', text: _('Radio is disabled') });
 			else if (!r.up) notes.push({ level: 'err', text: _('Radio is enabled but not up') });
 			if (top === r.id && sum > 0 && (radios.length > 1)) notes.push({ level: 'info', text: _('Busiest radio: %s of Wi-Fi traffic').format(fmt.pct(v / sum * 100)) });
 			if (r.legacy) notes.push({ level: 'info', text: r.legacy === 1 ? _('1 older device (Wi-Fi 4 or earlier) slows airtime') : _('%d older devices (Wi-Fi 4 or earlier) slow airtime').format(r.legacy) });

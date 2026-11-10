@@ -82,7 +82,7 @@ function environment(o) {
 			getenv: k => ({ PATH_INFO: '/' + o.path.join('/'), REQUEST_URI: '/cgi-bin/luci/' + o.path.join('/'),
 				HTTP_HOST: o.hostile ? HOSTILE : 'ap.example', HTTP_REFERER: o.hostile ? HOSTILE : null,
 				QUERY_STRING: o.hostile ? HOSTILE : '' })[k] ?? null,
-			formvalue: () => o.hostile ? HOSTILE : null,
+			formvalue: k => o.hostile ? HOSTILE : (o.form ?? {})[k] ?? null,
 			getcookie: () => null
 		},
 		ubus: {
@@ -156,7 +156,8 @@ function renderPage(o) {
 
 function renderLogin(o) {
 	const { env, calls } = environment(o);
-	const html = engine.render(THEME + '/sysauth', env, { duser: o.hostile ? 'root' + HOSTILE : 'root', fuser: o.fuser ?? null });
+	/* o.auth: what LuCI's authentication plugins add (auth_fields, auth_message, ...) */
+	const html = engine.render(THEME + '/sysauth', env, { duser: o.hostile ? 'root' + HOSTILE : 'root', fuser: o.fuser ?? null, ...(o.auth ?? {}) });
 	return { html, calls };
 }
 
@@ -324,6 +325,46 @@ test('login: fuser is never echoed, hostile inputs change no markup, the hostnam
 	assert.deepEqual(inlineScripts(evil.html), inlineScripts(good.html), 'login inline scripts depend on input');
 	for (const s of inlineScripts(evil.html))
 		assert.ok(!/443|SECRET|alert\(|luci-static/.test(s), 'login inline script carries data');
+});
+
+/* LuCI's authentication plugins (luci-plugin-2fa, after 25.12): the
+   dispatcher adds the plugin's fields and guidance, and auth_plugin once
+   the password was right */
+test('login with an authentication plugin: its fields, guidance and errors, encoded; its HTML and scripts as Bootstrap prints them', () => {
+	const otp = { name: 'luci_otp', type: 'text', label: 'One-Time Password', placeholder: '123456', inputmode: 'numeric', pattern: '[0-9]*', maxlength: 6, autocomplete: 'one-time-code', required: true };
+	const pending = { auth_fields: [ otp ], auth_message: 'Enter the code from your app.' };
+	const input = html => tokenize(html).tags.find(t => t.name === 'input' && t.attrs.some(a => a[0] === 'name' && a[1] === 'luci_otp'));
+
+	const first = renderLogin({ path: ADMIN, auth: pending }).html;
+	assert.deepEqual(Object.fromEntries(input(first).attrs.filter(a => a[0] !== 'class')), { id: 'luci_otp', type: 'text', name: 'luci_otp', placeholder: '123456',
+		inputmode: 'numeric', pattern: '[0-9]*', maxlength: '6', autocomplete: 'one-time-code', required: null }, 'the plugin\'s field');
+	assert.match(first, /<label class="vt-field" for="luci_otp">\s*<span class="vt-field-label">One-Time Password<\/span>/, 'labelled');
+	assert.match(first, /class="vt-login-info" role="status">Enter the code from your app\.</, 'guidance, not an error');
+	assert.ok(!first.includes('role="alert"'), 'no error before a login attempt');
+
+	const badPassword = renderLogin({ path: ADMIN, fuser: 'root', auth: pending }).html;
+	assert.match(badPassword, /role="alert">Invalid username and\/or password!/, 'a wrong password still says so');
+	assert.match(badPassword, /role="status">Enter the code/, 'with the guidance');
+
+	const right = { ...pending, auth_plugin: 'TOTP', auth_message: 'Invalid one-time password.' };
+	const wrongCode = renderLogin({ path: ADMIN, fuser: 'root', form: { luci_otp: '000000' }, auth: right }).html;
+	assert.match(wrongCode, /class="vt-login-error" role="alert">Invalid one-time password\.</, 'a wrong code is an error');
+	assert.ok(!wrongCode.includes('Invalid username'), 'not a wrong password');
+	assert.match(renderLogin({ path: ADMIN, fuser: 'root', auth: right }).html, /class="vt-login-info" role="status">Invalid one-time password\.</, 'no code sent yet: guidance');
+
+	const evil = renderLogin({ path: ADMIN, auth: { auth_message: HOSTILE, auth_fields: [ Object.fromEntries(Object.keys(otp).map(k => [ k, k === 'required' ? true : HOSTILE ])) ] } }).html;
+	const calm = renderLogin({ path: ADMIN, auth: { auth_message: 'x', auth_fields: [ Object.fromEntries(Object.keys(otp).map(k => [ k, k === 'required' ? true : 'x' ])) ] } }).html;
+	assertNoPayload(evil, 'login with a plugin');
+	assert.deepEqual(skeleton(evil), skeleton(calm), 'plugin values changed the markup');
+
+	const extra = renderLogin({ path: ADMIN, auth: { ...pending, auth_html: '<div class="cbi-value-description">Plugin UI</div>',
+		auth_assets: [ { type: 'script', src: '/luci-static/plugins/0123/ui.js' }, { type: 'style', src: '/luci-static/plugins/0123/ui.css' } ] } }).html;
+	assert.match(extra, /<div class="vt-login-plugin"><div class="cbi-value-description">Plugin UI<\/div><\/div>/, 'the plugin\'s own HTML');
+	assert.deepEqual(tokenize(extra).scripts.filter(x => x.attrs.some(a => a[0] === 'src')).map(x => x.attrs.find(a => a[0] === 'src')[1]),
+		[ '/luci-static/vantage/login.js', '/luci-static/plugins/0123/ui.js' ], 'its scripts, and nothing else');
+
+	const plain = renderLogin({ path: ADMIN }).html;
+	assert.ok(!/luci_otp|vt-login-plugin|vt-login-info/.test(plain), 'without a plugin (24.10, 25.12): none of it');
 });
 
 test('Appearance saved for every browser: only values the theme knows reach the pages, as data attributes', () => {

@@ -9,6 +9,11 @@
  HTTPS probe reads its port list from an entity-encoded data attribute. The
  Appearance saved for every browser (/etc/config/vantage_theme) comes as
  data attributes of values the theme knows only.
+ LuCI's authentication plugins (25.12 has none; luci-plugin-2fa after it)
+ add auth_fields, auth_message and auth_plugin (set once the password was
+ right), encoded like the rest, and auth_html and auth_assets, printed as
+ LuCI's Bootstrap prints them: the HTML is the installed plugin's own, and
+ LuCI keeps the scripts to /luci-static/plugins/<uuid>/.
 -#}
 {%
 	let tls = uci.get('uhttpd', 'main', 'listen_https') ?? [];
@@ -79,6 +84,9 @@
 			</label>
 {% endfor %}
 {% endif %}
+{% if (auth_html): %}
+			<div class="vt-login-plugin">{{ auth_html }}</div>
+{% endif %}
 {% if (auth_message): %}
 			<div class="{{ auth_failed ? 'vt-login-error' : 'vt-login-info' }}" role="{{ auth_failed ? 'alert' : 'status' }}">{{ entityencode(auth_message, true) }}</div>
 {% endif %}
@@ -105,5 +113,10 @@
 })(document.querySelector('form.vt-login-form'));
 </script>
 <script src="{{ media }}/login.js"></script>
+{% for (let asset in auth_assets ?? []): %}
+{% if (asset?.type == 'script'): %}
+<script src="{{ entityencode(asset.src, true) }}"></script>
+{% endif %}
+{% endfor %}
 </body>
 </html>

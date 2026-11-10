@@ -428,8 +428,9 @@ test('Appearance: the theme\'s rpcd group writes config vantage_theme only, whic
 /* Check for updates (#102): only when asked, one known URL, only a version passes */
 test('update check: reads the theme\'s version from the package list, compares, builds its own link', () => {
 	const pick = name => { const s = src.indexOf('function ' + name + '('); return src.slice(s, src.indexOf('\n}\n', s) + 2); };
+	const entry = /^const UPDATE_ENTRY = .*$/m.exec(src)[0];
 	const { versionParts, newerVersion, listedVersion } = new Function(
-		[ 'versionParts', 'newerVersion', 'listedVersion' ].map(pick).join('\n') + '\nreturn { versionParts, newerVersion, listedVersion };')();
+		[ entry ].concat([ 'versionParts', 'newerVersion', 'listedVersion' ].map(pick)).join('\n') + '\nreturn { versionParts, newerVersion, listedVersion };')();
 	const list = [ 'Package: luci-app-vantage', 'Version: 9.9.9-r1', '', 'Package: luci-theme-vantage', 'Version: 1.0.17-r1', 'Depends: luci-base', '' ].join('\n');
 	assert.equal(listedVersion(list), '1.0.17', 'the theme\'s own entry, not the app\'s');
 	for (const odd of [ 'Version: 1.0.17<script>', 'Version: 1.0.17-r1 x', 'Version: javascript:1', 'Version: 1', 'Version: 1.0.17-rc1', 'Version: 12345.0.0' ])

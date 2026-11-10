@@ -69,9 +69,14 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
 - **Host chip**: hostname · model (board name when the model string is a
   placeholder), from `system board` via rpc in the menu script; a name
   the other contains (compared without case and punctuation) is left
-  out.
+  out. The chip links to Status → Overview, which has the rest of the
+  system details.
 - **Theme toggle**: auto / light / dark, applied in `<head>` before CSS
-  (no flash), exposed as `html[data-darkmode]`. Appearance (this mode, what
+  (no flash), exposed as `html[data-darkmode]`. The top bar's switch
+  shows the pick (auto, sun, moon) and cycles auto → the look the system
+  doesn't have → the one it has → auto, so the first click always
+  changes the page; it saves as Appearance does. Appearance sits under
+  the gear next to it. Appearance (this mode, what
   shows next to the logo after login, the login and network path
   backgrounds) is saved on the router for every
   browser, in `/etc/config/vantage_theme` (section `appearance`), by
@@ -135,13 +140,20 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   section's per-row name cell, which heads its card) and cells lose the
   fixed row height. Between 721 and 1180 px wide tables scroll inside
   their card, never the page.
+- **Wide screens**: the content column is 1320 px wide, centred; on
+  windows past about 1920 px it grows with them, keeping about 200 px
+  clear on each side, up to 2400 px, so a 2K or 4K screen at 100 %
+  scaling is not mostly margin.
 
 ### Pages
 
 - Own **login** (`sysauth.ut`): the mark and the router's hostname as the
   heading ("Authorization Required" without one), as LuCI's Bootstrap
   shows it too; generic error, contract-correct form. No other system
-  information (no model or version) for unauthenticated visitors.
+  information (no model or version) for unauthenticated visitors. With
+  LuCI's authentication plugins (luci-plugin-2fa, after 25.12) it shows
+  their fields and guidance (an error once a wrong code was sent), and
+  their own HTML and scripts as Bootstrap does.
 - All core widgets per contract §5 (dropdown state machine, tabs, modals
   incl. apply countdown, tooltips, dynlist, progress bars, file browser,
   notifications with real fade-out transition, changes dialog).
@@ -273,8 +285,10 @@ text around it so it looks the same size.
 - **Entity search**: clients, interfaces, radios, SSIDs injected into the
   command palette.
 - **Health**: simple, explainable scores (e.g. signal < −75 dBm, uplink
-  down, memory > 90 %, radio disabled) each with a one-line reason and a
-  link to the page that fixes it. Each card carries its own icon (port,
+  down, memory > 90 %, a radio enabled but not up) each with a one-line
+  reason and a link to the page that fixes it. A radio switched off in
+  the configuration is a choice: the Wi-Fi card says so, plain, and it
+  never counts as needing attention. Each card carries its own icon (port,
   CPU, memory, Wi-Fi, signal, storage), plain while all is well and in
   the level's colour when it needs attention, and a small picture on its
   bottom edge: the last five minutes of uplink traffic and CPU, how full
@@ -474,6 +488,13 @@ text around it so it looks the same size.
   slowly (wired hosts, temperatures, radio details) every 30 s instead of
   every 5 s, and the rest less often, for routers where a refresh costs
   noticeable CPU.
+- **Dismissing a health warning** (#110), e.g. a client that is far away
+  on purpose: where the dismissal lives (this browser, or the router
+  with the Appearance) and when it lapses are still open.
+- **Live per-device traffic for wired and mesh clients** (#110): a router
+  has no per-host counters for hosts behind a shared port; getting them
+  means counting rules in the firewall. If ever, as a separate opt-in
+  package, never in the read-only dashboard; how to package it is open.
 
 ## 6. Security requirements
 

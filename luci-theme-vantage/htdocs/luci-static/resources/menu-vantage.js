@@ -47,6 +47,10 @@ const VERSION = '1.0.17';
    as 25.12's), without cookies or a referrer. Only a version number passes;
    the link is a constant, to the latest release. */
 const UPDATE_INDEX = 'https://anothadev.github.io/luci-theme-vantage/24.10/Packages';
+/* the theme's entry in that list; up here, as jsmin reads a "/" right
+   after => as a division and drops the space inside it (every packaged
+   check before 1.0.18 failed that way) */
+const UPDATE_ENTRY = /^Package: luci-theme-vantage$/m;
 
 const LOOK = {
 	theme: { own: 'vantage.theme.own', before: THEME_KEY, ok: [ 'auto', 'light', 'dark' ] },
@@ -176,7 +180,7 @@ function newerVersion(a, b) {
 }
 /* the theme's version in an opkg package list, without its release */
 function listedVersion(text) {
-	const block = String(text || '').split(/\n\s*\n/).find(b => /^Package: luci-theme-vantage$/m.test(b));
+	const block = String(text || '').split(/\n\s*\n/).find(b => UPDATE_ENTRY.test(b));
 	const m = block && /^Version: (\S+)$/m.exec(block);
 	return m && versionParts(m[1]) ? m[1].replace(/-r\d+$/, '') : null;
 }
@@ -1584,10 +1588,18 @@ return baseclass.extend({
 		this.root.setAttribute('data-darkmode', dark ? 'true' : 'false');
 		this.root.setAttribute('data-theme', pref);
 
+		/* the switch shows the pick (auto, sun, moon) and cycles: auto, the
+		   look the system doesn't have, the one it has, auto again, so the
+		   first click always changes the page; it saves as Appearance does */
+		const sys = sysDark ? 'dark' : 'light', other = sysDark ? 'light' : 'dark';
+		this.themeNext = pref === 'auto' ? other : pref === other ? sys : 'auto';
 		const btn = document.getElementById('vt-theme');
 		if (btn) {
+			const label = { auto: _('Follow system theme'), light: _('Use light theme'), dark: _('Use dark theme') }[this.themeNext];
 			btn.textContent = '';
-			btn.appendChild(svg(pref === 'auto' ? 'auto' : (pref === 'dark' ? 'moon' : 'sun'), 18));
+			btn.appendChild(svg(pref === 'auto' ? 'auto' : (dark ? 'moon' : 'sun'), 18));
+			btn.setAttribute('aria-label', label);
+			btn.setAttribute('title', label);
 		}
 		this.syncAppearance();
 	},
@@ -1653,7 +1665,9 @@ return baseclass.extend({
 	},
 
 	setupTheme() {
-		const btn = document.getElementById('vt-theme');
+		const toggle = document.getElementById('vt-theme');
+		if (toggle) toggle.addEventListener('click', () => { if (this.themeNext) this.setTheme(this.themeNext); });
+		const btn = document.getElementById('vt-look');
 		if (btn) {
 			btn.addEventListener('click', () => {
 				if (this.appearBtn) this.closeAppearance(false);
@@ -1711,7 +1725,7 @@ return baseclass.extend({
 		this.applyBrand();
 	},
 
-	/* Appearance, under the colour-theme button: the colour theme, the
+	/* Appearance, under the gear button: the colour theme, the
 	   login background and, with the dashboard, the network path's
 	   background, each a native radio group (the arrow keys move
 	   within it) drawn as segments. Choices apply at once and stay open;
@@ -1813,7 +1827,8 @@ return baseclass.extend({
 			})
 			/* offline, or a router whose pages forbid the request (a
 			   Content-Security-Policy): the release page still opens */
-			.catch(() => {
+			.catch(e => {
+				if (window.console) console.warn('vantage: update check', e);
 				out.textContent = _('Could not check for updates.') + ' ';
 				out.appendChild(this.releaseLink(_('See the latest release')));
 			})

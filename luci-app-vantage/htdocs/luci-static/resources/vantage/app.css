@@ -1052,6 +1052,8 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--vt-ok); }
 .vt-app .vt-status-warn::before { background: var(--vt-warn); }
 .vt-app .vt-status-err::before { background: var(--vt-err); }
+/* a radio switched off on purpose: grey, not a warning */
+.vt-app .vt-status-off::before { background: var(--vt-text-3); }
 .vt-app .vt-icon-action {
 	display: inline-flex; align-items: center; justify-content: center; flex: none;
 	width: var(--vt-ctl); height: var(--vt-ctl); padding: 0; margin: 0; border: 0; border-radius: var(--vt-r-ctl);
