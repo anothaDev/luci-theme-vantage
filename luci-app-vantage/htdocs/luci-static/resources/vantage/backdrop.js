@@ -237,7 +237,7 @@ function mount(host, band, style) {
 	var down = null, up = null, originEl = null;
 	var scene = null, cur = 'none', raf = 0, timer = 0, last = 0, dpr = 1, inView = true, hidden = false, still = false, paused = false, mq = null;
 	var focused = typeof document.hasFocus === 'function' ? document.hasFocus() : true;
-	var ro = null, io = null, onMq = null, stillRated = false, mo = null, scheme = null, onScheme = null;
+	var ro = null, io = null, onMq = null, stillRated = false, mo = null, scheme = null, onScheme = null, stale = false;
 
 	cv.className = 'vt-backdrop';
 	cv.setAttribute('aria-hidden', 'true');
@@ -305,7 +305,19 @@ function mount(host, band, style) {
 		else if (!still) scene.resize(false);
 	}
 
+	/* a poll's rate and geometry: read with the frame drawn, not between
+	   the poll's own DOM writes, where the read would make the browser lay
+	   the page out an extra time */
+	function refit() {
+		stale = false;
+		measure();
+		load();
+		fit(false);
+		if (still) paint();
+	}
+
 	function size(initial) {
+		stale = false;
 		measure();
 		dpr = Math.min(window.devicePixelRatio || 1, 1.5);
 		cv.width = Math.round(env.w * dpr); cv.height = Math.round(env.h * dpr);
@@ -331,6 +343,7 @@ function mount(host, band, style) {
 	function tick(t) {
 		raf = 0;
 		if (!running()) return;
+		if (stale) refit();
 		scene.step(clamp((t - last) / 1000, 0, .1));
 		last = t;
 		paint();
@@ -395,15 +408,14 @@ function mount(host, band, style) {
 		style: setStyle,
 		/* each poll: the uplink's rate (bit/s each way) and the node the
 		   stars stream from; the colours follow a theme switch */
+		/* (the colours follow a theme switch, onScheme) */
 		update: function(o) {
 			o = o || {};
 			down = o.down; up = o.up;
 			if (o.origin !== undefined) originEl = o.origin;
-			colours();
-			measure();
-			load();
-			fit(false);
-			if (still) paint();
+			stale = true;
+			/* a still frame, or none to draw yet: now */
+			if (still || !usable()) refit();
 			run();
 		},
 		running: running,

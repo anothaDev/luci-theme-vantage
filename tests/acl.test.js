@@ -55,6 +55,13 @@ test('view: aliases are checked by names.aliasOp and written only through luci.v
 	assert.match(view, /callSetAlias\(key, value, icon\)\)\.then\([\s\S]*?\}\)\.then\(function\(res\) \{\n\t\t\treturn self\.loadAliases\(\)/);
 });
 
+test('view: a station set quiet is written only through luci.vantage set_quiet, with a normalised MAC and a boolean, then reloaded', () => {
+	const calls = [ ...view.matchAll(/callSetQuiet\(([^)]*)\)/g) ].map(m => m[1]);
+	assert.deepEqual(calls, [ 'key, on === true' ]);
+	assert.match(view, /var self = this, key = names\.normMac\(mac\);\n\t\tif \(!key\) return Promise\.resolve\(false\);\n\t\treturn Promise\.resolve\(callSetQuiet/);
+	assert.match(view, /return self\.loadAliases\(\)\.then\(function\(\) \{ self\.rehealth\(\); return res; \}/);
+});
+
 test('view: wireless data comes from luci.vantage wireless, reverse DNS only with its group', () => {
 	assert.match(view, /rpc\.declare\(\{ object: 'luci\.vantage', method: 'wireless'/);
 	assert.doesNotMatch(view, /getWirelessDevices/);

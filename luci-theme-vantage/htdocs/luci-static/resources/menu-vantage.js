@@ -30,6 +30,11 @@ const LOGIN_KEY = 'vantage.login';      /* read by the login page's login.js */
    picked here when the dashboard is installed; the dashboard listens for BACKDROP_EVENT */
 const BACKDROP_KEY = 'vantage.backdrop.v1';
 const BACKDROP_EVENT = 'vantage:backdrop';
+/* Low-power router (#101), with the dashboard: it asks for the slow parts
+   less often and nothing moves (no backdrop, no flow dots, none on the
+   login page either); the dashboard reads data-vt-power and listens for
+   POWER_EVENT */
+const POWER_EVENT = 'vantage:power';
 /* Appearance for every browser: saved on the router, in
    /etc/config/vantage_theme (section appearance), by whoever may (rpcd
    group luci-theme-vantage); header.ut and sysauth.ut hand its values over
@@ -56,6 +61,7 @@ const LOOK = {
 	theme: { own: 'vantage.theme.own', before: THEME_KEY, ok: [ 'auto', 'light', 'dark' ] },
 	login: { own: 'vantage.login.own', before: LOGIN_KEY, ok: [ 'grid', 'stars', 'none' ] },
 	backdrop: { own: 'vantage.backdrop.own', before: BACKDROP_KEY, ok: [ 'grid', 'stars', 'none' ] },
+	power: { own: 'vantage.power.own', before: 'vantage.power', ok: [ 'normal', 'low' ] },
 	/* what shows next to the logo; the hostname and model come from system board */
 	brand: { own: 'vantage.brand.own', before: 'vantage.brand', ok: [ 'none', 'hostname', 'model' ] }
 };
@@ -207,6 +213,7 @@ function setLookAttr(root, name, value) {
 	if (name === 'theme') root.setAttribute('data-vt-look-theme', value);
 	else if (name === 'login') root.setAttribute('data-vt-look-login', value);
 	else if (name === 'backdrop') root.setAttribute('data-vt-look-backdrop', value);
+	else if (name === 'power') root.setAttribute('data-vt-look-power', value);
 	else if (name === 'brand') root.setAttribute('data-vt-look-brand', value);
 }
 function storageSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
@@ -875,7 +882,7 @@ return baseclass.extend({
 		/* Appearance opened before the menu came in lacks the network
 		   path's group (hasDashboard): add it now */
 		if (this.appear && this.hasDashboard() && !this.appear.querySelector('input[name="vt-backdrop"]')) {
-			this.appear.insertBefore(this.backdropGroup(), this.appearNote);
+			this.dashboardGroups().forEach(g => this.appear.insertBefore(g, this.appearNote));
 			this.syncAppearance();
 		}
 		this.dp = (L.env.dispatchpath || []).slice();
@@ -1664,6 +1671,25 @@ return baseclass.extend({
 		this.syncAppearance();
 	},
 
+	powerPref() {
+		return this.lookPref('power');
+	},
+
+	setPowerPref(pref) {
+		this.setLook('power', pref, () => this.applyPower());
+	},
+
+	/* the dashboard reads the one in force from data-vt-power; the
+	   refresh dot stops with it (vantage.css) */
+	applyPower() {
+		const v = this.powerPref();
+		if (this.root.getAttribute('data-vt-power') !== v) {
+			this.root.setAttribute('data-vt-power', v);
+			window.dispatchEvent(new CustomEvent(POWER_EVENT));
+		}
+		this.syncAppearance();
+	},
+
 	setupTheme() {
 		const toggle = document.getElementById('vt-theme');
 		if (toggle) toggle.addEventListener('click', () => { if (this.themeNext) this.setTheme(this.themeNext); });
@@ -1700,6 +1726,7 @@ return baseclass.extend({
 			}
 			this.applyTheme();
 			this.applyBackdrop();
+			this.applyPower();
 			this.applyBrand();
 		});
 		/* the dashboard's own picker (Customize), saved as Appearance's */
@@ -1722,6 +1749,7 @@ return baseclass.extend({
 		});
 		this.applyTheme();
 		this.applyBackdrop();
+		this.applyPower();
 		this.applyBrand();
 	},
 
@@ -1733,7 +1761,7 @@ return baseclass.extend({
 	   scrolling the page close it. */
 	/* one of Appearance's radio groups */
 	appearGroup(name, legend, opts, set) {
-		const look = { 'vt-colour': 'theme', 'vt-logo-name': 'brand', 'vt-login': 'login', 'vt-backdrop': 'backdrop' }[name];
+		const look = { 'vt-colour': 'theme', 'vt-logo-name': 'brand', 'vt-login': 'login', 'vt-backdrop': 'backdrop', 'vt-power': 'power' }[name];
 		return E('fieldset', { 'class': 'vt-appear-set' }, [
 			E('legend', {}, [ legend ]),
 			E('div', { 'class': 'vt-appear-track' }, opts.map(o => {
@@ -1752,6 +1780,13 @@ return baseclass.extend({
 		return this.appearGroup('vt-backdrop', _('Network path background'), [ [ 'grid', n.grid ], [ 'stars', n.stars ], [ 'none', n.none ] ], v => this.setBackdropPref(v));
 	},
 
+	/* the dashboard's groups: its network path's background, and the
+	   low-power mode */
+	dashboardGroups() {
+		return [ this.backdropGroup(),
+			this.appearGroup('vt-power', _('Low-power router'), [ [ 'normal', _('Off') ], [ 'low', _('On') ] ], v => this.setPowerPref(v)) ];
+	},
+
 	appearanceEl() {
 		if (this.appear) return this.appear;
 		const group = (name, legend, opts, set) => this.appearGroup(name, legend, opts, set);
@@ -1764,7 +1799,7 @@ return baseclass.extend({
 				[ 'none', _('Logo only') ], [ 'hostname', _('Hostname') ], [ 'model', _('Model') ]
 			], v => this.setBrandPref(v)),
 			group('vt-login', _('Login background'), [ [ 'grid', login.grid ], [ 'stars', login.stars ], [ 'none', login.none ] ], v => this.setLoginPref(v))
-		].concat(this.hasDashboard() ? [ this.backdropGroup() ] : [], [
+		].concat(this.hasDashboard() ? this.dashboardGroups() : [], [
 			/* where the picks are kept, when not for every browser (syncAppearance) */
 			(this.appearNote = E('p', { 'class': 'vt-appear-note', 'role': 'status', 'hidden': 'hidden' })),
 			this.versionEl()
@@ -1837,7 +1872,7 @@ return baseclass.extend({
 
 	syncAppearance() {
 		if (!this.appear) return;
-		const now = { 'vt-colour': this.themePref(), 'vt-logo-name': this.brandPref(), 'vt-login': this.loginPref(), 'vt-backdrop': this.backdropPref() };
+		const now = { 'vt-colour': this.themePref(), 'vt-logo-name': this.brandPref(), 'vt-login': this.loginPref(), 'vt-backdrop': this.backdropPref(), 'vt-power': this.powerPref() };
 		Array.prototype.forEach.call(this.appear.querySelectorAll('input[type="radio"]'), r => { r.checked = (now[r.name] === r.value); });
 		const state = this.lookState();
 		const note = state === 'relogin' ? _('Log in again to save Appearance for every browser.')
@@ -1940,6 +1975,13 @@ return baseclass.extend({
 		};
 		new MutationObserver(decorate).observe(box, { childList: true, subtree: true, characterData: true });
 		decorate();
+		/* another window has the focus: the refresh dot's pulse stops
+		   (vantage.css), as a moving part keeps the browser drawing */
+		const root = document.documentElement;
+		const focus = () => root.toggleAttribute('data-vt-blur', !document.hasFocus());
+		window.addEventListener('blur', focus);
+		window.addEventListener('focus', focus);
+		focus();
 	},
 
 	/* ------------------------------------------ technical numerals */
@@ -2001,8 +2043,11 @@ return baseclass.extend({
 		this.formsQueued = false;
 		this.helpSeq = 0;
 		this.helpSizes = window.ResizeObserver ? new ResizeObserver(entries => this.fitHelps(entries.map(e => e.target))) : null;
+		/* not for the dashboard's own redraws (each poll): it holds no
+		   LuCI form; a modal opened over it sits outside it */
+		const inApp = r => r.target.nodeType === 1 && !!r.target.closest('.vt-app');
 		if (window.MutationObserver)
-			new MutationObserver(() => this.queueForms()).observe(document.body, { childList: true, subtree: true });
+			new MutationObserver(records => { if (!records.every(inApp)) this.queueForms(); }).observe(document.body, { childList: true, subtree: true });
 		this.decorateForms();
 	},
 

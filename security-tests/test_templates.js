@@ -318,7 +318,7 @@ test('login: fuser is never echoed, hostile inputs change no markup, the hostnam
 	assert.match(evil.html, /<h1 class="vt-login-title">SECRET-HOSTNAME&#34;&#62;&#60;script&#62;/, 'a hostile hostname is encoded');
 	assert.match(renderLogin({ path: ADMIN, noHostname: true }).html, /<h1 class="vt-login-title">Authorization Required<\/h1>/, 'none: as before');
 	assert.deepEqual(evil.calls.ubus, [], 'login page called ubus');
-	assert.deepEqual(evil.calls.uci, [ 'uhttpd.main.listen_https', 'vantage_theme.appearance.theme', 'vantage_theme.appearance.login', 'system.@system.hostname' ],
+	assert.deepEqual(evil.calls.uci, [ 'uhttpd.main.listen_https', 'vantage_theme.appearance.theme', 'vantage_theme.appearance.login', 'vantage_theme.appearance.power', 'system.@system.hostname' ],
 		'login page read more than the HTTPS ports, the Appearance saved for every browser and the hostname');
 	assert.match(evil.html, /role="alert">Invalid username and\/or password! Please try again\.</, 'generic error for a failed login');
 	assert.ok(!renderLogin({ path: ADMIN }).html.includes('role="alert"'), 'no error before a login attempt');
@@ -371,6 +371,14 @@ test('Appearance saved for every browser: only values the theme knows reach the 
 	const looks = html => Object.fromEntries(tokenize(html).tags.find(t => t.name === 'html').attrs.filter(a => /^data-vt-look-(theme|login|backdrop|brand)$/.test(a[0])));
 	const look = { theme: 'dark', login: 'stars', backdrop: 'none', brand: 'hostname' };
 	assert.deepEqual(looks(renderLogin({ path: ADMIN, look }).html), { 'data-vt-look-theme': 'dark', 'data-vt-look-login': 'stars' });
+	/* Low-power router: the login page draws no particles (login.js) */
+	const power = html => attrOf(html, 'html', 'data-vt-look-power');
+	assert.equal(power(renderLogin({ path: ADMIN, look: { power: 'low' } }).html), 'low');
+	assert.equal(power(renderPage({ path: ADMIN, authed: true, look: { power: 'low' } }).html), 'low');
+	for (const odd of [ HOSTILE, 'Low', ' low', 'on', '' ]) {
+		assert.equal(power(renderLogin({ path: ADMIN, look: { power: odd } }).html), '', `login power ${JSON.stringify(odd)}`);
+		assert.equal(power(renderPage({ path: ADMIN, authed: true, look: { power: odd } }).html), '', `header power ${JSON.stringify(odd)}`);
+	}
 	assert.deepEqual(looks(renderPage({ path: ADMIN, authed: true, look }).html),
 		{ 'data-vt-look-theme': 'dark', 'data-vt-look-login': 'stars', 'data-vt-look-backdrop': 'none', 'data-vt-look-brand': 'hostname' });
 	for (const odd of [ HOSTILE, 'Dark', ' dark', 'stars ', [ 'dark' ], {}, 1, '' ]) {

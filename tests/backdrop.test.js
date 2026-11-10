@@ -140,9 +140,10 @@ test('mount: one frame loop, 20 a second on a quiet uplink, none in the backgrou
 	set('document', { hidden: false, hasFocus: () => true, documentElement: {}, createElement: () => canvas, addEventListener: add(on.doc), removeEventListener: rem(on.doc) });
 	set('window', { devicePixelRatio: 1, addEventListener: add(on.win), removeEventListener: rem(on.win),
 		matchMedia: q => ({ get matches() { return /reduced/.test(q) && reduced; }, addEventListener: (e, f) => { mq[q] = f; }, removeEventListener: () => { delete mq[q]; } }) });
-	set('getComputedStyle', () => ({ color: colour }));
+	let styleReads = 0, rectReads = 0;
+	set('getComputedStyle', () => { styleReads++; return { color: colour }; });
 	const rect = (l, t, w, h) => ({ left: l, top: t, right: l + w, bottom: t + h, width: w, height: h });
-	const host = { clientLeft: 0, clientTop: 0, clientWidth: 1200, clientHeight: 700, getBoundingClientRect: () => rect(0, 0, 1200, 700), insertBefore(c) { c.parentNode = { removeChild() {} }; }, firstChild: null };
+	const host = { clientLeft: 0, clientTop: 0, clientWidth: 1200, clientHeight: 700, getBoundingClientRect: () => { rectReads++; return rect(0, 0, 1200, 700); }, insertBefore(c) { c.parentNode = { removeChild() {} }; }, firstChild: null };
 	const band = { getBoundingClientRect: () => rect(20, 60, 1160, 400) };
 	let pending = 0;
 	const run = ms => { const end = now + ms; while (now < end) { now++;
@@ -158,6 +159,13 @@ test('mount: one frame loop, 20 a second on a quiet uplink, none in the backgrou
 		b.update({ down: 5e7, up: 1e7 });
 		const busy = frames(1000);
 		assert.ok(busy >= 28 && busy <= 32, 'about 30 a second: ' + busy);
+		/* a poll reads no colour (a theme switch does) and no geometry:
+		   the next frame drawn reads it, once however many polls came */
+		styleReads = rectReads = 0;
+		b.update({ down: 4e7, up: 1e7 }); b.update({ down: 5e7, up: 1e7 });
+		assert.deepEqual([ styleReads, rectReads ], [ 0, 0 ], 'nothing read during the poll');
+		run(80);
+		assert.deepEqual([ styleReads, rectReads ], [ 0, 1 ], 'the geometry once, with the frame');
 		for (let i = 0; i < 50; i++) { b.update({ down: i * 1e6, up: 1e5 }); fire(on.win, 'focus'); fire(on.doc, 'visibilitychange'); run(5); }
 		assert.equal(pending, 1, 'never more than one frame or wait pending');
 		fire(on.win, 'blur'); run(40);

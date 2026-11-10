@@ -86,7 +86,7 @@ return baseclass.extend({
 		}
 
 		/* radios and signal; neither applies to a wired-only device */
-		if (!model.wired) this.wifiHealth(model, out);
+		if (!model.wired) this.wifiHealth(model, out, live.quiet);
 
 		/* storage */
 		var root = (dev.storage || [])[0];
@@ -98,7 +98,7 @@ return baseclass.extend({
 
 	/* the Wi-Fi and Signal checks, appended to out; an SSID without
 	   clients is idle, not a fault */
-	wifiHealth: function(model, out) {
+	wifiHealth: function(model, out, quietMacs) {
 		var radios = model.radios || [], nSsid = (model.ssids || []).length;
 		var off = radios.filter(function(r) { return r.disabled; }), down = radios.filter(function(r) { return !r.disabled && !r.up; });
 		var idle = (model.ssids || []).filter(function(s) { return s.up && !s.clients; });
@@ -114,10 +114,12 @@ return baseclass.extend({
 			detail: idle.length ? fmt.N_(nSsid, '%d SSID broadcasting, %d idle', '%d SSIDs broadcasting, %d idle').format(nSsid, idle.length) : fmt.N_(nSsid, '%d SSID broadcasting', '%d SSIDs broadcasting').format(nSsid),
 			page: PAGES.wireless });
 
-		/* signal */
-		var clients = model.clients || [];
-		var weak = clients.filter(function(c) { return c.signal != null && c.signal < WEAK_DBM; }).sort(function(a, b) { return a.signal - b.signal; });
-		var heard = clients.filter(function(c) { return c.signal != null; }).sort(function(a, b) { return a.signal - b.signal; });
+		/* signal; a station set quiet (#110: far away on purpose) is left
+		   out, of the warning and of the weakest */
+		var clients = model.clients || [], quiet = quietMacs || {};
+		var counted = clients.filter(function(c) { return !quiet[c.mac]; });
+		var weak = counted.filter(function(c) { return c.signal != null && c.signal < WEAK_DBM; }).sort(function(a, b) { return a.signal - b.signal; });
+		var heard = counted.filter(function(c) { return c.signal != null; }).sort(function(a, b) { return a.signal - b.signal; });
 		if (!clients.length) out.push({ id: 'signal', level: 'info', title: _('Signal'), value: _('No clients'), reason: '', detail: _('No stations are associated right now'), page: PAGES.wireless });
 		else if (weak.length) out.push({ id: 'signal', level: 'warn', title: _('Signal'), value: _('%d weak').format(weak.length),
 			/* the level stays in one piece when the line wraps */
@@ -127,6 +129,8 @@ return baseclass.extend({
 			   (the weakest's details where the layout hides that list) */
 			client: weak[0].mac, list: weak.length > 1 ? 'weak' : null });
 		/* all fine: the weakest, which is how close the network is to a problem */
+		else if (!counted.length) out.push({ id: 'signal', level: 'ok', title: _('Signal'), value: fmt.DASH,
+			reason: _('No warnings asked for'), detail: _('Every client here is set not to warn about its signal'), page: PAGES.wireless });
 		else out.push({ id: 'signal', level: 'ok', title: _('Signal'), value: heard.length ? fmt.dbm(heard[0].signal) : fmt.DASH,
 			reason: !heard.length ? _('Not reported by the driver') : heard.length === 1 ? _('The only measured client')
 				: fmt.N_(heard.length, 'Weakest of %d client', 'Weakest of %d clients').format(heard.length),

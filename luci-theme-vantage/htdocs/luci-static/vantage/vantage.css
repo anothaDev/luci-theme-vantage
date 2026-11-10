@@ -724,6 +724,8 @@ html[data-vt-alert="err"] #indicators > span[data-indicator="poll-status"][data-
 	html[data-vt-live="err"] #indicators > span[data-indicator="poll-status"][data-style="active"]::before, html[data-vt-alert="warn"] #indicators > span[data-indicator="poll-status"][data-style="active"]::before { background: var(--warn); }
 	html[data-vt-alert="err"] #indicators > span[data-indicator="poll-status"][data-style="active"]::before { background: var(--err); }
 }
+/* another window has the focus, or Low-power router is on (menu-vantage.js): no pulse */
+:is(html[data-vt-blur], html[data-vt-power="low"]) #indicators > span[data-indicator="poll-status"][data-style="active"]::after { animation: none; }
 @keyframes vt-live-soft { 0% { transform: scale(1); opacity: .6; } 70%, 100% { transform: scale(2.2); opacity: 0; } }
 @keyframes vt-live { 0% { transform: scale(1); opacity: 1; } 70%, 100% { transform: scale(2.7); opacity: 0; } }
 #indicators > span[data-indicator="poll-status"][data-style="inactive"]::before {
