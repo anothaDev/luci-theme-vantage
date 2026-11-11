@@ -330,6 +330,8 @@ test('iwinfo info: once a radio, and for a network hostapd does not answer for; 
 		assert.deepEqual(asked.splice(0), [], 'then nothing for 30 s');
 		assert.equal(r.iwinfo.wl0.channel, 6, 'the reading stands');
 		assert.equal(r.hapdStatus['wl0-1'].bssid, '00:00:5e:00:53:a5', 'its BSSID comes from hostapd');
+		assert.equal(r.iwinfo['wl0-1'], undefined, 'and not from its first poll\'s iwinfo, kept');
+		assert.equal(r.iwinfo['wl0-sta'].channel, 6, 'one hostapd does not serve keeps its reading');
 		await poll(25e3);
 		assert.deepEqual(asked.splice(0).sort(), [ 'wl0', 'wl0-sta', 'wl1' ], 'after 30 s: a radio\'s first, and the one hostapd does not serve');
 		/* hostapd reports wl1 on another channel: asked at the next poll */
@@ -1001,6 +1003,14 @@ test('CPU: 0 % until the first reading, its second sample a second after the fir
 		await self.refreshFast();
 		assert.ok(self.st.cpu && self.st.cpuMeasured, 'a reading');
 		assert.equal(self.cpuShown(), self.st.cpu);
+		/* the lane's tick and the early sample share a call in flight */
+		let calls = 0;
+		const saved = REPLIES['file read'];
+		REPLIES['file read'] = (...a) => { calls++; return saved(...a); };
+		await Promise.all([ self.refreshFast(), self.refreshFast() ]);
+		assert.equal(calls, 1, 'one call for both');
+		await self.refreshFast();
+		assert.equal(calls, 2, 'and the next one after it');
 		await self.refreshFast();
 		assert.deepEqual(timers, [ 1100 ], 'and none once measured');
 	} finally {
@@ -1359,13 +1369,37 @@ test('host hints: every 30 s, and again for three polls when a station or host i
 		stations = stations.concat([ { mac: '00:00:5e:00:53:02' } ]);
 		await poll(5e3);
 		assert.equal(hints, 2, 'the new station is this poll\'s');
+		/* a failed call spends none of the three */
+		const ok = REPLIES['luci-rpc getHostHints'];
+		REPLIES['luci-rpc getHostHints'] = () => { hints++; return Promise.reject(new Error('timeout')); };
+		const failed = await poll(5e3);
+		assert.equal(failed.hints['00:00:5e:00:53:01'].name, 'one', 'the last reply kept');
+		REPLIES['luci-rpc getHostHints'] = ok;
 		await poll(5e3); await poll(5e3); await poll(5e3);
-		assert.equal(hints, 5, 'then three polls in a row');
+		assert.equal(hints, 6, 'then three answered polls in a row');
 		await poll(5e3);
-		assert.equal(hints, 5, 'and kept again');
+		assert.equal(hints, 6, 'and kept again');
 	}
 	finally {
 		global.L = savedL; Date.now = now;
 		for (const k of Object.keys(REPLIES)) if (/^(luci-rpc getHostHints|luci\.vantage wireless|iwinfo assoclist)/.test(k)) delete REPLIES[k];
 	}
+});
+
+/* a pulse CSS cancelled since the last step (the dot's state changed) is
+   dropped, not stepped: a time written to it would bring it back, paused,
+   with nothing left to stop it (review of 1.0.19) */
+test('motion clock: a cancelled pulse is dropped, not stepped', () => {
+	const live = { playState: 'paused', currentTime: 0 }, gone = { playState: 'idle', currentTime: null };
+	const self = Object.create(view);
+	self.clock = { anims: [ { a: live, dur: 1000, at: 0 }, { a: gone, dur: 1000, at: 0 } ] };
+	self.wireMap = {};
+	const saved = global.window;
+	global.window = { dispatchEvent() {} };
+	try {
+		self.stepMotion(50, 1000);
+		assert.equal(live.currentTime, 50);
+		assert.equal(gone.currentTime, null, 'not written: it stays cancelled');
+		assert.deepEqual(self.clock.anims.map(x => x.a), [ live ]);
+	} finally { global.window = saved; }
 });

@@ -56,7 +56,7 @@ const MOTION_EVENT = 'vantage:tick';
    key, also what the dashboard reads under another theme) counts until
    the router has one. */
 /* this package's version, as its Makefile has it (tests/version.test.js) */
-const VERSION = '1.0.18';
+const VERSION = '1.0.19';
 /* Check for updates (Appearance): when asked, never on its own, the browser
    reads the project's 24.10 package list on GitHub Pages (the same release
    as 25.12's), without cookies or a referrer. Only a version number passes;
@@ -2014,10 +2014,13 @@ return baseclass.extend({
 			});
 			this.kickMotion();
 		});
-		/* one CSS took away (blur, Low-power router, the poll stopped) is
-		   dropped on its event: asking an animation's playState on every
-		   tick would make the browser bring the style up to date each time */
-		const drop = ev => { if (/^vt-live/.test(ev.animationName || '')) c.anims = c.anims.filter(x => x.a.playState !== 'idle'); };
+		/* one CSS took away (blur, Low-power router, the poll stopped, the
+		   dot's state changed) or ended (reduced motion switched on: it
+		   turns finite, and a paused one stays "paused") is dropped on its
+		   event, the animation the event is for and any other cancelled
+		   one; at the next step (stepPulses) when that comes first */
+		const isFor = (a, ev) => !!a.effect && a.effect.target === ev.target && (a.effect.pseudoElement || '') === (ev.pseudoElement || '') && a.animationName === ev.animationName;
+		const drop = ev => { if (/^vt-live/.test(ev.animationName || '')) c.anims = c.anims.filter(x => !isFor(x.a, ev) && x.a.playState !== 'idle'); };
 		box.addEventListener('animationcancel', drop);
 		box.addEventListener('animationend', drop);
 		/* the dashboard's clock: its frames are this page's */
@@ -2034,6 +2037,11 @@ return baseclass.extend({
 
 	stepPulses(dt) {
 		const c = this.clock;
+		/* one CSS cancelled since the last step is dropped, not stepped: a
+		   time written to a cancelled animation brings it back, paused,
+		   with nothing left to stop it (its animationcancel comes after).
+		   Asking brings the style up to date once a step, the first time */
+		c.anims = c.anims.filter(x => x.a.playState !== 'idle');
 		/* the time is kept here, never read back: reading a CSS animation's
 		   currentTime makes the browser bring the style up to date first */
 		c.anims.forEach(x => {

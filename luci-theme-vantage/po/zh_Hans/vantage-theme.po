@@ -373,8 +373,8 @@ msgstr "内存"
 msgid "Model"
 msgstr "型号"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2215
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2232
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2223
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2240
 msgctxt "vantage-theme"
 msgid "More actions"
 msgstr "更多操作"
@@ -539,11 +539,11 @@ msgid "Show %d more rule"
 msgid_plural "Show %d more rules"
 msgstr[0] "再显示 %d 条规则"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2372
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2380
 msgid "Show full description"
 msgstr "显示完整描述"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2361
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2369
 msgid "Show full help: %s"
 msgstr "显示完整帮助：%s"
 

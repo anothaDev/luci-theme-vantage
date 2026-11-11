@@ -508,7 +508,11 @@ text around it so it looks the same size.
   dump on a MediaTek MT7981 router, #101), so it is taken again only
   when brforward, read every call (MAC, port, time since heard), shows
   a host arrive, leave or change port, or after 30 s; in between the
-  last dump's hosts with brforward's times. brforward's byte order is
+  last dump's hosts with brforward's times. It dumps every call, as
+  before, when the bridges hold more than 512 entries between them (they
+  are then only counted, so a host making up addresses cannot make every
+  call parse thousands) or one MAC sits on two ports of a bridge (each
+  row's time since heard is the dump's own). brforward's byte order is
   the host's, learned from the first dump. The bridge forgets a host
   after about five minutes without traffic.
   `routes` returns the default route the kernel takes to the internet,

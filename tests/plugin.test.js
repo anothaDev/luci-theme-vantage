@@ -558,6 +558,18 @@ test('ucode plugin: wired dumps again only when the hosts move, or after FDB_DUM
 	/* a big-endian router: the byte order is learned from the dump */
 	const [ , be ] = run([ { method: 'wired', fdb: FDB, brforward: brforward(FDB, { be: true }) }, { method: 'wired', fdb: 'no dump', brforward: brforward(FDB, { be: true, age: 250 }) } ]);
 	assert.deepEqual(seen(be).slice(0, 2), [ '00:00:5e:00:53:01 lan1 null 2', '00:00:5e:00:53:02 lan2 10 2' ]);
+	/* a MAC on two ports of one bridge: each row's time is the dump's own,
+	   so it is dumped every call (one brforward key cannot tell them apart) */
+	const twice = FDB.concat([ fdb('00:00:5e:00:53:01', 'lan2', { vlan: 10, cacheinfo: { updated: 5000 } }) ]);
+	const twiceVlan = twice.map(n => n && n.dev === 'lan2' && n.lladdr === '00:00:5e:00:53:01' ? Object.assign({}, n, { vlan: 20 }) : n);
+	const [ , both ] = run([ { method: 'wired', fdb: twice, brforward: brforward(twice) }, { method: 'wired', fdb: twiceVlan, brforward: brforward(twice) } ]);
+	assert.deepEqual(both, shim.wired(twiceVlan), 'dumped again');
+	/* over FDB_PARSE records the tables are only counted: dumped each call */
+	const big = Array.from({ length: 513 }, (_, i) => fdb('02:00:5e:01:' + (i >> 8).toString(16).padStart(2, '0') + ':' + (i & 255).toString(16).padStart(2, '0'), 'lan1'));
+	const bigVlan = big.map((n, i) => i === 0 ? Object.assign({}, n, { vlan: 30 }) : n);
+	const [ , many ] = run([ { method: 'wired', fdb: big, brforward: brforward(big) }, { method: 'wired', fdb: bigVlan, brforward: brforward(big) } ]);
+	assert.deepEqual(many, shim.wired(bigVlan), 'dumped again');
+	assert.match(src, /^const FDB_PARSE = 512;/m);
 	/* a failed dump is not kept */
 	const [ , retry ] = run([ { method: 'wired', fdb: null, brforward: brforward(FDB) }, { method: 'wired', fdb: FDB, brforward: brforward(FDB) } ]);
 	assert.deepEqual(retry, first);

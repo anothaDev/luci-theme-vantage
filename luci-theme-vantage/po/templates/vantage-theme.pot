@@ -362,8 +362,8 @@ msgstr ""
 msgid "Model"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2215
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2232
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2223
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2240
 msgctxt "vantage-theme"
 msgid "More actions"
 msgstr ""
@@ -529,11 +529,11 @@ msgid_plural "Show %d more rules"
 msgstr[0] ""
 msgstr[1] ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2372
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2380
 msgid "Show full description"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2361
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2369
 msgid "Show full help: %s"
 msgstr ""
 

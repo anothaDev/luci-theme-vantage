@@ -70,7 +70,7 @@ var GONE_KEEP_MS = 5 * 60 * 1000;     /* disconnected stations stay listed */
 var TALKERS = 3;                      /* top talkers shown; the tile keeps room for all */
 var SWITCH_MS = 30 * 1000;            /* LuCI runs swconfig for each switch's link state: at most this often */
 var STORE_KEY = 'vantage.hist.v1';
-var VERSION = '1.0.18';               /* this package's, as its Makefile has it (tests/version.test.js) */
+var VERSION = '1.0.19';               /* this package's, as its Makefile has it (tests/version.test.js) */
 var SVGNS = 'http://www.w3.org/2000/svg';
 var HOSTAPD_OBJ = /^[A-Za-z0-9_.-]{1,64}$/;
 
@@ -138,6 +138,13 @@ function reducedMotion() {
 function pulseDuration(a) {
 	var tm = a.effect && typeof a.effect.getTiming === 'function' ? a.effect.getTiming() : null;
 	return tm && typeof tm.duration === 'number' && tm.duration > 0 ? tm.duration : 0;
+}
+
+/* is a the CSS animation an animation event (ev) is for: the same
+   element, pseudo-element and name */
+function pulseOf(a, ev) {
+	var e = a && a.effect;
+	return !!e && e.target === ev.target && (e.pseudoElement || '') === (ev.pseudoElement || '') && a.animationName === ev.animationName;
 }
 
 /* a paused animation dt ms on. The time is kept here (x.at), never read
@@ -822,9 +829,11 @@ return view.extend({
 			   its own iwinfo info. Each costs the router ~15 ms. */
 			var hapdKnown = self.hapdBss || {}, hapdLast = self.hapdLast || {};
 			var per = [];
-			if (hintsDue) {
-				/* a failed call keeps the last reply and is asked again next poll */
-				if (r[5] && typeof r[5] === 'object') { self.hintsCache = r[5]; self.hintsAt = started; }
+			/* a failed call keeps the last reply, is asked again next poll
+			   and spends none of the extra tries after a new device */
+			if (hintsDue && r[5] && typeof r[5] === 'object') {
+				self.hintsCache = r[5];
+				self.hintsAt = started;
 				if (self.hintsHot > 0) self.hintsHot--;
 			}
 			/* the state an interface's iwinfo reading belongs to: asked
@@ -890,9 +899,16 @@ return view.extend({
 						else delete iwc[p[1]];
 					}
 				});
-				/* the readings kept for the interfaces not asked this poll */
-				if (slow) Object.keys(iwc).forEach(function(ifn) { if (!(ifn in iwinfo) && ifnames.indexOf(ifn) >= 0) iwinfo[ifn] = iwc[ifn].reply; });
-				Object.keys(iwc).forEach(function(ifn) { if (ifnames.indexOf(ifn) < 0) delete iwc[ifn]; });
+				/* the readings kept for the interfaces not asked this poll;
+				   one no longer asked at all (another network hostapd now
+				   answers for: its BSSID and SSID are hostapd's) is dropped,
+				   not shown from its first poll on */
+				var wantIw = function(ifn) {
+					var h = hapdStatus[ifn];
+					return ifnames.indexOf(ifn) >= 0 && (radioFirst[ifn] || !(h && typeof h.bssid === 'string' && h.bssid));
+				};
+				Object.keys(iwc).forEach(function(ifn) { if (!wantIw(ifn)) delete iwc[ifn]; });
+				if (slow) Object.keys(iwc).forEach(function(ifn) { if (!(ifn in iwinfo)) iwinfo[ifn] = iwc[ifn].reply; });
 				self.hapdLast = hapdStatus;
 				/* kept only when all three answered: a failure is asked again
 				   at the next poll, not shown for LOW_SLOW_MS */
@@ -1141,7 +1157,19 @@ return view.extend({
 
 	/* every FAST_S: CPU from /proc/stat and the uplink device's counters,
 	   with their own previous samples, so the two lanes never mix */
+	/* one fast sample at a time: the lane's tick and the first reading's
+	   early second sample (cpuSoon) share a call in flight, so no older
+	   reply lands after a newer one */
 	refreshFast: function() {
+		var self = this;
+		if (this.fastBusy) return this.fastBusy;
+		var p = this.fastSample(), done = function() { if (self.fastBusy === p) self.fastBusy = null; };
+		this.fastBusy = p;
+		p.then(done, done);
+		return p;
+	},
+
+	fastSample: function() {
 		var self = this, st = this.st, up = this.m && this.m.uplink, dev = up && up.statsDev;
 		if (document.hidden || !this.el || this.idle()) return Promise.resolve();
 		return Promise.all([
@@ -1350,12 +1378,14 @@ return view.extend({
 		root.classList.toggle('vt-low', lowPower());
 		this.clock = { anims: [], raf: 0, timer: 0, last: 0 };
 		root.addEventListener('animationstart', function(ev) { if (PULSE_NAME.test(ev.animationName || '')) self.adoptPulses(ev.target); });
-		/* a pulse CSS took away (.vt-still, reduced motion): dropped here,
-		   on its event, since asking an animation's playState on every
-		   tick makes the browser bring the style up to date each time */
+		/* a pulse CSS took away (.vt-still) or ended (reduced motion
+		   switched on: it turns finite, and a paused one stays "paused"):
+		   dropped here, the animation the event is for, and any other
+		   cancelled one; at the next step (stepMotion) when that comes
+		   first */
 		var dropPulses = function(ev) {
 			if (!PULSE_NAME.test(ev.animationName || '') || !self.clock) return;
-			self.clock.anims = self.clock.anims.filter(function(x) { return x.a.playState !== 'idle'; });
+			self.clock.anims = self.clock.anims.filter(function(x) { return !pulseOf(x.a, ev) && x.a.playState !== 'idle'; });
 		};
 		root.addEventListener('animationcancel', dropPulses);
 		root.addEventListener('animationend', dropPulses);
@@ -2059,6 +2089,10 @@ return view.extend({
 	   backdrop's frame; then the theme's clock (vantage:tick) */
 	stepMotion: function(dt, t) {
 		var c = this.clock, map = this.wireMap || {};
+		/* one CSS cancelled since the last step is dropped, not stepped: a
+		   time written to a cancelled animation brings it back, paused,
+		   with nothing left to stop it (its animationcancel comes after) */
+		c.anims = c.anims.filter(function(x) { return x.a.playState !== 'idle'; });
 		c.anims.forEach(function(x) { stepAnim(x, dt); });
 		if (STEP_DOTS) Object.keys(map).forEach(function(k) {
 			var g = map[k], rate = wires.rate(g.speed);

@@ -80,6 +80,7 @@ const NET = '/sys/class/net';
 const FDB_LIMIT = 4096;           // forwarding entries, all bridges together, before wired() lists none
 const FDB_ENTRY = 16;             // sizeof(struct __fdb_entry), brforward's record
 const FDB_DUMP_S = 30;            // the netlink dump at least this often (VLANs, static entries)
+const FDB_PARSE = 512;            // brforward records read one by one, all bridges; above: the dump each call
 const NETWORK = 'network';        // read only, by switches(): switch_vlan sections
 const BOARD = '/etc/board.json';
 const BOARD_MAX = 65536;          // bytes read of it
@@ -537,14 +538,18 @@ let fdb_le = null;
 // number, is_local, ageing in 1/100 s, the port number's high byte),
 // and the kernel fills only as many as asked for, so no more than the
 // budget left is read. null when the bridges hold FDB_LIMIT entries or
-// more between them (one dump returns them all); else { sig, ages }:
-// sig names each learned entry (bridge, MAC, port) in the kernel's
-// order, which holds while the entries do; ages[bridge|mac] its ageing
-// field read both ways, [ little-endian, big-endian ], the youngest of a
-// MAC there more than once (on several VLANs)
+// more between them (one dump returns them all); else { sig, ages,
+// multi }: sig names each learned entry (bridge, MAC, port) in the
+// kernel's order, which holds while the entries do; ages[bridge|mac] its
+// ageing field read both ways, [ little-endian, big-endian ], the
+// youngest of a MAC there more than once (on several VLANs); multi: a
+// MAC on two ports of one bridge, whose ages one key cannot tell apart.
+// Over FDB_PARSE records between them, { sig: null }: the records are
+// only counted, as before, and the caller dumps (a host making up
+// addresses near FDB_LIMIT must not make every call parse them all)
 function bridge_table() {
 	let left = FDB_LIMIT * FDB_ENTRY;
-	let sig = '', ages = {};
+	let sig = '', ages = {}, ports = {}, multi = false, tables = [];
 
 	for (let n in (lsdir(NET) ?? [])) {
 		let b = netdev(n) ? readfile(NET + '/' + n + '/brforward', left) : null;
@@ -557,6 +562,15 @@ function bridge_table() {
 		if (left <= 0)
 			return null;
 
+		push(tables, [ n, b ]);
+	}
+
+	if (FDB_LIMIT * FDB_ENTRY - left > FDB_PARSE * FDB_ENTRY)
+		return { sig: null, ages, multi };
+
+	for (let t in tables) {
+		let n = t[0], b = t[1];
+
 		for (let o = 0; o + FDB_ENTRY <= length(b); o += FDB_ENTRY) {
 			if (ord(b, o + 7))
 				continue;
@@ -564,14 +578,19 @@ function bridge_table() {
 			let k = n + '|' + sprintf('%02x:%02x:%02x:%02x:%02x:%02x', ord(b, o), ord(b, o + 1), ord(b, o + 2), ord(b, o + 3), ord(b, o + 4), ord(b, o + 5));
 			let le = ord(b, o + 8) | (ord(b, o + 9) << 8) | (ord(b, o + 10) << 16) | (ord(b, o + 11) << 24);
 			let be = (ord(b, o + 8) << 24) | (ord(b, o + 9) << 16) | (ord(b, o + 10) << 8) | ord(b, o + 11);
-			let a = ages[k];
+			let a = ages[k], port = ord(b, o + 12) * 256 + ord(b, o + 6);
 
-			sig += k + '/' + (ord(b, o + 12) * 256 + ord(b, o + 6)) + ',';
+			sig += k + '/' + port + ',';
 			ages[k] = a ? [ min(a[0], le), min(a[1], be) ] : [ le, be ];
+
+			if (ports[k] != null && ports[k] != port)
+				multi = true;
+
+			ports[k] = port;
 		}
 	}
 
-	return { sig, ages };
+	return { sig, ages, multi };
 }
 
 // [ { mac, port, bridge, vlan, seen } ] in dump order, at most MAX_HOSTS
@@ -589,7 +608,8 @@ function wired() {
 	let now = clock(true)?.[0] ?? 0;
 
 	// the same hosts on the same ports: the last dump's, heard as now
-	if (fdb_last && fdb_last.sig === tb.sig && now - fdb_last.at < FDB_DUMP_S)
+	// (not when a MAC sits on two ports: each row's own time is the dump's)
+	if (fdb_last && tb.sig != null && !tb.multi && fdb_last.sig === tb.sig && now - fdb_last.at < FDB_DUMP_S)
 		return map(fdb_last.hosts, h => {
 			let a = (h.seen != null && fdb_le != null) ? tb.ages[h.bridge + '|' + h.mac] : null;
 
