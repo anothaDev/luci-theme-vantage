@@ -1650,7 +1650,7 @@ return baseclass.extend({
 	},
 
 	loginNames() {
-		return { grid: _('Grid packets'), stars: _('Starfield'), none: _('None', 'vantage-theme') };
+		return { grid: _('Grid'), stars: _('Starfield'), none: _('None', 'vantage-theme') };
 	},
 
 	setLoginPref(pref) {
@@ -1779,7 +1779,9 @@ return baseclass.extend({
 				input.addEventListener('change', () => { if (input.checked) set(o[0]); });
 				/* the checked option fires no change: after a failed save, this is the retry */
 				input.addEventListener('click', () => { if (input.checked && (this.lookFailed || {})[look]) set(o[0]); });
-				return E('label', { 'class': 'vt-appear-opt' }, [ input ].concat(o[2] ? [ svg(o[2], 16) ] : [], [ E('span', {}, [ o[1] ]) ]));
+				/* data-text: the label's bold width kept (vantage.css), so
+				   a pick changes no column */
+				return E('label', { 'class': 'vt-appear-opt' }, [ input ].concat(o[2] ? [ svg(o[2], 16) ] : [], [ E('span', { 'data-text': o[1] }, [ o[1] ]) ]));
 			}))
 		]);
 	},

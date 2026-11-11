@@ -913,8 +913,8 @@ msgid "Good signal %s"
 msgstr "信号良好 %s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1667
-msgid "Grid packets"
-msgstr "网格数据包"
+msgid "Grid"
+msgstr "网格"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:126
 msgid "HTTP (port 80)"
@@ -2698,6 +2698,9 @@ msgstr "区域 %s 和 %s（若两者共用设备）"
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2920
 msgid "−%d min"
 msgstr "−%d 分钟"
+
+#~ msgid "Grid packets"
+#~ msgstr "网格数据包"
 
 #~ msgid ""
 #~ "Vantage dashboard: name stations (luci.vantage set_alias: validated names "

@@ -908,7 +908,7 @@ msgid "Good signal %s"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1667
-msgid "Grid packets"
+msgid "Grid"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:126

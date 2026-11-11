@@ -1664,7 +1664,7 @@ return view.extend({
 	   Vantage theme it is in Appearance instead (menu-vantage.js) */
 	buildBackdropPick: function() {
 		if (vantageTheme()) return '';
-		var self = this, names = { 'grid': _('Grid packets'), 'stars': _('Starfield'), 'none': _('None') };
+		var self = this, names = { 'grid': _('Grid'), 'stars': _('Starfield'), 'none': _('None') };
 		var pick = E('select', { 'class': 'vt-select', 'id': 'vt-backdrop-style', 'change': function(ev) { self.setBackdrop(ev.target.value); } },
 			backdrop.STYLES.map(function(k) { return E('option', { 'value': k }, [ names[k] ]); }));
 		pick.value = this.backdropStyle;
