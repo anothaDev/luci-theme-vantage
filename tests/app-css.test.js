@@ -102,3 +102,16 @@ test('Customize\'s notes are not the hint, which phones hide', () => {
 	assert.match(view, /el\.editNote = E\('span', \{ 'class': 'vt-edit-note'/);
 	assert.ok(!/vt-edit-note[^{]*\{[^}]*display: none[^}]*\}/.test(css.replace(/\.vt-edit-note\[hidden\][^}]*\}/, '')));
 });
+
+test('network path: the radio column is 172px, wider when a radio\'s text needs it (#122)', () => {
+	const fixed = rules.find(r => r.sel === '.vt-app .vt-branch' && /minmax\(136px, 172px\)/.test(r.body));
+	assert.ok(fixed, 'without subgrid: the fixed column');
+	const sup = /@supports \(grid-template-columns: subgrid\)\s*\{([\s\S]*?)\n\}/.exec(css);
+	assert.ok(sup, 'the shared column needs subgrid');
+	assert.match(sup[1], /\.vt-app \.vt-branches \{[^}]*grid-template-columns: minmax\(172px, max-content\) minmax\(0, 1fr\)/);
+	assert.match(sup[1], /\.vt-app \.vt-branch \{ grid-template-columns: subgrid; \}/);
+	assert.match(sup[1], /\.vt-app \.vt-branch > \.vt-node:first-child:not\(\.vt-node-net\) \{ max-width: 240px; \}/, 'up to 240px');
+	const mid = /@container vthero \(max-width: 1020px\)\s*\{([\s\S]*?)\n\}/.exec(css);
+	assert.ok(mid.index > sup.index, 'medium widths come after and win');
+	assert.match(mid[1], /\.vt-app \.vt-branches \{ display: flex; \}/, 'medium widths keep the stacked branches');
+});
