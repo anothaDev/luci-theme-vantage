@@ -926,44 +926,87 @@ test('stored history: it belongs to one login', () => {
 	}
 });
 
-/* #101: after a reload the CPU tile shows the tab's last reading, if
-   under a minute old, while the first measurement runs; not a dash */
-test('stored history: the last CPU reading stands in for a minute while the first is measured', () => {
+/* #101: the CPU tile shows the browser's last reading of this router
+   (local storage, the router's origin's: every tab), if under ten
+   minutes old, while the first measurement runs; not a dash */
+test('CPU: the last reading stands in for ten minutes while the first is measured', () => {
 	const savedWindow = global.window, savedL = global.L, box = {};
 	global.window = {
-		sessionStorage: { getItem: () => box.v || null, setItem(k, v) { box.v = v; } },
-		localStorage: { getItem: () => null, setItem() {} }
+		sessionStorage: { getItem: () => null, setItem() {} },
+		localStorage: { getItem: k => k === 'vantage.cpu.v1' ? box.v || null : null, setItem(k, v) { if (k === 'vantage.cpu.v1') box.v = v; } }
 	};
 	global.L = { env: { sessionid: '0123456789abcdef0123456789abcdef' } };
 	const load = () => { const self = Object.create(view); self.initState({ board: {}, canWrite: false, canRdns: false, mdns: null }); return self; };
-	const put = (cpuNow, sid) => { box.v = JSON.stringify({ sid: sid || '89abcdef', cpuNow }); };
+	const put = v => { box.v = JSON.stringify(v); };
 	const now = Date.now();
 	try {
-		put({ pct: 12.5, cores: [ 10, null ], t: now - 5000 });
-		assert.deepEqual(load().st.cpu, { pct: 12.5, cores: [ 10, null ], t: now - 5000 });
-		put({ pct: 12.5, cores: [ 10, 15 ], t: now - 61000 });
-		assert.equal(load().st.cpu, null, 'older than a minute');
-		put({ pct: 12.5, cores: [ 10, 15 ], t: now - 5000 }, 'ffffffff');
-		assert.equal(load().st.cpu, null, 'another login\'s');
+		put({ pct: 12.5, cores: [ 10, null ], t: now - 9 * 60e3 });
+		const held = load().st;
+		assert.deepEqual(held.cpu, { pct: 12.5, cores: [ 10, null ], t: now - 9 * 60e3 });
+		assert.equal(held.cores, 2);
+		put({ pct: 12.5, cores: [ 10, 15 ], t: now - 11 * 60e3 });
+		assert.equal(load().st.cpu, null, 'older than ten minutes');
 		for (const bad of [ { pct: 120, cores: [], t: now }, { pct: 5, cores: [ 'x' ], t: now }, { pct: 5, cores: {}, t: now }, { pct: 5, cores: [], t: now + 60000 }, { pct: 5, cores: [] }, 'junk' ]) {
 			put(bad);
 			assert.equal(load().st.cpu, null, JSON.stringify(bad));
 		}
-		/* a reading is kept for the next reload */
+		/* a reading is kept for the next page, at most every 10 s */
 		box.v = null;
 		const self = load();
 		const stat = (busy, idle) => 'cpu  ' + busy + ' 0 0 ' + idle + ' 0 0 0 0 0 0\ncpu0 ' + busy + ' 0 0 ' + idle + ' 0 0 0 0 0 0\n';
 		const raw = (t, st) => ({ at: t, info: { localtime: t / 1000 }, stat: st, ifaces: [], wifi: null, hints: {}, thermal: [], fdb: [], assoc: {}, hapd: {}, hapdStatus: {}, iwinfo: {}, devs: {} });
 		self.ingest(raw(1.8e12, stat(100, 900)));
-		assert.equal(JSON.parse(box.v).cpuNow, null, 'nothing measured yet');
+		assert.equal(box.v || null, null, 'nothing measured yet');
 		self.ingest(raw(1.8e12 + 5000, stat(150, 1050)));
-		const kept = JSON.parse(box.v).cpuNow;
+		const kept = JSON.parse(box.v);
 		assert.deepEqual([ Math.round(kept.pct), kept.cores.map(Math.round) ], [ 25, [ 25 ] ]);
 		assert.ok(Math.abs(kept.t - Date.now()) < 5000);
-		assert.deepEqual(load().st.cpu.pct, kept.pct, 'and shown after a reload');
+		self.ingest(raw(1.8e12 + 10000, stat(300, 1100)));
+		assert.equal(Math.round(JSON.parse(box.v).pct), 25, 'not again within 10 s');
+		assert.equal(Math.round(self.st.cpu.pct), 75, 'though shown');
+		assert.deepEqual(load().st.cpu.pct, kept.pct, 'and shown on the next page');
 	} finally {
 		global.window = savedWindow;
 		global.L = savedL;
+	}
+});
+
+/* the first reading takes two samples a second apart: the second is
+   asked 1.1 s after the first, not at the 2 s lane's next tick */
+test('CPU: 0 % until the first reading, its second sample a second after the first', async () => {
+	const savedWindow = global.window, savedL = global.L, savedDoc = global.document, timers = [];
+	/* ticks a call: under a second's worth (100) gives no reading */
+	let ticks = 100;
+	const steps = [ 0, 60, 150, 150 ];
+	global.window = { sessionStorage: { getItem: () => null, setItem() {} }, localStorage: { getItem: () => null, setItem() {} },
+		setTimeout: (f, ms) => { timers.push(ms); return timers.length; } };
+	global.document = { hidden: false, documentElement: { getAttribute: () => null } };
+	global.L = { env: {}, resolveDefault: (p, d) => Promise.resolve(p).then(v => v == null ? d : v, () => d) };
+	REPLIES['file read'] = () => { ticks += steps.shift() || 150; return Promise.resolve('cpu  ' + ticks + ' 0 0 0 0 0 0 0 0 0\ncpu0 ' + ticks + ' 0 0 0 0 0 0 0 0 0\n'); };
+	try {
+		const self = Object.create(view);
+		self.initState({ board: {}, canWrite: false, canRdns: false, mdns: null });
+		self.el = { root: {} };
+		self.m = { uplink: null };
+		self.fastLive = () => true;
+		self.idle = () => false;
+		self.paintFast = () => {};
+		assert.equal(self.cpuShown(), null, 'no sample from the router: a dash');
+		await self.refreshFast();
+		assert.deepEqual(timers, [ 1100 ], 'the first sample: the second asked in 1.1 s');
+		assert.deepEqual(self.cpuShown(), { pct: 0, cores: [ 0 ] }, 'until then 0 %, not a dash');
+		await self.refreshFast();
+		assert.deepEqual(timers, [ 1100 ], 'one timer at a time');
+		self.cpuSoon = 0;
+		await self.refreshFast();
+		assert.ok(self.st.cpu && self.st.cpuMeasured, 'a reading');
+		assert.equal(self.cpuShown(), self.st.cpu);
+		await self.refreshFast();
+		assert.deepEqual(timers, [ 1100 ], 'and none once measured');
+	} finally {
+		global.window = savedWindow; global.L = savedL;
+		if (savedDoc === undefined) delete global.document; else global.document = savedDoc;
+		delete REPLIES['file read'];
 	}
 });
 

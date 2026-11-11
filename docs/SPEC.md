@@ -421,9 +421,12 @@ text around it so it looks the same size.
   samples them again. The page's own load is not a reading (#101): the
   2 s lane is registered first, so the poll loop does not run the full
   poll again right after the page fetched it, and two CPU samples under
-  a second apart give none. Until the first reading, the CPU tile shows
-  the tab's last one (kept in its session) when under a minute old,
-  instead of a dash. `iwinfo info` is asked once a radio (its
+  a second apart give none. The first reading's second sample is asked
+  1.1 s after the first, not at the lane's next tick; until then the
+  CPU tile shows this browser's last reading of the router (local
+  storage, every tab, saved at most every 10 s) when under ten minutes
+  old, else 0 %, once the first sample is in; a dash only while the
+  router has given none. `iwinfo info` is asked once a radio (its
   first interface: channel, power, noise); another network's BSSID and
   SSID come from hostapd's `get_status`, which the poll asks anyway.
   `iwinfo info` (15-22 ms an interface on the NWA50BE) is asked again

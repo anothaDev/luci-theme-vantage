@@ -532,11 +532,24 @@ function readStore() {
 	} catch (e) { return null; }
 }
 
-/* the last CPU reading kept in the session, { pct, cores, t } (t: when,
-   by this browser's clock): shown again for CPU_HOLD_MS after a reload
-   while the first measurement runs (#101), instead of a dash. null when
-   it is malformed or older */
-var CPU_HOLD_MS = 60 * 1000;
+/* the last CPU reading, { pct, cores, t } (t: when, by this browser's
+   clock), kept in this browser for every tab of this router (the
+   storage is the router's origin's), at most every CPU_SAVE_MS: shown
+   for CPU_HOLD_MS while the dashboard's first measurement runs (#101),
+   instead of a dash. heldCpu: null when it is malformed or older */
+var CPU_KEY = 'vantage.cpu.v1';
+var CPU_HOLD_MS = 10 * 60 * 1000;
+var CPU_SAVE_MS = 10 * 1000;
+/* the first reading takes two samples a second apart (model.cpuUsage):
+   the second is asked this long after the first, not at the lane's
+   next tick */
+var CPU_FIRST_MS = 1100;
+function readCpu() {
+	try { return JSON.parse(window.localStorage.getItem(CPU_KEY) || 'null'); } catch (e) { return null; }
+}
+function writeCpu(v) {
+	try { window.localStorage.setItem(CPU_KEY, JSON.stringify(v)); } catch (e) {}
+}
 function heldCpu(v, now) {
 	var pct = function(x) { return typeof x === 'number' && isFinite(x) && x >= 0 && x <= 100; };
 	if (!v || typeof v !== 'object' || !pct(v.pct) || !Array.isArray(v.cores) || v.cores.length > 256 ||
@@ -933,9 +946,9 @@ return view.extend({
 			});
 		this.board = data.board || {};
 		this.canWrite = data.canWrite;
-		var held = heldCpu(stored.cpuNow, now);
+		var held = heldCpu(readCpu(), now);
 		this.st = {
-			clock: null, stat: null, cpu: held, cpuNow: held,
+			clock: null, stat: null, cpu: held, cores: held ? held.cores.length : null, cpuMeasured: false,
 			devPrev: null, staPrev: null, devRates: Object.create(null), staRates: Object.create(null), radioRates: Object.create(null), ssidRates: Object.create(null),
 			hist: { net: net, cpu: series.valid(stored.cpu, 2, HIST_FAST, now), mem: series.valid(stored.mem, 2, HIST_MAX, now) },
 			clientHist: clientHist, bestStd: Object.create(null),
@@ -991,7 +1004,8 @@ return view.extend({
 		var stat = model.parseStat(raw.stat);
 		if (stat) {
 			var cpu = fast ? null : model.cpuUsage(st.stat, stat);
-			if (cpu) { st.cpu = cpu; st.cpuNow = { pct: cpu.pct, cores: cpu.cores, t: Date.now() }; series.push(st.hist.cpu, [ at, cpu.pct ], WINDOW_MS, HIST_FAST); }
+			if (cpu) { this.keepCpu(cpu, Date.now()); series.push(st.hist.cpu, [ at, cpu.pct ], WINDOW_MS, HIST_FAST); }
+			st.cores = stat.cores.length || st.cores;
 			if (!st.stat || stat.all.total !== st.stat.all.total) st.stat = stat;
 		}
 		st.temps = model.temps(raw.thermal);
@@ -1074,11 +1088,11 @@ return view.extend({
 		Object.keys(st.clientHist).slice(0, 32).forEach(function(mac) {
 			keepClients[mac] = st.clientHist[mac].slice(-60).filter(function(p) { return p.every(function(v) { return isFinite(v); }); });
 		});
-		writeStore({ sid: storeOwner(), net: st.hist.net, cpu: st.hist.cpu, mem: st.hist.mem, clients: keepClients, cpuNow: st.cpuNow || null });
+		writeStore({ sid: storeOwner(), net: st.hist.net, cpu: st.hist.cpu, mem: st.hist.mem, clients: keepClients });
 
 		this.stickyGen(m);
 		m.clients.forEach(function(c) { c.exp = insight.experience(c); c.firstSeen = p.state.firstSeen[c.mac]; c.isNew = !!p.isNew[c.mac]; });
-		st.health = insight.health(m, { cpu: st.cpu, uplinkRate: st.uplinkRate, temps: st.temps, quiet: this.quiet });
+		st.health = insight.health(m, { cpu: this.cpuShown(), uplinkRate: st.uplinkRate, temps: st.temps, quiet: this.quiet });
 		st.summary = insight.summary(st.health);
 		st.radioInsights = insight.radioInsights(m.radios, st.radioRates);
 		st.talkers = insight.topTalkers(m.clients, st.staRates, TALKERS);
@@ -1145,8 +1159,13 @@ return view.extend({
 			var stat = model.parseStat(r[0]);
 			if (stat) {
 				var cpu = model.cpuUsage(st.fastStat, stat);
-				if (cpu) { st.cpu = cpu; st.cpuNow = { pct: cpu.pct, cores: cpu.cores, t: now }; series.push(st.hist.cpu, [ at, cpu.pct ], WINDOW_MS, HIST_FAST); changed = true; }
+				if (cpu) { self.keepCpu(cpu, now); series.push(st.hist.cpu, [ at, cpu.pct ], WINDOW_MS, HIST_FAST); changed = true; }
+				/* no reading yet on this page: the second sample a second
+				   after this one, not at the lane's next tick */
+				else if (!st.cpuMeasured && !self.cpuSoon)
+					self.cpuSoon = window.setTimeout(function() { self.cpuSoon = 0; self.refreshFast(); }, CPU_FIRST_MS);
 				if (!st.fastStat || stat.all.total !== st.fastStat.all.total) st.fastStat = stat;
+				st.cores = stat.cores.length || st.cores;
 			}
 			var s = r[1] && r[1].statistics, counters = Object.create(null);
 			if (dev && s) counters[dev] = { rx: s.rx_bytes, tx: s.tx_bytes };
@@ -1159,12 +1178,32 @@ return view.extend({
 		});
 	},
 
+	/* the CPU reading to show: the last one; before the first, once the
+	   first sample is in (the second follows within CPU_FIRST_MS), 0 % on
+	   every core rather than a dash; null while the router has given no
+	   sample at all */
+	cpuShown: function() {
+		var st = this.st, zero = [];
+		if (st.cpu) return st.cpu;
+		if (!(st.cores > 0)) return null;
+		for (var i = 0; i < st.cores; i++) zero.push(0);
+		return { pct: 0, cores: zero };
+	},
+
+	/* a CPU reading: shown, and kept for the next page (heldCpu) */
+	keepCpu: function(cpu, now) {
+		var d = now - (this.cpuSavedAt || 0);
+		this.st.cpu = cpu;
+		this.st.cpuMeasured = true;
+		if (!(d >= 0 && d < CPU_SAVE_MS)) { this.cpuSavedAt = now; writeCpu({ pct: cpu.pct, cores: cpu.cores, t: now }); }
+	},
+
 	/* what a fast sample moves: the cards, the verdict, the path's uplink
 	   wire and backdrop, the System tile's CPU, the throughput chart */
 	paintFast: function() {
 		var st = this.st;
 		if (!this.m || !this.el || !this.el.root) return;
-		st.health = insight.health(this.m, { cpu: st.cpu, uplinkRate: st.uplinkRate, temps: st.temps, quiet: this.quiet });
+		st.health = insight.health(this.m, { cpu: this.cpuShown(), uplinkRate: st.uplinkRate, temps: st.temps, quiet: this.quiet });
 		st.summary = insight.summary(st.health);
 		this.paintHead();
 		this.paintHealth();
@@ -1231,7 +1270,7 @@ return view.extend({
 		this.stickyGen(m);
 		m.clients.forEach(function(c) { c.exp = insight.experience(c); c.firstSeen = st.presence && st.presence.firstSeen[c.mac]; c.isNew = !!st.isNew[c.mac]; });
 		st.talkers = insight.topTalkers(m.clients, st.staRates, TALKERS);
-		st.health = insight.health(m, { cpu: st.cpu, uplinkRate: st.uplinkRate, temps: st.temps, quiet: this.quiet });
+		st.health = insight.health(m, { cpu: this.cpuShown(), uplinkRate: st.uplinkRate, temps: st.temps, quiet: this.quiet });
 		st.summary = insight.summary(st.health);
 		this.m = m;
 		this.paint();
@@ -2701,7 +2740,7 @@ return view.extend({
 	},
 
 	paintSystem: function() {
-		var el = this.el, d = this.m.device, cpu = this.st.cpu;
+		var el = this.el, d = this.m.device, cpu = this.cpuShown();
 		txt(el.sysUptime, d.uptime != null ? _('Up %s').format(fmt.duration(d.uptime)) : '');
 		txt(el.cpuVal, cpu ? Math.round(cpu.pct) + '%' : fmt.DASH);
 		el.cpuVal.className = 'vt-big vt-tn' + (cpu && cpu.pct >= 90 ? ' vt-t-err' : cpu && cpu.pct >= 70 ? ' vt-t-warn' : '');
@@ -3935,7 +3974,7 @@ return view.extend({
 	rehealth: function() {
 		var st = this.st;
 		if (!this.m || !st) return;
-		st.health = insight.health(this.m, { cpu: st.cpu, uplinkRate: st.uplinkRate, temps: st.temps, quiet: this.quiet });
+		st.health = insight.health(this.m, { cpu: this.cpuShown(), uplinkRate: st.uplinkRate, temps: st.temps, quiet: this.quiet });
 		st.summary = insight.summary(st.health);
 		this.paint();
 	},
@@ -4052,7 +4091,7 @@ return view.extend({
 	},
 
 	drawerDevice: function() {
-		var d = this.m.device, cpu = this.st.cpu;
+		var d = this.m.device, cpu = this.cpuShown();
 		return {
 			title: [ E('span', { 'class': 'vt-drawer-ico' }, [ icon('ap') ]), E('div', { 'class': 'vt-drawer-titles' }, [
 				E('div', { 'class': 'vt-drawer-name' }, [ d.model ]),
