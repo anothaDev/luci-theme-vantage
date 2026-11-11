@@ -421,7 +421,9 @@ text around it so it looks the same size.
   samples them again. The page's own load is not a reading (#101): the
   2 s lane is registered first, so the poll loop does not run the full
   poll again right after the page fetched it, and two CPU samples under
-  a second apart give none. `iwinfo info` is asked once a radio (its
+  a second apart give none. Until the first reading, the CPU tile shows
+  the tab's last one (kept in its session) when under a minute old,
+  instead of a dash. `iwinfo info` is asked once a radio (its
   first interface: channel, power, noise); another network's BSSID and
   SSID come from hostapd's `get_status`, which the poll asks anyway.
   `iwinfo info` (15-22 ms an interface on the NWA50BE) is asked again
@@ -498,8 +500,14 @@ text around it so it looks the same size.
   bridges' entries through `/sys/class/net/<bridge>/brforward`, reading
   no more than 4,096 records in all, and dumps nothing (`crowded: true`)
   when they hold that many between them: a flood of made-up addresses
-  must not make rpcd build the whole table. The bridge forgets a host after about five
-  minutes without traffic.
+  must not make rpcd build the whole table. The dump also has a switch
+  driver read its chip's own table, which the plugin leaves out (29 ms a
+  dump on a MediaTek MT7981 router, #101), so it is taken again only
+  when brforward, read every call (MAC, port, time since heard), shows
+  a host arrive, leave or change port, or after 30 s; in between the
+  last dump's hosts with brforward's times. brforward's byte order is
+  the host's, learned from the first dump. The bridge forgets a host
+  after about five minutes without traffic.
   `routes` returns the default route the kernel takes to the internet,
   for IPv4 and IPv6 (family, device and metric; no gateways): one
   read-only lookup a family (RTM_GETROUTE with RTM_F_FIB_MATCH, as `ip

@@ -926,6 +926,47 @@ test('stored history: it belongs to one login', () => {
 	}
 });
 
+/* #101: after a reload the CPU tile shows the tab's last reading, if
+   under a minute old, while the first measurement runs; not a dash */
+test('stored history: the last CPU reading stands in for a minute while the first is measured', () => {
+	const savedWindow = global.window, savedL = global.L, box = {};
+	global.window = {
+		sessionStorage: { getItem: () => box.v || null, setItem(k, v) { box.v = v; } },
+		localStorage: { getItem: () => null, setItem() {} }
+	};
+	global.L = { env: { sessionid: '0123456789abcdef0123456789abcdef' } };
+	const load = () => { const self = Object.create(view); self.initState({ board: {}, canWrite: false, canRdns: false, mdns: null }); return self; };
+	const put = (cpuNow, sid) => { box.v = JSON.stringify({ sid: sid || '89abcdef', cpuNow }); };
+	const now = Date.now();
+	try {
+		put({ pct: 12.5, cores: [ 10, null ], t: now - 5000 });
+		assert.deepEqual(load().st.cpu, { pct: 12.5, cores: [ 10, null ], t: now - 5000 });
+		put({ pct: 12.5, cores: [ 10, 15 ], t: now - 61000 });
+		assert.equal(load().st.cpu, null, 'older than a minute');
+		put({ pct: 12.5, cores: [ 10, 15 ], t: now - 5000 }, 'ffffffff');
+		assert.equal(load().st.cpu, null, 'another login\'s');
+		for (const bad of [ { pct: 120, cores: [], t: now }, { pct: 5, cores: [ 'x' ], t: now }, { pct: 5, cores: {}, t: now }, { pct: 5, cores: [], t: now + 60000 }, { pct: 5, cores: [] }, 'junk' ]) {
+			put(bad);
+			assert.equal(load().st.cpu, null, JSON.stringify(bad));
+		}
+		/* a reading is kept for the next reload */
+		box.v = null;
+		const self = load();
+		const stat = (busy, idle) => 'cpu  ' + busy + ' 0 0 ' + idle + ' 0 0 0 0 0 0\ncpu0 ' + busy + ' 0 0 ' + idle + ' 0 0 0 0 0 0\n';
+		const raw = (t, st) => ({ at: t, info: { localtime: t / 1000 }, stat: st, ifaces: [], wifi: null, hints: {}, thermal: [], fdb: [], assoc: {}, hapd: {}, hapdStatus: {}, iwinfo: {}, devs: {} });
+		self.ingest(raw(1.8e12, stat(100, 900)));
+		assert.equal(JSON.parse(box.v).cpuNow, null, 'nothing measured yet');
+		self.ingest(raw(1.8e12 + 5000, stat(150, 1050)));
+		const kept = JSON.parse(box.v).cpuNow;
+		assert.deepEqual([ Math.round(kept.pct), kept.cores.map(Math.round) ], [ 25, [ 25 ] ]);
+		assert.ok(Math.abs(kept.t - Date.now()) < 5000);
+		assert.deepEqual(load().st.cpu.pct, kept.pct, 'and shown after a reload');
+	} finally {
+		global.window = savedWindow;
+		global.L = savedL;
+	}
+});
+
 test('other lines: a failover starts the new main line on its own history; a restored "uplink" of nobody is dropped', () => {
 	const saved = global.window, savedL = global.L;
 	const box = {};

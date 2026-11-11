@@ -532,6 +532,18 @@ function readStore() {
 	} catch (e) { return null; }
 }
 
+/* the last CPU reading kept in the session, { pct, cores, t } (t: when,
+   by this browser's clock): shown again for CPU_HOLD_MS after a reload
+   while the first measurement runs (#101), instead of a dash. null when
+   it is malformed or older */
+var CPU_HOLD_MS = 60 * 1000;
+function heldCpu(v, now) {
+	var pct = function(x) { return typeof x === 'number' && isFinite(x) && x >= 0 && x <= 100; };
+	if (!v || typeof v !== 'object' || !pct(v.pct) || !Array.isArray(v.cores) || v.cores.length > 256 ||
+	    !v.cores.every(function(c) { return c === null || pct(c); }) || typeof v.t !== 'number' || !(now - v.t >= 0 && now - v.t < CPU_HOLD_MS)) return null;
+	return { pct: v.pct, cores: v.cores.slice(), t: v.t };
+}
+
 function writeStore(v) {
 	try { window.sessionStorage.setItem(STORE_KEY, JSON.stringify(v)); } catch (e) {}
 }
@@ -921,8 +933,9 @@ return view.extend({
 			});
 		this.board = data.board || {};
 		this.canWrite = data.canWrite;
+		var held = heldCpu(stored.cpuNow, now);
 		this.st = {
-			clock: null, stat: null, cpu: null,
+			clock: null, stat: null, cpu: held, cpuNow: held,
 			devPrev: null, staPrev: null, devRates: Object.create(null), staRates: Object.create(null), radioRates: Object.create(null), ssidRates: Object.create(null),
 			hist: { net: net, cpu: series.valid(stored.cpu, 2, HIST_FAST, now), mem: series.valid(stored.mem, 2, HIST_MAX, now) },
 			clientHist: clientHist, bestStd: Object.create(null),
@@ -978,7 +991,7 @@ return view.extend({
 		var stat = model.parseStat(raw.stat);
 		if (stat) {
 			var cpu = fast ? null : model.cpuUsage(st.stat, stat);
-			if (cpu) { st.cpu = cpu; series.push(st.hist.cpu, [ at, cpu.pct ], WINDOW_MS, HIST_FAST); }
+			if (cpu) { st.cpu = cpu; st.cpuNow = { pct: cpu.pct, cores: cpu.cores, t: Date.now() }; series.push(st.hist.cpu, [ at, cpu.pct ], WINDOW_MS, HIST_FAST); }
 			if (!st.stat || stat.all.total !== st.stat.all.total) st.stat = stat;
 		}
 		st.temps = model.temps(raw.thermal);
@@ -1061,7 +1074,7 @@ return view.extend({
 		Object.keys(st.clientHist).slice(0, 32).forEach(function(mac) {
 			keepClients[mac] = st.clientHist[mac].slice(-60).filter(function(p) { return p.every(function(v) { return isFinite(v); }); });
 		});
-		writeStore({ sid: storeOwner(), net: st.hist.net, cpu: st.hist.cpu, mem: st.hist.mem, clients: keepClients });
+		writeStore({ sid: storeOwner(), net: st.hist.net, cpu: st.hist.cpu, mem: st.hist.mem, clients: keepClients, cpuNow: st.cpuNow || null });
 
 		this.stickyGen(m);
 		m.clients.forEach(function(c) { c.exp = insight.experience(c); c.firstSeen = p.state.firstSeen[c.mac]; c.isNew = !!p.isNew[c.mac]; });
@@ -1132,7 +1145,7 @@ return view.extend({
 			var stat = model.parseStat(r[0]);
 			if (stat) {
 				var cpu = model.cpuUsage(st.fastStat, stat);
-				if (cpu) { st.cpu = cpu; series.push(st.hist.cpu, [ at, cpu.pct ], WINDOW_MS, HIST_FAST); changed = true; }
+				if (cpu) { st.cpu = cpu; st.cpuNow = { pct: cpu.pct, cores: cpu.cores, t: now }; series.push(st.hist.cpu, [ at, cpu.pct ], WINDOW_MS, HIST_FAST); changed = true; }
 				if (!st.fastStat || stat.all.total !== st.fastStat.all.total) st.fastStat = stat;
 			}
 			var s = r[1] && r[1].statistics, counters = Object.create(null);
