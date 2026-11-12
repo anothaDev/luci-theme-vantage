@@ -1744,7 +1744,10 @@ table { border-collapse: separate; border-spacing: 0; width: 100%; }
 	position: sticky; top: var(--stick-top); z-index: 20;
 }
 
-/* cells: numbers and addresses never break, rate pairs stack */
+/* cells: numbers and addresses never break, rate pairs stack. The titles
+   are matched in English; under a translated one, menu-vantage.js marks
+   the same columns' cells .vt-nowrap (#111) */
+.td.vt-nowrap:not(.cbi-value-field),
 .td:not(.cbi-value-field)[data-title*="MAC" i], .td:not(.cbi-value-field)[data-title*="address" i], .td:not(.cbi-value-field)[data-title*="IPv" i], .td:not(.cbi-value-field)[data-title*="Gateway" i],
 .td:not(.cbi-value-field)[data-title*="Target" i], .td:not(.cbi-value-field)[data-title*="Source" i], .td:not(.cbi-value-field)[data-title*="DUID" i], .td:not(.cbi-value-field)[data-title="PID"],
 .td:not(.cbi-value-field)[data-title*="Metric" i], .td:not(.cbi-value-field)[data-title*="Priority" i], .td:not(.cbi-value-field)[data-title*="Remaining" i], .td:not(.cbi-value-field)[data-title*="Usage" i] {

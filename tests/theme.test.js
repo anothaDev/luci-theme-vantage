@@ -475,3 +475,45 @@ test('theme motion clock: a cancelled pulse is dropped, not stepped', () => {
 	assert.equal(gone.currentTime, null, 'not written: it stays cancelled');
 	assert.deepEqual(self.clock.anims.map(x => x.a), [ live ]);
 });
+
+/* #111: vantage.css keeps cells of numbers and addresses on one line by
+   English words in their data-title, which is the column's title as shown;
+   under a translated title the theme marks the same columns .vt-nowrap */
+test('translated column titles: the columns the English rule keeps on one line take .vt-nowrap in any language (#111)', () => {
+	const list = new Function('return ' + /\nconst NOWRAP_TITLES = (\[[\s\S]*?\]);\n/.exec(src)[1])();
+	const body = [ 'nowrapTitles', 'titleKey' ].map(n => {
+		const start = src.indexOf('function ' + n + '(');
+		return src.slice(start, src.indexOf('\n}\n', start) + 3);
+	}).join('\n');
+	const { nowrapTitles, titleKey } = new Function('NOWRAP_TITLES', body + '\nreturn { nowrapTitles, titleKey };')(list);
+	/* every title is one the English rule matches, so no language gets more than English does */
+	const css = fs.readFileSync(path.join(__dirname, '..', 'luci-theme-vantage/htdocs/luci-static/vantage/vantage.css'), 'utf8');
+	const rule = /\n(\.td\.vt-nowrap:not\(\.cbi-value-field\),\n[^{]*)\{([^}]*)\}/.exec(css);
+	assert.ok(rule, 'one rule for .vt-nowrap and the English titles');
+	const words = [ ...rule[1].matchAll(/\[data-title\*?="([^"]+)" ?i?\]/g) ].map(m => m[1].toLowerCase());
+	assert.ok(words.length >= 10, 'found the English words');
+	for (const t of list) assert.ok(words.some(w => t.toLowerCase().includes(w)), t + ' is matched in English');
+	assert.match(rule[2], /white-space:\s*nowrap/);
+	for (const t of [ 'Remaining time', 'Lease time remaining', 'IPv4 address', 'IPv6 addresses', 'MAC address', 'DUID', 'Gateway', 'Metric', 'Target', 'PID' ])
+		assert.ok(list.includes(t), t + ' (LuCI 25.12 and 24.10 column titles)');
+	/* English: nothing to add, the CSS has it */
+	assert.equal(nowrapTitles(t => t).size, 0);
+	/* Chinese, as LuCI's catalogue has it; uppercase, as the theme shows titles */
+	const zh = { 'Remaining time': '剩余时间', 'IPv4 address': 'IPv4 地址', 'Gateway': '网关' };
+	const keys = nowrapTitles(t => zh[t] || t);
+	assert.deepEqual([ ...keys ].sort(), [ 'IPV4 地址', '剩余时间', '网关' ].sort());
+	assert.ok(keys.has(titleKey('IPV4  地址 ')), 'data-title from innerText: uppercase, spaces collapsed');
+	/* a script with case: the theme's uppercase title still matches */
+	const ru = nowrapTitles(t => (t === 'Remaining time' ? 'Оставшееся время' : t));
+	assert.ok(ru.has(titleKey('ОСТАВШЕЕСЯ ВРЕМЯ')) && ru.has(titleKey('Оставшееся время')));
+	assert.ok(nowrapTitles(t => (t === 'Source' ? 'Straße' : t)).has(titleKey('STRASSE')), 'ß as CSS uppercases it');
+	/* an empty or missing translation adds nothing */
+	assert.equal(nowrapTitles(t => (t === 'PID' ? '' : t === 'DUID' ? null : t)).size, 0);
+	/* the numerals scan marks them, once a cell, never a form field */
+	const scan = src.slice(src.indexOf('\tsetupNumerals() {'), src.indexOf('\t/* --------------------------------------------------------- tooltips */'));
+	assert.match(scan, /const nowrap = nowrapTitles\(_\);/);
+	assert.match(scan, /cell\._vtNowrap = !cell\.classList\.contains\('cbi-value-field'\) && nowrap\.has\(titleKey\(cell\.getAttribute\('data-title'\)\)\);/);
+	assert.match(scan, /if \(cell\._vtNowrap\) cell\.classList\.add\('vt-nowrap'\);/);
+	/* LuCI's own catalogue translates them: no literal _('...') of these titles in the theme */
+	for (const t of list) assert.ok(!src.includes("_('" + t + "')"), t + ' stays out of the theme catalogue');
+});

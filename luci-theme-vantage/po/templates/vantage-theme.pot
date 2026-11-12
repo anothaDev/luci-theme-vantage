@@ -13,7 +13,7 @@ msgid_plural "%d more chains at this hook"
 msgstr[0] ""
 msgstr[1] ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1467
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1494
 msgctxt "vantage-theme"
 msgid "%d result"
 msgid_plural "%d results"
@@ -56,7 +56,7 @@ msgctxt "vantage-theme"
 msgid "Accept"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1387
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1414
 msgid "Actions"
 msgstr ""
 
@@ -65,12 +65,12 @@ msgctxt "nft match any traffic"
 msgid "Any packet"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1375
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1376
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1377
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1380
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1384
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1806
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1402
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1403
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1404
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1407
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1411
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1833
 #: luci-theme-vantage/ucode/template/themes/vantage/header.ut:146
 msgctxt "vantage-theme"
 msgid "Appearance"
@@ -80,7 +80,7 @@ msgstr ""
 msgid "Authorization Required"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1808
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1835
 msgctxt "vantage-theme"
 msgid "Auto"
 msgstr ""
@@ -113,17 +113,17 @@ msgctxt "vantage-theme"
 msgid "Bridged between ports"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:513
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:540
 msgid "Buffered"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:535
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:545
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:549
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:562
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:572
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:576
 msgid "Cache"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:513
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:540
 msgid "Cached"
 msgstr ""
 
@@ -142,28 +142,28 @@ msgctxt "vantage-theme"
 msgid "Chains no rule jumps to directly"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:608
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:635
 msgid "Channel"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1844
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1871
 msgid "Check for updates"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1859
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1886
 msgid "Checking…"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1014
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1041
 msgid "Collapse navigation"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1807
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1834
 #: luci-theme-vantage/ucode/template/themes/vantage/header.ut:143
 msgid "Colour theme"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1411
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1438
 msgid "Command palette"
 msgstr ""
 
@@ -182,15 +182,15 @@ msgctxt "vantage-theme"
 msgid "Continues in %s, then comes back here"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1879
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1906
 msgid "Could not check for updates."
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1892
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1919
 msgid "Could not save this for every browser. Try again."
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1808
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1835
 msgctxt "vantage-theme"
 msgid "Dark"
 msgstr ""
@@ -214,7 +214,7 @@ msgstr ""
 msgid "Egress"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1014
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1041
 #: luci-theme-vantage/ucode/template/themes/vantage/header.ut:114
 msgid "Expand navigation"
 msgstr ""
@@ -232,8 +232,8 @@ msgid ""
 "their counters see only its first packets."
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1377
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1615
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1404
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1642
 msgid "Follow system theme"
 msgstr ""
 
@@ -251,13 +251,13 @@ msgid ""
 "if br_netfilter is enabled; the ruleset doesn't show that.)"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:536
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:550
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:563
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:577
 msgctxt "vantage-theme"
 msgid "Free"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1653
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1680
 msgid "Grid"
 msgstr ""
 
@@ -266,7 +266,7 @@ msgctxt "vantage-theme"
 msgid "Home"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1811
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1838
 msgid "Hostname"
 msgstr ""
 
@@ -282,9 +282,9 @@ msgstr ""
 msgid "IPv6 traffic table \"%h\""
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:535
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:544
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:548
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:562
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:571
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:575
 msgctxt "vantage-theme"
 msgid "In use"
 msgstr ""
@@ -302,7 +302,7 @@ msgstr ""
 msgid "Invalid username and/or password! Please try again."
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1407
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1434
 msgid "Jump to a page or action…"
 msgstr ""
 
@@ -311,7 +311,7 @@ msgctxt "vantage-theme"
 msgid "Leaves unmatched unchanged"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1808
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1835
 msgctxt "vantage-theme"
 msgid "Light"
 msgstr ""
@@ -321,25 +321,25 @@ msgstr ""
 msgid "Log in"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1890
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1917
 msgid "Log in again to save Appearance for every browser."
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1386
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1413
 #: luci-theme-vantage/ucode/template/themes/vantage/header.ut:149
 msgid "Log out"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1380
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1813
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1407
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1840
 msgid "Login background"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1811
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1838
 msgid "Logo only"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1799
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1826
 msgid "Low-power router"
 msgstr ""
 
@@ -353,17 +353,17 @@ msgctxt "vantage-theme"
 msgid "Masquerade"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:508
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:534
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:535
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:561
 msgid "Memory"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1811
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1838
 msgid "Model"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2223
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2240
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2256
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2273
 msgctxt "vantage-theme"
 msgid "More actions"
 msgstr ""
@@ -381,8 +381,8 @@ msgstr ""
 msgid "Network device table \"%h\""
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1384
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1792
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1411
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1819
 msgid "Network path background"
 msgstr ""
 
@@ -391,11 +391,11 @@ msgctxt "vantage-theme"
 msgid "Next rule"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1810
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1837
 msgid "Next to the logo"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1465
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1492
 msgid "No matching pages"
 msgstr ""
 
@@ -409,25 +409,25 @@ msgctxt "vantage-theme"
 msgid "No rules: %s"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1653
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1680
 msgctxt "vantage-theme"
 msgid "None"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1282
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1309
 #: luci-theme-vantage/ucode/template/themes/vantage/header.ut:17
 msgid "Not found"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1799
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1826
 msgid "Off"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1799
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1826
 msgid "On"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1302
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1329
 msgid "Other pages in %s"
 msgstr ""
 
@@ -484,7 +484,7 @@ msgctxt "vantage-theme"
 msgid "Reject"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1409
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1436
 msgctxt "vantage-theme"
 msgid "Results"
 msgstr ""
@@ -504,21 +504,21 @@ msgctxt "vantage-theme"
 msgid "Rules table"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1891
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1918
 msgid "Saved in this browser only."
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1407
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1434
 #: luci-theme-vantage/ucode/template/themes/vantage/header.ut:134
 #: luci-theme-vantage/ucode/template/themes/vantage/header.ut:136
 msgid "Search pages"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1880
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1907
 msgid "See the latest release"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1386
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1413
 msgid "Session"
 msgstr ""
 
@@ -529,11 +529,11 @@ msgid_plural "Show %d more rules"
 msgstr[0] ""
 msgstr[1] ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2380
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2413
 msgid "Show full description"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2369
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2402
 msgid "Show full help: %s"
 msgstr ""
 
@@ -541,25 +541,25 @@ msgstr ""
 msgid "Skip to content"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1653
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1680
 msgid "Starfield"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:573
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:600
 msgid "Storage"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:559
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:561
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:586
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:588
 msgctxt "vantage-theme"
 msgid "Swap"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:514
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:541
 msgid "Swap free"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:514
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:541
 msgid "Swap used"
 msgstr ""
 
@@ -568,13 +568,13 @@ msgctxt "vantage-theme"
 msgid "This device"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:536
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:563
 msgctxt "vantage-theme"
 msgid "Total"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:512
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:520
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:539
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:547
 msgid "Total Available"
 msgstr ""
 
@@ -588,21 +588,21 @@ msgctxt "vantage-theme"
 msgid "Unchanged"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1873
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1900
 msgid "Up to date"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1375
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1615
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1402
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1642
 msgid "Use dark theme"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1376
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1615
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1403
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1642
 msgid "Use light theme"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:512
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:539
 msgid "Used"
 msgstr ""
 
@@ -622,7 +622,7 @@ msgctxt "vantage-theme"
 msgid "Verdict map %s"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1870
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1897
 msgid "Version %s is available."
 msgstr ""
 
@@ -631,20 +631,20 @@ msgctxt "vantage-theme"
 msgid "View"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1871
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1898
 msgid "What's new"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:601
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:628
 msgid "Wireless"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:540
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:567
 msgctxt "vantage-theme"
 msgid "available"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1417
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1444
 msgid "close"
 msgstr ""
 
@@ -658,12 +658,12 @@ msgctxt "vantage-theme"
 msgid "drops unmatched %s"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:588
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:592
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:615
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:619
 msgid "free"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1415
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1442
 msgid "navigate"
 msgstr ""
 
@@ -682,7 +682,7 @@ msgctxt "vantage-theme"
 msgid "on %s"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1416
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1443
 msgctxt "vantage-theme"
 msgid "open"
 msgstr ""
@@ -692,9 +692,9 @@ msgctxt "vantage-theme"
 msgid "priority %d"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:535
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:545
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:549
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:562
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:572
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:576
 msgid "reclaimable"
 msgstr ""
 
@@ -703,12 +703,12 @@ msgctxt "vantage-theme"
 msgid "rules drop some"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:588
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:592
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:615
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:619
 msgid "total"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:588
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:592
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:615
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:619
 msgid "used"
 msgstr ""

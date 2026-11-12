@@ -336,6 +336,33 @@ function technical(text) {
 	return /\d/.test(rest) && /^[\s0-9a-fA-F.:,\/%()+\-x[\]~=]*$/.test(rest);
 }
 
+/* Columns of numbers and addresses: LuCI's titles for the columns that
+   vantage.css keeps on one line by English words in a cell's data-title
+   ("cells: numbers and addresses never break"), in LuCI 25.12 and 24.10.
+   A cell's data-title is its column's title as shown, so in another
+   language those rules miss it and "11h 50m 29s" wraps (#111); a cell
+   whose title is LuCI's translation of one of these takes .vt-nowrap. */
+const NOWRAP_TITLES = [ 'CPU usage (%)', 'DUID', 'Gateway', 'IP address', 'IPv4 address', 'IPv6 address', 'IPv6 addresses',
+	'Lease time remaining', 'MAC address', 'Memory usage (%)', 'Metric', 'PID', 'Priority', 'Remaining time', 'Source',
+	'Start priority', 'Target' ];
+
+/* a column title as compared: uppercase, as the theme shows it (LuCI takes
+   a cell's data-title from its heading's innerText), spaces collapsed */
+function titleKey(text) {
+	return String(text == null ? '' : text).replace(/\s+/g, ' ').trim().toUpperCase();
+}
+
+/* the titleKey()s of NOWRAP_TITLES as tr (LuCI's _) translates them, those
+   that differ from the English the CSS matches: none in English */
+function nowrapTitles(tr) {
+	const out = new Set();
+	NOWRAP_TITLES.forEach(t => {
+		const s = tr(t);
+		if (typeof s === 'string' && s !== t && s.trim()) out.add(titleKey(s));
+	});
+	return out;
+}
+
 /* heading text as compared for repeats: case, spacing and a trailing colon don't count */
 function headingKey(text) {
 	return String(text || '').replace(/\s+/g, ' ').replace(/[\s:]+$/, '').trim().toLowerCase();
@@ -2077,10 +2104,16 @@ return baseclass.extend({
 		if (document.body.getAttribute('data-page') === 'admin-dashboard') return;
 		let queued = false;
 		const skip = 'input,select,textarea,button,.btn,.cbi-button,.cbi-dropdown,img,.ifacebadge,.zonebadge,.cbi-progressbar,table,.table';
+		/* columns of numbers and addresses under a translated title (#111) */
+		const nowrap = nowrapTitles(_);
 		const scan = () => {
 			queued = false;
 			main.querySelectorAll('td, .td, .ifacebox-body > span > span').forEach(cell => {
 				if (cell.closest('.vt-app')) return;
+				if (nowrap.size && cell._vtNowrap === undefined) {
+					cell._vtNowrap = !cell.classList.contains('cbi-value-field') && nowrap.has(titleKey(cell.getAttribute('data-title')));
+					if (cell._vtNowrap) cell.classList.add('vt-nowrap');
+				}
 				const text = cell.textContent;
 				if (cell._vtText === text) return;
 				cell._vtText = text;
