@@ -942,6 +942,12 @@ html[data-vt-alert="err"] #indicators > span[data-indicator="poll-status"][data-
 	margin-left: calc(-1 * var(--card-px)); margin-right: calc(-1 * var(--card-px));
 	padding-left: var(--card-px); padding-right: var(--card-px);
 }
+/* An option row has no card padding to bleed into; keep its scroll box
+   inside the row instead of widening the enclosing section. */
+.cbi-value .cbi-section.cbi-tblsection {
+	margin-left: 0; margin-right: 0;
+	padding-left: 0; padding-right: 0;
+}
 
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 legend { font-size: var(--fs-md); font-weight: 600; padding: 0; margin-bottom: var(--sp-3); }
@@ -1734,6 +1740,10 @@ table { border-collapse: separate; border-spacing: 0; width: 100%; }
 	margin-left: calc(-1 * var(--card-px)); margin-right: calc(-1 * var(--card-px));
 }
 .cbi-section .cbi-section.cbi-tblsection > .table { width: calc(100% + 2 * var(--card-px)); }
+.cbi-value .cbi-section.cbi-tblsection > .table {
+	width: 100% !important;
+	margin-left: 0; margin-right: 0;
+}
 :is(.cbi-section, .cbi-value) .table .tr > :is(.th, .td):first-child { padding-left: var(--card-px); }
 :is(.cbi-section, .cbi-value) .table .tr > :is(.th, .td):last-child { padding-right: var(--card-px); }
 .cbi-section > .table:last-child, .cbi-section > div:last-child > .table:last-child { margin-bottom: calc(-1 * var(--card-py) + 4px); }
