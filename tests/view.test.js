@@ -1405,3 +1405,42 @@ test('motion clock: a cancelled pulse is dropped, not stepped', () => {
 		assert.deepEqual(self.clock.anims.map(x => x.a), [ live ]);
 	} finally { global.window = saved; }
 });
+
+test('other access points: a chip per access point with stations and one for this device, "via" searchable, a branch per access point', () => {
+	const self = Object.create(view);
+	const ap = (ip, name, clients) => ({ ip, name, named: name !== ip, clients, nodes: [ { id: ip + '#hostapd.phy1-ap0', ifname: 'phy1-ap0', ssid: 'Home', band: '5g', freq: 5180, bssid: '02:00:5e:00:00:21', clients } ] });
+	const sta = (n, band, a) => ({ mac: '00:00:5e:00:53:' + n, name: 'dev' + n, band, ap: a ? { ip: a.ip, name: a.name } : null, signal: -50 });
+	const attic = ap('192.0.2.2', 'attic-ap', 2), idle = ap('192.0.2.3', '192.0.2.3', 0);
+	const clients = [ sta('01', '2g', null), sta('02', '5g', attic), sta('03', '5g', attic) ];
+	self.m = { clients, wiredHosts: [], accessPoints: [ attic, idle ], radios: [], ssids: [], networks: [], uplinks: [], uplink: { gateway: '192.0.2.1' } };
+	self.st = { staRates: {} };
+	self.ui = { kind: 'wifi', chip: 'all', filter: '' };
+	const ids = self.filterDefs().map(d => d.slice(0, 3));
+	assert.deepEqual(ids.filter(d => d[0] === 'here' || /^ap:/.test(d[0])), [ [ 'here', 'This device', 1 ], [ 'ap:192.0.2.2', 'Via attic-ap', 2 ] ], 'an access point without stations has no chip');
+	self.ui.chip = 'ap:192.0.2.2';
+	assert.deepEqual(clients.filter(c => self.matches(c)).map(c => c.mac.slice(-2)), [ '02', '03' ]);
+	self.ui.chip = 'here';
+	assert.deepEqual(clients.filter(c => self.matches(c)).map(c => c.mac.slice(-2)), [ '01' ]);
+	self.ui.chip = 'all';
+	self.ui.filter = 'attic';
+	assert.deepEqual(clients.filter(c => self.matches(c)).map(c => c.mac.slice(-2)), [ '02', '03' ]);
+	assert.match(self.heroKey(), /\naps=192\.0\.2\.2=192\.0\.2\.2#hostapd\.phy1-ap0;192\.0\.2\.3=/, 'the branches are in the path\'s key');
+
+	const stub = () => ({ textContent: '', className: '', getAttribute() { return null; }, setAttribute() {} });
+	const b = { ap: true, ip: '192.0.2.2', el: stub(), kicker: stub(), title: stub(), addr: stub(), up: stub(), sub: stub(), rateEl: stub(), ssids: [ { id: attic.nodes[0].id, el: stub(), badge: stub(), name: stub(), count: stub(), rows: stub() } ] };
+	self.paintLeaf = () => {};
+	self.updateApBranch(b);
+	assert.equal(b.kicker.textContent, 'Access point');
+	assert.equal(b.title.textContent, 'attic-ap');
+	assert.equal(b.sub.textContent, '2 clients');
+	assert.equal(b.ssids[0].name.textContent, 'Home');
+	assert.equal(b.ssids[0].count.textContent, '2 clients');
+	assert.equal(b.active, false, 'no traffic known for another access point');
+	assert.deepEqual(self.otherAps().map(a => a.ip), [ '192.0.2.2', '192.0.2.3' ]);
+	assert.equal(self.gatewayAp(), null);
+	self.m.uplink.gateway = '192.0.2.2';
+	assert.deepEqual(self.otherAps().map(a => a.ip), [ '192.0.2.3' ], 'the gateway is the gateway node, not a branch');
+	assert.equal(self.gatewayAp().ip, '192.0.2.2');
+	assert.doesNotMatch(self.heroKey(), /192\.0\.2\.2=/);
+	assert.equal(self.isWeak(Object.assign({}, clients[1], { signal: -85 })), false, 'a weak station of another access point is no warning here');
+});

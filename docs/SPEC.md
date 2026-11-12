@@ -469,7 +469,7 @@ text around it so it looks the same size.
 - ACL: three groups for the app, and the theme's own, below. `luci-app-vantage` (read): `system info/board`,
   `network.interface dump`, `network.device status`, `iwinfo
   info/assoclist`, `hostapd.* get_status/get_clients`, `luci-rpc
-  getHostHints`, `luci.vantage wireless/thermal/wired/routes/survey`, `umdns hosts`, `file read` of
+  getHostHints`, `luci.vantage wireless/thermal/wired/routes/survey/mesh`, `umdns hosts`, `file read` of
   `/proc/stat`, `uci get` for `vantage`, and LuCI's own `luci
   getSwconfigPortState` (the link state of a swconfig switch's ports: LuCI
   runs `swconfig dev <switch> show`, the switch name quoted; the view asks
@@ -535,6 +535,14 @@ text around it so it looks the same size.
   NL80211 survey dump (`ucode-mod-nl80211`, NL80211_CMD_GET_SURVEY), and
   only for an interface that cfg80211 drives (`/sys/class/net/<if>/phy80211`);
   any other device gets no channels without the kernel being asked.
+  `mesh` returns the network's other access points as usteer on this
+  device knows them (usteer exchanges node and station state with its
+  peers over the LAN, so no login on a peer is needed): their addresses
+  (`remote_hosts`), their nodes (`local_info`/`remote_info`: interface,
+  BSSID, SSID, frequency, station count), the stations each node has
+  (`get_clients`: MAC and signal), and what each access point shares of
+  itself through `/usr/share/vantage/mesh-share.uc` (below), all bounded
+  and validated; `{ available: false }` without usteer. Read only.
   `set_alias({mac, name, icon})`
   re-applies the view's rules on the device (unicast MAC, name of at most
   48 code points without control, bidi or invisible characters, icon from
@@ -545,6 +553,34 @@ text around it so it looks the same size.
   and commits config `vantage` only. The plugin's regular expressions
   are module constants: ucode compiles a literal each time it is
   reached, and a counted repeat costs milliseconds on a router.
+
+### Other access points (usteer)
+
+- With `usteer` on the access points, the dashboard shows the network's
+  other access points: in the network path a branch each (beside this
+  device's own on the router; on an access point they hang off the
+  gateway as its siblings), a node per SSID and band, one for its wired
+  hosts, and at each node the devices with address, signal (or link
+  speed) and traffic; their clients join the Clients list with a "via"
+  filter per access point. A station that one of them has is never
+  counted as a wired host here, nor in this device's health checks.
+- `/etc/init.d/vantage-mesh` runs `/usr/share/vantage/mesh-share.uc`
+  every 10 s when usteer is installed and `vantage.main.share_mesh` is
+  not `0`. It puts one object into usteer's node data (`usteer
+  set_node_data`), which usteer sends to its peers on the LAN with its
+  own station reports: the hostname, model and uptime; this device's MAC
+  on its uplink network; the wired hosts the bridges learned on ports
+  other than the uplink and Wi-Fi (MAC, port, link speed, and the port's
+  traffic when one host has it alone); its stations' signal, link rate
+  and traffic (hostapd `get_clients`, bit/s since the last run); the IPv4
+  addresses its host hints know; and on a router with MediaTek hardware
+  offload each LAN host's internet traffic, from the packet engine's
+  per-flow counters (`/sys/kernel/debug/ppe*/bind`), since offloaded
+  flows bypass the kernel's counters. Nothing from configuration, no
+  keys; at most 64 wired hosts, 128 stations and 192 addresses.
+- The view links a remote station's details to the same LuCI page on its
+  access point (same scheme and path, host replaced by the access
+  point's IPv4).
 
 ## 5. Later
 

@@ -1,0 +1,19 @@
+#!/bin/sh /etc/rc.common
+# Shares this device's name, its downstream wired hosts and its stations'
+# signal and traffic with the network's other access points over usteer
+# (luci-app-vantage). Off with `uci set vantage.main.share_mesh=0`.
+START=99
+USE_PROCD=1
+
+start_service() {
+	[ "$(uci -q get vantage.main.share_mesh)" = 0 ] && return 0
+	[ -x /etc/init.d/usteer ] || return 0
+	procd_open_instance
+	procd_set_param command /bin/sh -c 'while :; do ucode /usr/share/vantage/mesh-share.uc; sleep 10; done'
+	procd_set_param respawn 3600 5 0
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger vantage
+}
