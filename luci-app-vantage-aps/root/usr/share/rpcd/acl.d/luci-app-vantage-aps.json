@@ -1,0 +1,16 @@
+{
+	"luci-app-vantage-aps": {
+		"description": "Vantage access points: pair this device with others over SSH (luci.vantage.pair). As a router: creates this device's own SSH key for reading access points, keeps the paired ones in /etc/vantage and starts the collector service. As an access point: adds or removes a router's key in /etc/dropbear/authorized_keys, limited to the read-only report command. Whoever holds this group can let a router read this device: give it to administrators only",
+		"read": {
+			"ubus": {
+				"luci.vantage.pair": [ "status" ],
+				"vantage.collector": [ "report" ]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.vantage.pair": [ "add_ap", "allow_router", "remove_ap", "revoke_router", "router_code" ]
+			}
+		}
+	}
+}

@@ -8,7 +8,8 @@
  *   node security-tests/verify_built_apk.js [options] <package or directory>...
  *
  *   --src <dir>         source tree the packages were built from (a checkout
- *                       holding luci-theme-vantage/ and luci-app-vantage/)
+ *                       holding luci-theme-vantage/, luci-app-vantage/ and
+ *                       luci-app-vantage-aps/)
  *   --rev <git-rev>     use `git archive <rev>` of this repository as source
  *                       (default: the rev in BUILDINFO next to the packages)
  *   --apk-tool <path>   apk-tools 3 binary (default: $VANTAGE_APK, then
@@ -51,7 +52,7 @@
  *     <name>.list (and .conffiles, .conffiles_static when the Makefile
  *     declares conffiles); no other file, directory or symlink
  *   - modes: directories 0755, files 0644 or 0755 as in git, uci-defaults
- *     scripts 0755; owner root:root; never setuid/setgid/sticky or group- or
+ *     scripts, init scripts and /usr/libexec programs 0755; owner root:root; never setuid/setgid/sticky or group- or
  *     world-writable
  *   - contents: byte-identical to the source after luci.mk's transforms:
  *     templates get "?v=<PKG_VERSION>" on {{ media }} / {{ resource }}
@@ -87,7 +88,11 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
-const PACKAGES = [ 'luci-theme-vantage', 'luci-app-vantage' ];
+const PACKAGES = [ 'luci-theme-vantage', 'luci-app-vantage', 'luci-app-vantage-aps' ];
+/* files the device runs: 0755 in the package whatever git has (luci.mk
+   makes uci-defaults executable itself; an init script or a libexec
+   program that lost its bit in git would ship dead, and fails here) */
+const MUST_RUN = /^(etc\/uci-defaults|etc\/init\.d|usr\/libexec)\//;
 
 /* ------------------------------------------------------------ Makefile */
 
@@ -214,6 +219,8 @@ function languagePackages(pkgDir, mk, langs) {
 function sourcePackages(srcRoot, langs) {
 	const out = new Map();
 	for (const name of PACKAGES) {
+		/* a tree from before this package existed (an old tag): the ones it has */
+		if (!fs.existsSync(path.join(srcRoot, name, 'Makefile'))) continue;
 		const mk = parseMakefile(fs.readFileSync(path.join(srcRoot, name, 'Makefile'), 'utf8'), `${name}/Makefile`);
 		out.set(name, { kind: 'main', mk });
 		for (const l of languagePackages(path.join(srcRoot, name), mk, langs)) {
@@ -577,7 +584,7 @@ function checkMainPackage(pkg, root, srcRoot, ctx) {
 
 	/* expected file set: payload (uci-defaults scripts 0755) + apk metadata */
 	const want = new Map();
-	for (const [ rel, s ] of payload) want.set(rel, /^etc\/uci-defaults\//.test(rel) ? 0o755 : s.mode);
+	for (const [ rel, s ] of payload) want.set(rel, MUST_RUN.test(rel) ? 0o755 : s.mode);
 	if (!ipk) {
 		want.set(`lib/apk/packages/${name}.list`, 0o644);
 		if (mk.conffiles) {
@@ -829,7 +836,12 @@ function main(argv) {
 		if (!srcRoot) {
 			srcTemp = mkTemp('vantage-verify-'); temps.push(srcTemp);
 			const tarFile = path.join(srcTemp, 'src.tar');
-			const a = run('git', [ '-C', ROOT, 'archive', '--format=tar', '-o', tarFile, rev, ...PACKAGES ]);
+			/* git archive fails on a path the revision lacks (a package added after that tag) */
+			const have = run('git', [ '-C', ROOT, 'ls-tree', '--name-only', rev ]);
+			if (have.status !== 0) { console.error(`verify_built_apk: git ls-tree ${rev}: ${have.stderr.trim()}`); return 2; }
+			const present = PACKAGES.filter(p => have.stdout.split('\n').includes(p));
+			if (!present.length) { console.error(`verify_built_apk: ${rev} has none of ${PACKAGES.join(', ')}`); return 2; }
+			const a = run('git', [ '-C', ROOT, 'archive', '--format=tar', '-o', tarFile, rev, ...present ]);
 			if (a.status !== 0) { console.error(`verify_built_apk: git archive ${rev}: ${a.stderr.trim()}`); return 2; }
 			const x = run('tar', [ '-xf', tarFile, '-C', srcTemp ]);
 			if (x.status !== 0) { console.error(`verify_built_apk: tar: ${x.stderr.trim()}`); return 2; }

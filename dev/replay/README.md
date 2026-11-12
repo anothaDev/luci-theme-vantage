@@ -8,7 +8,7 @@ Nothing is forwarded anywhere; there is no upstream.
         [--theme-dir <pkg>/htdocs/luci-static/<name>] [--theme <name>] \
         [--templates <pkg>/ucode/template] [--rootfs <device rootfs dump>] \
         [--app-dir <luci-app package dir>]... [--keep-uniwrt] [--no-synthetic] \
-        [--demo] [--wired | --big] [--multiwan] [--fullvpn] [--lang <lang>] [--fixtures <dir>]...
+        [--demo] [--wired | --big] [--multiwan] [--fullvpn] [--aps] [--lang <lang>] [--fixtures <dir>]...
 
 Open <http://127.0.0.1:8025/>. Any username/password logs in; the session
 lasts until the replay restarts (log in again after a restart).
@@ -248,6 +248,26 @@ about 40 Mbit/s down and 3 Mbit/s up. The stand-in for `luci.vantage
 routes` answers its lookups as the kernel would from netifd's routes: the
 lowest metric, and of a tunnel's and its line's the tunnel's. Combine it with
 `--wired`, `--big` and `--multiwan`; addresses are documentation values.
+
+## Paired access points (`--aps`)
+
+Answers `vantage.collector report` as the collector service does with
+access points paired, to work on the dashboard's branches for them
+(`aps.js`): `ap-hall` (two SSIDs, seven stations, three wired hosts) and
+`ap-den` (one SSID, three stations, one wired host) reporting, and
+`ap-loft` offline (not reachable for six minutes, so without a report).
+Their stations' traffic moves a little on every call; most get a name and
+an address in the host hints, as a router's leases would give them, and
+so do the two reporting access points. `ap-hall`'s own MAC is added beside the
+first two wired hosts the stand-in for `luci.vantage wired` lists, on
+their port, and `ap-hall` lists both: the first as its wired host, which
+gets the note "behind ap-hall", the second as its station, which moves
+from the wired list to the Wi-Fi list as on a router with wired access
+points. The pairing stand-in (`pair-plugin.js`) starts with the same
+three paired: their names, addresses and MACs are `aps.js`'s.
+Without `--aps` the object is absent (uhttpd's "Object not found"), as on
+a device with none paired. Addresses and MACs are documentation values,
+names and SSIDs invented. Combine it with the other modes.
 
 ## Translation preview (`--lang`)
 

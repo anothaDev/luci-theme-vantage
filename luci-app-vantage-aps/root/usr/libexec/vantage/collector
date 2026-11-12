@@ -1,0 +1,303 @@
+#!/usr/bin/ucode -S
+// luci-app-vantage-aps: reads the access points this router is paired with.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Run by /etc/init.d/vantage-collector (procd) while /etc/vantage/aps.json
+// lists an access point. Publishes the ubus object vantage.collector:
+//
+//   report   { aps: [ { id, name, addr, state, error, age, report } ] }
+//            state: 'ok' (a report to show: less than OFFLINE_S old, or
+//            the last one while the first fetch after a pause runs),
+//            'offline' (none, and the last fetch could not reach it:
+//            'unreachable', 'timeout'), 'error' (none, and the last fetch
+//            was refused or made no sense: 'hostkey', 'denied', 'invalid',
+//            'missing') or 'waiting' (no fetch has ended yet); error: why
+//            the last fetch failed, or null; age: seconds since the last
+//            report, or null. report.mac is the MAC given at pairing,
+//            whatever the access point says of itself. Each call is a
+//            viewer: for VIEW_S after the last one each access point is
+//            fetched at most once every FETCH_S. With no viewer, nothing runs.
+//
+// A fetch is one SSH login as root with this router's key
+// (/etc/vantage/id_ed25519). dbclient accepts only the host key pinned at
+// pairing (a known_hosts of its own, StrictHostKeyChecking=yes, batch
+// mode, no passwords), and the access point runs its report command
+// whatever is asked (the key's forced command there). The report is
+// checked field by field (vantage.aps normalize): an access point is
+// trusted to report its own state, nothing more. Rates come from two
+// reports in a row.
+//
+// An access point whose address changed (DHCP) is looked for by the MAC it
+// gave at pairing, in this router's neighbour table and DHCP leases; the
+// pinned host key decides whether it is the one. The address it answers
+// at is kept in memory only: /etc/vantage stays as paired.
+
+'use strict';
+
+import * as uloop from 'uloop';
+import { connect } from 'ubus';
+import { mkdir, readfile, unlink, writefile } from 'fs';
+import * as vaps from 'vantage.aps';
+
+const KEY = '/etc/vantage/id_ed25519';
+const APS = '/etc/vantage/aps.json';
+const RUN = '/var/run/vantage-collector';
+const ARP = '/proc/net/arp';
+const LEASES = '/tmp/dhcp.leases';
+const SH = '/bin/sh';
+const DBCLIENT = '/usr/bin/dbclient';
+const KILL = '/bin/kill';
+// asked for by name: the key's forced command runs it anyway, and an
+// access point still without a root password (where dropbear lets root in
+// without the key) runs it too
+const REPORT = '/usr/libexec/vantage/report';
+const FETCH_S = 10;
+const VIEW_S = 60;
+const TIMEOUT_S = 15;
+const OFFLINE_S = 60;
+const TICK_MS = 2000;
+const MAX_OUT = 131072;           // bytes of a report
+const MAX_ERR = 4096;
+const MAX_TABLE = 65536;          // bytes of the neighbour table and the leases read
+const MAX_LIST = 65536;           // bytes of the paired list
+const MAX_ALL_STATIONS = 1024;    // in one reply, all access points
+
+// sh runs dbclient in its own place (exec: the same pid, which the
+// timeout kills) with its output in files; nothing of an access point's
+// goes through a shell word. The files are in RAM (/var/run): ulimit -f
+// ends dbclient at 272 blocks of 512 bytes, just over MAX_OUT, however
+// much an access point sends and even with this daemon gone; no core.
+const RUN_SH = 'ulimit -c 0; ulimit -f 272; exec "$@" >"$VT_OUT" 2>"$VT_ERR" </dev/null';
+
+let aps = [], aps_text = null, st = {}, viewed = null, ticker = null;
+
+function now() {
+	return clock(true)?.[0] ?? 0;
+}
+
+// the paired list, read again whenever its bytes differ (its time stamp
+// counts whole seconds: two changes within one would look like none)
+function load() {
+	let text = readfile(APS, MAX_LIST) ?? '';
+
+	if (text === aps_text)
+		return;
+
+	aps_text = text;
+	aps = vaps.aps(text);
+
+	let keep = {};
+
+	for (let a in aps)
+		keep[a.id] = st[a.id] ?? (st[a.id] = { busy: false, started: null, ok_at: null, error: null, report: null, prev: null, at: null });
+
+	// addr: where it answered last (first where it was paired); paired
+	// again at another address: that one
+	for (let a in aps)
+		if (keep[a.id].paired !== a.addr) {
+			keep[a.id].paired = keep[a.id].addr = a.addr;
+			keep[a.id].trying = null;
+			keep[a.id].tried = {};
+		}
+
+	// gone from the list: forgotten, a fetch still running ends unheard
+	for (let i in keys(st))
+		if (!keep[i])
+			delete st[i];
+}
+
+function took(a, s, r, at) {
+	let dt = (s.prev && s.at != null) ? at - s.at : 0;
+
+	s.report = vaps.view(r, s.prev, (dt > 0 && dt <= 120) ? dt : 0);
+	// the MAC it was paired with: the dashboard places its hosts by it,
+	// so not the one it reports
+	s.report.mac = a.mac;
+	s.prev = r;
+	s.at = at;
+	s.ok_at = at;
+	s.error = null;
+}
+
+function done(a, s, home, code) {
+	s.timer?.cancel();
+	s.timer = null;
+	s.busy = false;
+	s.hold = false;
+
+	let out = readfile(home + '/out', MAX_OUT + 1), err = readfile(home + '/err', MAX_ERR);
+
+	unlink(home + '/out');
+	unlink(home + '/err');
+
+	// removed while it ran
+	if (st[a.id] !== s)
+		return;
+
+	let e = vaps.fetch_error(code, out, err, s.timedout, MAX_OUT), r = null;
+
+	if (!e) {
+		try {
+			r = vaps.normalize(json(out));
+		}
+		catch (x) {
+			r = null;
+		}
+
+		if (!r)
+			e = 'invalid';
+	}
+
+	let tried = s.trying;
+
+	s.trying = null;
+
+	if (r) {
+		// found it at another address: from now on there
+		if (tried) {
+			s.addr = tried;
+			s.tried = {};
+		}
+
+		took(a, s, r, now());
+		return;
+	}
+
+	// another address that was not it: the error stays the one where it was paired
+	if (tried)
+		s.tried[tried] = true;
+	else
+		s.error = e;
+
+	// Not found where it was (or another device is there): the next
+	// address its MAC has now, in this router's neighbour table or DHCP
+	// leases, each once while someone looks. The pinned host key turns
+	// away any other device there.
+	if (tried || vaps.moved(e)) {
+		let to = vaps.next_addr(a.mac, s.addr, s.tried, readfile(ARP, MAX_TABLE), readfile(LEASES, MAX_TABLE));
+
+		if (to) {
+			s.trying = to;
+			s.started = null;
+		}
+	}
+}
+
+function fetch(a) {
+	let s = st[a.id], home = RUN + '/' + a.id, to = s.trying ?? s.addr;
+
+	mkdir(home, 0700);
+	mkdir(home + '/.ssh', 0700);
+
+	// the one host key this access point may show, under the address dbclient is given
+	if (!writefile(home + '/.ssh/known_hosts', to + ' ssh-ed25519 ' + a.key + '\n')) {
+		s.error = 'unreachable';
+		s.trying = null;
+		return;
+	}
+
+	s.busy = true;
+	s.timedout = false;
+	s.started = now();
+
+	let p = uloop.process(SH, [ '-c', RUN_SH, 'sh', DBCLIENT, '-T',
+		'-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'PasswordAuthentication=no',
+		'-i', KEY, '-p', '' + a.port, '-I', '' + TIMEOUT_S, 'root@' + to, REPORT ],
+		{ HOME: home, PATH: '/usr/sbin:/usr/bin:/sbin:/bin', VT_OUT: home + '/out', VT_ERR: home + '/err' },
+		(code) => done(a, s, home, code));
+
+	if (!p) {
+		s.busy = false;
+		s.error = 'unreachable';
+		s.trying = null;
+		return;
+	}
+
+	s.timer = uloop.timer(TIMEOUT_S * 1000, () => {
+		s.timer = null;
+
+		if (s.busy) {
+			s.timedout = true;
+			system([ KILL, '' + p.pid() ]);
+		}
+	});
+}
+
+function tick() {
+	let t = now();
+
+	load();
+
+	if (viewed == null || t - viewed > VIEW_S) {
+		ticker = null;
+		return;
+	}
+
+	for (let a in aps) {
+		let s = st[a.id];
+
+		if (!s.busy && (s.started == null || t - s.started >= FETCH_S))
+			fetch(a);
+	}
+
+	ticker = uloop.timer(TICK_MS, tick);
+}
+
+function snapshot() {
+	let t = now(), out = [], left = MAX_ALL_STATIONS;
+
+	for (let a in aps) {
+		let s = st[a.id], age = (s.ok_at != null) ? t - s.ok_at : null, r = null;
+
+		// a pause in looking ages no report: the last one stays until the
+		// first fetch after it has ended
+		if (s.report && (s.hold || (age != null && age <= OFFLINE_S))) {
+			r = s.report;
+
+			if (length(r.stations) > left)
+				r = { ...r, stations: slice(r.stations, 0, left) };
+
+			left -= length(r.stations);
+		}
+
+		push(out, {
+			id: a.id, name: a.name, addr: s.addr,
+			state: vaps.state(!!r, s.error),
+			error: s.error, age, report: r
+		});
+	}
+
+	return out;
+}
+
+mkdir(RUN, 0700);
+load();
+uloop.init();
+
+let ubus = connect();
+
+if (!ubus || !ubus.publish('vantage.collector', {
+	report: {
+		call: function(req) {
+			viewed = now();
+			load();
+
+			// someone looks again: every address may be tried again, and
+			// what each said last stands until its next fetch has ended
+			if (!ticker) {
+				for (let i, s in st) {
+					s.tried = {};
+					s.hold = !!s.report;
+				}
+
+				tick();
+			}
+
+			return { aps: snapshot() };
+		},
+		args: {}
+	}
+}))
+	exit(1);
+
+uloop.run();

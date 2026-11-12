@@ -5,16 +5,19 @@ promised; issues and pull requests for any of it are welcome.
 
 ## Next
 
-### Multiple access points
+### Multiple access points (planned for 1.1)
 
-Shown where the access points run `usteer` (see the spec, "Other access
-points"): no peer logins, since usteer already shares node and station
-state over the LAN. Still open: access points without usteer, and the
-peer-login design (idea from
-[#5](https://github.com/anothaDev/luci-theme-vantage/pull/5) by @nhAsif:
-a dedicated rpcd login limited to one read-only method, credentials the
-dashboard can't read, a background poller over HTTPS with a pinned
-certificate) for anything usteer cannot carry.
+Show the radios, SSIDs and clients of other OpenWrt access points on the
+main dashboard, so a router without Wi-Fi still shows the whole network
+(ideas from [#5](https://github.com/anothaDev/luci-theme-vantage/pull/5)
+by @nhAsif and [#127](https://github.com/anothaDev/luci-theme-vantage/pull/127)
+by @Vikk20). In the tree as the optional `luci-app-vantage-aps`, for
+1.1: each access point is paired once, then the router reads it over SSH
+with a key that can only run a read-only report, against the access
+point's pinned host key (see the spec, "Other access points"). Still
+open: access points without Dropbear; per-port traffic that a switch
+chip forwards without the kernel counting it; the collector under a user
+of its own instead of root; finding a moved access point over IPv6.
 
 ### Search for clients, radios and networks (Ctrl+K)
 

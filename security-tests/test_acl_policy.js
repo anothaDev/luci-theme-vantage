@@ -41,9 +41,7 @@
  *   bridge forwarding database (luci.vantage wired) and one route lookup
  *   a family, IPv4 and IPv6, of a documentation address (luci.vantage
  *   routes), and nl80211 for one read-only channel survey dump of an
- *   interface (luci.vantage survey), and over ubus network.wireless status
- *   and usteer's remote_hosts, local_info, remote_info and get_clients
- *   (luci.vantage mesh); no other file access, no other
+ *   interface (luci.vantage survey); no other file access, no other
  *   netlink request, no process execution, and no module, cursor or
  *   connection passed on under another name; altered copies of the
  *   plugin check that these rules catch each breach;
@@ -69,6 +67,31 @@
  *   overview's (Network -> Firewall -> Overview) by luci-app-firewall,
  *   LuCI's own group for the firewall pages, which already lets its holder
  *   read and change `firewall`: the app grants nothing for it.
+ *
+ * luci-app-vantage-aps, the opt-in add-on that pairs devices over SSH
+ * (VANTAGE_APS_PKG: another copy of it):
+ *
+ * - one group, `luci-app-vantage-aps`: luci.vantage.pair status and
+ *   vantage.collector report to read, the pairing methods to write, and
+ *   nothing else; its page declares exactly those, its menu entry is
+ *   gated by it;
+ * - the pairing plugin (luci.vantage-pair) registers exactly those
+ *   methods; it runs dropbearkey to make the router's key and the
+ *   collector's init script with fixed words, writes /etc/vantage/aps.json
+ *   and, through a temporary file and a rename, authorized_keys, adding
+ *   only KEY_OPTIONS lines (the report command, no pty, no forwarding);
+ *   it reads only its own files, dropbear's binary, host key and config,
+ *   the hostname and 8 random bytes, and asks ubus for dropbear's state
+ *   and the LAN address only;
+ * - the report (the forced command) writes nothing, runs nothing, reads
+ *   only sysfs, the neighbour table and the hostname, takes SSH_CLIENT
+ *   and nothing else from its environment, and makes read calls only;
+ * - the collector runs dbclient alone, with the host key pinned
+ *   (StrictHostKeyChecking=yes), batch mode and no passwords, the access
+ *   point's address and port as arguments, never through a shell word;
+ *   it writes only the known_hosts it hands dbclient, and publishes
+ *   vantage.collector report only;
+ * - the shared checks (vantage.aps) import nothing.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -97,12 +120,15 @@ const READ_UBUS = {
 	'luci-rpc': [ 'getHostHints' ],
 	/* LuCI's own: swconfig dev <switch> show, the switch name quoted */
 	'luci': [ 'getSwconfigPortState' ],
-	'luci.vantage': [ 'mesh', 'routes', 'survey', 'thermal', 'wired', 'wireless' ],
+	'luci.vantage': [ 'routes', 'survey', 'thermal', 'wired', 'wireless' ],
 	/* not survey (#124): luci.vantage survey reads it through nl80211 */
 	'iwinfo': [ 'assoclist', 'info' ],
 	'hostapd.*': [ 'get_clients', 'get_status' ],
 	'umdns': [ 'hosts' ],
-	'uci': [ 'get' ]
+	'uci': [ 'get' ],
+	/* luci-app-vantage-aps' collector: what the paired access points report
+	   (no object, so a failed call, without the add-on) */
+	'vantage.collector': [ 'report' ]
 };
 const READ_FILES = { '/proc/stat': [ 'read' ] };
 const RDNS_UBUS = { 'network.rrdns': [ 'lookup' ] };
@@ -247,7 +273,7 @@ test('the plugin registers exactly the granted luci.vantage methods, writes conf
 	for (const g of Object.values(acl)) for (const kind of [ 'read', 'write' ])
 		for (const m of ((g[kind] || {}).ubus || {})[PLUGIN_OBJECT] || []) granted.add(m);
 	assert.deepEqual(methods, [ ...granted ].sort());
-	assert.deepEqual(methods, [ 'mesh', 'routes', 'set_alias', 'set_quiet', 'survey', 'thermal', 'wired', 'wireless' ]);
+	assert.deepEqual(methods, [ 'routes', 'set_alias', 'set_quiet', 'survey', 'thermal', 'wired', 'wireless' ]);
 	assert.ok(pairs(acl[READ_GROUP].read.ubus).has(PLUGIN_OBJECT + ' wireless'));
 	assert.ok(pairs(acl[READ_GROUP].read.ubus).has(PLUGIN_OBJECT + ' thermal'));
 	assert.ok(pairs(acl[WRITE_GROUP].write.ubus).has(PLUGIN_OBJECT + ' set_alias'));
@@ -322,14 +348,10 @@ function checkPluginSource(src) {
 	for (const m of sws[0].replace(walk, '').matchAll(/(?<!\\)\bs\b(\.\w+|\[|\))?/g))
 		assert.ok([ '.device', '.vid', '.vlan', '.ports' ].includes(m[1]), `"${m[0]}": a switch_vlan section is read as s.device, s.vid, s.vlan and s.ports only${REWORD}`);
 
-	/* ubus: network.wireless status, and usteer's four read-only state
-	   dumps (luci.vantage mesh), each on a connection made for it */
-	assert.deepEqual([ ...src.matchAll(/^.*\bconnect\b.*$/gm) ].map(m => m[0].trim()), [ 'import { connect } from \'ubus\';', 'let u = connect();', 'let reply = connect()?.call(\'network.wireless\', \'status\');' ],
-		`"connect" may appear only on its import, the mesh connection and the network.wireless status call${REWORD}`);
-	const ubusCalls = [ ...src.matchAll(/\.\s*call\b(\([^)]*\))?/g) ].map(m => m[0]).sort();
-	assert.deepEqual(ubusCalls, [ ".call('network.wireless', 'status')", ".call('usteer', 'get_clients')", ".call('usteer', 'local_info')", ".call('usteer', 'remote_hosts')", ".call('usteer', 'remote_info')" ],
-		`ubus calls: network.wireless status and usteer remote_hosts, local_info, remote_info and get_clients only${REWORD}`);
-	assert.equal([ ...src.matchAll(/\bu\b/g) ].length, 5, '"u": the mesh connection and its four calls');
+	/* ubus: one connection for the one call, network.wireless status */
+	assert.deepEqual([ ...src.matchAll(/^.*\bconnect\b.*$/gm) ].map(m => m[0].trim()), [ 'import { connect } from \'ubus\';', 'let reply = connect()?.call(\'network.wireless\', \'status\');' ],
+		`"connect" may appear only on its import and the network.wireless status call${REWORD}`);
+	assert.equal([ ...src.matchAll(/\.\s*call\b/g) ].length, 1, 'one .call');
 
 	/* rtnl: two requests, the read-only dump of the bridge forwarding
 	   database and a route lookup (RTM_GETROUTE without a dump: the one
@@ -657,4 +679,483 @@ test('the firewall overview: behind LuCI\'s firewall group, uci get on firewall 
 	assert.ok(src, 'found the view');
 	const declares = [ ...src.text.matchAll(/rpc\.declare\(\{\s*object:\s*'([^']+)',\s*method:\s*'([^']+)'/g) ].map(m => m[1] + ' ' + m[2]);
 	assert.deepEqual(declares, [ 'uci get', 'network.interface dump' ]);
+});
+
+/* ------------------------------------------------ luci-app-vantage-aps */
+
+const APS_PKG = path.resolve(process.env.VANTAGE_APS_PKG || path.join(__dirname, '..', 'luci-app-vantage-aps'));
+const APS_GROUP = 'luci-app-vantage-aps';
+const PAIR_OBJECT = 'luci.vantage.pair';
+const APS_READ = { 'luci.vantage.pair': [ 'status' ], 'vantage.collector': [ 'report' ] };
+const APS_WRITE = { 'luci.vantage.pair': [ 'add_ap', 'allow_router', 'remove_ap', 'revoke_router', 'router_code' ] };
+const apsFile = rel => fs.readFileSync(path.join(APS_PKG, rel), 'utf8');
+const apsAcl = JSON.parse(apsFile('root/usr/share/rpcd/acl.d/luci-app-vantage-aps.json'));
+const apsMenu = JSON.parse(apsFile('root/usr/share/luci/menu.d/luci-app-vantage-aps.json'));
+const pairPlugin = apsFile('root/usr/share/rpcd/ucode/luci.vantage-pair');
+const reportSrc = apsFile('root/usr/libexec/vantage/report');
+const collectorSrc = apsFile('root/usr/libexec/vantage/collector');
+const apsModule = apsFile('root/usr/share/ucode/vantage/aps.uc');
+const apsSources = jsFiles(path.join(APS_PKG, 'htdocs')).map(f => ({ file: path.relative(APS_PKG, f), text: fs.readFileSync(f, 'utf8') }));
+
+/* the lines of src that hold `word` (trimmed) */
+const linesWith = (src, word) => [ ...src.matchAll(new RegExp('^.*\\b' + word + '\\b.*$', 'gm')) ].map(m => m[0].trim());
+const count = (src, word) => [ ...src.matchAll(new RegExp('\\b' + word + '\\b', 'g')) ].length;
+
+test('add-on: one group, the pairing methods and the report, nothing else', () => {
+	assert.deepEqual(Object.keys(apsAcl), [ APS_GROUP ]);
+	const g = apsAcl[APS_GROUP];
+	assert.deepEqual(Object.keys(g).sort(), [ 'description', 'read', 'write' ]);
+	assert.deepEqual(g.read, { ubus: APS_READ });
+	assert.deepEqual(g.write, { ubus: APS_WRITE });
+	assert.match(g.description, /authorized_keys/);
+	assert.match(g.description, /administrators only/);
+	/* the dashboard's groups grant nothing of the add-on but the report */
+	for (const [ name, grp ] of Object.entries(acl)) for (const kind of [ 'read', 'write' ])
+		for (const k of pairs((grp[kind] || {}).ubus)) assert.ok(!k.startsWith(PAIR_OBJECT + ' '), `${name}.${kind}: ${k}`);
+});
+
+test('add-on: its page declares exactly the group\'s calls; its menu entry is gated by the group', () => {
+	const declares = new Set(), problems = [];
+	for (const { file, text } of apsSources) {
+		const total = (text.match(/\brpc\s*(?:\.\s*declare\b|\[)/g) || []).length;
+		const found = [ ...text.matchAll(/(?:var|let|const)\s+(\w+)\s*=\s*rpc\.declare\(\{\s*object:\s*'([^']+)',\s*method:\s*'([^']+)'/g) ];
+		if (found.length !== total) problems.push(file);
+		for (const m of found) declares.add(m[2] + ' ' + m[3]);
+	}
+	assert.deepEqual(problems, [], 'every declare literal');
+	const granted = new Set([ ...pairs(APS_READ), ...pairs(APS_WRITE) ]);
+	assert.deepEqual([ ...declares ].filter(k => !PLATFORM.has(k)).sort(), [ ...granted ].sort());
+	assert.deepEqual(callProblems(apsSources), []);
+	const entries = Object.values(apsMenu);
+	assert.equal(entries.length, 1);
+	assert.deepEqual(entries[0].depends.acl, [ APS_GROUP ]);
+	assert.deepEqual(entries[0].action, { type: 'view', path: 'vantage/aps' });
+});
+
+/* The add-on's source rules. Each table below lists, for a set of names,
+   every line of code that may mention one of them (comment lines are left
+   out; template literals are refused, so a line that starts with // is a
+   comment and nothing else). A call under another name, with other
+   arguments, through an alias or a computed member, or with a space before
+   its bracket, is a line that is not listed: change a listed line and this
+   test changes with it, on purpose. */
+function codeOf(src, what) {
+	assert.ok(!src.includes('`'), what + ': no template literals (code in ${} would hide from these rules)');
+	return src.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+}
+function checkPins(src, what, pins) {
+	const code = codeOf(src, what);
+	for (const [ re, expected ] of pins)
+		assert.deepEqual([ ...code.matchAll(new RegExp('^.*(?:' + re + ').*$', 'gm')) ].map(m => m[0].trim()), expected,
+			what + ': the lines that mention /' + re + '/' + REWORD);
+}
+
+const PAIR_PATHS = {
+	DIR: '/etc/vantage', KEY: '/etc/vantage/id_ed25519', APS: '/etc/vantage/aps.json', APS_TMP: '/etc/vantage/aps.json.tmp',
+	AUTH: '/etc/dropbear/authorized_keys', AUTH_TMP: '/etc/dropbear/authorized_keys.vantage', HOST_KEY: '/etc/dropbear/dropbear_ed25519_host_key',
+	DROPBEAR: '/usr/sbin/dropbear', DBCLIENT: '/usr/bin/dbclient', DROPBEARKEY: '/usr/bin/dropbearkey', COLLECTOR: '/etc/init.d/vantage-collector',
+	HOSTNAME: '/proc/sys/kernel/hostname', RANDOM: '/dev/urandom', NET: '/sys/class/net'
+};
+/* files and programs; ubus; uci; its own writers; what reaches
+   authorized_keys; a parsed router code; computed members */
+const PAIR_PINS = [
+	[ '\\b(?:access|chmod|mkdir|readfile|rename|stat|writefile|put)\\b', [
+		'import { access, chmod, mkdir, readfile, rename, stat, writefile } from \'fs\';',
+		'let b = readfile(file, 84);',
+		'function put(tmp, file, text) {',
+		'return writefile(tmp, text) != null && stat(tmp)?.size === length(text) && chmod(tmp, 0600) && rename(tmp, file) === true;',
+		'return vaps.name_of(trim(readfile(HOSTNAME, 256) ?? \'\'), fallback);',
+		'return vaps.aps(readfile(APS, MAX_APS_FILE));',
+		'mkdir(DIR, 0700);',
+		'return put(APS_TMP, APS, sprintf(\'%J\', list));',
+		'let r = readfile(RANDOM, 8);',
+		'if (!access(DBCLIENT, \'x\'))',
+		'if (!stat(KEY)) {',
+		'mkdir(DIR, 0700);',
+		'/* ----------------------------------------------------- access point */',
+		'let s = stat(DROPBEAR), sig = s ? s.size + \'/\' + s.mtime : null;',
+		'let b = readfile(DROPBEAR, MAX_DROPBEAR);',
+		'let m = dev ? match(lc(trim(readfile(NET + \'/\' + dev + \'/address\', 64) ?? \'\')), RE_MAC) : null;',
+		'if (!access(DROPBEAR, \'x\'))',
+		'let text = readfile(AUTH, MAX_AUTH + 1);',
+		'return put(AUTH_TMP, AUTH, text);',
+		'return (k && l) ? vaps.ap_code(k, l.addr, dropbear_conf().port, l.mac, hostname(\'access-point\')) : null;',
+		'let k = access(DBCLIENT, \'x\') ? public_key(KEY) : null, ssh = ssh_state(), auth = read_auth();'
+	] ],
+	[ '\\bsystem\\b', [
+		'system([ DROPBEARKEY, \'-t\', \'ed25519\', \'-f\', KEY ], 30000);',
+		'system([ COLLECTOR, \'enable\' ], 10000);',
+		'system([ COLLECTOR, \'start\' ], 10000);',
+		'system([ COLLECTOR, \'stop\' ], 10000);',
+		'system([ COLLECTOR, \'disable\' ], 10000);'
+	] ],
+	[ '\\b(?:connect|call|ubus)\\b', [
+		'import { connect } from \'ubus\';',
+		'function lan(ubus) {',
+		'let st = (ubus ?? connect(null, 3))?.call(\'network.interface.lan\', \'status\');',
+		'let ubus = connect(null, 3);',
+		'let svc = ubus?.call(\'service\', \'list\', { name: \'dropbear\' })?.dropbear?.instances, running = false;',
+		'return lan(ubus) ? \'ok\' : \'no-address\';',
+		'function reply(ubus) {',
+		'let k = public_key(HOST_KEY), l = lan(ubus);',
+		'call: function() {',
+		'call: function() {',
+		'call: function(req) {',
+		'call: function(req) {',
+		'call: function(req) {',
+		'call: function(req) {'
+	] ],
+	[ '\\b(?:cursor|uci)\\b', [
+		'import { cursor } from \'uci\';',
+		'const OFF = [ \'0\', \'off\', \'false\', \'no\', \'disabled\' ];   // uci\'s ways to say no',
+		'let uci = cursor(), found = null;',
+		'if (uci.load(\'dropbear\'))',
+		'uci.foreach(\'dropbear\', \'dropbear\', (s) => {'
+	] ],
+	[ '\\b(?:save_aps|write_auth|read_auth|public_key)\\b', [
+		'function public_key(file) {',
+		'function save_aps(list) {',
+		'let k = public_key(KEY);',
+		'if (!public_key(KEY))',
+		'if (!save_aps(list))',
+		'if (!save_aps(left))',
+		'if (!public_key(HOST_KEY))',
+		'function read_auth() {',
+		'function write_auth(lines) {',
+		'let k = public_key(HOST_KEY), l = lan(ubus);',
+		'let auth = read_auth();',
+		'if (!write_auth(auth.lines))',
+		'let k = vaps.key(args.key), auth = k ? read_auth() : null;',
+		'return write_auth(left) ? { ok: true } : { error: \'failed\' };',
+		'let k = access(DBCLIENT, \'x\') ? public_key(KEY) : null, ssh = ssh_state(), auth = read_auth();'
+	] ],
+	[ '\\bauth\\b|\\blines\\b|\\bours\\b', [
+		'let lines = (text == null || text == \'\') ? [] : split(text, \'\\n\'), ours = [];',
+		'if (length(lines) && lines[length(lines) - 1] == \'\')',
+		'pop(lines);',
+		'for (let i = 0; i < length(lines); i++) {',
+		'let f = split(lines[i], \' \');',
+		'push(ours, { key: f[2], name: substr(f[3], length(COMMENT)), at: i });',
+		'return { lines, ours };',
+		'function write_auth(lines) {',
+		'let text = length(lines) ? join(\'\\n\', lines) + \'\\n\' : \'\';',
+		'let auth = read_auth();',
+		'if (!auth)',
+		'for (let o in auth.ours)',
+		'for (let l in auth.lines)',
+		'if (length(auth.ours) >= vaps.MAX_ROUTERS)',
+		'push(auth.lines, KEY_OPTIONS + \' ssh-ed25519 \' + r.key + \' \' + COMMENT + r.name);',
+		'if (!write_auth(auth.lines))',
+		'let k = vaps.key(args.key), auth = k ? read_auth() : null;',
+		'if (!auth)',
+		'for (let o in auth.ours)',
+		'for (let i = 0; i < length(auth.lines); i++)',
+		'push(left, auth.lines[i]);',
+		'let k = access(DBCLIENT, \'x\') ? public_key(KEY) : null, ssh = ssh_state(), auth = read_auth();',
+		'let routers = map(auth?.ours ?? [], (o) => ({ name: o.name, key: o.key }));'
+	] ],
+	[ '\\b(?:KEY_OPTIONS|COMMENT)\\b', [
+		'const KEY_OPTIONS = \'command="/usr/libexec/vantage/report",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding\';',
+		'const COMMENT = \'vantage-router@\';',
+		'if (length(f) == 4 && f[0] == KEY_OPTIONS && f[1] == \'ssh-ed25519\' && vaps.key(f[2]) &&',
+		'substr(f[3], 0, length(COMMENT)) == COMMENT && vaps.name(substr(f[3], length(COMMENT))))',
+		'push(ours, { key: f[2], name: substr(f[3], length(COMMENT)), at: i });',
+		'push(auth.lines, KEY_OPTIONS + \' ssh-ed25519 \' + r.key + \' \' + COMMENT + r.name);'
+	] ],
+	[ '\\br\\b', [
+		'let r = readfile(RANDOM, 8);',
+		'if (type(r) != \'string\' || length(r) != 8)',
+		'h += sprintf(\'%02x\', ord(r, i));',
+		'let r = vaps.parse_router(args.code);',
+		'if (!r)',
+		'if (o.key == r.key)',
+		'if (index(l, r.key) >= 0)',
+		'push(auth.lines, KEY_OPTIONS + \' ssh-ed25519 \' + r.key + \' \' + COMMENT + r.name);'
+	] ],
+	[ '\\[\\s*[\'"]', [
+		'const OFF = [ \'0\', \'off\', \'false\', \'no\', \'disabled\' ];   // uci\'s ways to say no',
+		'let a = (type(st?.[\'ipv4-address\']) == \'array\' && type(st[\'ipv4-address\'][0]) == \'object\') ? vaps.addr(st[\'ipv4-address\'][0].address) : null;'
+	] ]
+];
+function checkPairSource(src) {
+	assert.deepEqual(linesWith(src, 'import'), [
+		'import { access, chmod, mkdir, readfile, rename, stat, writefile } from \'fs\';',
+		'import { connect } from \'ubus\';',
+		'import { cursor } from \'uci\';',
+		'import * as vaps from \'vantage.aps\';'
+	]);
+	const word = /\b(popen|exec|require|loadfile|loadstring|include|render|unlink|global|getenv|open|symlink|rmdir|signal|sleep|exit)\b/.exec(codeOf(src, 'the pairing plugin'));
+	assert.equal(word, null, word && `"${word[1]}" is banned in the pairing plugin`);
+	/* the paths: each defined once, literally, never shadowed or assigned */
+	for (const [ name, v ] of Object.entries(PAIR_PATHS)) {
+		assert.ok(src.includes('\nconst ' + name + ' = \'' + v + '\';\n'), name + ' = ' + v);
+		assert.equal([ ...src.matchAll(new RegExp('\\b' + name + '\\s*=(?!=)', 'g')) ].length, 1, name + ' is defined once and never assigned');
+	}
+	checkPins(src, 'the pairing plugin', PAIR_PINS);
+}
+
+test('add-on: the pairing plugin registers the granted methods and runs, writes and reads only what it lists', () => {
+	assert.match(pairPlugin, /^return \{ 'luci\.vantage\.pair': methods \};\s*$/m);
+	const table = /^const methods = \{\n([\s\S]*?)\n\};$/m.exec(pairPlugin);
+	assert.ok(table, 'methods table');
+	const methods = [ ...table[1].matchAll(/^\t([A-Za-z_]+): \{$/gm) ].map(m => m[1]).sort();
+	assert.deepEqual(methods, [ ...APS_READ[PAIR_OBJECT], ...APS_WRITE[PAIR_OBJECT] ].sort());
+	checkPairSource(pairPlugin);
+});
+
+test('add-on: the pairing plugin rules catch each breach', () => {
+	const at = '\tlet r = vaps.parse_router(args.code);\n';
+	assert.ok(pairPlugin.includes(at), 'insertion point');
+	const add = code => pairPlugin.replace(at, at + '\t' + code + '\n');
+	const MUTANTS = {
+		'forwarding allowed': pairPlugin.replace(',no-port-forwarding', ''),
+		'another command': pairPlugin.replace('/usr/libexec/vantage/report', '/bin/sh'),
+		'the pasted line as it is': pairPlugin.replace('push(auth.lines, KEY_OPTIONS + \' ssh-ed25519 \' + r.key', 'push(auth.lines, args.code + \' ssh-ed25519 \' + r.key'),
+		'an unrestricted line for one name': add('if (r.name == \'zz\') push(auth.lines, \'ssh-ed25519 \' + r.key + \' backdoor\');'),
+		'a line written past the checks': pairPlugin.replace('if (!write_auth(auth.lines))', 'if (!write_auth([ ...auth.lines, args.code ]))'),
+		'the name changed after its check': add('r.name = args.code;'),
+		'another program': add('system([ \'/sbin/reboot\' ]);'),
+		'program by reference': add('let s = system; s(\'reboot\');'),
+		'a space before the bracket': add('writefile (\'/etc/shadow\', \'\');'),
+		'a write under another name': add('let w = writefile; w(\'/etc/shadow\', \'\');'),
+		'popen': pairPlugin.replace('import { access, chmod, mkdir, readfile, rename, stat, writefile } from \'fs\';', 'import { access, chmod, mkdir, popen, readfile, rename, stat, writefile } from \'fs\';'),
+		'write elsewhere': add('writefile(\'/etc/shadow\', \'\');'),
+		'put elsewhere': add('put(AUTH_TMP, \'/etc/shadow\', \'\');'),
+		'shadowed path': add('let AUTH = \'/etc/passwd\';'),
+		'assigned path': add('AUTH = \'/etc/passwd\';'),
+		'redefined path': pairPlugin.replace('const AUTH = \'/etc/dropbear/authorized_keys\';', 'const AUTH = \'/root/.ssh/authorized_keys\';'),
+		'read elsewhere': add('let x = readfile(\'/etc/shadow\');'),
+		'another ubus call': add('connect()?.call(\'file\', \'exec\', {});'),
+		'a ubus call by computed member': add('let u = connect(null, 3); u[\'call\'](\'file\', \'exec\', {});'),
+		'uci write': add('uci.set(\'dropbear\', \'x\', \'PasswordAuth\', \'on\');'),
+		'another ubus method': pairPlugin.replace('\tlet ubus = connect(null, 3);\n', '\tlet ubus = connect(null, 3);\n\tubus.publish(\'x\', {});\n'),
+		'second module': pairPlugin.replace('import * as vaps from \'vantage.aps\';', 'import * as vaps from \'vantage.aps\';\nimport * as x from \'rtnl\';'),
+		'code in a template literal': add('let t = \`\${reboot()}\`;')
+	};
+	for (const [ name, src ] of Object.entries(MUTANTS)) {
+		assert.notEqual(src, pairPlugin, name + ': the mutation applies');
+		assert.throws(() => checkPairSource(src), assert.AssertionError, name);
+	}
+});
+
+/* files and the lock; ubus; environment, exits, output; computed members */
+const REPORT_PINS = [
+	[ '\\b(?:access|lsdir|open|readfile|lock|self_file|SELF)\\b', [
+		'import { access, lsdir, open, readfile } from \'fs\';',
+		'const SELF = \'/usr/libexec/vantage/report\';',
+		'let v = trim(readfile(NET + \'/\' + dev + \'/\' + file, 64) ?? \'\');',
+		'return access(NET + \'/\' + dev + \'/phy80211\') || access(NET + \'/\' + dev + \'/wireless\');',
+		'for (let line in split(readfile(ARP, MAX_ARP) ?? \'\', \'\\n\')) {',
+		'let self_file = open(SELF, \'r\'), locked = !self_file;',
+		'locked = (self_file.lock(\'xn\') === true);',
+		'for (let d in (lsdir(NET) ?? [])) {',
+		'let m = netdev(d) ? norm_mac(trim(readfile(NET + \'/\' + d + \'/address\', 64) ?? \'\')) : null;',
+		'let self = lan ? norm_mac(trim(readfile(NET + \'/\' + lan + \'/address\', 64) ?? \'\')) : null;',
+		'name: text(trim(readfile(HOSTNAME, 256) ?? \'\'), 63),'
+	] ],
+	[ '\\b(?:connect|call|ubus)\\b', [
+		'import { connect } from \'ubus\';',
+		'let ubus = connect(null, 3);',
+		'if (!ubus)',
+		'let board = ubus.call(\'system\', \'board\'), info = ubus.call(\'system\', \'info\');',
+		'let devs = ubus.call(\'iwinfo\', \'devices\')?.devices;',
+		'let i = ubus.call(\'iwinfo\', \'info\', { device: dev });',
+		'let a = ubus.call(\'iwinfo\', \'assoclist\', { device: dev })?.results;',
+		'let lan = null, gw = null, dump = ubus.call(\'network.interface\', \'dump\')?.interface;',
+		'let hosts = ubus.call(\'luci.vantage\', \'wired\')?.hosts, uplinks = {}, any = false;'
+	] ],
+	[ '\\b(?:getenv|exit|print|sleep)\\b', [
+		'sleep(250);',
+		'exit(1);',
+		'exit(1);',
+		'let client = split(getenv(\'SSH_CLIENT\') ?? \'\', \' \')[0];',
+		'print(sprintf(\'%J\', {'
+	] ],
+	[ '\\[\\s*[\'"]', [
+
+	] ]
+];
+function checkReportSource(src) {
+	assert.ok(src.startsWith('#!/usr/bin/ucode -S\n'), 'strict ucode');
+	assert.deepEqual(linesWith(src, 'import'), [ 'import { connect } from \'ubus\';', 'import { access, lsdir, open, readfile } from \'fs\';' ]);
+	const word = /\b(popen|exec|require|loadfile|loadstring|include|render|writefile|unlink|rename|chmod|mkdir|global|stdin|ARGV)\b/.exec(codeOf(src, 'the report'));
+	assert.equal(word, null, word && `"${word[1]}" is banned in the report`);
+	/* 'system' only as the ubus object's name */
+	assert.doesNotMatch(codeOf(src, 'the report'), /(?<!')\bsystem\b(?!')/, '"system" only as the ubus object \'system\'');
+	for (const [ name, v ] of Object.entries({ SELF: '/usr/libexec/vantage/report', NET: '/sys/class/net', ARP: '/proc/net/arp', HOSTNAME: '/proc/sys/kernel/hostname' })) {
+		assert.ok(src.includes('\nconst ' + name + ' = \'' + v + '\';\n'), name);
+		assert.equal([ ...src.matchAll(new RegExp('\\b' + name + '\\s*=(?!=)', 'g')) ].length, 1, name + ' is defined once and never assigned');
+	}
+	checkPins(src, 'the report', REPORT_PINS);
+	/* a path below /sys/class/net is that directory, one checked interface name and a fixed file */
+	assert.ok(src.includes('\nfunction sysfs(dev, file) {\n'), 'sysfs()');
+	assert.deepEqual([ ...src.matchAll(/\bsysfs\(([^)]*)\)/g) ].map(m => m[1]), [ 'dev, file', 'p, \'speed\'', 'p, \'statistics/rx_bytes\'', 'p, \'statistics/tx_bytes\'' ]);
+}
+
+test('add-on: the report reads, prints and changes nothing', () => {
+	checkReportSource(reportSrc);
+	const at = 'let ubus = connect(null, 3);\n';
+	assert.ok(reportSrc.includes(at), 'insertion point');
+	const add = code => reportSrc.replace(at, at + code + '\n');
+	const MUTANTS = {
+		'a write': reportSrc.replace('import { access, lsdir, open, readfile } from \'fs\';', 'import { access, lsdir, open, readfile, writefile } from \'fs\';'),
+		'the command asked for': reportSrc.replace('getenv(\'SSH_CLIENT\')', 'getenv(\'SSH_ORIGINAL_COMMAND\')'),
+		'a write call': add('ubus.call(\'uci\', \'set\', {});'),
+		'a computed call': add('let o = \'file\'; ubus.call(o, \'exec\');'),
+		'a call by computed member': add('ubus[\'call\'](\'file\', \'exec\');'),
+		'another file': reportSrc.replace('readfile(HOSTNAME, 256)', 'readfile(\'/etc/shadow\', 256)'),
+		'a path out of sysfs': add('print(readfile(NET + \'/../../../etc/shadow\'));'),
+		'a file opened for writing': reportSrc.replace('open(SELF, \'r\')', 'open(SELF, \'w\')'),
+		'another file opened': add('let f = open(\'/etc/shadow\', \'r\');'),
+		'a read under another name': add('let rd = readfile; print(rd(\'/etc/shadow\'));')
+	};
+	for (const [ name, src ] of Object.entries(MUTANTS)) {
+		assert.notEqual(src, reportSrc, name + ': the mutation applies');
+		assert.throws(() => checkReportSource(src), assert.AssertionError, name);
+	}
+});
+
+/* the process it runs; files; ubus; the address it goes to and its
+   dbclient's home; computed members */
+const COLLECTOR_PINS = [
+	[ '\\b(?:uloop|process|system|KILL|SH|RUN_SH|DBCLIENT|REPORT|KEY)\\b', [
+		'import * as uloop from \'uloop\';',
+		'const KEY = \'/etc/vantage/id_ed25519\';',
+		'const SH = \'/bin/sh\';',
+		'const DBCLIENT = \'/usr/bin/dbclient\';',
+		'const KILL = \'/bin/kill\';',
+		'const REPORT = \'/usr/libexec/vantage/report\';',
+		'const RUN_SH = \'ulimit -c 0; ulimit -f 272; exec "$@" >"$VT_OUT" 2>"$VT_ERR" </dev/null\';',
+		'let p = uloop.process(SH, [ \'-c\', RUN_SH, \'sh\', DBCLIENT, \'-T\',',
+		'\'-i\', KEY, \'-p\', \'\' + a.port, \'-I\', \'\' + TIMEOUT_S, \'root@\' + to, REPORT ],',
+		's.timer = uloop.timer(TIMEOUT_S * 1000, () => {',
+		'system([ KILL, \'\' + p.pid() ]);',
+		'ticker = uloop.timer(TICK_MS, tick);',
+		'uloop.init();',
+		'uloop.run();'
+	] ],
+	[ '\\b(?:mkdir|readfile|unlink|writefile)\\b', [
+		'import { mkdir, readfile, unlink, writefile } from \'fs\';',
+		'let text = readfile(APS, MAX_LIST) ?? \'\';',
+		'let out = readfile(home + \'/out\', MAX_OUT + 1), err = readfile(home + \'/err\', MAX_ERR);',
+		'unlink(home + \'/out\');',
+		'unlink(home + \'/err\');',
+		'let to = vaps.next_addr(a.mac, s.addr, s.tried, readfile(ARP, MAX_TABLE), readfile(LEASES, MAX_TABLE));',
+		'mkdir(home, 0700);',
+		'mkdir(home + \'/.ssh\', 0700);',
+		'if (!writefile(home + \'/.ssh/known_hosts\', to + \' ssh-ed25519 \' + a.key + \'\\n\')) {',
+		'mkdir(RUN, 0700);'
+	] ],
+	[ '\\b(?:connect|publish|call|ubus)\\b', [
+		'import { connect } from \'ubus\';',
+		'let ubus = connect();',
+		'if (!ubus || !ubus.publish(\'vantage.collector\', {',
+		'call: function(req) {'
+	] ],
+	[ '\\b(?:trying|tried|paired|to|home|HOME)\\b|\\.addr\\b', [
+		'const MAX_LIST = 65536;           // bytes of the paired list',
+		'if (keep[a.id].paired !== a.addr) {',
+		'keep[a.id].paired = keep[a.id].addr = a.addr;',
+		'keep[a.id].trying = null;',
+		'keep[a.id].tried = {};',
+		'function done(a, s, home, code) {',
+		'let out = readfile(home + \'/out\', MAX_OUT + 1), err = readfile(home + \'/err\', MAX_ERR);',
+		'unlink(home + \'/out\');',
+		'unlink(home + \'/err\');',
+		'let tried = s.trying;',
+		's.trying = null;',
+		'if (tried) {',
+		's.addr = tried;',
+		's.tried = {};',
+		'if (tried)',
+		's.tried[tried] = true;',
+		'if (tried || vaps.moved(e)) {',
+		'let to = vaps.next_addr(a.mac, s.addr, s.tried, readfile(ARP, MAX_TABLE), readfile(LEASES, MAX_TABLE));',
+		'if (to) {',
+		's.trying = to;',
+		'let s = st[a.id], home = RUN + \'/\' + a.id, to = s.trying ?? s.addr;',
+		'mkdir(home, 0700);',
+		'mkdir(home + \'/.ssh\', 0700);',
+		'if (!writefile(home + \'/.ssh/known_hosts\', to + \' ssh-ed25519 \' + a.key + \'\\n\')) {',
+		's.trying = null;',
+		'\'-i\', KEY, \'-p\', \'\' + a.port, \'-I\', \'\' + TIMEOUT_S, \'root@\' + to, REPORT ],',
+		'{ HOME: home, PATH: \'/usr/sbin:/usr/bin:/sbin:/bin\', VT_OUT: home + \'/out\', VT_ERR: home + \'/err\' },',
+		'(code) => done(a, s, home, code));',
+		's.trying = null;',
+		'id: a.id, name: a.name, addr: s.addr,',
+		's.tried = {};'
+	] ],
+	[ '\\[\\s*[\'"]', [
+		'let p = uloop.process(SH, [ \'-c\', RUN_SH, \'sh\', DBCLIENT, \'-T\','
+	] ]
+];
+/* the one process, whole: sh exec'ing dbclient, the host key pinned, batch
+   mode, no passwords, its own HOME */
+const COLLECTOR_SPAWN = 'let p = uloop.process(SH, [ \'-c\', RUN_SH, \'sh\', DBCLIENT, \'-T\', \'-o\', \'BatchMode=yes\', \'-o\', \'StrictHostKeyChecking=yes\', \'-o\', \'PasswordAuthentication=no\', \'-i\', KEY, \'-p\', \'\' + a.port, \'-I\', \'\' + TIMEOUT_S, \'root@\' + to, REPORT ], { HOME: home, PATH: \'/usr/sbin:/usr/bin:/sbin:/bin\', VT_OUT: home + \'/out\', VT_ERR: home + \'/err\' }, (code) => done(a, s, home, code));';
+function checkCollectorSource(src) {
+	assert.ok(src.startsWith('#!/usr/bin/ucode -S\n'), 'strict ucode');
+	assert.deepEqual(linesWith(src, 'import'), [
+		'import * as uloop from \'uloop\';', 'import { connect } from \'ubus\';',
+		'import { mkdir, readfile, unlink, writefile } from \'fs\';', 'import * as vaps from \'vantage.aps\';'
+	]);
+	/* exec only in RUN_SH, pinned below */
+	const word = /\b(popen|require|loadfile|loadstring|include|render|global|rename|chmod|getenv|signal|open|stat|symlink|lsdir)\b/.exec(codeOf(src, 'the collector'));
+	assert.equal(word, null, word && `"${word[1]}" is banned in the collector`);
+	for (const [ name, v ] of Object.entries({ SH: '/bin/sh', DBCLIENT: '/usr/bin/dbclient', KILL: '/bin/kill', KEY: '/etc/vantage/id_ed25519', REPORT: '/usr/libexec/vantage/report',
+		APS: '/etc/vantage/aps.json', RUN: '/var/run/vantage-collector', ARP: '/proc/net/arp', LEASES: '/tmp/dhcp.leases' })) {
+		assert.ok(src.includes('\nconst ' + name + ' = \'' + v + '\';\n'), name);
+		assert.equal([ ...src.matchAll(new RegExp('\\b' + name + '\\s*=(?!=)', 'g')) ].length, 1, name + ' is defined once and never assigned');
+	}
+	checkPins(src, 'the collector', COLLECTOR_PINS);
+	const spawn = /let p = uloop\.process\([\s\S]*?\(code\) => done\(a, s, home, code\)\);/.exec(src);
+	assert.ok(spawn, 'the dbclient process');
+	assert.equal(spawn[0].replace(/\s+/g, ' '), COLLECTOR_SPAWN, 'dbclient\'s arguments and environment, exactly');
+	assert.match(src, /\.publish\('vantage\.collector', \{\n\treport: \{\n[\s\S]*?\n\t\}\n\}\)\)/, 'report is its one method');
+}
+
+test('add-on: the collector pins the host key and runs nothing but dbclient', () => {
+	checkCollectorSource(collectorSrc);
+	const at = 'function tick() {\n';
+	assert.ok(collectorSrc.includes(at), 'insertion point');
+	const add = code => collectorSrc.replace(at, at + '\t' + code + '\n');
+	const MUTANTS = {
+		'unknown host keys accepted': collectorSrc.replace('\'StrictHostKeyChecking=yes\'', '\'StrictHostKeyChecking=accept-new\''),
+		'host key checking off, spelled otherwise': collectorSrc.replace('\'StrictHostKeyChecking=yes\'', '\'stricthostkeychecking=no\''),
+		'-y': collectorSrc.replace('DBCLIENT, \'-T\',', 'DBCLIENT, \'-T\', \'-y\','),
+		'-yy': collectorSrc.replace('DBCLIENT, \'-T\',', 'DBCLIENT, \'-T\', \'-yy\','),
+		'a proxy command': collectorSrc.replace('DBCLIENT, \'-T\',', 'DBCLIENT, \'-T\', \'-J\', \'sh -c id\','),
+		'root\'s own known_hosts': collectorSrc.replace('{ HOME: home,', '{ HOME: \'/root\','),
+		'a shell word': collectorSrc.replace('exec "$@" >"$VT_OUT"', 'exec "$@" $VT_X >"$VT_OUT"'),
+		'no size limit': collectorSrc.replace('ulimit -f 272; ', ''),
+		'another program': collectorSrc.replace('system([ KILL, \'\' + p.pid() ]);', 'system([ KILL, \'\' + p.pid() ]);\n\t\t\tsystem(\'reboot\');'),
+		'another publish': collectorSrc.replace('uloop.run();', 'ubus.publish(\'x\', {});\nuloop.run();'),
+		'the paired list removed': add('unlink(APS);'),
+		'an address from the report': collectorSrc.replace('s.report.mac = a.mac;', 's.report.mac = a.mac;\n\ts.addr = r.name;'),
+		'an address not checked': collectorSrc.replace('s.trying = to;', 's.trying = err;'),
+		'a write elsewhere': add('writefile(\'/etc/shadow\', \'\');'),
+		'a ubus call of its own': add('ubus.call(\'file\', \'exec\', {});')
+	};
+	for (const [ name, src ] of Object.entries(MUTANTS)) {
+		assert.notEqual(src, collectorSrc, name + ': the mutation applies');
+		assert.throws(() => checkCollectorSource(src), assert.AssertionError, name);
+	}
+});
+
+function checkModuleSource(src) {
+	const code = codeOf(src, 'the shared checks');
+	assert.deepEqual(linesWith(code, 'import'), []);
+	const word = /\b(system|popen|exec|readfile|writefile|open|require|loadfile|loadstring|include|render|global|getenv|call|sleep|exit)\b/.exec(code);
+	assert.equal(word, null, word && `"${word[1]}" is banned in the shared checks`);
+}
+
+test('add-on: the shared checks import nothing and call nothing outside themselves', () => {
+	checkModuleSource(apsModule);
+	for (const [ name, src ] of Object.entries({
+		'loadstring': apsModule.replace('function str(v) {', 'function str(v) {\n\tloadstring(v)();'),
+		'the call builtin': apsModule.replace('function str(v) {', 'function str(v) {\n\tcall(v);'),
+		'an import': 'import { readfile } from \'fs\';\n' + apsModule
+	})) {
+		assert.notEqual(src, apsModule, name + ': the mutation applies');
+		assert.throws(() => checkModuleSource(src), assert.AssertionError, name);
+	}
 });

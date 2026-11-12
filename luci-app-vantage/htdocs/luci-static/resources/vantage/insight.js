@@ -115,8 +115,8 @@ return baseclass.extend({
 			page: PAGES.wireless });
 
 		/* signal; a station set quiet (#110: far away on purpose) is left
-		   out, of the warning and of the weakest; so are the stations of
-		   the network's other access points (this device cannot help them) */
+		   out, of the warning and of the weakest; so are a paired access
+		   point's stations (this device cannot help them) */
 		var clients = (model.clients || []).filter(function(c) { return !c.ap; }), quiet = quietMacs || {};
 		var counted = clients.filter(function(c) { return !quiet[c.mac]; });
 		var weak = counted.filter(function(c) { return c.signal != null && c.signal < WEAK_DBM; }).sort(function(a, b) { return a.signal - b.signal; });
@@ -196,11 +196,13 @@ return baseclass.extend({
 	/* ------------------------------------------------------ top talkers */
 
 	/* clients + rates { mac: { rx, tx } } (AP view: tx = to the client)
-	   -> top n [ { mac, name, down, up, total, share } ] with total > 0 */
+	   -> top n [ { mac, name, down, up, total, share } ] with total > 0.
+	   This device's clients: a paired access point's (c.ap) push none of
+	   them out */
 	topTalkers: function(clients, rates, n) {
 		var list = [], sum = 0;
 		(clients || []).forEach(function(c) {
-			var r = own(rates, c.mac) ? rates[c.mac] : null;
+			var r = !c.ap && own(rates, c.mac) ? rates[c.mac] : null;
 			if (!r) return;
 			var down = num(r.tx), up = num(r.rx), total = down + up;
 			if (!(total > 0)) return;
@@ -215,15 +217,27 @@ return baseclass.extend({
 	/* --------------------------------------------------------- presence */
 
 	/* Session presence. state: { baseline: [macs] | null, present: { mac: client },
-	   gone: { mac: { client, at } }, firstSeen: { mac: ms } }.
+	   gone: { mac: { client, at } }, firstSeen: { mac: ms }, aps: [ id ] }.
 	   The first call fixes the baseline (what was there when the page
 	   opened); later arrivals are "new". Stations that leave are kept as
-	   gone for keepMs. -> { state, isNew: { mac: true }, gone: [ { client, at } ] } */
-	presence: function(state, clients, now, keepMs) {
+	   gone for keepMs. -> { state, isNew: { mac: true }, gone: [ { client, at } ] }
+	   okAps: the paired access points reporting now, by id. One that
+	   reports for the first time (state.aps has those that did) brings
+	   stations that were there before the page opened: they join the
+	   baseline. A station of one (c.ap) that is no longer listed is not
+	   kept as gone: its access point may only have stopped reporting, and
+	   how many they are is the access points' say. */
+	presence: function(state, clients, now, keepMs, okAps) {
 		state = state || {};
 		var baseline = Array.isArray(state.baseline) ? state.baseline : null;
 		var present = Object.create(null), gone = Object.create(null), firstSeen = Object.create(null), isNew = Object.create(null);
 		var prevPresent = state.present || {}, prevGone = state.gone || {}, prevFirst = state.firstSeen || {};
+		var reported = Array.isArray(state.aps) ? state.aps : [];
+		var first = (Array.isArray(okAps) ? okAps : []).filter(function(id) { return reported.indexOf(id) < 0; });
+		if (baseline && first.length) {
+			baseline = baseline.slice();
+			(clients || []).forEach(function(c) { if (c.ap && first.indexOf(c.ap.id) >= 0 && baseline.indexOf(c.mac) < 0) baseline.push(c.mac); });
+		}
 
 		(clients || []).forEach(function(c) {
 			present[c.mac] = c;
@@ -235,12 +249,12 @@ return baseclass.extend({
 			if (!own(present, mac) && g && now - g.at < keepMs) { gone[mac] = g; firstSeen[mac] = prevFirst[mac]; }
 		});
 		Object.keys(prevPresent).forEach(function(mac) {
-			if (!own(present, mac)) { gone[mac] = { client: prevPresent[mac], at: now }; firstSeen[mac] = prevFirst[mac]; }
+			if (!own(present, mac) && !prevPresent[mac].ap) { gone[mac] = { client: prevPresent[mac], at: now }; firstSeen[mac] = prevFirst[mac]; }
 		});
 
 		var goneList = Object.keys(gone).map(function(k) { return gone[k]; }).sort(function(a, b) { return b.at - a.at; });
 		return {
-			state: { baseline: baseline || Object.keys(present), present: present, gone: gone, firstSeen: firstSeen },
+			state: { baseline: baseline || Object.keys(present), present: present, gone: gone, firstSeen: firstSeen, aps: reported.concat(first) },
 			isNew: isNew,
 			gone: goneList
 		};

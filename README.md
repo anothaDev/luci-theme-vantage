@@ -24,7 +24,8 @@ replaced. The larger access point further down is generated.</sub></p>
 ## What you get
 
 Two packages that work together or alone: the theme doesn't need the
-dashboard, and the dashboard on its own works under any LuCI theme.
+dashboard, and the dashboard on its own works under any LuCI theme. A
+third, optional one adds your other access points to the dashboard.
 
 **The dashboard** (`luci-app-vantage`) is the page you land on after login.
 
@@ -34,10 +35,11 @@ dashboard, and the dashboard on its own works under any LuCI theme.
 - **A live network path.** Your internet lines, this device, its radios
   and SSIDs, and its wired ports, with packets that move at the real
   uplink rate. Click anything for details.
-- **The whole network, with several access points.** Where the access
-  points run `usteer`, every other access point joins the path with its
-  SSIDs, clients and wired devices, and their clients join the list. No
-  logins between devices: they share through usteer on your LAN.
+- **Your other access points too** (optional add-on,
+  `luci-app-vantage-aps`). Pair each access point once and the router's
+  dashboard shows its SSIDs, clients and wired devices beside its own.
+  The router reads them over SSH with a key that can only fetch that
+  report; nothing is shared until you pair.
 - **Every client, by name.** Your alias, a name from DHCP, mDNS, WPS or
   reverse DNS, or else the vendor. You get signal, link rate, Wi-Fi
   generation, live traffic and an experience score that explains itself.
@@ -97,8 +99,8 @@ apk add luci-theme-vantage luci-app-vantage
 stands for your router's address.
 
 ```sh
-f=$(awk '/ luci-(theme|app)-vantage-.*\.apk$/ {print $2}' SHA256SUMS) &&
-grep -E ' luci-(theme|app)-vantage-.*\.apk$' SHA256SUMS | sha256sum -c - &&
+f=$(awk '/ luci-(theme|app)-vantage-[0-9].*\.apk$/ {print $2}' SHA256SUMS) &&
+grep -E ' luci-(theme|app)-vantage-[0-9].*\.apk$' SHA256SUMS | sha256sum -c - &&
 ssh root@192.0.2.1 'mkdir -m 700 /tmp/vantage' &&
 scp -O $f root@192.0.2.1:/tmp/vantage/ &&
 ssh root@192.0.2.1 'apk add --no-network --allow-untrusted /tmp/vantage/*.apk; s=$?; rm -r /tmp/vantage; exit $s'
@@ -167,6 +169,13 @@ the [spec](docs/SPEC.md#6-security-requirements).
 - **The theme writes one file.** Appearance, and the dashboard's layout
   and chart style, go to `/etc/config/vantage_theme` and nowhere else. A
   user without that permission keeps their picks in their own browser.
+- **Other access points are opt-in.** The optional `luci-app-vantage-aps`
+  is the one part that does more than read: pairing creates the router's
+  own SSH key and, on an access point, adds that key to Dropbear limited
+  to one read-only report command. It has its own permission
+  (`luci-app-vantage-aps`), meant for administrators. The dashboard's read
+  permission can ask for the paired access points' reports, which makes
+  the router log in to them with that key.
 - **Extras are separate permissions.** Renaming devices
   (`luci-app-vantage-names`) and reverse DNS (`luci-app-vantage-rdns`) are
   their own groups, so you can leave them out. The firewall overview only
@@ -196,7 +205,7 @@ installs as its own packages, for example
 [Languages](docs/INSTALL.md#languages) in the install guide.
 
 Translations are very welcome. In a fork, run
-`dev/i18n/update.sh --add <lang>`, translate the two new `.po` files and
+`dev/i18n/update.sh --add <lang>`, translate the new `.po` files and
 open a pull request that touches only `po/` files.
 [Translations](CONTRIBUTING.md#translations) has the details.
 

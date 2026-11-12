@@ -15,13 +15,13 @@ const UI = {};
 /* LuCI's poll: tests pause it */
 const POLL = { on: true, active() { return this.on; } };
 
-function loadView() {
+function loadView(dom) {
 	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
 	const stubs = {
 		view: { extend: p => p },
 		/* replies come from REPLIES['object method'](...args) when set */
 		rpc: { declare: o => function(...args) { const f = REPLIES[o.object + ' ' + o.method]; return f ? f(...args) : Promise.resolve(null); } },
-		poll: POLL, ui: UI, dom: {}
+		poll: POLL, ui: UI, dom: dom || {}
 	};
 	const params = [], values = [];
 	for (const m of src.matchAll(/^'require ([\w.-]+)(?: as (\w+))?';$/gm)) {
@@ -1406,41 +1406,412 @@ test('motion clock: a cancelled pulse is dropped, not stepped', () => {
 	} finally { global.window = saved; }
 });
 
-test('other access points: a chip per access point with stations and one for this device, "via" searchable, a branch per access point', () => {
-	const self = Object.create(view);
-	const ap = (ip, name, clients) => ({ ip, name, named: name !== ip, clients, nodes: [ { id: ip + '#hostapd.phy1-ap0', ifname: 'phy1-ap0', ssid: 'Home', band: '5g', freq: 5180, bssid: '02:00:5e:00:00:21', clients } ] });
-	const sta = (n, band, a) => ({ mac: '00:00:5e:00:53:' + n, name: 'dev' + n, band, ap: a ? { ip: a.ip, name: a.name } : null, signal: -50 });
-	const attic = ap('192.0.2.2', 'attic-ap', 2), idle = ap('192.0.2.3', '192.0.2.3', 0);
-	const clients = [ sta('01', '2g', null), sta('02', '5g', attic), sta('03', '5g', attic) ];
-	self.m = { clients, wiredHosts: [], accessPoints: [ attic, idle ], radios: [], ssids: [], networks: [], uplinks: [], uplink: { gateway: '192.0.2.1' } };
-	self.st = { staRates: {} };
-	self.ui = { kind: 'wifi', chip: 'all', filter: '' };
-	const ids = self.filterDefs().map(d => d.slice(0, 3));
-	assert.deepEqual(ids.filter(d => d[0] === 'here' || /^ap:/.test(d[0])), [ [ 'here', 'This device', 1 ], [ 'ap:192.0.2.2', 'Via attic-ap', 2 ] ], 'an access point without stations has no chip');
-	self.ui.chip = 'ap:192.0.2.2';
-	assert.deepEqual(clients.filter(c => self.matches(c)).map(c => c.mac.slice(-2)), [ '02', '03' ]);
-	self.ui.chip = 'here';
-	assert.deepEqual(clients.filter(c => self.matches(c)).map(c => c.mac.slice(-2)), [ '01' ]);
-	self.ui.chip = 'all';
-	self.ui.filter = 'attic';
-	assert.deepEqual(clients.filter(c => self.matches(c)).map(c => c.mac.slice(-2)), [ '02', '03' ]);
-	assert.match(self.heroKey(), /\naps=192\.0\.2\.2=192\.0\.2\.2#hostapd\.phy1-ap0;192\.0\.2\.3=/, 'the branches are in the path\'s key');
+/* ------------------------------------------- paired access points (#127) */
 
-	const stub = () => ({ textContent: '', className: '', getAttribute() { return null; }, setAttribute() {} });
-	const b = { ap: true, ip: '192.0.2.2', el: stub(), kicker: stub(), title: stub(), addr: stub(), up: stub(), sub: stub(), rateEl: stub(), ssids: [ { id: attic.nodes[0].id, el: stub(), badge: stub(), name: stub(), count: stub(), rows: stub() } ] };
-	self.paintLeaf = () => {};
-	self.updateApBranch(b);
-	assert.equal(b.kicker.textContent, 'Access point');
-	assert.equal(b.title.textContent, 'attic-ap');
-	assert.equal(b.sub.textContent, '2 clients');
-	assert.equal(b.ssids[0].name.textContent, 'Home');
-	assert.equal(b.ssids[0].count.textContent, '2 clients');
-	assert.equal(b.active, false, 'no traffic known for another access point');
-	assert.deepEqual(self.otherAps().map(a => a.ip), [ '192.0.2.2', '192.0.2.3' ]);
-	assert.equal(self.gatewayAp(), null);
-	self.m.uplink.gateway = '192.0.2.2';
-	assert.deepEqual(self.otherAps().map(a => a.ip), [ '192.0.2.3' ], 'the gateway is the gateway node, not a branch');
-	assert.equal(self.gatewayAp().ip, '192.0.2.2');
-	assert.doesNotMatch(self.heroKey(), /192\.0\.2\.2=/);
-	assert.equal(self.isWeak(Object.assign({}, clients[1], { signal: -85 })), false, 'a weak station of another access point is no warning here');
+/* a small DOM: elements as LuCI's E() and dom.content() build them, text
+   nodes as strings; enough for the path, the list cells and the drawers */
+class FNode {
+	constructor(tag) {
+		this.tag = tag; this.attrs = {}; this.childNodes = []; this.on = {}; this.text = null;
+		this.style = { setProperty(k, v) { this[k] = v; } };
+		const self = this;
+		this.classList = {
+			add(c) { const l = (self.attrs.class || '').split(' ').filter(Boolean); if (!l.includes(c)) l.push(c); self.attrs.class = l.join(' '); },
+			remove(c) { self.classList.toggle(c, false); },
+			toggle(c, on) { const l = (self.attrs.class || '').split(' ').filter(x => x && x !== c); if (on) l.push(c); self.attrs.class = l.join(' '); },
+			contains(c) { return (self.attrs.class || '').split(' ').includes(c); }
+		};
+	}
+	get children() { return this.childNodes.filter(n => n instanceof FNode); }
+	getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
+	setAttribute(k, v) { this.attrs[k] = String(v); }
+	appendChild(n) { this.childNodes.push(n); return n; }
+	insertBefore(n, ref) { const i = this.childNodes.indexOf(ref); this.childNodes.splice(i < 0 ? this.childNodes.length : i, 0, n); return n; }
+	removeChild(n) { this.childNodes.splice(this.childNodes.indexOf(n), 1); return n; }
+	addEventListener(t, f) { this.on[t] = f; }
+	get textContent() { return this.text != null ? this.text : this.childNodes.map(n => typeof n === 'string' ? n : n.textContent).join(''); }
+	set textContent(v) { this.text = String(v); this.childNodes = []; }
+	/* every element below, this one first */
+	all() { return [ this ].concat(...this.children.map(c => c.all())); }
+	find(cls) { return this.all().filter(n => (n.attrs.class || '').split(' ').includes(cls)); }
+	html() {
+		const a = Object.keys(this.attrs).sort().map(k => ' ' + k + '=' + JSON.stringify(this.attrs[k])).join('');
+		return '<' + this.tag + a + '>' + (this.text != null ? JSON.stringify(this.text) : '') + this.childNodes.map(n => typeof n === 'string' ? JSON.stringify(n) : n.html()).join('') + '</' + this.tag + '>';
+	}
+}
+function append(n, ch) { [].concat(ch).forEach(c => { if (c instanceof FNode) n.appendChild(c); else if (c != null) n.childNodes.push(String(c)); }); }
+const fdom = { content(el, ch) { el.childNodes = []; el.text = null; append(el, ch); } };
+const dview = loadView(fdom);
+function withFakeDom(fn) {
+	const saved = { E: global.E, document: global.document, window: global.window };
+	global.E = (tag, attrs, children) => {
+		const n = new FNode(tag);
+		for (const [ k, v ] of Object.entries(attrs || {})) if (typeof v === 'function') n.on[k] = v; else if (v != null) n.setAttribute(k, v);
+		if (Array.isArray(children)) append(n, children);
+		else if (children != null) n.innerHTML = String(children);
+		return n;
+	};
+	global.document = { createElementNS: (ns, tag) => new FNode(tag) };
+	global.window = { matchMedia: () => ({ matches: true }) };
+	try { return fn(); }
+	finally { Object.assign(global, saved); }
+}
+
+const AP_ID = '0123456789abcdef';
+/* a router with one Wi-Fi network, two stations, a host on lan2 and one
+   behind ap-hall on lan1, and its WAN */
+function apModel(collector) {
+	const model = load('vantage.model');
+	const m = model.build({
+		ifaces: [
+			{ interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] },
+			{ interface: 'wan', up: true, l3_device: 'wan', device: 'wan', 'ipv4-address': [ { address: '203.0.113.2', mask: 24 } ],
+				route: [ { target: '0.0.0.0', mask: 0, nexthop: '192.0.2.10' } ] }
+		],
+		devs: { 'br-lan': { devtype: 'bridge', 'bridge-members': [ 'lan1', 'lan2', 'phy0-ap0' ] }, lan1: { devtype: 'ethernet', carrier: true, speed: '1000F' },
+			lan2: { devtype: 'ethernet', carrier: true, speed: '1000F' }, wan: { devtype: 'ethernet', carrier: true, speed: '1000F' }, 'phy0-ap0': { devtype: 'wlan' } },
+		wifi: { radio0: { up: true, config: { band: '5g', channel: '36', htmode: 'HE80' }, interfaces: [ { ifname: 'phy0-ap0', config: { ssid: 'Home', mode: 'ap', network: [ 'lan' ] } } ] } },
+		assoc: { 'phy0-ap0': [ { mac: '00:00:5E:00:53:01', signal: -50 }, { mac: '00:00:5E:00:53:02', signal: -80 } ] },
+		hints: { '00:00:5E:00:53:31': { name: 'printer', ipaddrs: [ '192.0.2.131' ] }, '00:00:5E:00:53:21': { name: 'phone', ipaddrs: [ '192.0.2.121' ] } },
+		fdb: [ { mac: '02:00:5e:10:00:01', port: 'lan1', bridge: 'br-lan', seen: 1 }, { mac: '00:00:5e:00:53:31', port: 'lan1', bridge: 'br-lan', seen: 1 },
+			{ mac: '00:00:5e:00:53:32', port: 'lan2', bridge: 'br-lan', seen: 1 } ],
+		collector
+	});
+	m.wired = false;
+	return m;
+}
+/* ap-hall at the gateway's address: a branch, never the gateway */
+const hall = (extra, report) => Object.assign({ id: AP_ID, name: 'ap-hall', addr: '192.0.2.10', state: 'ok', error: null, age: 3, report: Object.assign({
+	name: 'OpenWrt', model: 'Example AP', uptime: 3600, mac: '02:00:5e:10:00:01',
+	ssids: [ { ifname: 'phy1-ap0', bssid: '02:00:5e:10:00:11', ssid: 'Hall', freq: 5180, channel: 36, band: '5g' } ],
+	stations: [ { mac: '00:00:5e:00:53:21', ifname: 'phy1-ap0', signal: -88, rxRate: 72200, txRate: 144400, rx: 8000, tx: 64000, connected: 60 } ],
+	wired: [ { mac: '00:00:5e:00:53:31', port: 'lan2', speed: 1000 }, { mac: '00:00:5e:00:53:41', port: 'lan3', speed: 100, rx: 4000, tx: 9000 } ] }, report) }, extra);
+
+function hero(m) {
+	const self = Object.create(dview);
+	self.m = m;
+	self.st = { devRates: {}, radioRates: {}, ssidRates: {}, staRates: {}, uplinkRate: null };
+	self.el = { path: new FNode('div'), wires: new FNode('svg'), flows: new FNode('div') };
+	self.el.path.appendChild(self.el.wires);
+	self.el.path.appendChild(self.el.flows);
+	self.buildHeroNodes(self.heroKey());
+	self.updateHero();
+	return self;
+}
+
+test('paired access points: without one the path has nothing new: no mesh class, no rows, no branch, no wider nodes', () => withFakeDom(() => {
+	const self = hero(apModel(null));
+	const path = self.el.path;
+	assert.equal(path.getAttribute('class'), 'vt-path');
+	assert.doesNotMatch(path.html(), /vt-leaf|vt-node-peer|vt-branches-label|vt-path-mesh|vt-path-sib/);
+	const ssid = path.find('vt-node-ssid').filter(n => n.textContent.startsWith('Home'))[0];
+	assert.equal(ssid.find('vt-node-body')[0].children.length, 2, 'the SSID node: its name and its dots, no rows');
+	assert.doesNotMatch(self.heroKey(), /aps=/);
+	assert.equal(self.wireList().filter(w => w.elbow).length, 0);
+}));
+
+test('paired access points: a branch each with the pairing name and the address as text, rows only under the mesh class; never the gateway or a relabel', () => withFakeDom(() => {
+	const self = hero(apModel({ aps: [ hall() ] }));
+	const path = self.el.path;
+	assert.equal(path.getAttribute('class'), 'vt-path vt-path-mesh', 'a router (WAN uplink): no sibling layout');
+	const peer = path.find('vt-node-peer')[0];
+	assert.deepEqual(peer.find('vt-node-body')[0].children.map(n => n.textContent), [ 'Access point', 'ap-hall', '192.0.2.10', 'up 1h 0m', '1 client · 2 wired', '↓ 73.0  ↑ 12.0 kbit/s' ]);
+	assert.match(peer.getAttribute('title'), /Calls itself OpenWrt\nExample AP\n192\.0\.2\.10/, 'what it calls itself only as a detail');
+	assert.ok(!path.all().some(n => n.tag === 'a' && /ap-hall|192\.0\.2\.10/.test(n.html())), 'no link to the access point');
+	assert.deepEqual([ self.hero.gwKicker.textContent, self.hero.gwTitle.textContent ], [ 'Internet', '192.0.2.10' ],
+		'the gateway node stays the gateway, at the access point\'s address too');
+	assert.equal(path.find('vt-node-ap')[0].find('vt-node-kicker')[0].textContent, 'This access point', 'no "This router"');
+	/* its SSID: the station's row by this device's name for it */
+	const rows = path.find('vt-leaf-row');
+	assert.deepEqual(rows.map(r => r.children.map(c => c.textContent)), [
+		/* this device's SSID: rows too, with an access point paired */
+		[ 'Unknown device 53:01', '', '-50', '', '' ],
+		[ 'Unknown device 53:02', '', '-80', '', '' ],
+		/* ap-hall's SSID and its wired hosts, the busiest first */
+		[ 'phone', '192.0.2.121', '-88', '↓64.0k', '↑8.00k' ],
+		[ 'Unknown device 53:41', '', '100 Mbit/s', '↓9.00k', '↑4.00k' ],
+		[ 'printer', '192.0.2.131', '1 Gbit/s', '', '' ]
+	]);
+	assert.match(self.heroKey(), new RegExp('\\naps=' + AP_ID + '=s:phy1-ap0,w$'));
+}));
+
+test('paired access points: one not reporting is dimmed with its state, without SSIDs or rows', () => withFakeDom(() => {
+	for (const [ extra, text, more ] of [ [ { state: 'waiting', age: null, report: null }, 'Waiting for its first report' ],
+		/* offline: why, where the collector says; when it last reported in the tooltip */
+		[ { state: 'offline', error: 'unreachable', age: 120, report: null }, 'Not reachable over SSH', 'Offline · last report 2 min ago' ],
+		[ { state: 'offline', error: 'timeout', age: null, report: null }, 'Did not answer in time', 'Offline' ],
+		[ { state: 'offline', age: 120 }, 'Offline · last report 2 min ago' ], [ { state: 'offline', age: null }, 'Offline' ],
+		[ { state: 'error', error: 'hostkey' }, 'Host key changed: pair again' ], [ { state: 'error', error: 'denied' }, 'Refused this device\'s key' ],
+		[ { state: 'error', error: 'missing', report: null }, 'Vantage add-on not installed on it', 'Vantage\'s access point add-on is not installed on it' ],
+		[ { state: 'error', error: 'unreachable' }, 'Not reachable over SSH' ], [ { state: 'error', error: 'timeout' }, 'Did not answer in time' ],
+		[ { state: 'error', error: 'invalid' }, 'Sent a report that could not be read' ] ]) {
+		const self = hero(apModel({ aps: [ hall(extra) ] }));
+		const peer = self.el.path.find('vt-node-peer')[0];
+		assert.match(peer.getAttribute('class'), /vt-node-off/);
+		assert.equal(peer.find('vt-node-body')[0].children[4].textContent, text);
+		assert.deepEqual(peer.getAttribute('title').split('\n').slice(0, more ? 2 : 1), more ? [ text, more ] : [ text ]);
+		assert.equal(peer.find('vt-node-body')[0].children[5].textContent, '', 'no rates');
+		const branch = self.el.path.find('vt-branch-peer')[0];
+		assert.equal(branch.find('vt-node-ssid').length + branch.find('vt-leaf-row').length, 0, extra.state);
+		assert.equal(self.m.clients.filter(c => c.ap).length, 0);
+	}
+}));
+
+test('paired access points: on an access point their wires come from the gateway, an elbow only where it passes below this device', () => withFakeDom(() => {
+	const m = apModel({ aps: [ hall() ] });
+	m.uplink = Object.assign({}, m.uplink, { isWan: false });
+	const self = hero(m);
+	assert.match(self.el.path.getAttribute('class'), /vt-path-sib/);
+	const w = self.wireList().filter(x => x.elbow)[0];
+	assert.ok(w && w.from === self.hero.gw && w.alt === self.hero.ap);
+	const wires = load('vantage.wires');
+	const at = { gw: { l: 0, r: 150, t: 50, b: 100, cy: 75 }, ap: { l: 300, r: 480, t: 50, b: 110, cy: 80 } };
+	/* the choice drawWires makes, on the rects it measures */
+	const pick = to => (to.l > at.gw.r && to.cy > at.ap.b) ? 'elbow' : 'curve';
+	assert.equal(pick({ l: 600, r: 800, t: 200, b: 260, cy: 230 }), 'elbow');
+	assert.equal(pick({ l: 600, r: 800, t: 50, b: 110, cy: 80 }), 'curve', 'beside the device: it would cross it');
+	assert.equal(pick({ l: 34, r: 300, t: 400, b: 460, cy: 430 }), 'curve', 'stacked (a phone)');
+	assert.match(wires.elbow(at.gw, { l: 600, t: 200, b: 260, cy: 230 }).d, /^M24\.0 100\.0V220\.0Q/);
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.ok(src.includes('var elbow = !!w.elbow && rect(w.to).l > rect(w.from).r && rect(w.to).cy > rect(w.alt).b;'), 'the same rule as drawWires');
+}));
+
+test('paired access points: chips per access point id and one for this device, by what each lists; a host noted behind one is still on its port', () => {
+	const self = Object.create(view);
+	const m = apModel({ aps: [ hall({}, { stations: [ { mac: '00:00:5e:00:53:21', ifname: 'phy1-ap0', signal: -88 }, { mac: '00:00:5e:00:53:22', ifname: 'phy1-ap0', signal: -60 } ] }),
+		hall({ id: 'fedcba9876543210', name: 'ap-den', state: 'offline' }, { mac: '02:00:5e:10:00:02' }) ] });
+	self.m = m;
+	self.st = { staRates: {}, devRates: {} };
+	self.el = { clients: { scrollIntoView() {} }, filter: {} };
+	self.paintClients = () => {};
+	self.ui = { kind: 'wifi', chip: 'all', filter: '' };
+	const defs = () => self.filterDefs().map(d => d.slice(0, 3));
+	assert.deepEqual(defs().filter(d => d[0] === 'here' || /^ap:/.test(d[0])), [ [ 'here', 'This device', 2 ], [ 'ap:' + AP_ID, 'Via ap-hall', 2 ] ], 'none for one without stations');
+	const ids = list => list.filter(c => self.matches(c)).map(c => c.mac.slice(-2));
+	self.ui.chip = 'ap:' + AP_ID;
+	assert.deepEqual(ids(m.clients), [ '21', '22' ]);
+	self.ui.chip = 'here';
+	assert.deepEqual(ids(m.clients), [ '01', '02' ]);
+	self.ui.chip = 'all';
+	self.ui.filter = 'ap-hall';
+	assert.deepEqual(ids(m.clients), [ '21', '22' ], 'found by the access point\'s name');
+	self.ui.filter = '192.0.2.10';
+	assert.deepEqual(ids(m.clients), [ '21', '22' ], 'and its address');
+	self.ui.filter = '';
+
+	self.ui.kind = 'wired';
+	assert.deepEqual(defs(), [ [ 'all', 'All', 4 ], [ 'port:lan1', 'lan1', 2 ], [ 'port:lan2', 'lan2', 1 ], [ 'here', 'This device', 3 ], [ 'ap:' + AP_ID, 'Via ap-hall', 2 ] ],
+		'the noted host counts on its port and here; the added one on no port');
+	self.ui.chip = 'port:lan1';
+	assert.deepEqual(ids(m.wiredHosts), [ '01', '31' ]);
+	self.ui.chip = 'ap:' + AP_ID;
+	assert.deepEqual(ids(m.wiredHosts), [ '31', '41' ], 'added, or heard here behind it');
+	assert.deepEqual(self.wiredPorts(), [ 'lan1', 'lan2' ], 'no port for an added host');
+
+	/* the branch opens the list it has entries in */
+	const saved = global.window;
+	global.window = { matchMedia: () => ({ matches: true }) };
+	try {
+		self.showAp(AP_ID);
+		assert.deepEqual([ self.ui.kind, self.ui.chip ], [ 'wifi', 'ap:' + AP_ID ]);
+		self.showAp('fedcba9876543210');
+		assert.deepEqual([ self.ui.kind, self.ui.chip ], [ 'wired', 'ap:fedcba9876543210' ]);
+	} finally { global.window = saved; }
+});
+
+test('paired access points: a host moved from the wired list to an access point\'s station: its branch, the chips and both lists agree', () => withFakeDom(() => {
+	/* the printer, heard on lan1 behind ap-hall, is one of its stations */
+	const stations = [ { mac: '00:00:5e:00:53:21', ifname: 'phy1-ap0', signal: -60 }, { mac: '00:00:5e:00:53:31', ifname: 'phy1-ap0', signal: -58, rx: 1000, tx: 2000 } ];
+	const before = apModel({ aps: [ hall({}, { stations: stations.slice(0, 1) }) ] });
+	const m = apModel({ aps: [ hall({}, { stations }) ] });
+	assert.deepEqual([ m.clients.length, m.wiredHosts.length ], [ before.clients.length + 1, before.wiredHosts.length - 1 ]);
+	const self = hero(m);
+	self.ui = { kind: 'wifi', chip: 'all', filter: '' };
+	const chip = id => self.filterDefs().filter(d => d[0] === id)[0];
+	assert.deepEqual(chip('ap:' + AP_ID).slice(0, 3), [ 'ap:' + AP_ID, 'Via ap-hall', 2 ]);
+	assert.deepEqual(chip('all')[2], m.clients.length);
+	self.ui.chip = 'ap:' + AP_ID;
+	assert.deepEqual(m.clients.filter(c => self.matches(c)).map(c => c.name), [ 'phone', 'printer' ]);
+	/* its branch: 2 clients, the printer's row on its SSID by the router's name */
+	const peer = self.el.path.find('vt-node-peer')[0];
+	assert.equal(peer.find('vt-node-body')[0].children[4].textContent, '2 clients · 1 wired', 'as the chips: the printer is a client now');
+	const ssid = self.el.path.find('vt-branch-peer')[0].find('vt-node-ssid')[0];
+	assert.deepEqual(ssid.find('vt-leaf-name').map(n => n.textContent), [ 'printer', 'phone' ]);
+	assert.equal(ssid.find('vt-node-sub')[0].textContent, '2 clients');
+	/* the wired list: lan1 keeps ap-hall itself, the printer is gone from it */
+	self.ui = { kind: 'wired', chip: 'all', filter: '' };
+	assert.deepEqual(self.filterDefs().map(d => d.slice(0, 3)).filter(d => /^(all|port:|here|ap:)/.test(d[0])),
+		[ [ 'all', 'All', 3 ], [ 'port:lan1', 'lan1', 1 ], [ 'port:lan2', 'lan2', 1 ], [ 'here', 'This device', 2 ], [ 'ap:' + AP_ID, 'Via ap-hall', 1 ] ]);
+	assert.deepEqual(self.wiredPorts(), [ 'lan1', 'lan2' ]);
+	assert.ok(!m.wiredHosts.some(h => h.mac === '00:00:5e:00:53:31'));
+}));
+
+/* review F2, F3: a branch shows what the model gave its access point, as
+   the lists and the chips do, never what the access point reports */
+test('paired access points: a MAC an access point claims that stayed this device\'s, or went to another, is no row or count of its branch', () => withFakeDom(() => {
+	const claim = (mac, signal) => ({ mac, ifname: 'phy1-ap0', signal, rxRate: 72200, txRate: 144400, rx: 8000, tx: 64000 });
+	/* this device's own station and a host on lan2 (ap-hall is on lan1), with strong signals */
+	const m = apModel({ aps: [ hall({}, { stations: [ claim('00:00:5e:00:53:01', -20), claim('00:00:5e:00:53:32', -21), claim('00:00:5e:00:53:21', -60) ],
+		wired: [ { mac: '00:00:5e:00:53:32', port: 'lan9', speed: 10, rx: 1, tx: 1 }, { mac: '00:00:5e:00:53:02', port: 'lan9' } ] }) ] });
+	const self = hero(m);
+	const branch = self.el.path.find('vt-branch-peer')[0], peer = branch.find('vt-node-peer')[0];
+	assert.deepEqual(branch.find('vt-leaf-row').map(r => r.children.map(c => c.textContent)), [ [ 'phone', '192.0.2.121', '-60', '↓64.0k', '↑8.00k' ] ]);
+	assert.equal(peer.find('vt-node-body')[0].children[4].textContent, '1 client');
+	assert.equal(peer.find('vt-node-body')[0].children[5].textContent, '↓ 64.0  ↑ 8 kbit/s', 'its traffic: its one station\'s');
+	assert.equal(branch.find('vt-node-ssid').length, 1, 'no wired node: no host is behind it');
+	self.ui = { kind: 'wifi', chip: 'all', filter: '' };
+	assert.deepEqual(self.filterDefs().filter(d => /^ap:/.test(d[0])).map(d => d.slice(1, 3)), [ [ 'Via ap-hall', 1 ] ], 'the chip agrees');
+	assert.doesNotMatch(self.heroKey(), /,w$/);
+
+	/* a station two list: under the one that hears it best, once */
+	const two = apModel({ aps: [ hall({}, { stations: [ claim('00:00:5e:00:53:51', -70) ], wired: [] }),
+		hall({ id: 'fedcba9876543210', name: 'ap-den' }, { mac: '02:00:5e:10:00:02', stations: [ claim('00:00:5e:00:53:51', -50) ], wired: [] }) ] });
+	const both = hero(two);
+	const branches = both.el.path.find('vt-branch-peer');
+	assert.deepEqual(branches.map(b => b.find('vt-leaf-row').length), [ 0, 1 ]);
+	assert.deepEqual(branches.map(b => b.find('vt-node-peer')[0].find('vt-node-body')[0].children[4].textContent), [ '0 clients', '1 client' ]);
+	assert.deepEqual(branches.map(b => b.find('vt-node-ssid')[0].find('vt-node-sub')[0].textContent), [ '0 clients', '1 client' ]);
+	both.ui = { kind: 'wifi', chip: 'all', filter: '' };
+	assert.deepEqual(both.filterDefs().filter(d => /^ap:/.test(d[0])).map(d => d.slice(1, 3)), [ [ 'Via ap-den', 1 ] ]);
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.doesNotMatch(src, /\ba\.(sta|hosts)\b/, 'the view never reads a report\'s own lists');
+}));
+
+/* review F4: insight.presence (insight.test.js) needs to know which access
+   points are reporting now */
+test('paired access points: presence is told which ones report now', () => {
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	const calls = [ ...src.matchAll(/insight\.presence\(([\s\S]*?)\);\n/g) ].map(m => m[1].replace(/\s+/g, ' '));
+	assert.deepEqual(calls, [ "st.presence, m.clients, now, GONE_KEEP_MS, m.accessPoints.filter(function(a) { return a.state === 'ok'; }).map(function(a) { return a.id; })" ]);
+});
+
+/* review F5 */
+test('paired access points: an SSID node and the wired node never share an id, whatever the interface is called', () => withFakeDom(() => {
+	const ssid = ifname => ({ ifname, ssid: 'Hall', freq: 5180, channel: 36, band: '5g' });
+	const key = report => Object.assign(Object.create(dview), { m: apModel({ aps: [ hall({}, report) ] }) }).heroKey();
+	const two = key({ ssids: [ ssid('x'), ssid('w') ], stations: [], wired: [] });
+	const wired = key({ ssids: [ ssid('x') ], stations: [], wired: [ { mac: '00:00:5e:00:53:61', port: 'lan3' } ] });
+	assert.deepEqual([ two.split('\n').pop(), wired.split('\n').pop() ], [ 'aps=' + AP_ID + '=s:x,s:w', 'aps=' + AP_ID + '=s:x,w' ]);
+	const self = hero(apModel({ aps: [ hall({}, { ssids: [ ssid('w'), ssid(':wired'), ssid('wired') ], stations: [], wired: [ { mac: '00:00:5e:00:53:61', port: 'lan3' } ] }) ] }));
+	assert.deepEqual(self.m.accessPoints[0].nodes.map(n => n.id), [ 'w', 'wired' ], 'no interface has a colon in its name');
+	const keys = self.wireList().map(w => w.key);
+	assert.equal(new Set(keys).size, keys.length, 'one wire a key');
+	assert.deepEqual(keys.filter(k => k.includes(':ap:')), [ 'r::ap:' + AP_ID, 's::ap:' + AP_ID + ':s:w', 's::ap:' + AP_ID + ':s:wired', 's::ap:' + AP_ID + ':w' ]);
+	assert.deepEqual(self.el.path.find('vt-branch-peer')[0].find('vt-ssid-name').map(n => n.textContent), [ '5 GHz Hall', '5 GHz Hall', 'Wired' ]);
+}));
+
+/* review F8 (names): a pairing name has up to 63 characters */
+test('paired access points: a long name is cut in the list\'s pill and link cell, whole in their titles', () => withFakeDom(() => {
+	const long = 'a' + 'b'.repeat(62);
+	const self = Object.create(dview);
+	self.m = apModel({ aps: [ hall({ name: long }) ] });
+	self.st = { staRates: {}, devRates: {} };
+	const added = self.m.wiredHosts.filter(h => h.ap)[0], noted = self.m.wiredHosts.filter(h => h.behind)[0];
+	const tree = list => { const n = new FNode('x'); append(n, list); return n; };
+	const cells = tree(self.wiredCells(added, 0));
+	const pill = cells.find('vt-pill-ap')[0], link = cells.find('vt-phy-ap')[0];
+	assert.deepEqual([ pill.textContent, pill.getAttribute('title') ], [ 'via ' + long, 'Wired to ' + long + ', port lan3' ]);
+	assert.equal(link.textContent, long + ' · lan3');
+	assert.equal(cells.find('vt-td-link')[0].getAttribute('title'), 'Port lan3 of ' + long);
+	assert.equal(tree(self.wiredCells(noted, 0)).find('vt-pill-ap')[0].getAttribute('title'), 'Behind ' + long + ', its port lan2');
+	const css = fs.readFileSync(path.join(RES, 'vantage/app.css'), 'utf8');
+	/* the link cell's line is a flex row elsewhere: a block here, or no ellipsis shows */
+	assert.match(css, /\.vt-app \.vt-phy\.vt-phy-ap \{ display: block;/);
+	for (const cls of [ 'vt-pill-ap', 'vt-phy.vt-phy-ap', 'vt-net-via' ]) {
+		const body = (new RegExp('\\.vt-app \\.' + cls.replace(/\./g, '\\.') + ' \\{([^}]*)\\}').exec(css) || [])[1] || '';
+		for (const decl of [ 'max-width: 150px;', 'overflow: hidden;', 'text-overflow: ellipsis;' ]) assert.ok(body.includes(decl), cls + ': ' + decl);
+	}
+}));
+
+test('paired access points: their stations in no warning, picture or head count, and their rates are theirs', () => withFakeDom(() => {
+	const self = Object.create(dview);
+	/* its station on 2.4 GHz, this device's on 5 GHz */
+	const m = apModel({ aps: [ hall({}, { ssids: [ { ifname: 'phy1-ap0', ssid: 'Hall', freq: 2437, channel: 6, band: '2g' } ] }) ] });
+	self.m = m;
+	self.quiet = {};
+	const remote = m.clients.filter(c => c.ap)[0];
+	assert.equal(remote.signal, -88);
+	assert.equal(self.isWeak(remote), false);
+	assert.equal(self.isWeak(m.clients.filter(c => c.mac === '00:00:5e:00:53:02')[0]), true);
+	assert.deepEqual(self.signalPicture()[0].children.map(n => [ n.getAttribute('class'), n.style.width ]), [ [ 'vt-dist-4', '50.00%' ], [ 'vt-dist-1', '50.00%' ] ]);
+	assert.deepEqual(self.bandPicture()[0].children.map(n => [ n.getAttribute('class'), n.style.width ]), [ [ 'vt-chip-band vt-band-5g', '100.00%' ] ], 'no 2.4 GHz of the access point\'s');
+	self.st = { summary: { level: 'ok', headline: 'x' } };
+	self.el = { orb: {}, headline: new FNode('div'), subline: new FNode('div') };
+	self.board = {};
+	global.document.documentElement = { setAttribute() {} };
+	self.paintHead();
+	assert.match(self.el.subline.textContent, /2 clients$/, 'this device\'s two, not the access point\'s');
+}));
+
+test('paired access points: the list and the drawers show the address as text and link to no other host', t => withFakeDom(() => {
+	const savedL = global.L;
+	global.L = { url: (...p) => '/cgi-bin/luci/' + p.join('/') };
+	t.after(() => { global.L = savedL; });
+	const self = Object.create(dview);
+	const m = apModel({ aps: [ hall() ] });
+	self.m = m;
+	self.st = { staRates: { '00:00:5e:00:53:21': { rx: 8000, tx: 64000 } }, devRates: {}, clientHist: {}, gone: [] };
+	self.ui = {};
+	self.el = {};
+	self.quiet = {};
+	self.canWrite = false;
+	const remote = m.clients.filter(c => c.ap)[0];
+	const added = m.wiredHosts.filter(h => h.ap)[0], noted = m.wiredHosts.filter(h => h.behind)[0];
+	const tree = list => { const n = new FNode('x'); append(n, list); return n; };
+	const client = tree(self.drawerClient(remote.mac).body);
+	assert.match(client.textContent, /Connected to ap-hall, a paired access point/);
+	assert.match(client.textContent, /Access pointap-hall192\.0\.2\.10/);
+	assert.match(client.textContent, /To device144 Mbit\/sFrom device72\.2 Mbit\/s/);
+	assert.doesNotMatch(client.html(), /vt-quiet/, 'no quiet row: it is in no warning');
+	const wired = tree(self.drawerWired(added).body);
+	assert.match(wired.textContent, /Access pointap-hall192\.0\.2\.10Portlan3/);
+	const local = tree(self.drawerWired(noted).body);
+	assert.match(local.textContent, /Portlan1/, 'heard here: its own port');
+	assert.match(local.textContent, /Access pointap-hallits port lan2/);
+	assert.ok(local.all().some(n => n.tag === 'a'), 'this device\'s own page link stays');
+	for (const t of [ client, wired, tree(self.clientCells(remote, 0)), tree(self.wiredCells(added, 0)) ])
+		assert.ok(!t.all().some(n => n.tag === 'a'), 'no link on a paired access point\'s entry');
+	const cells = tree(self.wiredCells(noted, 0));
+	assert.ok(cells.find('vt-pill').some(p => p.textContent === 'behind ap-hall' && p.getAttribute('title') === 'Behind ap-hall, its port lan2'));
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.doesNotMatch(src, /\.(hostname|host|port|protocol|pathname)\s*=[^=]|target': '_blank'/, 'no address put into a link');
+}));
+
+test('paired access points: the report rides the slow poll; a failed call is none, never the last answer', async () => {
+	const saved = { L: global.L, document: global.document, now: Date.now };
+	let t = 1e12, reply = { aps: [ { id: AP_ID } ] }, low = false, asked = 0;
+	Date.now = () => t;
+	global.document = { hidden: false, documentElement: { getAttribute: k => k === 'data-vt-power' ? (low ? 'low' : null) : null } };
+	global.L = { resolveDefault: (p, d) => Promise.resolve(p).then(v => v == null ? d : v, () => d) };
+	REPLIES['luci.vantage wireless'] = () => Promise.resolve({});
+	REPLIES['luci.vantage thermal'] = () => Promise.resolve([]);
+	REPLIES['luci.vantage wired'] = () => Promise.resolve({ hosts: [] });
+	REPLIES['vantage.collector report'] = () => { asked++; return reply ? Promise.resolve(reply) : Promise.reject(new Error('Object not found')); };
+	const self = Object.create(view);
+	try {
+		assert.deepEqual((await self.fetch()).collector, reply);
+		reply = null;
+		t += 5e3;
+		assert.equal((await self.fetch()).collector, null, 'failed: no access points, not the last answer');
+		reply = { aps: [] };
+		low = true;
+		t += 30e3;
+		const a = await self.fetch();
+		t += 5e3;
+		const b = await self.fetch();
+		assert.deepEqual([ a.collector, b.collector, asked ], [ reply, reply, 3 ], 'Low-power router: once a slow poll, kept until the next');
+		reply = null;
+		t += 30e3;
+		assert.equal((await self.fetch()).collector, null);
+		t += 5e3;
+		assert.equal((await self.fetch()).collector, null, 'and none until the next slow poll answers');
+		for (const junk of [ 'x', [ 1 ] ]) {
+			reply = junk; low = false; t += 5e3;
+			assert.equal((await self.fetch()).collector, null, JSON.stringify(junk));
+		}
+	} finally {
+		global.L = saved.L; Date.now = saved.now;
+		if (saved.document === undefined) delete global.document; else global.document = saved.document;
+		for (const k of Object.keys(REPLIES)) if (/^(luci\.vantage (wireless|thermal|wired)|vantage\.collector)/.test(k)) delete REPLIES[k];
+	}
 });

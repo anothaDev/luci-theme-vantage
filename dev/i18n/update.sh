@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Translation catalogues of both packages, maintained with LuCI's own tools
+# Translation catalogues of the packages, maintained with LuCI's own tools
 # (build/i18n-scan.pl and build/i18n-update.pl) from a pinned LuCI commit.
 #
 #   dev/i18n/update.sh                 regenerate po/templates/*.pot from the
@@ -10,7 +10,8 @@
 #   dev/i18n/update.sh --add <lang>... start catalogues for new languages
 #                                      (LuCI codes such as de, pt_BR, zh_Hans)
 #
-# Catalogues: luci-app-vantage/po/<lang>/vantage.po and
+# Catalogues: luci-app-vantage/po/<lang>/vantage.po,
+# luci-app-vantage-aps/po/<lang>/vantage-aps.po and
 # luci-theme-vantage/po/<lang>/vantage-theme.po, each with its template in
 # po/templates/. `#:` references are relative to the repository root.
 # dev/i18n/luci-languages.mk is luci.mk's language list and package-name
@@ -30,7 +31,7 @@ LUCI_REV=e9ebca7598ce2f754b76267fd66bf2b85e6e4347
 LUCI_URL=https://github.com/openwrt/luci.git
 
 # package directory:catalogue name
-CATALOGS=(luci-app-vantage:vantage luci-theme-vantage:vantage-theme)
+CATALOGS=(luci-app-vantage:vantage luci-app-vantage-aps:vantage-aps luci-theme-vantage:vantage-theme)
 
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)

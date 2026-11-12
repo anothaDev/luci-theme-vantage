@@ -52,7 +52,7 @@ return baseclass.extend({
 	},
 
 	/* from a's bottom edge, near its left, down to b's middle and along
-	   into b's left edge, the corner rounded: the gateway to another
+	   into b's left edge, the corner rounded: the gateway to a paired
 	   access point, below this device's own node */
 	elbow: function(a, b) {
 		var x1 = a.l + 24, y1 = a.b, x2 = b.l, y2 = b.cy, rad = Math.min(10, Math.max(0, y2 - y1), Math.max(0, x2 - x1)), pts = [ [ x1, y1 ] ], i;

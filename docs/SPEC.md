@@ -1,7 +1,7 @@
 # Vantage — v1 specification
 
 Status: **implemented** (v1, released as 1.0.x). This is the contract
-both packages are built and reviewed against; section 5 lists what is
+the packages are built and reviewed against; section 5 lists what is
 not built yet.
 
 Vantage is a LuCI theme plus a companion dashboard app for OpenWrt. It
@@ -35,6 +35,7 @@ port in one click, finding anything by typing — not from their look.
 |---|---|---|
 | `luci-theme-vantage` | ucode templates, CSS, icons, `menu-vantage.js` (shell: rail, top bar, palette, tabs, indicators), login page, its rpcd ACL (`/etc/config/vantage_theme` only), that config | `+luci-base` |
 | `luci-app-vantage` | dashboard + inspector views under `admin/dashboard` (landing page), its rpcd ACL (reads + its own config only), its rpcd ucode plugin `luci.vantage` (key-free wireless status, temperatures, the bridges' wired hosts, the radios' channel survey, validated alias writes), `/etc/config/vantage` | `+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-nl80211` (rpcd-mod-iwinfo, ucode-mod-fs, ucode-mod-rtnl and ucode-mod-nl80211 beyond luci-base; Wi-Fi images already have rtnl and nl80211, as wifi-scripts needs them); reverse DNS (`rpcd-mod-rrdns`), mDNS (`umdns`) and hostapd's ubus objects are optional and degrade |
+| `luci-app-vantage-aps` (optional) | the access points a router's dashboard shows, over SSH (section "Other access points"): the Network → Access points page, its rpcd ACL and ucode plugin `luci.vantage.pair` (pairing), the collector service (router) and the report command (access point) | `+luci-app-vantage +rpcd-mod-ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci +ucode-mod-uloop`; Dropbear at run time (server on the access points, `dbclient` on the router), not as a dependency |
 
 The theme is useful alone; the app alone works under any theme but is
 designed for Vantage. With both installed and another theme selected, the
@@ -469,8 +470,10 @@ text around it so it looks the same size.
 - ACL: three groups for the app, and the theme's own, below. `luci-app-vantage` (read): `system info/board`,
   `network.interface dump`, `network.device status`, `iwinfo
   info/assoclist`, `hostapd.* get_status/get_clients`, `luci-rpc
-  getHostHints`, `luci.vantage wireless/thermal/wired/routes/survey/mesh`, `umdns hosts`, `file read` of
-  `/proc/stat`, `uci get` for `vantage`, and LuCI's own `luci
+  getHostHints`, `luci.vantage wireless/thermal/wired/routes/survey`, `umdns hosts`, `file read` of
+  `/proc/stat`, `uci get` for `vantage`, `vantage.collector report` (the
+  access points this device is paired with; the object exists only with
+  `luci-app-vantage-aps` installed and an access point paired), and LuCI's own `luci
   getSwconfigPortState` (the link state of a swconfig switch's ports: LuCI
   runs `swconfig dev <switch> show`, the switch name quoted; the view asks
   at most every 30 s, and only for a switch with hosts behind it); no
@@ -535,14 +538,6 @@ text around it so it looks the same size.
   NL80211 survey dump (`ucode-mod-nl80211`, NL80211_CMD_GET_SURVEY), and
   only for an interface that cfg80211 drives (`/sys/class/net/<if>/phy80211`);
   any other device gets no channels without the kernel being asked.
-  `mesh` returns the network's other access points as usteer on this
-  device knows them (usteer exchanges node and station state with its
-  peers over the LAN, so no login on a peer is needed): their addresses
-  (`remote_hosts`), their nodes (`local_info`/`remote_info`: interface,
-  BSSID, SSID, frequency, station count), the stations each node has
-  (`get_clients`: MAC and signal), and what each access point shares of
-  itself through `/usr/share/vantage/mesh-share.uc` (below), all bounded
-  and validated; `{ available: false }` without usteer. Read only.
   `set_alias({mac, name, icon})`
   re-applies the view's rules on the device (unicast MAC, name of at most
   48 code points without control, bidi or invisible characters, icon from
@@ -554,33 +549,102 @@ text around it so it looks the same size.
   are module constants: ucode compiles a literal each time it is
   reached, and a counted repeat costs milliseconds on a router.
 
-### Other access points (usteer)
+### Other access points (`luci-app-vantage-aps`)
 
-- With `usteer` on the access points, the dashboard shows the network's
-  other access points: in the network path a branch each (beside this
-  device's own on the router; on an access point they hang off the
-  gateway as its siblings), a node per SSID and band, one for its wired
-  hosts, and at each node the devices with address, signal (or link
-  speed) and traffic; their clients join the Clients list with a "via"
-  filter per access point. A station that one of them has is never
-  counted as a wired host here, nor in this device's health checks.
-- `/etc/init.d/vantage-mesh` runs `/usr/share/vantage/mesh-share.uc`
-  every 10 s when usteer is installed and `vantage.main.share_mesh` is
-  not `0`. It puts one object into usteer's node data (`usteer
-  set_node_data`), which usteer sends to its peers on the LAN with its
-  own station reports: the hostname, model and uptime; this device's MAC
-  on its uplink network; the wired hosts the bridges learned on ports
-  other than the uplink and Wi-Fi (MAC, port, link speed, and the port's
-  traffic when one host has it alone); its stations' signal, link rate
-  and traffic (hostapd `get_clients`, bit/s since the last run); the IPv4
-  addresses its host hints know; and on a router with MediaTek hardware
-  offload each LAN host's internet traffic, from the packet engine's
-  per-flow counters (`/sys/kernel/debug/ppe*/bind`), since offloaded
-  flows bypass the kernel's counters. Nothing from configuration, no
-  keys; at most 64 wired hosts, 128 stations and 192 addresses.
-- The view links a remote station's details to the same LuCI page on its
-  access point (same scheme and path, host replaced by the access
-  point's IPv4).
+An optional package shows the network's other OpenWrt access points on a
+router's dashboard: in the network path a branch each with a node per
+SSID and band and one for its wired hosts, the hosts at each node, and
+their clients in the Clients list with a filter per access point. Both
+the router and each access point run Vantage with the add-on; the
+dashboard package itself stays read-only.
+
+- **Pairing, two pastes, no trust on first use.** On the router, Network
+  → Access points shows its code, `vantage-router 1 ssh-ed25519 <key>
+  <name>` (an Ed25519 key made on first use with `dropbearkey`, kept in
+  `/etc/vantage/id_ed25519`). Pasted on the access point, the add-on adds
+  that key to `/etc/dropbear/authorized_keys` as
+  `command="/usr/libexec/vantage/report",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding
+  ssh-ed25519 <key> vantage-router@<name>` and answers with
+  `vantage-ap 1 ssh-ed25519 <host key> <address> <port> <mac> <name>`:
+  its Ed25519 host key, LAN address, SSH port and LAN MAC. Pasted back on the router,
+  that answer is the access point's record in `/etc/vantage/aps.json`
+  (address editable). At most 16 access points per router and 8 routers
+  per access point; codes, keys, names and addresses are checked by
+  `/usr/share/ucode/vantage/aps.uc`, the same code on both ends (no
+  string with a NUL byte passes: ucode matches a pattern only up to
+  one). `authorized_keys` and the list are replaced whole, through a
+  file written beside them and checked to be complete first, so a full
+  flash cannot leave the administrator's own keys cut short.
+- **Transport.** The collector (`/usr/libexec/vantage/collector`, procd
+  service `vantage-collector`, started only while an access point is
+  paired) logs in to each one with `dbclient` as root with the router's
+  key, in batch mode, without passwords and with
+  `StrictHostKeyChecking=yes` against a `known_hosts` holding only the host
+  key from pairing, so another device at that address is refused. It
+  fetches only while someone looks: each `vantage.collector report` call
+  (the dashboard's slow poll, the pairing page) keeps it fetching for
+  60 s, at most every 10 s per access point, each fetch killed after 15 s
+  and its output capped by the shell (`ulimit -f`, just above the 128 KiB
+  a report may have: the files are in RAM).
+  When an access point is not found at its address (or another device
+  answers there), the collector looks its MAC up in the router's
+  neighbour table and DHCP leases and tries the address it has now; the
+  pinned host key decides, so a DHCP address change does not unpair it.
+  The address it answers at is kept in memory, `/etc/vantage` stays as
+  paired. States: `ok` (a report to show), `offline` (`unreachable`,
+  `timeout`), `error` (`hostkey`, `denied`, `invalid`, or `missing`: no
+  report command there, the add-on is not installed) and `waiting`
+  (nothing fetched yet). After a pause in looking, the last report
+  stands until the next fetch has ended.
+- **What an access point tells.** Dropbear runs the report command
+  whatever the router asks for (the key's forced command): the
+  hostname, model, uptime and LAN MAC; its access-point interfaces
+  (SSID, BSSID, frequency, channel); their stations (MAC, signal, link
+  rates, byte counts, time connected; iwinfo, as the dashboard reads its
+  own); and the wired hosts behind its ports other than the ones towards
+  its gateway or the router (none when those are not found), with the
+  ports' speed and byte counts. Nothing from configuration, no keys; it
+  takes no input and changes nothing, and runs one at a time (a lock on
+  its own file, so many sessions of one key cannot pile up). The router checks every field
+  again (types, ranges, MAC form, UTF-8 without control characters; at
+  most 16 SSIDs, 256 stations, 128 wired hosts and 32 ports an access
+  point, 1024 stations in a reply) and turns byte counts into rates. The
+  MAC it places the access point by is the one from pairing, never the
+  one in the report.
+- **Its place on the dashboard.** What an access point reports adds
+  entries, marked as its; it never renames or re-addresses one, and a
+  station on this device's own Wi-Fi, the gateway and this device's own
+  addresses stay as they are. One case moves an entry: a host this
+  device hears on the very port it hears the access point's own MAC on
+  (a MAC no other paired access point claims, neither the gateway's nor
+  one of this device's) and that the access point lists as its station
+  is shown as that access point's Wi-Fi client, not as a wired host of
+  this device. A host the access point lists as wired behind it gets a
+  note saying so. An access point is named as at pairing; its address is
+  text, never a link to its LuCI. Its stations stay out of this device's
+  health checks and weak-signal warnings. Without the add-on, or with
+  nothing paired, the dashboard is as before.
+- **Unpairing.** Removing an access point on the router deletes its
+  record (and stops the collector with the last one); revoking a router
+  on the access point deletes its key line, which takes effect at the
+  next fetch. Removing the add-on leaves the key lines, which can then
+  only run a command that is gone: revoke routers first.
+- **Requirements and limits.** Dropbear on the access point, running and
+  reachable from the router, built with key options (OpenWrt's default;
+  the add-on looks for Dropbear's option parser and refuses to pair
+  without it, since such a build would give the key a root shell), with
+  an Ed25519 host key of its own and settings that let root in by key
+  with the key's own command (no `RootLogin` off, `ForceCommand` or
+  `keyfile` list in the first section that is on, whose first port the
+  reply names); `dbclient` on the router. On OpenWrt 24.10's Dropbear the
+  key's `no-port-forwarding` is also what keeps it from forwarding to a
+  local socket such as ubus's: it must stay. The collector runs as root
+  for now (a user of its own is on the roadmap); what it reads from the
+  network before the host key is checked is Dropbear's client's to
+  parse. On an access point
+  still without a root password Dropbear lets root in without the key,
+  so the report runs then too, asked for by name; the host key is pinned
+  either way.
 
 ## 5. Later
 
@@ -633,6 +697,15 @@ text around it so it looks the same size.
   Invented locally administered MACs use the 02:00:5E:xx:xx:xx prefix
   (IANA OUI with the U/L bit set; e.g. the replay's synthetic BSSIDs);
   no other MACs pass.
+- `luci-app-vantage-aps` (optional) is the only Vantage package that runs
+  programs or writes outside its own config: its pairing plugin runs
+  `dropbearkey` once and the collector's init script with fixed words,
+  writes `/etc/vantage/aps.json` and its own lines of
+  `/etc/dropbear/authorized_keys`, each limited to the report command;
+  its collector runs `dbclient` with the pinned host key and nothing
+  else. Its ACL group (`luci-app-vantage-aps`) is for administrators
+  only. `test_acl_policy.js` holds each of these to that list, and
+  `tests/aps.test.js` runs them against hostile codes and reports.
 - Built-package verification (`security-tests/verify_built_apk.js`, run by
   `dev/build/sdk-build.sh` before anything reaches `dist/`) and a
   reproducible release manifest (`dist/<release>/BUILDINFO`: commit, SDK

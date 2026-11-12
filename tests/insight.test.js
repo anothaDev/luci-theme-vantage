@@ -258,9 +258,80 @@ test('health: a quiet station\'s weak signal is left out of the warning and of t
 	assert.match(all.reason, /No warnings asked for/);
 });
 
-test('health: a weak station of another access point (usteer) is no signal warning here', () => {
-	const m = Object.assign(baseModel(), { clients: [ { mac: '00:00:5e:00:53:01', signal: -50 }, { mac: '00:00:5e:00:53:02', signal: -88, ap: { ip: '192.0.2.2', name: 'ap' } } ] });
+/* a paired access point's station (c.ap) is not this device's to help */
+test('health: a weak station of a paired access point is no signal warning here, nor the weakest', () => {
+	const m = Object.assign(baseModel(), { clients: [ { mac: '00:00:5e:00:53:01', name: 'Phone', signal: -50 },
+		{ mac: '00:00:5e:00:53:02', name: 'Far laptop', signal: -88, ap: { id: '0123456789abcdef', name: 'ap-hall' } } ] });
 	const sig = byId(insight.health(m, {}), 'signal');
-	assert.notEqual(sig.level, 'warn');
-	assert.doesNotMatch(String(sig.value) + sig.reason, /88/);
+	assert.equal(sig.level, 'ok');
+	assert.doesNotMatch(String(sig.value) + sig.reason + sig.detail, /88|Far laptop/);
+	assert.equal(sig.reason, 'The only measured client');
+	/* only theirs: as no clients here */
+	const theirs = byId(insight.health(Object.assign(baseModel(), { clients: [ m.clients[1] ] }), {}), 'signal');
+	assert.deepEqual([ theirs.level, theirs.value ], [ 'info', 'No clients' ]);
+});
+
+test('top talkers: a paired access point\'s stations push none of this device\'s out', () => {
+	const clients = [ { mac: 'a', name: 'Here' }, { mac: 'b', name: 'There', ap: { id: '0123456789abcdef' } } ];
+	const t = insight.topTalkers(clients, { a: { rx: 1000, tx: 1000 }, b: { rx: 9e9, tx: 9e9 } }, 5);
+	assert.deepEqual(t.map(x => [ x.mac, x.share ]), [ [ 'a', 1 ] ]);
+});
+
+/* review F4: the collector answers its first call before it has fetched
+   anything; the stations of an access point's first report were there
+   before the page opened */
+test('presence: the stations of an access point\'s first report are not new; one that joins it later is', () => {
+	const AP = '0123456789abcdef', DEN = 'fedcba9876543210';
+	const here = { mac: 'a', name: 'Here' };
+	const sta = (mac, id) => ({ mac, name: mac, ap: { id: id || AP } });
+	/* the page opens: the access point still waiting */
+	let p = insight.presence(null, [ here ], 0, 60000, []);
+	assert.deepEqual(p.state.aps, []);
+	p = insight.presence(p.state, [ here, sta('b'), sta('c') ], 5000, 60000, [ AP ]);
+	assert.deepEqual(Object.keys(p.isNew), [], 'its first report: they were there');
+	assert.deepEqual([ p.state.baseline, p.state.aps ], [ [ 'a', 'b', 'c' ], [ AP ] ]);
+	p = insight.presence(p.state, [ here, sta('b'), sta('c'), sta('d') ], 10000, 60000, [ AP ]);
+	assert.deepEqual(Object.keys(p.isNew), [ 'd' ], 'joined after');
+	/* it stops reporting for a poll and comes back: nobody is new again, d still is */
+	p = insight.presence(p.state, [ here ], 15000, 60000, []);
+	p = insight.presence(p.state, [ here, sta('b'), sta('c'), sta('d') ], 20000, 60000, [ AP ]);
+	assert.deepEqual(Object.keys(p.isNew), [ 'd' ]);
+	/* another one's first report, later; a local arrival is new as ever */
+	p = insight.presence(p.state, [ here, sta('b'), sta('e', DEN), { mac: 'f', name: 'Late' } ], 25000, 60000, [ AP, DEN ]);
+	assert.deepEqual(Object.keys(p.isNew).sort(), [ 'f' ]);
+	assert.deepEqual(p.state.aps, [ AP, DEN ]);
+	/* reporting from the start without stations: its first one is new */
+	let q = insight.presence(null, [ here ], 0, 60000, [ AP ]);
+	q = insight.presence(q.state, [ here, sta('b') ], 5000, 60000, [ AP ]);
+	assert.deepEqual(Object.keys(q.isNew), [ 'b' ]);
+	/* without the fifth argument, as before */
+	let r = insight.presence(null, [ here ], 0, 60000);
+	r = insight.presence(r.state, [ here, { mac: 'z' } ], 5000, 60000);
+	assert.deepEqual([ Object.keys(r.isNew), r.state.baseline ], [ [ 'z' ], [ 'a' ] ]);
+});
+
+/* review F3, F4, F8: what the access points list is theirs to say; none of
+   it is kept after it is gone */
+test('presence: an access point\'s station that is no longer listed is no "left" row, however many they are', () => {
+	const AP = '0123456789abcdef';
+	const sta = n => ({ mac: 'r' + n, name: 'r' + n, ap: { id: AP } });
+	let p = insight.presence(null, [ { mac: 'a' }, { mac: 'b' }, sta(0), sta(1) ], 0, 300000, [ AP ]);
+	/* the access point stops reporting; a station of this device leaves */
+	p = insight.presence(p.state, [ { mac: 'a' } ], 5000, 300000, []);
+	assert.deepEqual(p.gone.map(g => g.client.mac), [ 'b' ], 'this device\'s own station only');
+	assert.deepEqual(Object.keys(p.state.firstSeen).sort(), [ 'a', 'b' ]);
+	/* 1024 other stations on every report for five minutes */
+	let n = 2, state = p.state;
+	for (let i = 0; i < 30; i++) {
+		const now = Array.from({ length: 1024 }, () => sta(n++));
+		p = insight.presence(state, [ { mac: 'a' } ].concat(now), 10000 + i * 10000, 300000, [ AP ]);
+		state = p.state;
+	}
+	assert.deepEqual(p.gone.map(g => g.client.mac), [ 'b' ]);
+	assert.equal(Object.keys(state.present).length, 1025);
+	assert.equal(Object.keys(state.firstSeen).length, 1026, 'nothing piles up');
+	/* a station that roams from this device to the access point is still there */
+	p = insight.presence(null, [ { mac: 'a' } ], 0, 300000, [ AP ]);
+	p = insight.presence(p.state, [ Object.assign({ mac: 'a' }, { ap: { id: AP } }) ], 5000, 300000, [ AP ]);
+	assert.deepEqual([ p.gone, Object.keys(p.isNew) ], [ [], [] ]);
 });

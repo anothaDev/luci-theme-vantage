@@ -815,28 +815,29 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-node-idle .vt-node-title { color: var(--vt-text-2); font-weight: var(--vt-fw-semibold); }
 .vt-app .vt-node-off { opacity: .6; border-style: dashed; }
 
-/* the devices at a branch's end: name, signal or link, traffic */
-/* one grid for all the rows, so names, signal and rates line up */
-.vt-app .vt-leaf-rows { display: grid; grid-template-columns: minmax(0, 1fr) 13.5ch 8.5ch 6.5ch 6.5ch; column-gap: 10px; row-gap: 1px; margin-top: 4px; min-width: 0; }
-.vt-app .vt-leaf-rows:empty { display: none; }
-.vt-app .vt-leaf-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: baseline; font-size: var(--vt-fs-sm); color: var(--vt-text-2); padding: 1px 4px; margin: 0 -4px; border-radius: 4px; cursor: pointer; }
-.vt-app .vt-leaf-row:hover, .vt-app .vt-leaf-row:focus-visible { background: var(--vt-surface-3); outline: none; }
-.vt-app .vt-leaf-row:hover .vt-leaf-name { text-decoration: underline; }
-.vt-app .vt-leaf-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vt-text); }
-.vt-app .vt-leaf-sig.vt-lvl-ok { color: var(--vt-ok); }
-.vt-app .vt-leaf-sig.vt-lvl-warn { color: var(--vt-warn); }
-.vt-app .vt-leaf-sig.vt-lvl-crit { color: var(--vt-err); }
-.vt-app .vt-leaf-rate { white-space: nowrap; }
-.vt-app .vt-live-inet { display: inline-flex; align-items: center; gap: 4px; font-size: var(--vt-fs-sm); color: var(--vt-accent-text, var(--vt-text-2)); white-space: nowrap; }
-.vt-app .vt-leaf-sig { text-align: right; white-space: nowrap; }
-.vt-app .vt-leaf-ip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--vt-text-3); }
-.vt-app .vt-leaf-more { grid-column: 1 / -1; font-size: var(--vt-fs-sm); color: var(--vt-text-3); }
-.vt-app .vt-node-peer { padding: 10px 12px; border-color: color-mix(in oklab, var(--vt-accent-line) 40%, var(--vt-line)); }
-.vt-app .vt-node-peer .vt-node-ico { background: var(--vt-accent-fill); color: var(--vt-accent-fill-ink); }
-.vt-app .vt-node-peer .vt-node-title { font-size: var(--vt-fs-md); }
-.vt-app .vt-node-peer .vt-node-kicker { display: block; overflow: hidden; text-overflow: ellipsis; }
-/* the other access points, after this device's own branches */
-.vt-app .vt-branches-label { margin: 6px 0 -8px; font-size: var(--vt-fs-micro); font-weight: var(--vt-fw-semibold); color: var(--vt-text-3); text-transform: uppercase; letter-spacing: .08em; }
+/* Paired access points: everything under .vt-path-mesh, which the path
+   has only with at least one, so without one it is as before. The
+   devices at a branch's end, a row each (name, address, signal or link,
+   traffic), in one grid so the columns line up */
+.vt-app .vt-path-mesh .vt-leaf-rows { display: grid; grid-template-columns: minmax(0, 1fr) 13.5ch 8.5ch 6.5ch 6.5ch; column-gap: 10px; row-gap: 1px; margin-top: 4px; min-width: 0; }
+.vt-app .vt-path-mesh .vt-leaf-rows:empty { display: none; }
+.vt-app .vt-path-mesh .vt-leaf-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: baseline; font-size: var(--vt-fs-sm); color: var(--vt-text-2); padding: 1px 4px; margin: 0 -4px; border-radius: 4px; cursor: pointer; }
+.vt-app .vt-path-mesh .vt-leaf-row:hover { background: var(--vt-surface-3); }
+.vt-app .vt-path-mesh .vt-leaf-row:hover .vt-leaf-name { text-decoration: underline; }
+.vt-app .vt-path-mesh .vt-leaf-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vt-text); }
+.vt-app .vt-path-mesh .vt-leaf-sig { text-align: right; white-space: nowrap; }
+.vt-app .vt-path-mesh .vt-leaf-sig.vt-lvl-ok { color: var(--vt-ok); }
+.vt-app .vt-path-mesh .vt-leaf-sig.vt-lvl-warn { color: var(--vt-warn); }
+.vt-app .vt-path-mesh .vt-leaf-sig.vt-lvl-crit { color: var(--vt-err); }
+.vt-app .vt-path-mesh .vt-leaf-rate { white-space: nowrap; }
+.vt-app .vt-path-mesh .vt-leaf-ip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--vt-text-3); }
+.vt-app .vt-path-mesh .vt-leaf-more { grid-column: 1 / -1; font-size: var(--vt-fs-sm); color: var(--vt-text-3); }
+.vt-app .vt-path-mesh .vt-node-peer { padding: 10px 12px; border-color: color-mix(in oklab, var(--vt-accent-line) 40%, var(--vt-line)); }
+.vt-app .vt-path-mesh .vt-node-peer .vt-node-ico { background: var(--vt-accent-fill); color: var(--vt-accent-fill-ink); }
+.vt-app .vt-path-mesh .vt-node-peer .vt-node-title { font-size: var(--vt-fs-md); }
+.vt-app .vt-path-mesh .vt-node-peer .vt-node-kicker { display: block; overflow: hidden; text-overflow: ellipsis; }
+/* the paired access points, after this device's own branches */
+.vt-app .vt-path-mesh .vt-branches-label { margin: 6px 0 -8px; font-size: var(--vt-fs-micro); font-weight: var(--vt-fw-semibold); color: var(--vt-text-3); text-transform: uppercase; letter-spacing: .08em; }
 .vt-app .vt-dots { display: inline-flex; gap: 3px; }
 /* no clients, no dots: the count starts where the name does */
 .vt-app .vt-dots:empty { display: none; }
@@ -909,8 +910,17 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-branches { display: flex; flex-direction: column; justify-content: space-between; gap: 18px; padding: 2px 0 2px 34px; min-width: 0; }
 .vt-app .vt-branch { display: grid; grid-template-columns: minmax(136px, 172px) minmax(0, 1fr); column-gap: 34px; align-items: center; min-width: 0; }
 .vt-app .vt-branch-ssids { display: flex; flex-direction: column; gap: var(--vt-sp-2); min-width: 0; }
-.vt-app .vt-branch-ssids .vt-node { width: 100%; max-width: 340px; }
-.vt-app .vt-branch-ssids .vt-node-body { flex: 1 1 auto; }
+.vt-app .vt-branch-ssids .vt-node { max-width: 260px; }
+/* with paired access points: room for the rows at the ends; each node
+   the container its rows ask how wide it is */
+.vt-app .vt-path-mesh .vt-branch-ssids .vt-node { width: 100%; max-width: 340px; container: vtleaf / inline-size; }
+/* a narrow node (a phone, medium widths): the address goes and the other
+   columns take what their text needs, so the name keeps its room */
+@container vtleaf (max-width: 27em) {
+	.vt-app .vt-path-mesh .vt-leaf-rows { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+	.vt-app .vt-path-mesh .vt-leaf-ip { display: none; }
+}
+.vt-app .vt-path-mesh .vt-branch-ssids .vt-node-body { flex: 1 1 auto; }
 /* a network has no second column: its rates take that room */
 .vt-app .vt-branch > .vt-node-net { grid-column: 1 / -1; justify-self: start; width: 100%; max-width: 260px; }
 /* with subgrid every branch shares one radio column: 172px, or wider up
@@ -925,7 +935,7 @@ html[data-darkmode="true"] .vt-app {
 	.vt-app .vt-branch > .vt-node:first-child:not(.vt-node-net) { max-width: 240px; }
 }
 
-/* other access points (wide only): the gateway, link and device give up
+/* paired access points (wide only): the gateway, link and device give up
    room to the branches; every branch's node column alike, and the nodes
    at the ends fill what is left, so their rows line up and nothing is cut */
 @container vthero (min-width: 1021px) {
@@ -972,6 +982,7 @@ html[data-darkmode="true"] .vt-app {
 	.vt-app .vt-path-lines > .vt-branches, .vt-app .vt-lines { grid-area: auto; }
 	.vt-app .vt-lines { gap: 8px; padding: 0 0 0 34px; }
 	.vt-app .vt-lines > .vt-node { align-self: flex-start; min-width: 200px; max-width: 100%; }
+	.vt-app .vt-path-mesh .vt-branch-ssids .vt-node { max-width: none; }
 }
 
 /* ------------------------------------------------------------ 6. system */
@@ -1315,6 +1326,10 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-net-ssid { font-weight: var(--vt-fw-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
 .vt-app .vt-net-badges { display: flex; align-items: center; gap: 6px; }
 .vt-app .vt-net-via { font-size: var(--vt-fs-sm); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+/* a paired access point's name (up to 63 characters) in a pill or with
+   its port under the link: cut like the line above, the whole in the title */
+.vt-app .vt-pill-ap { display: inline-block; line-height: 18px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.vt-app .vt-phy.vt-phy-ap { display: block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 .vt-app .vt-phy { display: flex; align-items: center; gap: 4px; font-size: var(--vt-fs-sm); white-space: nowrap; }
 .vt-app .vt-phy b { font-weight: var(--vt-fw-semibold); }
 .vt-app .vt-phy .vt-ico { color: var(--vt-text-3); stroke-width: 2; width: 12px; height: 12px; }
