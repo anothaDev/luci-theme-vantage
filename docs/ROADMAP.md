@@ -5,16 +5,16 @@ promised; issues and pull requests for any of it are welcome.
 
 ## Next
 
-### Multiple access points (planned for 1.1)
+### Multiple access points
 
-Show the radios, SSIDs and clients of other OpenWrt access points on the
-main dashboard, so a router without Wi-Fi still shows the whole network
-(idea from [#5](https://github.com/anothaDev/luci-theme-vantage/pull/5)
-by @nhAsif). Design: each peer runs `luci-app-vantage` with a dedicated
-rpcd login limited to one read-only method; peer credentials live in a
-config the dashboard can't read; a background poller on the main router
-fetches peers over HTTPS with a pinned certificate and caches the result,
-so an offline peer never slows down LuCI.
+Shown where the access points run `usteer` (see the spec, "Other access
+points"): no peer logins, since usteer already shares node and station
+state over the LAN. Still open: access points without usteer, and the
+peer-login design (idea from
+[#5](https://github.com/anothaDev/luci-theme-vantage/pull/5) by @nhAsif:
+a dedicated rpcd login limited to one read-only method, credentials the
+dashboard can't read, a background poller over HTTPS with a pinned
+certificate) for anything usteer cannot carry.
 
 ### Search for clients, radios and networks (Ctrl+K)
 

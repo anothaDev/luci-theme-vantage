@@ -34,6 +34,10 @@ dashboard, and the dashboard on its own works under any LuCI theme.
 - **A live network path.** Your internet lines, this device, its radios
   and SSIDs, and its wired ports, with packets that move at the real
   uplink rate. Click anything for details.
+- **The whole network, with several access points.** Where the access
+  points run `usteer`, every other access point joins the path with its
+  SSIDs, clients and wired devices, and their clients join the list. No
+  logins between devices: they share through usteer on your LAN.
 - **Every client, by name.** Your alias, a name from DHCP, mDNS, WPS or
   reverse DNS, or else the vendor. You get signal, link rate, Wi-Fi
   generation, live traffic and an experience score that explains itself.

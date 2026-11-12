@@ -115,8 +115,9 @@ return baseclass.extend({
 			page: PAGES.wireless });
 
 		/* signal; a station set quiet (#110: far away on purpose) is left
-		   out, of the warning and of the weakest */
-		var clients = model.clients || [], quiet = quietMacs || {};
+		   out, of the warning and of the weakest; so are the stations of
+		   the network's other access points (this device cannot help them) */
+		var clients = (model.clients || []).filter(function(c) { return !c.ap; }), quiet = quietMacs || {};
 		var counted = clients.filter(function(c) { return !quiet[c.mac]; });
 		var weak = counted.filter(function(c) { return c.signal != null && c.signal < WEAK_DBM; }).sort(function(a, b) { return a.signal - b.signal; });
 		var heard = counted.filter(function(c) { return c.signal != null; }).sort(function(a, b) { return a.signal - b.signal; });

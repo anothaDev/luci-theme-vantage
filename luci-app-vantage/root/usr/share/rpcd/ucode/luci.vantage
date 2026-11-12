@@ -843,9 +843,156 @@ function switches() {
 	return out;
 }
 
+/* --------------------------------------------------------------- mesh */
+
+// The network's other APs and their stations, as usteer
+// (the band-steering daemon, if installed) on this device knows them: it
+// exchanges node and station state with its peers over the LAN, so no
+// login on the peers is needed. Read only; returns addresses, BSSIDs,
+// SSIDs, frequencies and signal levels, nothing from their config.
+const MAX_MESH_APS = 32;
+const MAX_MESH_NODES = 128;
+const MAX_MESH_STATIONS = 1024;
+const MAX_MESH_WIRED = 64;
+const MAX_MESH_STA = 128;
+const MAX_MESH_IPS = 192;
+const RE_PORT = /^[A-Za-z0-9_.@-]{1,15}$/;
+const RE_IPV4 = /^[0-9]{1,3}(\.[0-9]{1,3}){3}$/;
+const RE_NODE = /^(([0-9.]{7,15})#)?hostapd\.([A-Za-z0-9_.-]{1,32})$/;
+
+function mesh_ssid(n) {
+	let s = short_string(n?.ssid, 32);
+	// usteer leaves ssid empty for some nodes; the neighbour report has it
+	if (!s && type(n?.rrm_nr) == 'array')
+		s = short_string(n.rrm_nr[1], 32);
+	return s;
+}
+
+function mesh_node(key, n) {
+	let m = match(key, RE_NODE);
+	if (!m || type(n) != 'object')
+		return null;
+	let freq = +n.freq;
+	return {
+		ap: m[2] ?? null,
+		ifname: m[3],
+		bssid: norm_mac(n.bssid),
+		ssid: mesh_ssid(n),
+		freq: (freq > 0 && freq < MAX_MHZ) ? freq : null,
+		clients: (+n.n_assoc >= 0) ? +n.n_assoc : null
+	};
+}
+
+// What a peer's /usr/share/vantage/mesh-share.uc shares: its name and the
+// wired hosts downstream of it, [ mac, port, Mbit/s ]
+function mesh_peer(d) {
+	if (type(d) != 'object' || d.v !== 1)
+		return null;
+	let wired = [];
+	for (let w in (type(d.wired) == 'array' ? d.wired : [])) {
+		if (length(wired) >= MAX_MESH_WIRED)
+			break;
+		let mac = (type(w) == 'array') ? norm_mac(w[0]) : null;
+		let port = (type(w) == 'array') ? short_string(w[1], 15) : null;
+		if (!mac || !port || !match(port, RE_PORT))
+			continue;
+		let mbps = +w[2], rx = +w[3], tx = +w[4];
+		push(wired, [ mac, port, (mbps > 0 && mbps < 1000000) ? mbps : null,
+			(type(w[3]) == 'int' && rx >= 0) ? rx : null, (type(w[4]) == 'int' && tx >= 0) ? tx : null ]);
+	}
+	let num = (x, lo, hi) => (type(x) == 'int' || type(x) == 'double') && x >= lo && x <= hi ? x : null;
+	let sta = [];
+	for (let w in (type(d.sta) == 'array' ? d.sta : [])) {
+		if (length(sta) >= MAX_MESH_STA)
+			break;
+		let mac = (type(w) == 'array') ? norm_mac(w[0]) : null;
+		if (mac)
+			push(sta, [ mac, num(w[1], 0, 1e12), num(w[2], 0, 1e12), num(w[3], -127, -1), num(w[4], 1, 1e8) ]);
+	}
+	let ips = [];
+	for (let w in (type(d.ips) == 'array' ? d.ips : [])) {
+		if (length(ips) >= MAX_MESH_IPS)
+			break;
+		let mac = (type(w) == 'array') ? norm_mac(w[0]) : null;
+		if (mac && type(w[1]) == 'string' && match(w[1], RE_IPV4))
+			push(ips, [ mac, w[1] ]);
+	}
+	// internet traffic per host, from a router's hardware offload: [ mac, rx, tx ]
+	let inet = null;
+	if (type(d.inet) == 'array') {
+		inet = [];
+		for (let w in d.inet) {
+			if (length(inet) >= MAX_MESH_STA)
+				break;
+			let mac = (type(w) == 'array') ? norm_mac(w[0]) : null;
+			if (mac)
+				push(inet, [ mac, num(w[1], 0, 1e12), num(w[2], 0, 1e12) ]);
+		}
+	}
+	let up = short_string(d.up, 15);
+	return { name: short_string(d.name, 63), inet, model: short_string(d.model, 63), uptime: num(d.uptime, 0, 1e10),
+		mac: norm_mac(d.mac), up: (up && match(up, RE_PORT)) ? up : null, wired, sta, ips };
+}
+
+function mesh() {
+	let u = connect();
+	let hosts = u?.call('usteer', 'remote_hosts');
+	if (type(hosts) != 'object')
+		return { available: false };
+
+	let aps = [], nodes = {}, stations = [];
+	for (let ip in hosts)
+		if (match(ip, RE_IPV4) && length(aps) < MAX_MESH_APS)
+			push(aps, ip);
+
+	let n = 0, peers = {}, self = null;
+	for (let src in [ u.call('usteer', 'local_info'), u.call('usteer', 'remote_info') ]) {
+		if (type(src) != 'object')
+			continue;
+		for (let key, v in src) {
+			if (n >= MAX_MESH_NODES)
+				break;
+			let node = mesh_node(key, v);
+			if (node) { nodes[key] = node; n++; }
+			let p = node?.ap ? mesh_peer(v.node_info?.vantage) : null;
+			if (p && !peers[node.ap])
+				peers[node.ap] = p;
+			// what this device shares itself (its internet traffic per host)
+			if (node && !node.ap && !self)
+				self = mesh_peer(v.node_info?.vantage);
+		}
+	}
+
+	let clients = u.call('usteer', 'get_clients');
+	if (type(clients) == 'object') {
+		for (let mac, seen in clients) {
+			if (length(stations) >= MAX_MESH_STATIONS)
+				break;
+			mac = norm_mac(mac);
+			if (!mac || type(seen) != 'object')
+				continue;
+			for (let key, s in seen) {
+				let node = nodes[key];
+				if (!node || type(s) != 'object' || s.connected !== true)
+					continue;
+				let sig = +s.signal;
+				push(stations, { mac, node: key, signal: (sig < 0 && sig > -128) ? sig : null });
+			}
+		}
+	}
+
+	return { available: true, aps, nodes, stations, peers, self };
+}
+
 /* ------------------------------------------------------------ methods */
 
 const methods = {
+	mesh: {
+		call: function() {
+			return mesh();
+		}
+	},
+
 	wireless: {
 		call: function() {
 			let reply = connect()?.call('network.wireless', 'status');

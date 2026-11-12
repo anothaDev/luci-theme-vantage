@@ -8,4 +8,10 @@
 #   	option name 'Living room TV'
 #   	option icon 'tv'
 
+# With usteer on the access points, each one shares its name, its wired
+# hosts and its stations' traffic with the others (/etc/init.d/vantage-mesh);
+# set share_mesh to 0 to stop that on this device:
+#
+#   option share_mesh '0'
+
 config vantage 'main'

@@ -57,6 +57,7 @@ const POLICY = {
 	thermal: {},
 	wired: {},
 	routes: {},
+	mesh: {},
 	survey: { device: 'string' },
 	set_alias: { mac: 'string', name: 'string', icon: 'string' },
 	set_quiet: { mac: 'string', quiet: 'boolean' }
@@ -432,6 +433,9 @@ function call(store, method, args) {
 	if (method === 'thermal') return { result: [ 0, { zones: thermal(store.fixtures) } ] };
 	if (method === 'survey') return { result: [ 0, { results: survey(args.device, null, () => false) } ] };
 	if (method === 'wired') return { result: [ 0, { hosts: wired(store.synthetic && store.synthetic.fdb ? store.synthetic.fdb() : null) } ] };
+	/* no usteer in a recording unless one has its replies: the dashboard
+	   then shows this device alone */
+	if (method === 'mesh') return { result: [ 0, store.synthetic && store.synthetic.mesh ? store.synthetic.mesh() : { available: false } ] };
 	if (method === 'routes') {
 		const dump = typeof store.ifaceDump === 'function' ? store.ifaceDump() : ((store.data('network.interface', 'dump', {}) || {}).interface || null);
 		return { result: [ 0, { routes: routes(kernelLookup(dump)) } ] };
