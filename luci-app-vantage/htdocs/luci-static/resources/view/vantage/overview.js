@@ -2150,7 +2150,15 @@ return view.extend({
 			cell.check = c;
 			txt(cell.title, c.title);
 			txt(cell.value, c.value);
-			txt(cell.reason, c.reason);
+			/* the reason in its " · " parts: a part that does not fit goes
+			   whole to the next line, without its dot (app.css), so "1 Gbit/s
+			   link" never breaks after its "/" or inside a word (#122) */
+			var reason = c.reason == null ? '' : String(c.reason);
+			if (cell.reasonText !== reason) {
+				cell.reasonText = reason;
+				dom.content(cell.reason, reason === '' ? [] : E('span', { 'class': 'vt-parts' },
+					reason.split(' · ').map(function(p) { return E('span', { 'class': 'vt-part' }, [ p ]); })));
+			}
 			setTitle(cell.el, c.detail || c.reason);
 			patch(cell.viz, self.checkPicture(c));
 		});
