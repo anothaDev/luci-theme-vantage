@@ -38,8 +38,8 @@ var LOW_IDLE_POLL_MS = 30 * 1000;
    IWINFO_MS, or at once when the interface's state moved (its radio up,
    down, pending or reconfigured in luci.vantage wireless; its channel,
    frequency, BSSID or SSID in hostapd's get_status, asked every poll).
-   The noise floor, which moves, comes every poll from iwinfo survey
-   (1.5-2 ms a radio), its entry for the radio's channel */
+   The noise floor, which moves, comes every poll from luci.vantage
+   survey (1.5-2.5 ms a radio), its entry for the radio's channel */
 var IWINFO_MS = 30 * 1000;
 /* luci-rpc getHostHints reads the DHCP leases and the ARP table: asked
    again after HINTS_MS, and on each of the HINTS_HOT polls after a
@@ -98,8 +98,11 @@ var callHints = rpc.declare({ object: 'luci-rpc', method: 'getHostHints', expect
 var callIwInfo = rpc.declare({ object: 'iwinfo', method: 'info', params: [ 'device' ], expect: { '': {} } });
 var callAssoc = rpc.declare({ object: 'iwinfo', method: 'assoclist', params: [ 'device' ], expect: { results: [] } });
 /* the channels' survey: the noise floor of the radio's own (model.js
-   surveyNoise); null when the call fails */
-var callSurvey = rpc.declare({ object: 'iwinfo', method: 'survey', params: [ 'device' ], expect: { results: [] } });
+   surveyNoise); null when the call fails. The plugin's, read through
+   nl80211, not iwinfo's: rpcd's iwinfo survey crashes rpcd on every
+   iwinfo backend but nl80211's (MediaTek's mtwifi in the mt798x builds,
+   #124) */
+var callSurvey = rpc.declare({ object: 'luci.vantage', method: 'survey', params: [ 'device' ], expect: { results: [] } });
 var callRrdns = rpc.declare({ object: 'network.rrdns', method: 'lookup', params: [ 'addrs', 'timeout', 'limit' ], expect: { '': {} } });
 var callMdns = rpc.declare({ object: 'umdns', method: 'hosts' });
 var callUciGet = rpc.declare({ object: 'uci', method: 'get', params: [ 'config' ], expect: { values: {} } });
