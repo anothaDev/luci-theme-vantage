@@ -37,7 +37,9 @@
 
    For previews: VANTAGE_REPLAY_PAIR_SSH sets the SSH state the access
    point side reports (ok, no-dropbear, no-key-options, unsupported,
-   no-host-key, not-running, no-address), and
+   no-host-key, not-running, keys-unreadable, no-address; with
+   keys-unreadable no router is listed and none can be revoked, as with
+   the key file unread), and
    VANTAGE_REPLAY_PAIR_NO_DBCLIENT=1 takes the SSH client away (no code,
    router_code answers no-dbclient).
 
@@ -224,14 +226,14 @@ function stateOf(store) {
 function routerCode(s) { return s.dbclient && s.routerKey ? `vantage-router 1 ssh-ed25519 ${s.routerKey} ${nameOf(s.host, 'router')}` : null; }
 function apReply(s) { return `vantage-ap 1 ssh-ed25519 ${s.hostKey} ${s.addr} ${s.port} ${s.mac} ${nameOf(s.host, 'access-point')}`; }
 
+/* the key file unread: the plugin lists no router then, and says so */
+function unread(s) { return s.ssh === 'keys-unreadable'; }
+
 function status(s) {
+	const routers = unread(s) ? [] : s.routers.map(r => ({ name: r.name, key: r.key }));
 	return {
-		router: { code: routerCode(s), aps: s.aps.map(a => ({ id: a.id, name: a.name, addr: a.addr, port: a.port })) },
-		ap: {
-			ssh: s.ssh,
-			routers: s.routers.map(r => ({ name: r.name, key: r.key })),
-			reply: s.ssh === 'ok' && s.routers.length ? apReply(s) : null
-		}
+		router: { code: routerCode(s), aps: s.aps.map(a => ({ id: a.id, name: a.name, addr: a.addr, port: a.port })), unread: false },
+		ap: { ssh: s.ssh, routers, unread: unread(s), reply: s.ssh === 'ok' && routers.length ? apReply(s) : null }
 	};
 }
 
@@ -271,6 +273,7 @@ function allowRouter(s, args) {
 
 function revokeRouter(s, args) {
 	const k = key(args.key);
+	if (unread(s)) return { error: 'failed' };
 	const n = s.routers.length;
 	s.routers = s.routers.filter(r => !k || r.key !== k);
 	return s.routers.length < n ? { ok: true } : { error: 'unknown' };

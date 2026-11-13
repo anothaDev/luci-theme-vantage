@@ -6,7 +6,8 @@
 # Access points. Unlike the dashboard it writes outside its own config:
 # its key and paired list in /etc/vantage, and, on an access point, a
 # router's key in /etc/dropbear/authorized_keys, limited to a read-only
-# report command (own ACL group, luci-app-vantage-aps).
+# report command (own ACL groups: luci-app-vantage-aps to pair,
+# luci-app-vantage-aps-view to see the access points).
 #
 # This is free software, licensed under the GNU General Public License,
 # version 3 or (at your option) any later version.

@@ -130,9 +130,7 @@ function load() {
 // and with it every reply, until someone writes to it. What those two own
 // in /tmp no other account can swap, nor fill with addresses to try.
 function leases() {
-	let f = lstat(LEASES);
-
-	return (f?.type == 'file' && (f.uid == 0 || f.uid === lstat(RUN)?.uid)) ? readfile(LEASES, MAX_TABLE) : null;
+	return vaps.own_file(lstat(LEASES), lstat(RUN)?.uid) ? readfile(LEASES, MAX_TABLE) : null;
 }
 
 function took(a, s, r, at) {
@@ -153,6 +151,7 @@ function done(a, s, home, code) {
 	s.timer = null;
 	s.busy = false;
 	s.hold = false;
+	s.wait = false;
 
 	let out = readfile(home + '/out', MAX_OUT + 1), err = readfile(home + '/err', MAX_ERR);
 
@@ -196,6 +195,16 @@ function done(a, s, home, code) {
 		return;
 	}
 
+	// its own answer from another address (only the holder of the pinned
+	// key gets as far as denied, missing or invalid): it is there now,
+	// and that is what is wrong with it
+	if (tried && !vaps.moved(e)) {
+		s.addr = tried;
+		s.tried = {};
+		s.error = e;
+		return;
+	}
+
 	// another address that was not it: the error stays the one where it was paired
 	if (tried)
 		s.tried[tried] = true;
@@ -227,6 +236,7 @@ function fetch(a) {
 	if (!writefile(home + '/.ssh/known_hosts', to + ' ssh-ed25519 ' + a.key + '\n')) {
 		s.error = 'unreachable';
 		s.trying = null;
+		s.hold = s.wait = false;
 		return;
 	}
 
@@ -244,6 +254,7 @@ function fetch(a) {
 		s.busy = false;
 		s.error = 'unreachable';
 		s.trying = null;
+		s.hold = s.wait = false;
 		return;
 	}
 
@@ -282,6 +293,8 @@ function snapshot() {
 
 	for (let a in aps) {
 		let s = st[a.id], age = (s.ok_at != null) ? t - s.ok_at : null, r = null;
+		// a failure from before a pause in looking says nothing of now
+		let error = s.wait ? null : s.error;
 
 		// a pause in looking ages no report: the last one stays until the
 		// first fetch after it has ended
@@ -296,8 +309,8 @@ function snapshot() {
 
 		push(out, {
 			id: a.id, name: a.name, addr: s.addr,
-			state: vaps.state(!!r, s.error),
-			error: s.error, age, report: r
+			state: vaps.state(!!r, error),
+			error, age, report: r
 		});
 	}
 
@@ -317,12 +330,14 @@ if (!ubus || !ubus.publish('vantage.collector', {
 			load();
 
 			// someone looks again: every address may be tried again, and
-			// what each said last stands until its next fetch has ended,
-			// unless the fetch before the pause had already failed
+			// what each said last stands until its next fetch has ended.
+			// One whose fetch before the pause had failed is neither fine
+			// nor known to be failing still: it waits for that fetch
 			if (!ticker) {
 				for (let i, s in st) {
 					s.tried = {};
 					s.hold = !!s.report && !s.error;
+					s.wait = !!s.error;
 				}
 
 				tick();

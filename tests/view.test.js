@@ -1840,7 +1840,8 @@ test('paired access points: the report rides the slow poll; a failed call is non
 	REPLIES['luci.vantage wireless'] = () => Promise.resolve({});
 	REPLIES['luci.vantage thermal'] = () => Promise.resolve([]);
 	REPLIES['luci.vantage wired'] = () => Promise.resolve({ hosts: [] });
-	REPLIES['vantage.collector report'] = () => { asked++; return reply ? Promise.resolve(reply) : Promise.reject(new Error('Object not found')); };
+	REPLIES['vantage.collector report'] = () => { asked++; return reply ? Promise.resolve(reply) : Promise.reject(new Error('XHR request timed out')); };
+	REPLIES['session access'] = (scope, object, fn) => Promise.resolve(scope === 'access-group' && object === 'luci-app-vantage-aps-view' && fn === 'read');
 	const self = Object.create(view);
 	try {
 		assert.deepEqual((await self.fetch()).collector, reply);
@@ -1866,7 +1867,7 @@ test('paired access points: the report rides the slow poll; a failed call is non
 	} finally {
 		global.L = saved.L; Date.now = saved.now;
 		if (saved.document === undefined) delete global.document; else global.document = saved.document;
-		for (const k of Object.keys(REPLIES)) if (/^(luci\.vantage (wireless|thermal|wired)|vantage\.collector)/.test(k)) delete REPLIES[k];
+		for (const k of Object.keys(REPLIES)) if (/^(luci\.vantage (wireless|thermal|wired)|vantage\.collector|session access)/.test(k)) delete REPLIES[k];
 	}
 });
 
@@ -1874,7 +1875,7 @@ test('paired access points: the report rides the slow poll; a failed call is non
    the test's timers and clock: nothing here waits for real */
 async function collectorPolls(fn) {
 	const saved = { L: global.L, document: global.document, now: Date.now, setTimeout: global.setTimeout, clearTimeout: global.clearTimeout };
-	const c = { t: 1e12, timers: [], seq: 0, asked: 0, calls: [], assoc: 0, answer: null };
+	const c = { t: 1e12, timers: [], seq: 0, asked: 0, calls: [], assoc: 0, answer: null, may: true, probed: 0 };
 	Date.now = () => c.t;
 	global.setTimeout = (f, ms) => { const id = ++c.seq; c.timers.push({ id, f, at: c.t + ms }); return id; };
 	global.clearTimeout = id => { c.timers = c.timers.filter(x => x.id !== id); };
@@ -1897,6 +1898,8 @@ async function collectorPolls(fn) {
 		c.asked++;
 		return c.answer ? c.answer() : new Promise((resolve, reject) => { c.calls.push({ resolve, reject }); });
 	};
+	/* c.may: whether the login has the add-on's read group (rpcd answers false for a group that is not there) */
+	REPLIES['session access'] = (scope, object, fn) => { c.probed++; return Promise.resolve(scope === 'access-group' && object === 'luci-app-vantage-aps-view' && fn === 'read' && c.may); };
 	c.self = Object.create(view);
 	/* a poll started now: [ its result once it has one, else null ] */
 	c.poll = () => { const box = [ null ]; c.self.fetch().then(r => { box[0] = r; }, e => { box[0] = e; }); return box; };
@@ -1905,7 +1908,7 @@ async function collectorPolls(fn) {
 		Object.assign(global, { L: saved.L, setTimeout: saved.setTimeout, clearTimeout: saved.clearTimeout });
 		Date.now = saved.now;
 		if (saved.document === undefined) delete global.document; else global.document = saved.document;
-		for (const k of Object.keys(REPLIES)) if (/^(luci\.vantage (wireless|thermal|wired)|vantage\.collector|iwinfo assoclist)/.test(k)) delete REPLIES[k];
+		for (const k of Object.keys(REPLIES)) if (/^(luci\.vantage (wireless|thermal|wired)|vantage\.collector|iwinfo assoclist|session access)/.test(k)) delete REPLIES[k];
 	}
 }
 
@@ -1930,6 +1933,70 @@ test('paired access points: the collector\'s call is a request of its own, and a
 	assert.equal(c.timers.length, 0);
 }));
 
+/* The dashboard without the add-on (every user of 1.0.x), and a login that has the dashboard alone: the add-on's
+   read group is not theirs, and rpcd says so once */
+test('paired access points: a login without the add-on\'s read group never calls the collector, and is asked about the group once', () => collectorPolls(async c => {
+	c.may = false;
+	c.answer = () => Promise.resolve({ aps: [ { id: AP_ID } ] });
+	for (let i = 0; i < 30; i++) {
+		const p = c.poll();
+		await c.advance(0);
+		assert.deepEqual([ p[0] && p[0].collector, c.asked, c.timers.length ], [ null, 0, 0 ], 'poll ' + i);
+		await c.advance(5e3);
+	}
+	assert.equal(c.probed, 1, 'one question about the group for the whole page');
+}));
+
+test('paired access points: where no collector answers (nothing paired), it is asked again once a minute, not every poll', () => collectorPolls(async c => {
+	const reply = { aps: [ { id: AP_ID } ] };
+	c.answer = () => Promise.reject(new Error('RPC call to vantage.collector/report failed with error -32000: Object not found'));
+	for (let i = 0; i < 12; i++) {
+		const p = c.poll();
+		await c.advance(0);
+		assert.deepEqual([ p[0] && p[0].collector, c.asked ], [ null, 1 ], 'poll ' + i + ': not asked again');
+		await c.advance(5e3);
+	}
+	/* a minute after that answer: again, and an access point paired meanwhile is there */
+	c.answer = () => Promise.resolve(reply);
+	const p = c.poll();
+	await c.advance(0);
+	assert.deepEqual([ p[0].collector, c.asked ], [ reply, 2 ]);
+	/* any other failure (a timeout, a refusal) is asked again at the next poll, as before */
+	for (const text of [ 'XHR request timed out', 'RPC call to vantage.collector/report failed with error -32002: Access denied' ]) {
+		c.answer = () => Promise.reject(new Error(text));
+		await c.advance(5e3);
+		c.poll();
+		await c.advance(0);
+		const asked = c.asked;
+		c.answer = () => Promise.resolve(reply);
+		await c.advance(5e3);
+		const q = c.poll();
+		await c.advance(0);
+		assert.deepEqual([ q[0].collector, c.asked ], [ reply, asked + 1 ], text);
+	}
+}));
+
+test('paired access points: an answer from before a pause is not shown as this poll\'s', () => collectorPolls(async c => {
+	const reply = { aps: [ { id: AP_ID } ] }, newer = { aps: [ { id: AP_ID, name: 'ap-hall' } ] };
+	c.answer = () => Promise.resolve(reply);
+	const ok = c.poll();
+	await c.advance(0);
+	assert.deepEqual(ok[0].collector, reply);
+	/* the tab was hidden for ten minutes; the first call after it stays out past the deadline */
+	c.answer = null;
+	await c.advance(600e3);
+	const back = c.poll();
+	await c.advance(4e3);
+	assert.deepEqual([ back[0] && back[0].collector, c.asked ], [ null, 2 ], 'no access points rather than those of ten minutes ago');
+	/* its answer, late, is the next poll's */
+	c.calls.shift().resolve(newer);
+	c.answer = () => Promise.resolve(newer);
+	await c.advance(5e3);
+	const next = c.poll();
+	await c.advance(0);
+	assert.deepEqual(next[0].collector, newer);
+}));
+
 test('paired access points: while the collector\'s call is out no second one is made and no later poll waits; its late answer is the next poll\'s', () => collectorPolls(async c => {
 	const reply = { aps: [ { id: AP_ID } ] }, newer = { aps: [ { id: AP_ID, name: 'ap-hall' } ] };
 	/* an answer in time, as before */
@@ -1944,12 +2011,13 @@ test('paired access points: while the collector\'s call is out no second one is 
 	await c.advance(4e3);
 	assert.ok(late[0], 'the poll is over at the deadline');
 	assert.deepEqual([ late[0].collector, c.asked ], [ reply, 2 ]);
-	/* the polls after it: no second call beside the one that is out, and no wait */
+	/* the polls after it: no second call beside the one that is out, and no wait. The answer it had stands for two
+	   slow polls and the wait; older than that it says nothing of now, and no access points are shown */
 	for (let i = 0; i < 3; i++) {
 		await c.advance(5e3);
 		const p = c.poll();
 		await c.advance(0);
-		assert.deepEqual([ p[0] && p[0].collector, c.asked, c.calls.length, c.timers.length ], [ reply, 2, 1, 0 ], 'poll ' + i);
+		assert.deepEqual([ p[0] && p[0].collector, c.asked, c.calls.length, c.timers.length ], [ i === 0 ? reply : null, 2, 1, 0 ], 'poll ' + i);
 	}
 	/* it answers after all: the next poll has that answer, and asks again */
 	c.calls.shift().resolve(newer);
@@ -2002,7 +2070,7 @@ test('paired access points: a failed collector call shows nothing, in time or la
 			model.build({ ifaces: p[0].ifaces, devs: p[0].devs, fdb: p[0].fdb }), text + ': as without the add-on');
 		/* refused after the deadline: the poll that waited keeps what it had, the next one has none */
 		c.answer = () => Promise.resolve(reply);
-		await c.advance(5e3);
+		await c.advance(60e3);
 		c.poll();
 		await c.advance(0);
 		c.answer = null;
@@ -2020,6 +2088,7 @@ test('paired access points: a failed collector call shows nothing, in time or la
 		assert.deepEqual([ after[0].collector, shown(after[0]) ], [ null, [] ], text + ': late');
 		/* that last call never settles: the next round starts as if it had */
 		c.self.collectorCall = null;
+		await c.advance(60e3);
 	}
 	/* an answer that is no report (LuCI gives {} for a ubus status without data) names none either */
 	for (const junk of [ {}, 'x', [ 1 ], 7 ]) {

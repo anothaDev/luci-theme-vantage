@@ -144,17 +144,21 @@ const DUMP = { interface: [ { interface: 'loopback', up: true, l3_device: 'lo', 
 test('vantage.aps: an access point is looked for on the network it was paired on only', { skip: NO_UCODE }, () => {
 	const N = a => [ 'network_of', a, DUMP.interface ];
 	const nets = runModule([ N('192.0.2.10'), N('192.0.2.255'), N('198.51.100.10'), N('198.51.100.200'), N('203.0.113.6'), N('203.0.113.9'), N('2001:db8:1::10'), N('2001:DB8:1:0::10'),
-		N('2001:db8:ffff::9'), N('2001:db8:2::10'), N('192.0.3.10'), N(null), N('x'), [ 'network_of', '192.0.2.10', null ],
+		N('2001:db8:ffff::9'), N('2001:db8:2::10'), N('198.51.100.129'), N(null), N('x'), [ 'network_of', '192.0.2.10', null ],
 		[ 'network_of', '192.0.2.10', [ Object.assign({}, LAN_IF, { up: false }) ] ], [ 'network_of', '192.0.2.10', [ Object.assign({}, LAN_IF, { l3_device: '../x' }) ] ],
 		[ 'network_of', '192.0.2.10', [ { interface: 'lan', up: true, l3_device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 0 } ] }, null, 7 ] ] ]);
 	assert.deepEqual(nets.map(n => n && n.dev), [ 'br-lan', 'br-lan', 'br-guest', null, 'eth1', null, 'br-lan', 'br-lan', 'eth1', null, null, null, null, null, null, null, null ]);
 	assert.deepEqual(nets[0], LAN_NET);
+	/* a wider subnet around a network's own on another interface (an uplink whose DHCP hands out a wide one) that netifd lists first: the narrowest one that holds the address */
+	const wide = { interface: 'internet', up: true, l3_device: 'eth1', 'ipv4-address': [ { address: '198.51.100.2', mask: 24 } ] };
+	assert.deepEqual(runModule([ [ 'network_of', '198.51.100.10', [ wide, GUEST_IF ] ], [ 'network_of', '198.51.100.10', [ GUEST_IF, wide ] ], [ 'network_of', '198.51.100.200', [ wide, GUEST_IF ] ] ]).map(n => n && n.dev),
+		[ 'br-guest', 'br-guest', 'eth1' ]);
 	assert.deepEqual(nets[6], LAN_NET, 'paired by an IPv6 address: that network\'s IPv4 subnets');
 	/* the neighbour table takes a row under any MAC and address from any device of a network: rows of other
 	   networks, rows outside the network's subnets and leases outside them are not followed */
 	const row = (ip, dev) => ip + ' 0x1 0x2 ' + AP_MAC + ' * ' + dev + '\n';
 	const arp = 'IP address HW type Flags HW address Mask Device\n' + row('203.0.113.5', 'eth1') + row('198.51.100.9', 'br-guest') + row('192.0.2.50', 'br-guest') + row('192.0.2.51', 'eth1') +
-		row('198.51.100.10', 'br-lan') + row('192.0.3.7', 'br-lan') + row('192.0.2.60', 'br-lan') + row('192.0.2.61', 'br-lan.10');
+		row('198.51.100.10', 'br-lan') + row('203.0.113.77', 'br-lan') + row('192.0.2.60', 'br-lan') + row('192.0.2.61', 'br-lan.10');
 	const leases = '1 ' + AP_MAC + ' 198.51.100.20 x *\n1 ' + AP_MAC + ' 192.0.2.70 x *\n';
 	assert.deepEqual(runModule([ [ 'find_addrs', AP_MAC, arp, leases, LAN_NET ], [ 'find_addrs', AP_MAC, arp, leases, null ], [ 'find_addrs', AP_MAC, arp, leases, { dev: 'br-lan', nets: [] } ],
 		[ 'find_addrs', AP_MAC, arp, leases, { dev: 'eth1', nets: [ [ [ 203, 0, 113, 2 ], 29 ] ] } ], [ 'find_addrs', AP_MAC, arp, leases, { dev: '../x', nets: LAN_NET.nets } ] ]),
@@ -187,7 +191,7 @@ test('vantage.aps: how a fetch ended, the state it makes, and where to look next
 	assert.deepEqual(runModule([
 		E(0, '{}', ''), E(0, '{}', '', true), E(0, '', ''), E(0, 'x'.repeat(101), ''), E(0, null, ''), E(1, '{}', ''),
 		E(1, '', 'dbclient: Connection to root@192.0.2.10:22 exited: Connect failed: Connection refused'), E(1, '', null),
-		E(1, '', '\n\nssh-ed25519 host key mismatch for 192.0.2.10 !\nFingerprint is SHA256:x'), E(1, '', "Host '192.0.2.10' key unknown.\nexited: Not accepted automatically"),
+		E(1, '', '\n\nssh-ed25519 host key mismatch for 192.0.2.10 !\nFingerprint is SHA256:x'), E(1, '', "Host '192.0.2.10' key unknown.\n" + DBC + 'Not accepted automatically'),
 		E(1, '', DBC + 'No auth methods could be used.'), E(127, '', 'ash: /usr/libexec/vantage/report: not found'), E(126, '', 'ash: /usr/libexec/vantage/report: No such file or directory'),
 		E(127, '', 'ash: something-else: not found')
 	]), [ null, 'timeout', 'unreachable', 'invalid', 'unreachable', 'invalid', 'unreachable', 'unreachable', 'hostkey', 'hostkey', 'denied', 'missing', 'missing', 'unreachable' ],
@@ -213,7 +217,17 @@ test('vantage.aps: how a fetch ended, the state it makes, and where to look next
 		E(0, '', '\n' + DBC + 'Disconnect received\n'), E(1, '', '\n' + DBC + 'Remote closed the connection\n'),
 		/* and should dbclient ever word its own line otherwise: still nothing of the other end's counts */
 		E(1, '', "dbclient: remote version 'SSH-1.5-No auth methods could be used.'"), E(1, '', "dbclient: gone: 'ash: /usr/libexec/vantage/report: not found'"),
-		E(0, '', "dbclient: closed: 'SSH-1.5-Disconnect received'"), E(1, '', 'Permission denied'), E(0, '', 'exited: No auth methods could be used.')
+		E(0, '', "dbclient: closed: 'SSH-1.5-Disconnect received'"), E(1, '', 'Permission denied'), E(0, '', 'exited: No auth methods could be used.'),
+		/* dbclient's words for a host key it does not take, in the version line: not its verdict on a key */
+		E(1, '', '\n' + DBC + "Incompatible remote version 'SSH-1.5-OpenSSH host key mismatch'\n"),
+		E(1, '', '\n' + DBC + "Incompatible remote version 'SSH-1.5-ssh-ed25519 host key mismatch for 192.0.2.10 !'\n"),
+		E(1, '', '\n' + DBC + "Incompatible remote version 'SSH-1.5-Not accepted automatically'\n"),
+		E(1, '', '\n' + DBC + "Incompatible remote version 'SSH-1.5-Didn't validate host key'\n"),
+		/* a Dropbear that cuts its message short (2024.86 and older) ends the line with the other end's text and no quote:
+		   the first " exited:" of the line is still dbclient's own, and its reason is still the whole of what follows */
+		E(1, '', '\n' + DBC + "Incompatible remote version 'SSH-1.5-" + 'x'.repeat(60) + ' exited: No auth methods could be used.\n'),
+		E(1, '', '\n' + DBC + "Incompatible remote version 'SSH-1.5-" + 'x'.repeat(60) + ' x: Connection to y exited: No auth methods could be used.\n'),
+		E(1, '', '\n' + DBC + "Incompatible remote version 'SSH-1.5-" + 'x'.repeat(60) + ' exited: Not accepted automatically\n')
 	];
 	const said = runModule(liar);
 	assert.deepEqual(said, liar.map(() => 'unreachable'));
@@ -226,6 +240,19 @@ test('vantage.aps: how a fetch ended, the state it makes, and where to look next
 		[ 'next_addr', AP_MAC, '192.0.2.40', { '192.0.2.44': true, '192.0.2.43': true }, arp, leases, LAN_NET ], [ 'next_addr', AP_MAC, '192.0.2.9', null, '', '', LAN_NET ],
 		[ 'next_addr', AP_MAC, '192.0.2.40', {}, arp, leases, null ] ]),
 		[ '192.0.2.43', '192.0.2.44', null, null, null ]);
+	/* four leases under its MAC that are not it (a device of the network asked dnsmasq for them, which writes the newest first)
+	   do not keep the real one out: what was tried, and where it is known, is left out before the four are counted */
+	const fake = [ 201, 202, 203, 204 ].map(n => '192.0.2.' + n), crowd = fake.map(a => '1 ' + AP_MAC + ' ' + a + ' x *\n').join('') + '1 ' + AP_MAC + ' 192.0.2.77 x *\n';
+	const all = Object.fromEntries(fake.map(a => [ a, true ]));
+	assert.deepEqual(runModule([ [ 'find_addrs', AP_MAC, '', crowd, LAN_NET ], [ 'find_addrs', AP_MAC, '', crowd, LAN_NET, all ], [ 'next_addr', AP_MAC, '192.0.2.10', {}, '', crowd, LAN_NET ],
+		[ 'next_addr', AP_MAC, '192.0.2.10', all, '', crowd, LAN_NET ], [ 'next_addr', AP_MAC, '192.0.2.201', { '192.0.2.202': true }, '', crowd, LAN_NET ],
+		[ 'next_addr', AP_MAC, '192.0.2.77', all, '', crowd, LAN_NET ], [ 'next_addr', AP_MAC, null, 'junk', '', crowd, LAN_NET ] ]),
+		[ fake, [ '192.0.2.77' ], '192.0.2.201', '192.0.2.77', '192.0.2.203', null, '192.0.2.201' ]);
+	/* a lease file is read as text only as a plain file of root's or of the daemon's own account */
+	const F = (st, uid) => [ 'own_file', st, uid ];
+	assert.deepEqual(runModule([ F({ type: 'file', uid: 0 }, 453), F({ type: 'file', uid: 453 }, 453), F({ type: 'file', uid: 1000 }, 453), F({ type: 'file', uid: 453 }, null), F({ type: 'file', uid: 0 }, null),
+		F({ type: 'fifo', uid: 0 }, 0), F({ type: 'link', uid: 0 }, 0), F({ type: 'directory', uid: 0 }, 0), F({ type: 'file' }, 453), F({ type: 'file', uid: '0' }, 453), F(null, 0), F('file', 0) ]),
+		[ true, true, false, false, true, false, false, false, false, false, false, false ]);
 });
 
 const MAC_ = n => '00:00:5e:00:53:' + n.toString(16).padStart(2, '0');
@@ -302,11 +329,13 @@ test('vantage.aps: a router\'s key line is written one way and known again only 
 	assert.deepEqual(runModule([ [ 'auth_line', K1, 'gw' ], [ 'auth_line', mixed, 'My-Router.lan' ] ]), [ LINE(K1, 'gw'), LINE(mixed, 'My-Router.lan') ]);
 	assert.match(COMMENT(mixed, 'My-Router.lan'), /^[A-Za-z0-9.,_+@-]+$/, 'only what dropbear hands on as SSH_PUBKEYINFO');
 	const P = l => [ 'parse_auth_line', l ], one = { key: K1, name: 'gw', comment: COMMENT(K1, 'gw') };
-	assert.deepEqual(runModule([ P(LINE(K1, 'gw')), P(LINE(K1, 'gw') + ' '), P(LINE(K1, 'gw') + '\r'), P(LINE(K1, 'gw') + ' \t\r') ]), [ one, one, one, one ], 'an editor\'s blanks or carriage return after it: still that line');
+	assert.deepEqual(runModule([ P(LINE(K1, 'gw')), P(LINE(K1, 'gw') + ' '), P(LINE(K1, 'gw') + '\r'), P(LINE(K1, 'gw') + '  \r') ]), [ one, one, one, one ], 'an editor\'s blanks or carriage return after it: still that line');
 	const not = [ OPTIONS + ' ssh-ed25519 ' + K1 + ' vantage-router@gw', OPTIONS + ' ssh-ed25519 ' + K1 + ' ' + COMMENT(K2, 'gw'), OPTIONS + ' ssh-ed25519 ' + K1 + ' ' + COMMENT(K1, 'g w'),
 		OPTIONS + ' ssh-ed25519 ' + K1 + ' ' + COMMENT(K1, 'gw') + '+x', OPTIONS + ' ssh-ed25519 ' + K1 + ' ' + COMMENT(K1, 'gw') + ' more', ' ' + LINE(K1, 'gw'), LINE(K1, 'gw').replace(' ssh-ed25519 ', '  ssh-ed25519 '),
 		LINE(K1, 'gw').replace(',no-port-forwarding', ''), LINE(K1, 'gw').replace('/vantage/report', '/vantage/report2'), 'ssh-ed25519 ' + K1 + ' ' + COMMENT(K1, 'gw'), LINE(K1, 'gw').replace(K1, 'AAAA'),
-		LINE(K1, 'gw').replace('vantage-router@', 'vantage-routers@'), LINE(K1, 'gw') + '\u0000', LINE(K1, 'gw') + '\nx', '', null, 7 ];
+		LINE(K1, 'gw').replace('vantage-router@', 'vantage-routers@'), LINE(K1, 'gw') + '\u0000', LINE(K1, 'gw') + '\nx', '', null, 7,
+		/* a tab after it: dropbear takes the key and names no comment to the report, so it is not a line the page may call its own */
+		LINE(K1, 'gw') + '\t', LINE(K1, 'gw') + ' \t\r', LINE(K1, 'gw') + '\t ' ];
 	assert.deepEqual(runModule(not.map(P)), not.map(() => null));
 });
 
@@ -392,8 +421,15 @@ test('pair: allow_router adds one restricted line and keeps every other byte', {
 	assert.deepEqual(results[1].reply, { reply }, 'again: the same answer, no second line');
 	assert.equal(read(sb, 'etc/dropbear/authorized_keys'), own + LINE(K1, 'gw') + '\n');
 	assert.equal(mode(sb, 'etc/dropbear/authorized_keys'), 0o600);
-	assert.deepEqual(results[2].reply.ap, { ssh: 'ok', routers: [ { name: 'gw', key: K1 } ], reply });
+	assert.deepEqual(results[2].reply.ap, { ssh: 'ok', routers: [ { name: 'gw', key: K1 } ], unread: false, reply });
 	assert.ok(ubus.every(c => [ 'service list dropbear', 'network.interface.lan status' ].includes(c)), JSON.stringify(ubus));
+	/* a line as an earlier build of this add-on wrote it (no key id in its comment), or one with a tab after it: Dropbear
+	   takes the key, the report gives it nothing, and the page neither lists nor replaces it. It is the administrator's to remove */
+	for (const old of [ OPTIONS + ' ssh-ed25519 ' + K1 + ' vantage-router@gw\n', LINE(K1, 'gw') + '\t\n' ]) {
+		const was = runPlugin({ auth: own + old }, [ { method: 'status' }, { method: 'revoke_router', args: { key: K1 } }, { method: 'allow_router', args: { code: routerCode(K1, 'gw') } } ]);
+		assert.deepEqual([ was.results[0].reply.ap.routers, was.results[1].reply, was.results[2].reply ], [ [], { error: 'unknown' }, { error: 'duplicate' } ]);
+		assert.equal(read(was.sb, 'etc/dropbear/authorized_keys'), own + old);
+	}
 	assert.equal(fs.existsSync(sb.p('etc/dropbear/authorized_keys.vantage')), false);
 });
 
@@ -483,13 +519,17 @@ test('pair: a line an editor left a blank or a carriage return on is still liste
 test('pair: a key file or a paired list that is there and cannot be read whole is never written anew', { skip: NO_UCODE }, () => {
 	const code = routerCode(K1, 'gw'), own = 'ssh-ed25519 ' + K3 + ' admin@laptop\n';
 	const asDir = (sb, rel) => fs.mkdirSync(sb.p(rel), { recursive: true });
-	/* the keys: a name that is there and gives no text (here a directory; an I/O error reads the same), and a file longer than is read */
+	/* a link to nothing: there, and no text to read. Unlike a directory, a rename would replace it, so the file itself shows whether anything was written */
+	const asLink = (sb, rel) => { fs.mkdirSync(path.dirname(sb.p(rel)), { recursive: true }); fs.symlinkSync(sb.p('nowhere'), sb.p(rel)); };
+	const isLink = (sb, rel) => fs.lstatSync(sb.p(rel)).isSymbolicLink() && fs.readlinkSync(sb.p(rel)) === sb.p('nowhere');
+	/* the keys: a name that is there and gives no text (a directory, a link to nothing; an I/O error reads the same), and a file longer than is read */
 	const cases = [ [ 'unreadable', sb => asDir(sb, 'etc/dropbear/authorized_keys'), sb => fs.statSync(sb.p('etc/dropbear/authorized_keys')).isDirectory() ],
+		[ 'a link to nothing', sb => asLink(sb, 'etc/dropbear/authorized_keys'), sb => isLink(sb, 'etc/dropbear/authorized_keys') ],
 		[ 'too long', sb => fs.writeFileSync(sb.p('etc/dropbear/authorized_keys'), own + '#'.repeat(262144 - own.length) + '\n'), sb => read(sb, 'etc/dropbear/authorized_keys').length === 262145 ] ];
 	for (const [ what, make, intact ] of cases) {
 		const { results, sb } = runPlugin({ before: make }, [ { method: 'allow_router', args: { code } }, { method: 'revoke_router', args: { key: K1 } }, { method: 'status' } ]);
 		assert.deepEqual([ results[0].reply, results[1].reply ], [ { error: 'keys-unreadable' }, { error: 'failed' } ], what);
-		assert.deepEqual(results[2].reply.ap, { ssh: 'keys-unreadable', routers: [], reply: null }, what + ': the page is told it does not know, not that there is none');
+		assert.deepEqual(results[2].reply.ap, { ssh: 'keys-unreadable', routers: [], unread: true, reply: null }, what + ': the page is told it does not know, not that there is none');
 		assert.ok(intact(sb), what + ': left as it was');
 		assert.equal(fs.existsSync(sb.p('etc/dropbear/authorized_keys.vantage')), false);
 	}
@@ -507,15 +547,33 @@ test('pair: a key file or a paired list that is there and cannot be read whole i
 	/* the paired list */
 	const ap = apCode(K2, '192.0.2.20', 22, 'ap-hall'), kept = [ { id: '00000000000000a1', name: 'ap-den', key: K3, addr: '192.0.2.11', port: 22, mac: AP_MAC } ];
 	const long = JSON.stringify(kept) + ' '.repeat(65537);
+	const text = s => [ sb => { fs.mkdirSync(sb.p('etc/vantage'), { recursive: true }); fs.writeFileSync(sb.p('etc/vantage/aps.json'), s); }, sb => read(sb, 'etc/vantage/aps.json') === s ];
+	/* edited by hand: a quote lost, one entry's address typed over, no list at all, an entry twice. Written back, each would lose a pairing */
+	const three = [ kept[0], Object.assign({}, kept[0], { id: '00000000000000a2', key: K1 }), Object.assign({}, kept[0], { id: '00000000000000a3', key: key(5) }) ];
+	const broken = JSON.stringify(three).replace('"name":"ap-den"', '"name":"ap-den'), typed = JSON.stringify([ three[0], Object.assign({}, three[1], { addr: 'ap-hall.lan' }), three[2] ]);
 	for (const [ what, make, intact ] of [ [ 'unreadable', sb => asDir(sb, 'etc/vantage/aps.json'), sb => fs.statSync(sb.p('etc/vantage/aps.json')).isDirectory() ],
-		[ 'too long', sb => { fs.mkdirSync(sb.p('etc/vantage'), { recursive: true }); fs.writeFileSync(sb.p('etc/vantage/aps.json'), long); }, sb => read(sb, 'etc/vantage/aps.json') === long ] ]) {
+		[ 'a link to nothing', sb => asLink(sb, 'etc/vantage/aps.json'), sb => isLink(sb, 'etc/vantage/aps.json') ],
+		[ 'too long', ...text(long) ], [ 'not JSON', ...text(broken) ], [ 'an entry that is none', ...text(typed) ], [ 'no list', ...text('{"aps":[]}') ], [ 'an entry twice', ...text(JSON.stringify([ kept[0], kept[0] ])) ] ]) {
 		const { results, sb } = runPlugin({ haveKey: true, before: make }, [ { method: 'add_ap', args: { code: ap } }, { method: 'remove_ap', args: { id: kept[0].id } }, { method: 'status' } ]);
-		assert.deepEqual([ results[0].reply, results[1].reply, results[2].reply.router.aps ], [ { error: 'failed' }, { error: 'failed' }, [] ], what);
+		assert.deepEqual([ results[0].reply, results[1].reply, results[2].reply.router.aps, results[2].reply.router.unread ], [ { error: 'failed' }, { error: 'failed' }, [], true ], what);
 		assert.ok(intact(sb), what + ': left as it was');
 		assert.equal(read(sb, 'collector.log'), null, what);
 	}
-	/* no file at all is no list yet, as before */
-	assert.deepEqual(runPlugin({ haveKey: true }, [ { method: 'add_ap', args: { code: ap } } ]).results[0].reply, { id: '0123456789abcdef' });
+	/* no file at all is no list yet, as before, and so is an empty one; a list as the add-on wrote it is read */
+	for (const before of [ undefined, text('')[0], text(' \n')[0], text('[]')[0] ]) {
+		const fresh = runPlugin({ haveKey: true, before }, [ { method: 'add_ap', args: { code: ap } }, { method: 'status' } ]).results;
+		assert.deepEqual([ fresh[0].reply, fresh[1].reply.router.unread, fresh[1].reply.router.aps.length ], [ { id: '0123456789abcdef' }, false, 1 ]);
+	}
+	assert.deepEqual(runPlugin({ haveKey: true, before: text(JSON.stringify(three))[0] }, [ { method: 'status' } ]).results[0].reply.router.aps.map(a => a.id), three.map(a => a.id));
+	/* the collector reads what it can of such a list (it writes nothing back): the entries that are whole */
+	assert.deepEqual(runModule([ [ 'aps', typed ], [ 'aps', typed, true ], [ 'aps', broken ], [ 'aps', broken, true ], [ 'aps', '' ], [ 'aps', '', true ], [ 'aps', null, true ], [ 'aps', '[]', true ] ])
+		.map(l => l && l.map(a => a.id)), [ [ three[0].id, three[2].id ], null, [], null, [], [], null, [] ]);
+
+	/* unread while SSH has another fault too, which the plugin names first: the page is still told */
+	const down = { 'network.interface.lan status': UBUS_OK['network.interface.lan status'], 'service list dropbear': { dropbear: { instances: { instance1: { running: false } } } } };
+	const st = (before) => runPlugin({ ubus: down, before }, [ { method: 'status' } ]).results[0].reply.ap;
+	assert.deepEqual(st(sb => asLink(sb, 'etc/dropbear/authorized_keys')), { ssh: 'not-running', routers: [], unread: true, reply: null });
+	assert.deepEqual(st(), { ssh: 'not-running', routers: [], unread: false, reply: null });
 });
 
 test('pair: allow_router has its answer before it writes the line', { skip: NO_UCODE }, () => {
@@ -563,8 +621,11 @@ test('pair: at most 16 access points', { skip: NO_UCODE }, () => {
 
 /* ------------------------------------------------------------ report */
 
-/* a fake /sys/class/net and /proc/net/arp, and the report's ubus replies */
+/* a fake /sys/class/net and /proc/net/arp, and the report's ubus replies. Run as Dropbear runs it for a router's key
+   line: the line's comment in SSH_PUBKEYINFO, what the router asked for in SSH_ORIGINAL_COMMAND (auth, keyinfo: another
+   key file, another comment or none; shell: no key line's command, as from the administrator's shell) */
 function reportRun(o) {
+	if (!('auth' in o) && !('keyinfo' in o) && !o.shell) o = Object.assign({ auth: LINE(K1, 'gw') + '\n', keyinfo: COMMENT(K1, 'gw') }, o);
 	const dir = mkTmp('vantage-report-');
 	const net = path.join(dir, 'net');
 	const dev = (name, files) => {
@@ -593,8 +654,9 @@ function reportRun(o) {
 	const script = path.join(dir, 'report.uc'), stub = path.join(dir, 'stub.json'), calls = path.join(dir, 'calls');
 	fs.writeFileSync(script, src);
 	fs.writeFileSync(stub, JSON.stringify({ ubus: o.ubus }));
-	const env = Object.assign({}, process.env, { SSH_CLIENT: o.client ?? '', SSH_ORIGINAL_COMMAND: 'rm -rf /' });
+	const env = Object.assign({}, process.env, { SSH_CLIENT: o.client ?? '', SSH_ORIGINAL_COMMAND: o.asked ?? 'rm -rf /' });
 	delete env.SSH_PUBKEYINFO;
+	if (o.shell) delete env.SSH_ORIGINAL_COMMAND;
 	if (o.keyinfo != null) env.SSH_PUBKEYINFO = o.keyinfo;
 	const r = spawnSync(UCODE, ucodeArgs().concat([ '-D', 'STUBFILE=' + stub, '-D', 'CALLSFILE=' + calls, script, 'ignored', 'args' ]), { encoding: 'utf8', input: 'ignored stdin', env });
 	const made = fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8').trim().split('\n').map(l => JSON.parse(l)) : [];
@@ -651,23 +713,29 @@ test('report: no uplink found, no wired hosts; the router\'s own address finds i
 });
 
 test('report: a router whose key line is gone gets nothing, on a connection it still holds too', { skip: NO_UCODE }, () => {
-	/* dropbear checks a key when a connection logs in and names the line's comment to every command run on it (SSH_PUBKEYINFO) */
+	/* dropbear checks a key when a connection logs in. To every command it runs on that connection it names the line's
+	   comment (SSH_PUBKEYINFO) and, when the line's command replaced the caller's, what the caller asked for (SSH_ORIGINAL_COMMAND) */
 	const arp = [ [ '192.0.2.1', '0x1', '0x2', MAC(64), '*', 'br-lan' ] ], admin = 'ssh-ed25519 ' + K3 + ' admin@laptop\n';
-	const run = (auth, keyinfo, refused) => reportRun({ ubus: REPORT_UBUS, arp, auth, keyinfo, refused });
-	/* its line is there: the report, as without the variable */
-	const plain = reportRun({ ubus: REPORT_UBUS, arp }).out;
-	for (const auth of [ admin + LINE(K1, 'gw') + '\n', LINE(K2, 'gw2') + '\n' + LINE(K1, 'gw') + '\r\n', LINE(K1, 'gw') ])
-		assert.deepEqual(run(auth, COMMENT(K1, 'gw')).out, plain);
+	const run = (auth, keyinfo, more) => reportRun(Object.assign({ ubus: REPORT_UBUS, arp, auth, keyinfo }, more));
+	const nothing = (r, what) => assert.deepEqual([ r.status, r.stdout, r.calls ], [ 1, '', [] ], 'nothing printed, nothing asked: ' + what);
+	const plain = reportRun({ ubus: REPORT_UBUS, arp, shell: true }).out;
+	/* its line is there: the report, whatever it asked for */
+	for (const auth of [ admin + LINE(K1, 'gw') + '\n', LINE(K2, 'gw2') + '\n' + LINE(K1, 'gw') + '\r\n', LINE(K1, 'gw'), LINE(K1, 'gw') + ' \n' ])
+		for (const asked of [ 'rm -rf /', '', '/usr/libexec/vantage/report' ])
+			assert.deepEqual(run(auth, COMMENT(K1, 'gw'), { asked }).out, plain);
 	/* revoked: the line gone, the file gone, another router's line left, a line for the same name and another key, the comment on a line that is not the add-on's */
 	const gone = [ admin, null, LINE(K2, 'gw2') + '\n', LINE(K2, 'gw') + '\n', 'ssh-ed25519 ' + K1 + ' ' + COMMENT(K1, 'gw') + '\n', '# ' + LINE(K1, 'gw') + '\n', LINE(K1, 'gw').replace(',no-pty', '') + '\n' ];
-	for (const auth of gone) {
-		const r = run(auth, COMMENT(K1, 'gw'), true);
-		assert.deepEqual([ r.status, r.stdout, r.calls ], [ 1, '', [] ], 'nothing printed, nothing asked: ' + JSON.stringify(auth).slice(0, 60));
-	}
-	/* a caller the add-on did not let in is not its to judge: a line of the administrator's own, a login without a key */
-	for (const keyinfo of [ 'admin@laptop', '', 'vantage', 'xvantage-router@gw' ]) assert.deepEqual(run(admin, keyinfo).out, plain, keyinfo);
-	/* named like the add-on's and not one of its lines: refused */
-	for (const keyinfo of [ 'vantage-router@', 'vantage-router@gw', COMMENT(K1, 'gw') + 'x' ]) assert.equal(run(admin + LINE(K1, 'gw') + '\n', keyinfo, true).status, 1, keyinfo);
+	for (const auth of gone) nothing(run(auth, COMMENT(K1, 'gw'), { refused: true }), JSON.stringify(auth).slice(0, 60));
+	/* a key line's command ran it and dropbear named no comment (a tab after it, or a dropbear that names none): the
+	   report cannot tell whose line it was, so nothing, with the line there or gone */
+	for (const auth of [ admin + LINE(K1, 'gw') + '\n', LINE(K1, 'gw') + '\t\n', admin ]) nothing(run(auth, null, { refused: true }), 'no comment named');
+	/* under a key line's command, a comment that is no line of the add-on's: a line of the administrator's own with this command, an earlier build's line */
+	for (const keyinfo of [ 'admin@laptop', '', 'vantage', 'xvantage-router@gw', 'vantage-router@', 'vantage-router@gw', COMMENT(K1, 'gw') + 'x' ])
+		nothing(run(admin + LINE(K1, 'gw') + '\n' + OPTIONS + ' ssh-ed25519 ' + K2 + ' vantage-router@gw\n', keyinfo, { refused: true }), keyinfo);
+	/* no key line's command (the administrator's shell, a login without a key): not the add-on's to judge */
+	for (const keyinfo of [ null, 'admin@laptop', '' ]) assert.deepEqual(run(admin, keyinfo, { shell: true }).out, plain, String(keyinfo));
+	/* named like the add-on's all the same, and no line of it there: refused */
+	nothing(run(admin, COMMENT(K1, 'gw'), { shell: true, refused: true }), 'named, not held');
 });
 
 test('report: without ubus it prints nothing and fails', { skip: NO_UCODE }, () => {
@@ -744,7 +812,7 @@ function runCollector(o, steps) {
 	src = src.replace('\treturn clock(true)?.[0] ?? 0;\n', '\treturn int(global.LOOP.now / 1000);\n');
 	const script = p('collector.uc'), file = p('steps.json'), stub = p('stub.json');
 	fs.writeFileSync(script, src);
-	fs.writeFileSync(file, JSON.stringify(steps.map(s => s.write ? { write: [ p(s.write[0]), s.write[1] ] } : s)));
+	fs.writeFileSync(file, JSON.stringify(steps.map(s => s.write ? { write: [ p(s.write[0]), s.write[1] ] } : s.block ? { block: p(s.block) } : s)));
 	fs.writeFileSync(stub, JSON.stringify({ ubus: { 'network.interface dump': o.dump ?? DUMP } }));
 	const r = spawnSync(UCODE, ucodeArgs().concat([ '-D', 'CASES=' + file, '-D', 'SANDBOX=' + dir, '-D', 'STUBFILE=' + stub, script ]), { encoding: 'utf8', timeout: 60000 });
 	assert.equal(r.status, 0, r.error ? 'the collector did not end: ' + r.error.message : r.stderr);
@@ -823,6 +891,21 @@ test('collector: an access point that moved is found by its MAC, the pinned host
 	/* nothing in the tables: it stays where it was paired */
 	const lost = runCollector({ hosts: {} }, [ ASK, wait(25), ASK ]);
 	assert.ok(lost.calls.every(c => c.includes('root@192.0.2.10 ')), 'no other address tried');
+	/* four leases under its MAC that are not it, ahead of its own (a device of the network asked for them): each is
+	   tried once, and then it is found */
+	const crowd = [ 201, 202, 203, 204 ].map(n => '1 ' + AP_MAC + ' 192.0.2.' + n + ' x *\n').join('') + '1 ' + AP_MAC + ' 192.0.2.77 x *\n';
+	const many = runCollector({ leases: crowd, hosts: { '192.0.2.77': { out: apReport(1, 1000) } } }, [ ASK, wait(30), ASK ]);
+	assert.deepEqual([ ...new Set(many.calls.map(c => /root@(\S+)/.exec(c)[1])) ], [ '192.0.2.10', '192.0.2.201', '192.0.2.202', '192.0.2.203', '192.0.2.204', '192.0.2.77' ]);
+	assert.deepEqual([ many.results[2].aps[0].state, many.results[2].aps[0].addr ], [ 'ok', '192.0.2.77' ]);
+	/* at its new address it answers, and not with a report: the router's key refused there, the add-on gone there, something that is
+	   no report. Only the holder of the pinned key gets that far, so it is there, and that is what the dashboard is told */
+	const moved = '1 ' + AP_MAC + ' 192.0.2.77 x *\n';
+	for (const [ answer, error ] of [ [ { err: 'dbclient: Connection to root@192.0.2.77:22 exited: No auth methods could be used.', code: 1 }, 'denied' ],
+		[ { err: 'ash: /usr/libexec/vantage/report: not found', code: 127 }, 'missing' ], [ { out: 'not json' }, 'invalid' ] ]) {
+		const at = runCollector({ leases: moved, hosts: { '192.0.2.77': answer } }, [ ASK, wait(15), ASK, wait(15), ASK ]);
+		assert.deepEqual([ at.results[2].aps[0].state, at.results[2].aps[0].error, at.results[2].aps[0].addr ], [ 'error', error, '192.0.2.77' ], error);
+		assert.ok(at.calls.slice(2).every(c => c.includes('root@192.0.2.77 ')), error + ': asked there from then on');
+	}
 });
 
 test('collector: an access point is looked for on the network it was paired on only', { skip: NO_UCODE }, () => {
@@ -830,8 +913,8 @@ test('collector: an access point is looked for on the network it was paired on o
 	const tried = r => [ ...new Set(r.calls.map(c => /root@(\S+)/.exec(c)[1])) ];
 	const steps = [ ASK, wait(1), ASK, wait(30), ASK ];
 	/* rows any device of the guest network or the WAN side can make: this router opens no connection to them */
-	const elsewhere = head + row('198.51.100.9', 'br-guest') + row('203.0.113.5', 'eth1') + row('192.0.2.50', 'br-guest') + row('192.0.3.7', 'br-lan');
-	const hosts = Object.fromEntries([ '198.51.100.9', '203.0.113.5', '192.0.2.50', '192.0.3.7', '198.51.100.20' ].map(a => [ a, { out: apReport(1, 1000) } ]));
+	const elsewhere = head + row('198.51.100.9', 'br-guest') + row('203.0.113.5', 'eth1') + row('192.0.2.50', 'br-guest') + row('203.0.113.77', 'br-lan');
+	const hosts = Object.fromEntries([ '198.51.100.9', '203.0.113.5', '192.0.2.50', '203.0.113.77', '198.51.100.20' ].map(a => [ a, { out: apReport(1, 1000) } ]));
 	const none = runCollector({ arp: elsewhere, leases: '1 ' + AP_MAC + ' 198.51.100.20 x *\n', hosts }, steps);
 	assert.deepEqual(tried(none), [ '192.0.2.10' ]);
 	assert.deepEqual([ none.results[4].aps[0].state, none.results[4].aps[0].addr ], [ 'offline', '192.0.2.10' ]);
@@ -857,10 +940,16 @@ test('collector: after a pause, an access point that had already failed is not s
 	const { results } = runCollector({ hosts: { '192.0.2.10': { out: apReport(1, 1000) } } }, [ ASK, wait(2), ASK, ...down, wait(20), ASK, wait(120), ASK ]);
 	assert.equal(results[2].aps[0].state, 'ok');
 	assert.deepEqual([ results[7].aps[0].state, results[7].aps[0].error ], [ 'ok', 'unreachable' ], 'a report under a minute old still stands');
-	assert.deepEqual([ results[9].aps[0].state, results[9].aps[0].error, results[9].aps[0].report ], [ 'offline', 'unreachable', null ]);
+	/* neither fine nor known to be failing still: it waits for the fetch that reply started */
+	assert.deepEqual([ results[9].aps[0].state, results[9].aps[0].error, results[9].aps[0].report ], [ 'waiting', null, null ]);
 	/* fine when the pause began: its last report stands until the first fetch after it has ended, as before */
 	const fine = runCollector({ hosts: { '192.0.2.10': { out: apReport(1, 1000) } } }, [ ASK, wait(2), ASK, wait(180), ASK ]);
 	assert.equal(fine.results[4].aps[0].state, 'ok');
+	/* ... or has failed to start (its known_hosts cannot be written): the old report does not stand on for as long as someone looks */
+	const stuck = runCollector({ hosts: { '192.0.2.10': { out: apReport(1, 1000) } } },
+		[ ASK, wait(2), ASK, wait(180), { block: 'run/' + AP1.id + '/.ssh/known_hosts' }, ASK, wait(2), ASK, wait(30), ASK ]);
+	/* from the very reply that tried to start it */
+	for (const i of [ 5, 7, 9 ]) assert.deepEqual([ stuck.results[i].aps[0].state, stuck.results[i].aps[0].error, stuck.results[i].aps[0].report ], [ 'offline', 'unreachable', null ], 'reply ' + i);
 });
 
 test('collector: nothing is left of an access point that was removed', { skip: NO_UCODE }, () => {
@@ -873,8 +962,9 @@ test('collector: nothing is left of an access point that was removed', { skip: N
 	const c = runCollector({ hosts: { '192.0.2.10': { hang: '' } } }, [ ASK, wait(1), gone, ASK, wait(20), ASK ]);
 	assert.equal(fs.existsSync(home(c.sb)), false);
 	/* removed and paired again while it hangs: the new pairing's files stay */
-	const d = runCollector({ hosts: { '192.0.2.10': { hang: '' } } }, [ ASK, wait(1), gone, ASK, { write: [ 'etc/vantage/aps.json', JSON.stringify([ AP1 ]) ] }, ASK, wait(1), ASK ]);
+	const d = runCollector({ hosts: { '192.0.2.10': { hang: '' } } }, [ ASK, wait(1), gone, ASK, { write: [ 'etc/vantage/aps.json', JSON.stringify([ AP1 ]) ] }, ASK, wait(1), ASK, wait(16), ASK ]);
 	assert.equal(d.results[d.results.length - 1].aps.length, 1);
+	assert.ok(fs.existsSync(home(d.sb) + '/.ssh/known_hosts'), 'after the old fetch was ended: the new pairing\'s known_hosts is there');
 });
 
 test('collector: a device at the old address that never shows the pinned key does not end the search', { skip: NO_UCODE }, () => {

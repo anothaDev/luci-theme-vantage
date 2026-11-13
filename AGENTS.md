@@ -15,7 +15,7 @@ add-on to it) plus offline tooling. No npm, no
 |---|---|
 | `luci-theme-vantage/` | Theme: ucode templates (`ucode/template/themes/vantage/*.ut`), CSS and icons (`htdocs/luci-static/vantage/`), shell script (`htdocs/luci-static/resources/menu-vantage.js`, `vantage-theme/host.js`), `root/etc/uci-defaults/30_luci-theme-vantage`, `postrm` in the `Makefile` |
 | `luci-app-vantage/` | Dashboard at `admin/dashboard`: views (`htdocs/.../view/vantage/overview.js`; `firewall.js`, the Network → Firewall → Overview tab), modules (`htdocs/.../vantage/*.js`), `app.css`, menu entry, rpcd ACL (`root/usr/share/rpcd/acl.d/`), rpcd ucode plugin `luci.vantage` (`root/usr/share/rpcd/ucode/luci.vantage`), default `/etc/config/vantage` |
-| `luci-app-vantage-aps/` | Optional add-on: the access points a router's dashboard shows, read over SSH. Pairing page (`htdocs/.../view/vantage/aps.js`, Network → Access points), rpcd ucode plugin `luci.vantage.pair` (`root/usr/share/rpcd/ucode/luci.vantage-pair`), shared checks (`root/usr/share/ucode/vantage/aps.uc`), the collector daemon and the report command (`root/usr/libexec/vantage/`), init script, its own ACL group and catalogue |
+| `luci-app-vantage-aps/` | Optional add-on: the access points a router's dashboard shows, read over SSH. Pairing page (`htdocs/.../view/vantage/aps.js`, Network → Access points), rpcd ucode plugin `luci.vantage.pair` (`root/usr/share/rpcd/ucode/luci.vantage-pair`), shared checks (`root/usr/share/ucode/vantage/aps.uc`), the collector daemon and the report command (`root/usr/libexec/vantage/`), init script, its own ACL groups and catalogue |
 | `dev/replay/` | Offline LuCI server that replays a recording; see its README |
 | `dev/build/` | `sdk-build.sh`: reproducible build in the OpenWrt SDK image (podman) |
 | `dev/icons/build.js` | Generates the status icon set; edit the generator, not the SVGs |
@@ -57,7 +57,8 @@ add-on to it) plus offline tooling. No npm, no
    enforces this.
 6. **The ACL stays minimal and matches the code.** Every `rpc.declare` in
    the app must be granted in `luci-app-vantage.json`, and every grant must
-   be used. The read group is read-only and never reads Wi-Fi keys
+   be used (one call, `vantage.collector report`, is granted by the
+   add-on instead: see the end of this rule). The read group is read-only and never reads Wi-Fi keys
    (wireless data comes from the plugin's `wireless` method; LuCI's own
    groups, such as `luci-base-network-status`, can); reverse DNS
    sits in its own optional group (`luci-app-vantage-rdns`); the names

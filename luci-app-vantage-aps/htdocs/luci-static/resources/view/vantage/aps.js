@@ -157,7 +157,7 @@ function sshProblem(state) {
 	case 'unsupported': return _('Dropbear\'s settings on this device (root login off, a forced command or its own host key files) keep a router from reading it, so pairing is off.');
 	case 'no-host-key': return _('Dropbear has no Ed25519 host key yet, so pairing is off. Restarting Dropbear creates one.');
 	case 'not-running': return _('Dropbear, the SSH server, is not running, so pairing is off. Start it under System → Startup.');
-	case 'keys-unreadable': return _('This device\'s SSH key file (/etc/dropbear/authorized_keys) cannot be read, or is larger than 256 KiB. Which routers can read this device is not known, so pairing is off.');
+	case 'keys-unreadable': return _('This device\'s SSH keys (/etc/dropbear/authorized_keys) cannot be read, or are larger than 256 KiB. Which routers can read this device is not known, so pairing is off.');
 	case 'no-address': return _('This device has no IPv4 address on its lan interface for a router to reach it at, so pairing is off.');
 	}
 	return _('SSH on this device is not ready for pairing.');
@@ -223,7 +223,10 @@ function normStatus(s) {
 		routers: (Array.isArray(a.routers) ? a.routers : []).filter(function(x) { return isObject(x) && typeof x.key === 'string'; }).map(function(x) {
 			return { key: x.key, name: String(x.name == null ? '' : x.name) };
 		}),
-		reply: typeof a.reply === 'string' ? a.reply : null
+		reply: typeof a.reply === 'string' ? a.reply : null,
+		/* a list whose file is there and could not be read: empty, and saying nothing */
+		apsUnread: r.unread === true,
+		keysUnread: a.unread === true || a.ssh === 'keys-unreadable'
 	};
 }
 
@@ -427,14 +430,15 @@ return view.extend({
 			this.blindShown = blind;
 			dom.content(el.client, blind ? [ warnNote(noClient()) ] : []);
 		}
-		var sig = JSON.stringify(aps.map(function(a) { return [ a.id, a.name, a.addr, a.port ]; }));
+		var sig = JSON.stringify([ this.status.apsUnread ].concat(aps.map(function(a) { return [ a.id, a.name, a.addr, a.port ]; })));
 		/* rebuilt only when the list changes, so a poll never takes the
 		   focus off a button */
 		if (sig !== this.apSig) {
 			this.apSig = sig;
 			this.apEls = {};
 			dom.content(el.apRows, aps.length ? aps.map(function(a) { return self.apRow(a); })
-				: [ E('p', { 'class': 'vt-empty-inline', 'role': 'listitem' }, [ _('No access points yet. Add one to see its clients on this dashboard.') ]) ]);
+				: [ E('p', { 'class': 'vt-empty-inline', 'role': 'listitem' }, [ this.status.apsUnread ? _('Not known while this router\'s list of access points (/etc/vantage/aps.json) cannot be read.')
+					: _('No access points yet. Add one to see its clients on this dashboard.') ]) ]);
 		}
 		aps.forEach(function(a) {
 			var row = self.apEls[a.id], live = liveOf(a.id, self.report), st = stateLine(live);
@@ -645,13 +649,13 @@ return view.extend({
 			this.sshShown = problem;
 			dom.content(el.ssh, problem ? [ warnNote(problem) ] : []);
 		}
-		/* the key file unread: an empty list says nothing about who is let in */
-		var unknown = s.ssh === 'keys-unreadable';
+		/* the key file unread, whatever else is wrong with SSH: an empty list says nothing about who is let in */
+		var unknown = s.keysUnread;
 		var sig = JSON.stringify([ unknown ].concat(s.routers.map(function(r) { return [ r.key, r.name ]; })));
 		if (sig !== this.routerSig) {
 			this.routerSig = sig;
 			dom.content(el.routerRows, s.routers.length ? s.routers.map(function(r) { return self.routerRow(r); })
-				: [ E('p', { 'class': 'vt-empty-inline', 'role': 'listitem' }, [ unknown ? _('Not known while the key file cannot be read.') : _('No router can read this access point.') ]) ]);
+				: [ E('p', { 'class': 'vt-empty-inline', 'role': 'listitem' }, [ unknown ? _('Not known while this device\'s SSH keys cannot be read.') : _('No router can read this access point.') ]) ]);
 		}
 		/* with SSH not ready, letting a router in is refused: no button;
 		   the reply again only while the flow (which shows it) is closed */

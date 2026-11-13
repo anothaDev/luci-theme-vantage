@@ -205,7 +205,7 @@ function parse_ap(s) {
 // report looks for that line again.
 const KEY_OPTIONS = 'command="/usr/libexec/vantage/report",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding';
 const COMMENT = 'vantage-router@';
-const RE_TAIL = /[ \t\r]+$/;
+const RE_TAIL = /[ \r]+$/;
 
 function key_id(k) {
 	let b = b64dec(k), h = '';
@@ -224,7 +224,8 @@ function auth_line(k, n) {
 
 // such a line back: { key, name, comment }, or null for any other line.
 // Blanks or a carriage return after it (an editor's) leave it that line:
-// Dropbear takes it all the same.
+// Dropbear takes it all the same, and names it by the same comment. Not
+// a tab: with one, Dropbear names no comment at all to the report.
 function parse_auth_line(line) {
 	let f = str(line) ? split(replace(line, RE_TAIL, ''), ' ') : [];
 
@@ -239,9 +240,12 @@ function parse_auth_line(line) {
 /* ------------------------------------------------- the paired list */
 
 // /etc/vantage/aps.json -> [ { id, name, key, addr, port, mac } ], the valid
-// entries only, at most MAX_APS, each id and key once
-function aps(text) {
-	let list = null, out = [], ids = {}, keys = {};
+// entries only, at most MAX_APS, each id and key once. whole: for the one
+// who writes the list back. Then null unless the text is blank or a list
+// of which every entry is taken: written back, a list that was edited by
+// hand would lose whatever did not pass.
+function aps(text, whole) {
+	let list = null, out = [], ids = {}, keys = {}, all = true;
 
 	try {
 		list = (type(text) == 'string') ? json(text) : null;
@@ -250,23 +254,23 @@ function aps(text) {
 		list = null;
 	}
 
-	for (let a in ((type(list) == 'array') ? list : [])) {
-		if (length(out) >= MAX_APS)
-			break;
+	if (type(list) != 'array')
+		return (whole && !(type(text) == 'string' && trim(text) == '')) ? null : out;
 
-		if (type(a) != 'object')
+	for (let a in list) {
+		let e = (type(a) == 'object' && length(out) < MAX_APS)
+			? { id: id(a.id), name: name(a.name), key: key(a.key), addr: addr(a.addr), port: port(a.port), mac: mac(a.mac) } : null;
+
+		if (!e || !e.id || !e.name || !e.key || !e.addr || !e.port || !e.mac || ids[e.id] || keys[e.key]) {
+			all = false;
 			continue;
-
-		let e = { id: id(a.id), name: name(a.name), key: key(a.key), addr: addr(a.addr), port: port(a.port), mac: mac(a.mac) };
-
-		if (!e.id || !e.name || !e.key || !e.addr || !e.port || !e.mac || ids[e.id] || keys[e.key])
-			continue;
+		}
 
 		ids[e.id] = keys[e.key] = true;
 		push(out, e);
 	}
 
-	return out;
+	return (whole && !all) ? null : out;
 }
 
 // The network an address is on, of this device's own (ifaces: the
@@ -312,21 +316,29 @@ function network_of(a, ifaces) {
 	if (!want4 && !want6)
 		return null;
 
+	let best = null, most = 0;
+
+	// the interface whose subnet holds it most narrowly, as the kernel
+	// routes: an uplink's wide subnet around the LAN's is not the LAN
 	for (let i in ((type(ifaces) == 'array') ? ifaces : [])) {
 		if (type(i) != 'object' || i.up !== true || !netdev(i.l3_device))
 			continue;
 
 		let nets = subnets(i['ipv4-address'], v4, 32);
 		let held = want4
-			? length(filter(nets, (n) => same_net(want4, n[0], n[1], 8)))
-			: length(filter([ ...subnets(i['ipv6-address'], groups6, 128), ...subnets(i['ipv6-prefix-assignment'], groups6, 128) ],
-				(n) => same_net(want6, n[0], n[1], 16)));
+			? filter(nets, (n) => same_net(want4, n[0], n[1], 8))
+			: filter([ ...subnets(i['ipv6-address'], groups6, 128), ...subnets(i['ipv6-prefix-assignment'], groups6, 128) ],
+				(n) => same_net(want6, n[0], n[1], 16));
 
-		if (held)
-			return { dev: i.l3_device, nets };
+		for (let n in held) {
+			if (n[1] > most) {
+				most = n[1];
+				best = { dev: i.l3_device, nets };
+			}
+		}
 	}
 
-	return null;
+	return best;
 }
 
 // The IPv4 addresses a MAC has now on the network it was paired on (net:
@@ -338,8 +350,11 @@ function network_of(a, ifaces) {
 // MAC and address into the neighbour table of a network it is on, so
 // rows of other networks are not followed: this router would open a
 // connection to wherever they say. The pinned host key turns away any
-// other device at an address that is tried.
-function find_addrs(m, arp, leases, net) {
+// other device at an address that is tried. skip: addresses that are
+// left out before the four are counted (those already tried), so that
+// rows and leases a device of that network made up under this MAC
+// cannot keep the real one out for good.
+function find_addrs(m, arp, leases, net, skip) {
 	let out = [];
 
 	m = mac(m);
@@ -347,7 +362,7 @@ function find_addrs(m, arp, leases, net) {
 	if (!m || type(net) != 'object' || !netdev(net.dev))
 		return out;
 
-	let inside = (a) => ipv4(a) && length(filter(net.nets, (n) => same_net(v4(a), n[0], n[1], 8))) > 0;
+	let inside = (a) => ipv4(a) && !skip?.[a] && length(filter(net.nets, (n) => same_net(v4(a), n[0], n[1], 8))) > 0;
 
 	for (let line in split(str(leases) ? leases : '', '\n')) {
 		let f = split(trim(line), RE_SPACE);
@@ -369,16 +384,29 @@ function find_addrs(m, arp, leases, net) {
 // The first address its MAC has now that is neither where it is known
 // (current) nor already tried; null when there is none
 function next_addr(m, current, tried, arp, leases, net) {
-	for (let to in find_addrs(m, arp, leases, net))
-		if (to != current && !tried?.[to])
-			return to;
+	let skip = { ...((type(tried) == 'object') ? tried : {}) };
 
-	return null;
+	if (str(current))
+		skip[current] = true;
+
+	return find_addrs(m, arp, leases, net, skip)[0] ?? null;
+}
+
+// A file another program wrote, to be read as text: only a plain file
+// (st: its lstat; a link would be followed, a pipe would hold the reader
+// until someone writes to it) of root's or of the account uid.
+function own_file(st, uid) {
+	return type(st) == 'object' && st.type == 'file' && (st.uid === 0 || (type(uid) == 'int' && st.uid === uid));
 }
 
 /* ---------------------------------------------------- a fetch's outcome */
 
-const RE_HOSTKEY = /host key mismatch|Not accepted automatically|Didn't validate host key/;
+// a host key dbclient does not take, in its own words: its reason after
+// " exited:", or its line "<type> host key mismatch for <host> !" (after
+// an empty reason). A whole reason and a line's start: what the other
+// end sent is quoted inside dbclient's exit line, never at a line's start
+const HOSTKEY_WHY = [ 'Not accepted automatically', "Didn't validate host key" ];
+const RE_MISMATCH = /^[a-z0-9@.-]+ host key mismatch for /;
 const RE_EXITED = /^[^ ]+: Connection to [^ ]+$/;
 const RE_NO_REPORT = /^-?[a-z\/]*sh: [^ ]*vantage\/report: (not found|No such file or directory|Permission denied)$/;
 const NO_AUTH = 'No auth methods could be used.';
@@ -428,8 +456,12 @@ function fetch_error(code, out, err, timedout, max) {
 
 	let why = exited(err);
 
-	if (match(err, RE_HOSTKEY))
+	if (why != null && index(HOSTKEY_WHY, why) >= 0)
 		return 'hostkey';
+
+	for (let line in split(err, '\n'))
+		if (match(line, RE_MISMATCH))
+			return 'hostkey';
 
 	if (why != null)
 		return (why == NO_AUTH) ? 'denied' : 'unreachable';
@@ -637,4 +669,4 @@ function view(r, prev, dt) {
 	};
 }
 
-export { MAX_APS, MAX_ROUTERS, MAX_CODE, COMMENT, key, name, name_of, id, addr, mac, port, router_code, ap_code, parse_router, parse_ap, auth_line, parse_auth_line, aps, network_of, find_addrs, next_addr, fetch_error, state, moved, band, parseable, normalize, view };
+export { MAX_APS, MAX_ROUTERS, MAX_CODE, COMMENT, key, name, name_of, id, addr, mac, port, router_code, ap_code, parse_router, parse_ap, auth_line, parse_auth_line, aps, network_of, find_addrs, next_addr, own_file, fetch_error, state, moved, band, parseable, normalize, view };

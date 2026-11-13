@@ -881,38 +881,90 @@ return baseclass.extend({
 		/* the MACs the host hints give an address, each once. An IPv6
 		   address by its value: it has many spellings (a pairing keeps the
 		   one it was given, the hints have their own). Text with a colon
-		   that is no IPv6 address equals nothing */
-		function holders(addr) {
-			function key(x) {
-				var g = self.parseIPv6(x);
-				return g ? g.join(':') : typeof x === 'string' && x.indexOf(':') < 0 ? x.toLowerCase() : null;
-			}
-			var at = [], want = key(addr);
-			if (want) Object.keys(hints).forEach(function(k) {
-				var h = obj(hints[k]), m = names.normMac(k);
-				if (m && at.indexOf(m) < 0 && arr(h.ipaddrs).concat(arr(h.ip6addrs)).some(function(x) { return key(x) === want; })) at.push(m);
+		   that is no IPv6 address equals nothing. One index a build, for
+		   every access point and line that asks */
+		function addrKey(x) {
+			var g = self.parseIPv6(x);
+			return g ? g.join(':') : typeof x === 'string' && x.indexOf(':') < 0 ? x.toLowerCase() : null;
+		}
+		var heldBy = Object.create(null);
+		Object.keys(hints).forEach(function(k) {
+			var h = obj(hints[k]), m = names.normMac(k);
+			if (m) arr(h.ipaddrs).concat(arr(h.ip6addrs)).forEach(function(x) {
+				var key = addrKey(x);
+				if (key == null) return;
+				if (!heldBy[key]) heldBy[key] = [];
+				if (heldBy[key].indexOf(m) < 0) heldBy[key].push(m);
 			});
-			return at;
+		});
+		function holders(addr) {
+			var key = addrKey(addr);
+			return key != null && heldBy[key] ? heldBy[key].slice() : [];
 		}
 		/* a gateway, by the address the host hints give it; on a bridge
 		   with several ports a line is the port it was learned on. Any
 		   device can have the hints list an address under its MAC (one ARP
-		   request does it), so a host of this device is not the gateway of a
-		   line that does not leave through its bridge (l3: the line's
-		   device), a station of one of its access point interfaces never,
-		   unless it is heard over a link of its own (wifiLink, below); and
-		   when two are left, none is: unknown rather than the wrong one */
+		   request does it), so among several holders of a line's next hop
+		   the bridges' entries decide: every one luci.vantage wired gave
+		   for a host, not the one kept (fdb), since a router's MAC is on
+		   every bridge of a wire that carries its VLANs. A holder heard on
+		   the line (l3: its device) goes before one heard on no bridge,
+		   and that one before one heard only elsewhere. Two of one kind:
+		   none, unknown rather than the wrong one. A station of an access
+		   point interface is never the gateway unless it is heard over a
+		   link of its own (wifiLink, below), nor is a host heard only in
+		   other VLANs of the line's own bridge, nor one heard only
+		   elsewhere where the far end has no MAC (PPP, a modem, a tunnel).
+		   A lone holder heard elsewhere is believed otherwise, as before:
+		   the bridges of a wire's other VLANs hear the real gateway like
+		   that */
+		var l3devs = Object.create(null);
+		arr(raw.ifaces).forEach(function(i) { var d = i && (i.l3_device || i.device); if (typeof d === 'string') l3devs[d] = true; });
+		function rowsOf(mac) {
+			return arr(raw.fdb).filter(function(h) { return h && names.normMac(h.mac) === mac && typeof h.port === 'string' && typeof h.bridge === 'string'; });
+		}
+		/* the bridge of a line, and its VLAN there: br-lan.10 is VLAN 10
+		   of br-lan, br-lan the bridge itself */
+		function lineOf(l3) {
+			var v = /^(.+)\.(\d{1,4})$/.exec(l3 || '');
+			return v ? { bridge: v[1], vid: +v[2] } : { bridge: l3, vid: null };
+		}
+		/* an entry is on a line that is its bridge, unless its VLAN is
+		   another network's device there (br-lan.20); and on a line that
+		   is a VLAN of its bridge when it is in that VLAN or names none */
+		function onLine(h, l3) {
+			var at = lineOf(l3);
+			if (h.bridge === l3) return !(finite(h.vlan) && l3devs[l3 + '.' + h.vlan]);
+			return at.vid != null && h.bridge === at.bridge && (!finite(h.vlan) || h.vlan === at.vid);
+		}
+		function noMac(l3) {
+			var d = obj(devs[l3]);
+			return /^(ppp|pppoe-|pppoa-|pptp-|l2tp-|wwan)/.test(l3 || '') || /^(ppp|wwan)$/.test(d.devtype || '') || TUNNEL_DEV.test(d.devtype || '') || d.type === 'tunnel';
+		}
 		function macOf(addr, l3) {
-			var vlan = /^(.+)\.\d{1,4}$/.exec(l3 || ''), on = [ l3, vlan ? vlan[1] : l3 ];
-			var found = holders(addr).filter(function(mac) {
-				/* every row luci.vantage wired gave for it, not the one kept
-				   (fdb): that is the one heard last, and a router's MAC is on
-				   every bridge of a wire that carries its VLANs */
-				var rows = arr(raw.fdb).filter(function(h) { return h && names.normMac(h.mac) === mac && typeof h.port === 'string'; });
-				if (apSta[mac] && !rows.some(function(h) { return wifiLink(h.port); })) return false;
-				return !l3 || !rows.length || rows.some(function(h) { return on.indexOf(h.bridge || h.port) >= 0; });
+			var here = [], quiet = [], off = [], bridge = lineOf(l3).bridge;
+			holders(addr).forEach(function(mac) {
+				var rows = rowsOf(mac);
+				if (apSta[mac] && !rows.some(function(h) { return wifiLink(h.port); })) return;
+				if (!l3 || !rows.length) quiet.push(mac);
+				else if (rows.some(function(h) { return onLine(h, l3); })) here.push(mac);
+				else if (!rows.every(function(h) { return h.bridge === bridge && finite(h.vlan); })) off.push(mac);
 			});
-			return found.length === 1 ? found[0] : null;
+			var of = here.length ? here : quiet.length ? quiet : noMac(l3) ? [] : off;
+			return of.length === 1 ? of[0] : null;
+		}
+		/* the wired port a line's gateway is on: of its entry on the line
+		   heard last, not of the one kept, which another bridge of the
+		   wire may have heard later; of the kept one when none is on the
+		   line */
+		function linePort(mac, l3) {
+			var best = null;
+			rowsOf(mac).forEach(function(h) {
+				if (!l3 || !onLine(h, l3) || self.isWireless(h.port, devs[h.port], wlNames)) return;
+				var seen = finite(h.seen) && h.seen >= 0 ? h.seen : null;
+				if (!best || (seen != null && (best.seen == null || seen < best.seen))) best = { port: h.port, seen: seen };
+			});
+			return best ? best.port : fdb[mac] ? fdb[mac].port : null;
 		}
 		var gwMac = uplink ? macOf(uplink.gateway, uplink.l3dev) : null;
 		/* a gateway heard on no wired port but over a Wi-Fi link this
@@ -928,7 +980,7 @@ return baseclass.extend({
 			if (wds) return wlNames.indexOf(wds[1]) >= 0;
 			return ssids.some(function(s) { return s.ifname === port && (s.mode === 'sta' || s.mode === 'mesh'); });
 		}
-		var gwPort = gwMac && fdb[gwMac] ? fdb[gwMac].port : null, gwLink = null;
+		var gwPort = gwMac ? linePort(gwMac, uplink.l3dev) : null, gwLink = null;
 		if (gwMac && !gwPort) arr(raw.fdb).forEach(function(h) {
 			if (!h || names.normMac(h.mac) !== gwMac || !wifiLink(h.port)) return;
 			var seen = finite(h.seen) && h.seen >= 0 ? h.seen : null;
@@ -941,7 +993,7 @@ return baseclass.extend({
 		}
 		var uplinks = uplink ? ownConduits([ uplink ].concat(this.extraUplinks(raw.ifaces, devs, wlNames, uplink, function(hop, l3) {
 			var mac = macOf(hop, l3);
-			return mac && fdb[mac] ? fdb[mac].port : null;
+			return mac ? linePort(mac, l3) : null;
 		}, kernel).slice(0, MAX_LINES))) : [];
 		/* the network on each bridge (or bridge VLAN: br-lan.10), and its
 		   IPv4 subnets for the hosts' addresses */
@@ -1117,6 +1169,9 @@ return baseclass.extend({
 		[ clients, wired ].forEach(function(l) { l.forEach(function(c) { listed[c.mac] = true; }); });
 		Object.keys(ownMacs).forEach(function(m) { listed[m] = true; });
 		if (gwMac) listed[gwMac] = true;
+		/* nor any other holder of the gateway's address: while two hold
+		   it, either may be the gateway */
+		if (uplink && uplink.gateway) holders(uplink.gateway).forEach(function(m) { listed[m] = true; });
 		var macCount = Object.create(null), portOf = Object.create(null), heardAt = Object.create(null);
 		aps.forEach(function(a) { if (a.mac) macCount[a.mac] = (macCount[a.mac] || 0) + 1; });
 		/* an address held by another MAC, as far as this device knows */

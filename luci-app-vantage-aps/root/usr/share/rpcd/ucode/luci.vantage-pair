@@ -111,11 +111,13 @@ function whole(file, max) {
 	return (length(text) <= max) ? text : null;
 }
 
-// the paired list; null when it cannot be read whole
+// the paired list; null when it cannot be read whole, or holds anything
+// that is not an entry of the add-on's (a hand edit gone wrong): never
+// written back then
 function load_aps() {
 	let text = whole(APS, MAX_APS_FILE);
 
-	return (text == null) ? null : vaps.aps(text);
+	return (text == null) ? null : vaps.aps(text, true);
 }
 
 function save_aps(list) {
@@ -407,15 +409,18 @@ function revoke_router(args) {
 /* ------------------------------------------------------------ status */
 
 function status() {
-	let k = access(DBCLIENT, 'x') ? public_key(KEY) : null, ssh = ssh_state(), auth = read_auth();
+	let k = access(DBCLIENT, 'x') ? public_key(KEY) : null, ssh = ssh_state(), auth = read_auth(), list = load_aps();
 	let routers = map(auth?.ours ?? [], (o) => ({ name: o.name, key: o.key }));
 
+	// unread: the file behind a list is there and could not be read, so
+	// the empty list says nothing (whatever else is wrong with SSH)
 	return {
 		router: {
 			code: k ? vaps.router_code(k, hostname('router')) : null,
-			aps: map(load_aps() ?? [], (e) => ({ id: e.id, name: e.name, addr: e.addr, port: e.port }))
+			aps: map(list ?? [], (e) => ({ id: e.id, name: e.name, addr: e.addr, port: e.port })),
+			unread: !list
 		},
-		ap: { ssh, routers, reply: (ssh == 'ok' && length(routers)) ? reply() : null }
+		ap: { ssh, routers, unread: !auth, reply: (ssh == 'ok' && length(routers)) ? reply() : null }
 	};
 }
 

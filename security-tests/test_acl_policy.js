@@ -669,10 +669,11 @@ test('negative controls: a declare spelled to dodge the count is not analysable'
 	}
 });
 
-test('the view probes the names and rdns groups; the menu is gated by the read group', () => {
+test('the view probes the names and rdns groups, and the add-on\'s for the access points; the menu is gated by the read group', () => {
 	const view = sources.find(s => s.file.endsWith('view/vantage/overview.js')).text;
 	const probes = [ ...view.matchAll(/callAccess\('access-group', '([^']+)', '(\w+)'\)/g) ].map(m => m[1] + ' ' + m[2]);
-	assert.deepEqual(probes, [ WRITE_GROUP + ' write', RDNS_GROUP + ' read' ]);
+	/* the last: asked once, so that a login without the add-on's read group (or without the add-on) never calls its collector */
+	assert.deepEqual(probes, [ WRITE_GROUP + ' write', RDNS_GROUP + ' read', APS_VIEW_GROUP + ' read' ]);
 	assert.deepEqual(Object.keys(menu), [ 'admin/dashboard', 'admin/status/dashboard', 'admin/network/firewall/overview' ]);
 	/* luci-mod-dashboard's page, behind that package's own group: Vantage grants nothing for it */
 	assert.deepEqual(menu['admin/status/dashboard'].depends.acl, [ 'luci-mod-dashboard-index' ]);
@@ -804,7 +805,7 @@ const PAIR_PINS = [
 		'if (!access(DROPBEAR, \'x\'))',
 		'return length(text) <= MAX_AUTH && put(AUTH_TMP, AUTH, text);',
 		'return (k && l) ? vaps.ap_code(k, l.addr, dropbear_conf().port, l.mac, hostname(\'access-point\')) : null;',
-		'let k = access(DBCLIENT, \'x\') ? public_key(KEY) : null, ssh = ssh_state(), auth = read_auth();'
+		'let k = access(DBCLIENT, \'x\') ? public_key(KEY) : null, ssh = ssh_state(), auth = read_auth(), list = load_aps();'
 	] ],
 	[ '\\bsystem\\b', [
 		'system([ DROPBEARKEY, \'-t\', \'ed25519\', \'-f\', KEY ], 30000);',
@@ -852,7 +853,7 @@ const PAIR_PINS = [
 		'if (!write_auth(auth.lines))',
 		'let k = vaps.key(args.key), auth = k ? read_auth() : null;',
 		'return write_auth(left) ? { ok: true } : { error: \'failed\' };',
-		'let k = access(DBCLIENT, \'x\') ? public_key(KEY) : null, ssh = ssh_state(), auth = read_auth();'
+		'let k = access(DBCLIENT, \'x\') ? public_key(KEY) : null, ssh = ssh_state(), auth = read_auth(), list = load_aps();'
 	] ],
 	[ '\\bauth\\b|\\blines\\b|\\bours\\b', [
 		'let lines = (text == \'\') ? [] : split(text, \'\\n\'), ours = [];',
@@ -876,8 +877,9 @@ const PAIR_PINS = [
 		'for (let o in auth.ours)',
 		'for (let i = 0; i < length(auth.lines); i++)',
 		'push(left, auth.lines[i]);',
-		'let k = access(DBCLIENT, \'x\') ? public_key(KEY) : null, ssh = ssh_state(), auth = read_auth();',
-		'let routers = map(auth?.ours ?? [], (o) => ({ name: o.name, key: o.key }));'
+		'let k = access(DBCLIENT, \'x\') ? public_key(KEY) : null, ssh = ssh_state(), auth = read_auth(), list = load_aps();',
+		'let routers = map(auth?.ours ?? [], (o) => ({ name: o.name, key: o.key }));',
+		'ap: { ssh, routers, unread: !auth, reply: (ssh == \'ok\' && length(routers)) ? reply() : null }'
 	] ],
 	[ '\\b(?:KEY_OPTIONS|COMMENT|auth_line|parse_auth_line)\\b', [
 		'let o = vaps.parse_auth_line(lines[i]);',
@@ -973,10 +975,10 @@ const REPORT_PINS = [
 		'return access(NET + \'/\' + dev + \'/phy80211\') || access(NET + \'/\' + dev + \'/wireless\');',
 		'for (let line in split(readfile(ARP, MAX_ARP) ?? \'\', \'\\n\')) {',
 		'let who = getenv(\'SSH_PUBKEYINFO\');',
-		'if (type(who) == \'string\' && index(who, vaps.COMMENT) == 0) {',
+		'if (getenv(\'SSH_ORIGINAL_COMMAND\') != null || (type(who) == \'string\' && index(who, vaps.COMMENT) == 0)) {',
 		'let held = false;',
 		'for (let line in split(readfile(AUTH, MAX_AUTH) ?? \'\', \'\\n\'))',
-		'if (vaps.parse_auth_line(line)?.comment === who)',
+		'if (type(who) == \'string\' && vaps.parse_auth_line(line)?.comment === who)',
 		'held = true;',
 		'if (!held)',
 		'let self_file = open(SELF, \'r\'), locked = !self_file;',
@@ -999,6 +1001,7 @@ const REPORT_PINS = [
 	] ],
 	[ '\\b(?:getenv|exit|print|sleep)\\b', [
 		'let who = getenv(\'SSH_PUBKEYINFO\');',
+		'if (getenv(\'SSH_ORIGINAL_COMMAND\') != null || (type(who) == \'string\' && index(who, vaps.COMMENT) == 0)) {',
 		'exit(1);',
 		'sleep(250);',
 		'exit(1);',
@@ -1036,7 +1039,7 @@ test('add-on: the report reads, prints and changes nothing', () => {
 		'a write': reportSrc.replace('import { access, lsdir, open, readfile } from \'fs\';', 'import { access, lsdir, open, readfile, writefile } from \'fs\';'),
 		'the command asked for': reportSrc.replace('getenv(\'SSH_CLIENT\')', 'getenv(\'SSH_ORIGINAL_COMMAND\')'),
 		'a revoked router still answered': reportSrc.replace('\tif (!held)\n\t\texit(1);\n', ''),
-		'any line of the add-on\'s counts': reportSrc.replace('if (vaps.parse_auth_line(line)?.comment === who)', 'if (vaps.parse_auth_line(line))'),
+		'any line of the add-on\'s counts': reportSrc.replace('if (type(who) == \'string\' && vaps.parse_auth_line(line)?.comment === who)', 'if (vaps.parse_auth_line(line))'),
 		'the key file from the environment': reportSrc.replace('readfile(AUTH, MAX_AUTH)', 'readfile(getenv(\'HOME\') + \'/keys\', MAX_AUTH)'),
 		'a write call': add('ubus.call(\'uci\', \'set\', {});'),
 		'a computed call': add('let o = \'file\'; ubus.call(o, \'exec\');'),
@@ -1090,8 +1093,7 @@ const COLLECTOR_PINS = [
 		'let text = readfile(APS, MAX_LIST) ?? \'\';',
 		'forget(i);',
 		'function leases() {',
-		'let f = lstat(LEASES);',
-		'return (f?.type == \'file\' && (f.uid == 0 || f.uid === lstat(RUN)?.uid)) ? readfile(LEASES, MAX_TABLE) : null;',
+		'return vaps.own_file(lstat(LEASES), lstat(RUN)?.uid) ? readfile(LEASES, MAX_TABLE) : null;',
 		'let out = readfile(home + \'/out\', MAX_OUT + 1), err = readfile(home + \'/err\', MAX_ERR);',
 		'unlink(home + \'/out\');',
 		'unlink(home + \'/err\');',
@@ -1129,6 +1131,9 @@ const COLLECTOR_PINS = [
 		'let tried = s.trying;',
 		's.trying = null;',
 		'if (tried) {',
+		's.addr = tried;',
+		's.tried = {};',
+		'if (tried && !vaps.moved(e)) {',
 		's.addr = tried;',
 		's.tried = {};',
 		'if (tried)',
@@ -1196,8 +1201,8 @@ test('add-on: the collector pins the host key and runs nothing but dbclient', ()
 		'another publish': collectorSrc.replace('uloop.run();', 'ubus.publish(\'x\', {});\nuloop.run();'),
 		'the paired list removed': add('unlink(APS);'),
 		'a directory removed elsewhere': add('rmdir(\'/etc/vantage\');'),
-		'the leases opened as they come': collectorSrc.replace('return (f?.type == \'file\' && (f.uid == 0 || f.uid === lstat(RUN)?.uid)) ? readfile(LEASES, MAX_TABLE) : null;', 'return readfile(LEASES, MAX_TABLE);'),
-		'any account\'s leases': collectorSrc.replace('(f.uid == 0 || f.uid === lstat(RUN)?.uid)', 'true'),
+		'the leases opened as they come': collectorSrc.replace('return vaps.own_file(lstat(LEASES), lstat(RUN)?.uid) ? readfile(LEASES, MAX_TABLE) : null;', 'return readfile(LEASES, MAX_TABLE);'),
+		'the leases judged by another file': collectorSrc.replace('vaps.own_file(lstat(LEASES), lstat(RUN)?.uid)', 'vaps.own_file(lstat(RUN), lstat(RUN)?.uid)'),
 		'the search on every network': collectorSrc.replace('let to = net ? vaps.next_addr(', 'let to = true ? vaps.next_addr('),
 		'a report parsed uncounted': collectorSrc.replace('r = vaps.parseable(out) ? vaps.normalize(json(out)) : null;', 'r = vaps.normalize(json(out));'),
 		'an address from the report': collectorSrc.replace('s.report.mac = a.mac;', 's.report.mac = a.mac;\n\ts.addr = r.name;'),
@@ -1213,10 +1218,20 @@ test('add-on: the collector pins the host key and runs nothing but dbclient', ()
 
 /* a router's key line: what it may do, how it is made, how it is known again */
 const MODULE_PINS = [
-	[ '\\b(?:KEY_OPTIONS|COMMENT|RE_TAIL|key_id|auth_line|parse_auth_line)\\b', [
+	[ '\\b(?:own_file|st)\\b', [
+		'function own_file(st, uid) {',
+		'return type(st) == \'object\' && st.type == \'file\' && (st.uid === 0 || (type(uid) == \'int\' && st.uid === uid));',
+		'export { MAX_APS, MAX_ROUTERS, MAX_CODE, COMMENT, key, name, name_of, id, addr, mac, port, router_code, ap_code, parse_router, parse_ap, auth_line, parse_auth_line, aps, network_of, find_addrs, next_addr, own_file, fetch_error, state, moved, band, parseable, normalize, view };'
+	] ],
+	[ '\\b(?:KEY_OPTIONS|COMMENT|RE_TAIL|ED25519|key_id|auth_line|parse_auth_line)\\b', [
+		'const ED25519 = \'ssh-ed25519\';',
+		'return join(\' \', [ \'vantage-router\', \'1\', ED25519, k, n ]);',
+		'return join(\' \', [ \'vantage-ap\', \'1\', ED25519, k, a, \'\' + p, m, n ]);',
+		'if (length(f) != 5 || f[0] != \'vantage-router\' || f[1] != \'1\' || f[2] != ED25519 || !key(f[3]) || !name(f[4]))',
+		'if (length(f) != 8 || f[0] != \'vantage-ap\' || f[1] != \'1\' || f[2] != ED25519 || !key(f[3]) ||',
 		'const KEY_OPTIONS = \'command="/usr/libexec/vantage/report",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding\';',
 		'const COMMENT = \'vantage-router@\';',
-		'const RE_TAIL = /[ \\t\\r]+$/;',
+		'const RE_TAIL = /[ \\r]+$/;',
 		'function key_id(k) {',
 		'function auth_line(k, n) {',
 		'return KEY_OPTIONS + \' ssh-ed25519 \' + k + \' \' + COMMENT + n + \'+\' + key_id(k);',
@@ -1225,7 +1240,7 @@ const MODULE_PINS = [
 		'if (length(f) != 4 || f[0] != KEY_OPTIONS || f[1] != ED25519 || !key(f[2]) || substr(f[3], 0, length(COMMENT)) != COMMENT)',
 		'let rest = split(substr(f[3], length(COMMENT)), \'+\');',
 		'return (length(rest) == 2 && name(rest[0]) && rest[1] === key_id(f[2])) ? { key: f[2], name: rest[0], comment: f[3] } : null;',
-		'export { MAX_APS, MAX_ROUTERS, MAX_CODE, COMMENT, key, name, name_of, id, addr, mac, port, router_code, ap_code, parse_router, parse_ap, auth_line, parse_auth_line, aps, network_of, find_addrs, next_addr, fetch_error, state, moved, band, parseable, normalize, view };'
+		'export { MAX_APS, MAX_ROUTERS, MAX_CODE, COMMENT, key, name, name_of, id, addr, mac, port, router_code, ap_code, parse_router, parse_ap, auth_line, parse_auth_line, aps, network_of, find_addrs, next_addr, own_file, fetch_error, state, moved, band, parseable, normalize, view };'
 	] ]
 ];
 function checkModuleSource(src) {
@@ -1247,7 +1262,9 @@ test('add-on: the shared checks import nothing and call nothing outside themselv
 		'another command': apsModule.replace('command="/usr/libexec/vantage/report"', 'command="/bin/sh"'),
 		'no command': apsModule.replace('return KEY_OPTIONS + \' ssh-ed25519 \' + k', 'return \'ssh-ed25519 \' + k'),
 		'a line known by its comment alone': apsModule.replace('if (length(f) != 4 || f[0] != KEY_OPTIONS || ', 'if (length(f) != 4 || '),
-		'any key under the comment': apsModule.replace('&& rest[1] === key_id(f[2])) ?', ') ?')
+		'any key under the comment': apsModule.replace('&& rest[1] === key_id(f[2])) ?', ') ?'),
+		'any account\'s file read': apsModule.replace('(st.uid === 0 || (type(uid) == \'int\' && st.uid === uid))', 'true'),
+		'another key type': apsModule.replace('const ED25519 = \'ssh-ed25519\';', 'const ED25519 = \'ssh-rsa\';')
 	})) {
 		assert.notEqual(src, apsModule, name + ': the mutation applies');
 		assert.throws(() => checkModuleSource(src), assert.AssertionError, name);

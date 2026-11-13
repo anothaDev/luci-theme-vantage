@@ -365,6 +365,14 @@ test('dashboard: it ships exactly these root files, none of them a program', () 
 	}
 	const mk = V.parseMakefile(fs.readFileSync(path.join(APP, 'Makefile'), 'utf8'), 'luci-app-vantage/Makefile');
 	assert.ok(!mk.depends.some(d => /uloop|dropbear|dbclient/.test(d)), 'no daemon\'s or SSH\'s modules among its dependencies: ' + mk.depends);
+	assert.deepEqual(Object.keys(mk.script).filter(k => mk.script[k] != null), [], 'no install or removal scripts');
+});
+
+/* luci.mk installs more than root/ and htdocs/: ucode/ goes to /usr/share/ucode/luci, luasrc/ to the Lua tree, and src/
+   is built. Neither package has any of them, so that the two lists above are all that reaches a device */
+test('dashboard and add-on: nothing is installed from a directory the file lists do not cover', () => {
+	for (const pkg of [ 'luci-app-vantage', 'luci-app-vantage-aps' ])
+		assert.deepEqual(fs.readdirSync(path.join(ROOT, pkg)).sort(), [ 'Makefile', 'htdocs', 'po', 'root' ], pkg);
 });
 
 test('add-on: the collector starts only with an access point paired and dbclient there', () => {
@@ -380,16 +388,16 @@ test('add-on: the collector starts only with an access point paired and dbclient
 		fs.writeFileSync(script, [ 'procd_open_instance() { echo open; }', 'procd_close_instance() { echo close; }', 'procd_set_param() { echo "param $*"; }',
 			init.replace('APS=/etc/vantage/aps.json', 'APS=' + aps).replace('/usr/bin/dbclient', db), 'start_service', '' ].join('\n'));
 		const start = () => spawnSync('/bin/sh', [ script ], { encoding: 'utf8' }).stdout;
-		/* stopped: its run directory goes, that one path and nothing given from outside */
-		assert.ok(init.includes('\nRUN=/var/run/vantage-collector\n') && init.includes('\nservice_stopped() {\n\trm -rf "$RUN"\n}\n'), 'service_stopped removes RUN');
+		/* stopped: its run directory goes, that one path written out (the collector's own RUN) and nothing from a variable */
+		assert.ok(init.includes('\nservice_stopped() {\n\trm -rf /var/run/vantage-collector\n}\n'), 'service_stopped removes the run directory');
 		assert.equal((init.match(/\brm\b/g) || []).length, 1, 'the one removal');
-		assert.equal((init.match(/\bRUN=/g) || []).length, 1, 'RUN is set once');
+		assert.match(fs.readFileSync(path.join(APS, 'root/usr/libexec/vantage/collector'), 'utf8'), /^const RUN = '\/var\/run\/vantage-collector';$/m);
 		const run = path.join(dir, 'run'), beside = path.join(dir, 'beside');
 		fs.mkdirSync(path.join(run, '00000000000000a1/.ssh'), { recursive: true });
 		fs.writeFileSync(path.join(run, '00000000000000a1/.ssh/known_hosts'), 'x\n');
 		fs.writeFileSync(beside, 'kept\n');
 		const stopped = path.join(dir, 'stopped.sh');
-		fs.writeFileSync(stopped, [ init.replace('RUN=/var/run/vantage-collector', 'RUN=' + run), 'service_stopped', '' ].join('\n'));
+		fs.writeFileSync(stopped, [ init.replace('rm -rf /var/run/vantage-collector', 'rm -rf ' + run), 'service_stopped', '' ].join('\n'));
 		assert.equal(spawnSync('/bin/sh', [ stopped ], { encoding: 'utf8' }).status, 0);
 		assert.deepEqual([ fs.existsSync(run), fs.readFileSync(beside, 'utf8') ], [ false, 'kept\n' ]);
 		assert.equal(start(), '', 'no list');
@@ -405,6 +413,26 @@ test('add-on: the collector starts only with an access point paired and dbclient
 		for (const f of programs) assert.ok(fs.statSync(path.join(APS, 'root', f)).isFile(), f);
 		const collector = fs.readFileSync(path.join(APS, 'root/usr/libexec/vantage/collector'), 'utf8');
 		assert.deepEqual([ ...collector.matchAll(/^import .* from '([^']+)';$/gm) ].map(m => m[1]).filter(m => !/^(uloop|ubus|fs)$/.test(m)), [ 'vantage.aps' ], 'the one module of its own it loads');
+		/* the whole script, comments aside: a command anywhere else in it (at the top, in a stop_service, hidden in
+		   start_service) runs as root at boot, at stop or on every upgrade */
+		assert.deepEqual(init.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#')), [
+			'START=99',
+			'USE_PROCD=1',
+			'APS=/etc/vantage/aps.json',
+			'start_service() {',
+			'grep -qs \'"id"\' "$APS" || return 0',
+			'[ -x /usr/bin/dbclient ] || return 0',
+			'procd_open_instance',
+			'procd_set_param command /usr/libexec/vantage/collector',
+			'procd_set_param file /usr/libexec/vantage/collector /usr/share/ucode/vantage/aps.uc',
+			'procd_set_param respawn 3600 5 5',
+			'procd_set_param stderr 1',
+			'procd_close_instance',
+			'}',
+			'service_stopped() {',
+			'rm -rf /var/run/vantage-collector',
+			'}'
+		]);
 	} finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

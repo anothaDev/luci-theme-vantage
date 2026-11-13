@@ -10,6 +10,8 @@
 //   { "advance": <ms> }      moves the clock in half seconds: processes
 //                            that ended get their callback, due timers fire
 //   { "write": [ file, text ] }   writes a file (the paired list, a fixture)
+//   { "block": file }        puts a directory where that file is, so that
+//                            writing it fails from then on
 // process() runs its command to the end at once, with exactly the
 // environment it was given (env -i), and hands the exit code to the
 // callback at the next half second. A command whose `root@<addr>` has a
@@ -18,7 +20,7 @@
 // was run for it.
 'use strict';
 
-import { access, readfile, writefile } from 'fs';
+import { access, mkdir, readfile, unlink, writefile } from 'fs';
 
 let loop = { now: 100000000, timers: [], procs: [], pids: 1000 };
 
@@ -95,6 +97,11 @@ function run() {
 		}
 		else if (step.write) {
 			writefile(step.write[0], step.write[1]);
+			push(out, null);
+		}
+		else if (step.block) {
+			unlink(step.block);
+			mkdir(step.block);
 			push(out, null);
 		}
 	}

@@ -74,6 +74,9 @@ var SWITCH_MS = 30 * 1000;            /* LuCI runs swconfig for each switch's li
    so a collector that does not answer costs no poll, and far above what
    an answer from its memory takes */
 var COLLECTOR_WAIT_MS = 4 * 1000;
+/* where no collector answers at all (the add-on installed and nothing
+   paired: no such object), it is asked again only this often */
+var COLLECTOR_RETRY_MS = 60 * 1000;
 var STORE_KEY = 'vantage.hist.v1';
 var VERSION = '1.0.20';               /* this package's, as its Makefile has it (tests/version.test.js) */
 var SVGNS = 'http://www.w3.org/2000/svg';
@@ -809,26 +812,45 @@ return view.extend({
 	},
 
 	/* The paired access points' report for a slow poll, kept in
-	   this.collector: this call's answer only, never an older one, and a
-	   failed call (no such object: the add-on not installed or nothing
-	   paired; access denied; a timeout) is none and shows nothing. The
-	   add-on's call must not hold up the dashboard: the promise settles
-	   when the call does or after COLLECTOR_WAIT_MS, whichever is first,
-	   and the poll goes on with the answer it had. The call stays out
-	   (LuCI gives it up after its own timeout), no second one is made
-	   beside it and no later poll waits for it; its answer, late, is the
-	   next poll's. */
+	   this.collector with the time it came in: this call's answer only,
+	   and a failed call (no such object: nothing paired; access denied; a
+	   timeout) is none and shows nothing. Asked only by a login that may
+	   see the access points: the add-on's own read group, looked up once
+	   (collectorMay); without the add-on there is no such group, and the
+	   dashboard makes no request for it at all. Where no collector
+	   answers, the next call waits COLLECTOR_RETRY_MS. The call must not
+	   hold up the dashboard: the promise settles when the call does or
+	   after COLLECTOR_WAIT_MS, whichever is first, and the poll goes on
+	   with the answer it had. The call stays out (LuCI gives it up after
+	   its own timeout), no second one is made beside it and no later poll
+	   waits for it; its answer, late, is the next poll's. */
 	askCollector: function() {
-		var self = this;
+		var self = this, now = Date.now();
 		if (this.collectorCall) return Promise.resolve();
-		var call = this.collectorCall = L.resolveDefault(callCollector(), null).then(function(v) {
-			self.collector = v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+		if (this.collectorNone != null && now >= this.collectorNone && now - this.collectorNone < COLLECTOR_RETRY_MS) return Promise.resolve();
+		if (!this.collectorMay) this.collectorMay = L.resolveDefault(callAccess('access-group', 'luci-app-vantage-aps-view', 'read'), false);
+		var call = this.collectorCall = this.collectorMay.then(function(may) {
+			if (may !== true) return { none: true };
+			return callCollector().then(function(v) { return { v: v }; }, function(e) { return { none: /Object not found/.test(String(e && e.message)) }; });
+		}).then(function(a) {
+			self.collector = a.v && typeof a.v === 'object' && !Array.isArray(a.v) ? a.v : null;
+			self.collectorAt = Date.now();
+			self.collectorNone = a.none ? self.collectorAt : null;
 			self.collectorCall = null;
 		});
 		return new Promise(function(resolve) {
 			var timer = setTimeout(resolve, COLLECTOR_WAIT_MS);
 			call.then(function() { clearTimeout(timer); resolve(); });
 		});
+	},
+
+	/* the answer a poll shows: the last one while it is no older than two
+	   slow polls. An older one (a call that stays out, a tab that was
+	   hidden) says nothing of now: no access points rather than old ones
+	   shown as current */
+	collectorAnswer: function() {
+		var limit = 2 * (lowPower() ? LOW_SLOW_MS : POLL_S * 1000) + COLLECTOR_WAIT_MS;
+		return this.collector && !(Date.now() - this.collectorAt > limit) ? this.collector : null;
 	},
 
 	/* one poll's worth of raw replies; missing pieces degrade to {} */
@@ -995,7 +1017,7 @@ return view.extend({
 					routes: r[8] && Array.isArray(r[8].routes) ? (self.kernelRoutes = r[8].routes) : (self.kernelRoutes || null),
 					collector: null,
 					assoc: assoc, hapd: hapd, hapdStatus: hapdStatus, iwinfo: iwinfo, survey: survey, at: Date.now(), started: started };
-				return collected.then(function() { raw.collector = self.collector || null; return raw; });
+				return collected.then(function() { raw.collector = self.collectorAnswer(); return raw; });
 			});
 		});
 	},

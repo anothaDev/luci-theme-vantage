@@ -7,7 +7,6 @@ START=99
 USE_PROCD=1
 
 APS=/etc/vantage/aps.json
-RUN=/var/run/vantage-collector
 
 start_service() {
 	grep -qs '"id"' "$APS" || return 0
@@ -26,5 +25,5 @@ start_service() {
 # stopped (the last access point removed, the add-on removed): what the
 # collector kept for its access points, their known_hosts, goes with it
 service_stopped() {
-	rm -rf "$RUN"
+	rm -rf /var/run/vantage-collector
 }

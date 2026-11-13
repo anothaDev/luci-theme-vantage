@@ -565,7 +565,8 @@ dashboard package itself stays read-only.
   ssh-ed25519 <key> vantage-router@<name>+<key id>` (the id: the first 8
   of the key's 32 bytes in hex; the line is made and known again in one
   place, `aps.uc`, and a blank or carriage return an editor left after
-  it does not hide it) and answers with
+  it does not hide it; a tab does, since Dropbear then names no comment
+  to the report) and answers with
   `vantage-ap 1 ssh-ed25519 <host key> <address> <port> <mac> <name>`:
   its Ed25519 host key, LAN address, SSH port and LAN MAC. Pasted back on the router,
   that answer is the access point's record in `/etc/vantage/aps.json`
@@ -578,8 +579,12 @@ dashboard package itself stays read-only.
   flash cannot leave the administrator's own keys cut short. Neither is
   written when it is there and cannot be read whole (256 KiB of keys,
   64 KiB of list), nor grown past that: what it holds would be lost, or
-  could no longer be listed and revoked. An access point whose key file
-  cannot be read says so (`keys-unreadable`) and pairs with no one. The
+  could no longer be listed and revoked. The list is not written either
+  when it holds anything that is no entry of the add-on's (a hand edit
+  gone wrong would lose the rest). An access point whose key file
+  cannot be read says so (`keys-unreadable`) and pairs with no one; the
+  status also marks either list as unread, whatever else is wrong, so
+  the page never shows "none" for a list it could not read. The
   answer to a router is made before its line is written.
 - **Transport.** The collector (`/usr/libexec/vantage/collector`, procd
   service `vantage-collector`, started only while an access point is
@@ -597,31 +602,42 @@ dashboard package itself stays read-only.
   leases and neighbour table and tries the address it has now; the
   pinned host key decides, so a DHCP address change does not unpair it.
   It looks on the network the access point was paired on only (the
-  interface with a subnet that holds the pairing address, that
+  interface whose subnet holds the pairing address most narrowly, that
   interface's device and IPv4 subnets): any device gets a row under any
   MAC and address into the neighbour table of a network it is on, and
   the router would open a connection to wherever such a row says. The
-  lease comes first, then the neighbour table, four addresses at most;
-  the leases are read only as a plain file of root's (a FIFO under that
-  name would hold the daemon). The address it answers at is kept in
-  memory, `/etc/vantage` stays as paired. States: `ok` (a report to
+  lease comes first, then the neighbour table, four addresses at most,
+  counted after those already tried are left out, so made-up leases
+  and rows can delay the search and not end it; the leases are read
+  only as a plain file of root's (a FIFO under that name would hold the
+  daemon). After the router's own subnet was changed the pairing
+  address is on no network of its any more, and nothing is searched:
+  the access point has to be paired again. The address it answers at
+  is kept in memory, `/etc/vantage` stays as paired; an answer of its
+  own from a new address that is no report (`denied`, `missing`,
+  `invalid`) moves it there too, with that error. States: `ok` (a report to
   show), `offline` (`unreachable`, `timeout`), `error` (`hostkey`,
   `denied`, `invalid`, or `missing`: no report command there, the add-on
-  is not installed) and `waiting` (nothing fetched yet). `denied`,
+  is not installed) and `waiting` (nothing fetched yet, or nothing since
+  a pause in looking that began with a failure). `denied`,
   `missing` and `invalid` end the search, so only an access point that
   showed its pinned key can cause them: `denied` is `dbclient`'s one
   reason that comes after the key check, word for word, `missing` a line
   of the access point's own shell, `invalid` bytes on its standard
-  output. What a device says before any key is checked (its version line
-  is quoted in `dbclient`'s error text; a disconnect ends `dbclient` with
-  0) reads as `unreachable`. A report's text is counted before it is
+  output. `hostkey` is `dbclient`'s own reason or its own line about a
+  mismatch, from the line's start. What a device says before any key is
+  checked (its version line is quoted in `dbclient`'s error text; a
+  disconnect ends `dbclient` with 0) reads as `unreachable`. A report's
+  text is counted before it is
   parsed (at most 1280 objects and arrays and 4096 commas): `json()`
   builds every value before a check can drop one, and 128 KiB of empty
   objects took 66 MB. After a pause in looking, the last report stands
-  until the next fetch has ended, unless the fetch before the pause had
-  already failed. An upgrade restarts the collector: procd watches its
-  program files (`file` in the init script), since a package upgrade
-  only runs `start`.
+  until the next fetch has ended or could not be started; an access
+  point whose fetch before the pause had failed waits for that fetch.
+  An upgrade restarts the collector: the init script
+  names its program files (`file`), procd compares their checksums each
+  time `start` runs, and `start` is all an apk upgrade runs (opkg stops
+  the service first).
 - **What an access point tells.** Dropbear runs the report command
   whatever the router asks for (the key's forced command): the
   hostname, model, uptime and LAN MAC; its access-point interfaces
@@ -651,19 +667,29 @@ dashboard package itself stays read-only.
   this device. A host the access point lists as wired behind it gets a
   note saying so. Where this device hears the access point's MAC is
   decided against its own host hints, addresses compared by value (an
-  IPv6 address has many spellings). The gateway is the one host the
-  hints give the next hop's address: a station of one of this device's
-  access point interfaces never (the far end of its own client, mesh or
-  WDS link may be), a host heard only on bridges the line does not leave
-  through neither (any device gets its MAC listed under any address with
-  one ARP request), and when two are left, none: unknown rather than the
-  one listed last. This tells apart a claim made from another of this
-  device's networks, not one made on the uplink's own: a wired host
-  there that replaces the gateway's entry in this device's neighbour
-  table (ARP spoofing) is the one holder, and is shown as the gateway.
+  IPv6 address has many spellings). The gateway is a host the hints
+  give the next hop's address. Any device gets its MAC listed under any
+  address with one ARP request, so among several such hosts this
+  device's bridge entries decide: one heard on the line's own bridge
+  (in the line's VLAN, where the entries name one) before one heard on
+  no bridge, and that one before one heard only elsewhere; two of one
+  kind are none, unknown rather than the one listed last. Never a
+  station of one of this device's access point interfaces (the far end
+  of its own client, mesh or WDS link may be), a host heard only in
+  other VLANs of the line's bridge, or a host heard only elsewhere when
+  the line's far end has no MAC (PPP, a modem, a tunnel). A lone holder
+  heard elsewhere is believed otherwise, since the bridges of a wire's
+  other VLANs hear a real gateway in just that way. This tells apart a
+  claim made from another of this device's networks. It does not tell
+  apart one made on the uplink's own network: a host there that
+  replaces the gateway's entry in this device's neighbour table (ARP
+  spoofing) is the one holder and is taken for the gateway, as it is
+  when the gateway is in no hint at all. The uplink's port is that of
+  the gateway's entry on the line.
   While it is unknown and the uplink has a next hop, no
   host the uplink's bridge has learned is moved or noted, since any of
-  them may be the gateway. A client two access points report stays where
+  them may be the gateway; and no host that holds the gateway's address
+  is ever an access point's to add. A client two access points report stays where
   it was placed (the stronger signal; a station before a wired host);
   the others are named in its details ("Also reported by"), so no report
   is dropped unseen, and nothing changes in the list or the path. An
@@ -671,9 +697,13 @@ dashboard package itself stays read-only.
   to its LuCI. Its stations stay out of this device's health checks and
   weak-signal warnings. The report is asked for in a request of its own
   and waited for at most 4 s a poll, so a collector that does not answer
-  holds up nothing else; a login without `luci-app-vantage-aps-view`
-  gets none. Without the add-on, or with nothing paired, the dashboard
-  is as before.
+  holds up nothing else. Only a login with `luci-app-vantage-aps-view`
+  asks at all (the dashboard looks that up once a page; without the
+  add-on there is no such group, and no request is made); where no
+  collector answers because nothing is paired, it asks once a minute.
+  An answer older than two slow polls is not shown: no access points
+  rather than old ones as if current. Without the add-on, or with
+  nothing paired, the dashboard is as before.
 - **Unpairing.** Removing an access point on the router deletes its
   record and what the collector kept for it (and stops the collector
   with the last one); revoking a router on the access point deletes its
@@ -681,8 +711,13 @@ dashboard package itself stays read-only.
   connection open from before gets nothing either: Dropbear checks a key
   when a connection logs in, not for each session on it, but it names
   the line that let the caller in to the command it runs
-  (`SSH_PUBKEYINFO`, the line's comment), and the report prints nothing
-  for a line of the add-on's that `authorized_keys` no longer holds.
+  (`SSH_PUBKEYINFO`, the line's comment), and says when a key line's
+  command replaced the caller's (`SSH_ORIGINAL_COMMAND`). A caller let
+  in that way gets a report only while `authorized_keys` holds a line
+  of the add-on's with that comment: not once the line is gone, and not
+  when Dropbear names no comment (a line of the administrator's own
+  with this command, a Dropbear older than 2022.82). A login without a
+  key line's command (the administrator's shell) is not judged.
   Removing the add-on leaves the key lines, which can then only run a
   command that is gone: revoke routers first.
 - **Requirements and limits.** Dropbear on the access point, running and
@@ -692,10 +727,9 @@ dashboard package itself stays read-only.
   an Ed25519 host key of its own and settings that let root in by key
   with the key's own command (no `RootLogin` off, `ForceCommand` or
   `keyfile` list in the first section that is on, whose first port the
-  reply names); `dbclient` on the router. Revoking a connection that is
-  still open needs a Dropbear that sets `SSH_PUBKEYINFO` (2022.82 and
-  later; OpenWrt 24.10 and 25.12 have it): on an older one such a
-  connection reads on until it ends. On OpenWrt 24.10's Dropbear the
+  reply names); `dbclient` on the router. The report needs a Dropbear
+  that sets `SSH_PUBKEYINFO` (2022.82 and later; OpenWrt 24.10 and
+  25.12 have it): an older one gets no report at all. On OpenWrt 24.10's Dropbear the
   key's `no-port-forwarding` is also what keeps it from forwarding to a
   local socket such as ubus's: it must stay. The collector runs as root
   for now (a user of its own is on the roadmap); what it reads from the

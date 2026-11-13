@@ -599,7 +599,11 @@ What it needs:
   point's IPv4 address changes, the router finds it again by its MAC
   address in its own DHCP leases and neighbour table, on the network it
   was paired on. A DHCP reservation avoids the question. An access point
-  moved to another of the router's networks has to be paired again.
+  moved to another of the router's networks has to be paired again, and
+  so has every access point after the router's own subnet was changed:
+  the router looks only inside the subnet the pairing address is in.
+  Pairing again means **Remove** on the router, then adding the access
+  point with a new reply.
 - **After a firmware upgrade,** install the add-on again on the upgraded
   device, as with the other Vantage packages (see
   [Upgrading OpenWrt itself](#upgrading-openwrt-itself)). The pairing
@@ -620,7 +624,7 @@ add-on shares nothing and runs nothing. Its page needs the
 `luci-app-vantage-aps` permission, which only an administrator should
 have: whoever holds it can let a router read the device.
 
-Two things to know about the router's key:
+Two things to know:
 
 - **A backup contains it.** `/etc/vantage/` is part of a configuration
   backup (System → Backup / Flash Firmware), so such an archive holds the
@@ -629,16 +633,30 @@ Two things to know about the router's key:
 - **Seeing the access points is a permission of its own.** An
   administrator has it. A login you restricted to the dashboard
   (`luci-app-vantage`) sees the dashboard without the access points;
-  grant it `luci-app-vantage-aps-view` as well to show them. Whoever
-  holds that sees the access points' clients, and each look makes the
-  router log in to them.
+  add `luci-app-vantage-aps-view` to that login's `read` list in
+  `/etc/config/rpcd` to show them. Whoever holds that sees the access
+  points' clients, and each look makes the router log in to them.
 
 To unpair, **Remove** the access point on the router and **Revoke** the
 router on the access point. Revoke also cuts off a router that still has
-a connection open: from then on it gets no report. One thing can undo
-it: LuCI's own System → Administration → SSH-Keys page saves the whole
+a connection open: from then on it gets no report. Two things can undo
+it. LuCI's own System → Administration → SSH-Keys page saves the whole
 key file, so a tab of that page opened before the Revoke puts the line
-back when it is saved afterwards. Reload that page first.
+back when it is saved afterwards: reload that page first. And restoring
+a configuration backup made before the Revoke restores the key file with
+it. Revoke, like the key's limits, counts only on an access point with a
+root password: without one, OpenWrt's Dropbear lets anyone on the
+network in as root with no key at all, unless password logins are
+turned off.
+
+If the page says this device's SSH keys cannot be read, the file
+(`/etc/dropbear/authorized_keys`) is damaged or larger than 256 KiB.
+LuCI's SSH-Keys page cannot open such a file either: shorten it over
+SSH. Until then the page cannot say which routers read the device, and
+pairing is off. If it says the router's list of access points cannot be
+read, `/etc/vantage/aps.json` was changed by hand or is damaged: put it
+right over SSH, or delete it and pair the access points again. The
+add-on never rewrites a list it cannot read whole.
 
 Before removing the add-on:
 
@@ -733,6 +751,9 @@ With the [signed repository](#signed-repository):
 ```sh
 apk update && apk upgrade luci-theme-vantage luci-app-vantage
 ```
+
+With the access points add-on, name `luci-app-vantage-aps` as well, here
+and in the commands below, on the router and on every access point.
 
 (If you first installed from files, run
 `apk add luci-theme-vantage luci-app-vantage` once instead; see
@@ -942,6 +963,8 @@ uci commit luci
   `write` list. Without that, the dashboard works but offers no rename
   button. Names from reverse DNS need `luci-app-vantage-rdns` in the `read`
   list as well (see [Security notes](#security-notes) before you add it).
+  The paired access points need `luci-app-vantage-aps-view` there (see
+  [Other access points](#other-access-points-optional)).
 - The dashboard's radios and SSIDs come from the app's rpcd plugin
   (`/usr/share/rpcd/ucode/luci.vantage`). If they are missing, check that
   `ubus list luci.vantage` shows the object; `/etc/init.d/rpcd reload`

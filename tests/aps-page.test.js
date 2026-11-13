@@ -661,9 +661,17 @@ test('aps render: the routers that may read this device, the SSH warning, the re
 	assert.equal(lone.el.againBox.hidden, true);
 	/* the key file cannot be read: an empty list is not "none" */
 	const blind = mount(statusOf([], { ap: { ssh: 'keys-unreadable', routers: [], reply: null } }), null);
-	assert.equal(blind.el.routerRows.text, 'Not known while the key file cannot be read.');
-	assert.deepEqual(notes(tile(blind, 'ap')), [ 'This device\'s SSH key file (/etc/dropbear/authorized_keys) cannot be read, or is larger than 256 KiB. Which routers can read this device is not known, so pairing is off.' ]);
+	assert.equal(blind.el.routerRows.text, 'Not known while this device\'s SSH keys cannot be read.');
+	assert.deepEqual(notes(tile(blind, 'ap')), [ 'This device\'s SSH keys (/etc/dropbear/authorized_keys) cannot be read, or are larger than 256 KiB. Which routers can read this device is not known, so pairing is off.' ]);
 	assert.equal(blind.el.allowBtn.hidden, true);
+	/* unread while something else is wrong with SSH too (the plugin names that first): still not "none" */
+	const both = mount(statusOf([], { ap: { ssh: 'not-running', routers: [], unread: true, reply: null } }), null);
+	assert.equal(both.el.routerRows.text, 'Not known while this device\'s SSH keys cannot be read.');
+	assert.match(mount(statusOf([], { ap: { ssh: 'not-running', routers: [], unread: false, reply: null } }), null).el.routerRows.text, /^No router can read this access point/);
+	/* the router's own list unread: not "none yet" either */
+	const lost = mount({ router: { code: rc(RK, 'gw'), aps: [], unread: true }, ap: { ssh: 'ok', routers: [], unread: false, reply: null } }, null);
+	assert.equal(lost.el.apRows.text, 'Not known while this router\'s list of access points (/etc/vantage/aps.json) cannot be read.');
+	assert.match(mount(statusOf([]), null).el.apRows.text, /^No access points yet/);
 });
 
 test('aps render: a poll updates the rows in place and rebuilds them only when the list changes', async () => {
@@ -874,10 +882,14 @@ test('aps: an access point shows the address it last answered at, else the paire
 test('aps: status read defensively; a poll keeps the last status when it fails and drops the report', async () => {
 	assert.equal(view.normStatus(null), null);
 	assert.equal(view.normStatus([]), null);
-	assert.deepEqual(view.normStatus({}), { code: null, aps: [], ssh: null, routers: [], reply: null });
+	assert.deepEqual(view.normStatus({}), { code: null, aps: [], ssh: null, routers: [], reply: null, apsUnread: false, keysUnread: false });
 	const s = view.normStatus({ router: { code: 'c', aps: [ { id: 'a', name: 'n', addr: '192.0.2.10' }, { name: 'no id' }, 3 ] },
 		ap: { ssh: 'ok', routers: [ { key: 'k', name: 'gw' }, { name: 'no key' } ], reply: 5 } });
-	assert.deepEqual(s, { code: 'c', aps: [ { id: 'a', name: 'n', addr: '192.0.2.10', port: 22 } ], ssh: 'ok', routers: [ { key: 'k', name: 'gw' } ], reply: null });
+	assert.deepEqual(s, { code: 'c', aps: [ { id: 'a', name: 'n', addr: '192.0.2.10', port: 22 } ], ssh: 'ok', routers: [ { key: 'k', name: 'gw' } ], reply: null, apsUnread: false, keysUnread: false });
+	/* only true counts as unread; the state alone says it of the keys too */
+	assert.deepEqual([ 'apsUnread', 'keysUnread' ].map(k => view.normStatus({ router: { unread: true }, ap: { unread: true } })[k]), [ true, true ]);
+	assert.deepEqual([ 'apsUnread', 'keysUnread' ].map(k => view.normStatus({ router: { unread: 1 }, ap: { unread: 'yes' } })[k]), [ false, false ]);
+	assert.equal(view.normStatus({ ap: { ssh: 'keys-unreadable' } }).keysUnread, true);
 
 	document.hidden = false;
 	const self = Object.create(view);
@@ -1061,6 +1073,10 @@ test('pair stand-in: allow_router and revoke_router', () => {
 		const st = data(t, 'status', {});
 		assert.equal(st.ap.ssh, ssh);
 		assert.equal(st.ap.reply, null);
+		/* the key file unread: no router listed and none revoked, as the plugin answers; any other state lists them */
+		const blind = ssh === 'keys-unreadable', first = pair.initialState('ap-x', 'ok').routers[0].key;
+		assert.deepEqual([ st.ap.unread, st.ap.routers.length > 0, st.router.unread ], [ blind, !blind, false ], ssh);
+		assert.deepEqual(data(t, 'revoke_router', { key: first }), blind ? { error: 'failed' } : { ok: true }, ssh);
 	}
 	const none = pair.initialState('ap-x', 'ok');
 	data(none, 'revoke_router', { key: data(none, 'status', {}).ap.routers[0].key });

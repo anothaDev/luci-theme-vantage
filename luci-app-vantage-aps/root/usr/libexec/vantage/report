@@ -107,17 +107,22 @@ function neighbours() {
 // Revoked, and still connected: dropbear checks a key when a connection
 // logs in, not again for each session opened on it, so a router that
 // keeps one open would go on reading after its line is gone. Dropbear
-// names the line that let the caller in by its comment; one of the
-// add-on's that authorized_keys no longer holds gets nothing. Any other
-// caller (a line of the administrator's own, a login without a key) is
-// not the add-on's to judge.
+// names the line that let the caller in by its comment (SSH_PUBKEYINFO),
+// and says when a key line's command replaced what the caller asked for
+// (SSH_ORIGINAL_COMMAND, set then and only then). A caller let in that
+// way gets a report only while authorized_keys holds a line of the
+// add-on's with that comment: not once it is gone, and not for a line
+// Dropbear names no comment for (one with a tab or other characters it
+// does not pass on, or a Dropbear too old to say). A caller without a
+// forced command (the administrator's shell) is not the add-on's to
+// judge.
 let who = getenv('SSH_PUBKEYINFO');
 
-if (type(who) == 'string' && index(who, vaps.COMMENT) == 0) {
+if (getenv('SSH_ORIGINAL_COMMAND') != null || (type(who) == 'string' && index(who, vaps.COMMENT) == 0)) {
 	let held = false;
 
 	for (let line in split(readfile(AUTH, MAX_AUTH) ?? '', '\n'))
-		if (vaps.parse_auth_line(line)?.comment === who)
+		if (type(who) == 'string' && vaps.parse_auth_line(line)?.comment === who)
 			held = true;
 
 	if (!held)
