@@ -9,7 +9,7 @@ start_service() {
 	[ "$(uci -q get vantage.main.share_mesh)" = 0 ] && return 0
 	[ -x /etc/init.d/usteer ] || return 0
 	procd_open_instance
-	procd_set_param command /bin/sh -c 'while :; do ucode /usr/share/vantage/mesh-share.uc; sleep 10; done'
+	procd_set_param command /bin/sh -c 'while :; do ucode /usr/share/vantage/mesh-share.uc; sleep $(cat /tmp/vantage-mesh-interval 2>/dev/null || echo 10); done'
 	procd_set_param respawn 3600 5 0
 	procd_close_instance
 }

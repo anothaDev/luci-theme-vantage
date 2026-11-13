@@ -3,11 +3,14 @@
 // state, so they read it in remote_info): this device's name, model and
 // uptime, the wired hosts downstream of it, its stations' signal and
 // traffic (bit/s since the last run) and the IPv4 addresses its host hints
-// know, and on a router with hardware offload each host's internet traffic.
-// Run every 10 s by /etc/init.d/vantage-mesh; without usteer it does
+// know.
+// Run by /etc/init.d/vantage-mesh every 10 s, or every second while a
+// LuCI session on this device or any peer was active in the last HOT_S
+// (it writes the next interval to INTERVAL); without usteer it does
 // nothing. It goes to the LAN only, as usteer's own station reports do.
 
 import { connect } from 'ubus';
+import { cursor } from 'uci';
 import { readfile, writefile, access } from 'fs';
 
 const KEY = 'vantage';
@@ -15,7 +18,11 @@ const MAX_HOSTS = 64;
 const MAX_STA = 128;
 const MAX_IPS = 192;
 const PREV = '/tmp/vantage-mesh-share.json';
+const MAX_PAST = 128;
+const INTERVAL = '/tmp/vantage-mesh-interval';
+const HOT_S = 30;
 const RE_IPV4 = /^[0-9]{1,3}(\.[0-9]{1,3}){3}$/;
+const RE_IPV6 = /^[0-9a-f:]{2,39}$/i;
 const RE_MAC = /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/;
 const RE_DEV = /^[A-Za-z0-9_.@-]{1,15}$/;
 
@@ -23,8 +30,26 @@ let u = connect();
 let local = u?.call('usteer', 'local_info');
 let nodes = (type(local) == 'object') ? sort(keys(local)) : [];
 
-if (!length(nodes))
+if (!length(nodes)) {
+	writefile(INTERVAL, '10');
 	exit(0);
+}
+
+// someone is looking: a LuCI session here used within HOT_S (rpcd resets
+// a session's expiry on every call), or a peer that says so
+let hot = false;
+
+for (let s in (u.call('session', 'list', {}, 'multiple') ?? []))
+	if (type(s) == 'object' && s.timeout > 0 && s.expires > 0 && s.timeout - s.expires < HOT_S && s.data?.username)
+		hot = true;
+
+let peers_hot = false;
+
+for (let k, v in (u.call('usteer', 'remote_info') ?? {}))
+	if (v?.node_info?.[KEY]?.hot === true)
+		peers_hot = true;
+
+writefile(INTERVAL, (hot || peers_hot) ? '1' : '10');
 
 function wireless(dev) {
 	return access('/sys/class/net/' + dev + '/phy80211') || access('/sys/class/net/' + dev + '/wireless');
@@ -85,8 +110,11 @@ for (let h in hosts)
 	if (type(h?.port) == 'string')
 		per[h.port] = (per[h.port] ?? 0) + 1;
 
-let now = clock(true)?.[0] ?? 0, prev = json(readfile(PREV) ?? 'null') ?? {}, next = { at: now, b: {}, p: {}, f: {} };
-let dt = (type(prev.at) == 'int' && now > prev.at && now - prev.at < 120) ? now - prev.at : 0;
+// dt in seconds, from milliseconds: at one run a second, whole seconds
+// would be off by up to half
+let ck = clock(true), now = (ck?.[0] ?? 0) * 1000 + int((ck?.[1] ?? 0) / 1000000);
+let prev = json(readfile(PREV) ?? 'null') ?? {}, next = { ms: now, b: {}, p: {} };
+let dt = (type(prev.ms) == 'int' && now > prev.ms && now - prev.ms < 120000) ? (now - prev.ms) / 1000.0 : 0;
 
 function counter(dev, which) {
 	let v = trim(readfile('/sys/class/net/' + dev + '/statistics/' + which + '_bytes') ?? '');
@@ -135,63 +163,71 @@ for (let obj in filter(u.list() ?? [], o => index(o, 'hostapd.') == 0 && o != 'h
 	}
 }
 
+// the stations of the last day: a station that left is no wired host
+// while a bridge still remembers its MAC (usteer forgets it in minutes)
+next.w = {};
+for (let mac, t in (type(prev.w) == 'object' ? prev.w : {}))
+	if (match(mac, RE_MAC) && type(t) == 'int' && now - t < 86400000 && length(next.w) < MAX_PAST)
+		next.w[mac] = t;
+for (let s in sta)
+	next.w[s[0]] = now;
+let past = slice(sort(keys(next.w), (a, b) => next.w[b] - next.w[a]), 0, MAX_PAST);
+
 // addresses: what the host hints know (a router's DHCP leases)
-let ips = [], hints = u.call('luci-rpc', 'getHostHints') ?? {}, ip2mac = {}, lanmac = {};
+let ips = [], hints = u.call('luci-rpc', 'getHostHints') ?? {};
 
 for (let mac, h in hints) {
 	if (!match(lc(mac), RE_MAC))
 		continue;
-	lanmac[lc(mac)] = true;
 	for (let ip in (h?.ipaddrs ?? []))
-		if (type(ip) == 'string' && match(ip, RE_IPV4)) {
-			ip2mac[ip] = lc(mac);
-			if (length(ips) < MAX_IPS)
-				push(ips, [ lc(mac), ip ]);
+		if (type(ip) == 'string' && match(ip, RE_IPV4) && length(ips) < MAX_IPS)
+			push(ips, (type(h?.name) == 'string' && h.name != '') ? [ lc(mac), ip, substr(h.name, 0, 63) ] : [ lc(mac), ip ]);
+}
+
+// a host with a DHCP reservation but no lease or neighbour entry now (a
+// device that sleeps, or renewed long ago): its reserved address
+{
+	let have = {};
+	for (let w in ips)
+		have[w[0]] = true;
+	cursor()?.foreach('dhcp', 'host', function(s) {
+		let ip = s.ip, name = s.name;
+		for (let mac in (type(s.mac) == 'array' ? s.mac : split(s.mac ?? '', ' '))) {
+			mac = lc(mac);
+			if (!match(mac, RE_MAC) || have[mac] || type(ip) != 'string' || !match(ip, RE_IPV4) || length(ips) >= MAX_IPS)
+				continue;
+			have[mac] = true;
+			push(ips, (type(name) == 'string' && name != '') ? [ mac, ip, substr(name, 0, 63) ] : [ mac, ip ]);
 		}
-	for (let ip in (h?.ip6addrs ?? []))
-		if (type(ip) == 'string')
-			ip2mac[ip] = lc(mac);
+	});
 }
-
-// internet traffic per host (a router with MediaTek hardware offload):
-// offloaded flows bypass every netdev and conntrack counter, so read the
-// packet engine's own per-flow bytes. A flow from a local address is the
-// host's upload (found by its address), one to it its download (by the
-// destination MAC). LAN to LAN traffic never passes the engine.
-const RE_LOCAL = /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|f[cd]|fe80)/i;
-let inet = {}, ppe = false;
-
-for (let n in [ 0, 1 ]) {
-	let s = readfile('/sys/kernel/debug/ppe' + n + '/bind');
-
-	if (s == null)
-		continue;
-	ppe = true;
-	for (let line in split(s, '\n')) {
-		let m = match(line, /^(\S+) BND .*orig=(\S+)->\S+ .*eth=([0-9a-f:]{17})->([0-9a-f:]{17}).* bytes=([0-9]+)/);
-
-		if (!m)
-			continue;
-		let src = replace(m[2], /^\[?([^\]]+?)\]?:[0-9]+$/, '$1');
-		let key = n + m[1] + m[2], bytes = +m[5], p = prev.f?.[key];
-		next.f[key] = bytes;
-		if (!dt || p == null || bytes < p)
-			continue;
-		let up = !!match(src, RE_LOCAL), mac = up ? ip2mac[src] : lc(m[4]);
-		if (!mac || !lanmac[mac])
-			continue;
-		let a = inet[mac] ?? (inet[mac] = [ 0, 0 ]);
-		a[up ? 0 : 1] += bytes - p;
-	}
-}
-
-let net = [];
-
-for (let mac, a in inet)
-	if (length(net) < MAX_STA)
-		push(net, [ mac, int(a[0] * 8 / dt), int(a[1] * 8 / dt) ]);
 
 writefile(PREV, next);
+
+// the public addresses of a router (its default route leaves over an
+// address that is not private): IPv4 there, and a global IPv6 on the same
+// line (wan6), so its access points can show them. An access point's
+// default route is on its LAN, so it shares none.
+let wan = null;
+{
+	let ifs = u.call('network.interface', 'dump')?.interface ?? [], v4 = null, dev = null, v6 = null;
+	for (let i in ifs)
+		for (let r in (i.route ?? []))
+			if (!v4 && r.target == '0.0.0.0' && r.mask == 0)
+				for (let a in (i['ipv4-address'] ?? []))
+					if (!v4 && type(a?.address) == 'string' && match(a.address, RE_IPV4) && !match(a.address, RE_LOCAL)) {
+						v4 = a.address;
+						dev = i.l3_device;
+					}
+	if (v4)
+		for (let i in ifs)
+			if (i.l3_device == dev)
+				for (let a in (i['ipv6-address'] ?? []))
+					if (!v6 && type(a?.address) == 'string' && match(a.address, RE_IPV6) && !match(a.address, RE_LOCAL))
+						v6 = a.address;
+	if (v4)
+		wan = [ v4, v6 ];
+}
 
 let info = u.call('system', 'info'), board = u.call('system', 'board');
 let name = trim(readfile('/proc/sys/kernel/hostname') ?? '');
@@ -199,5 +235,5 @@ let name = trim(readfile('/proc/sys/kernel/hostname') ?? '');
 u.call('usteer', 'set_node_data', {
 	node: nodes[0],
 	data: { [KEY]: { v: 1, name: substr(name, 0, 63), model: substr(board?.model ?? '', 0, 63), uptime: info?.uptime,
-		mac: self, up, wired: out, sta, ips, inet: ppe ? net : null } }
+		mac: self, up, wired: out, sta, ips, wan, past, hot } }
 });

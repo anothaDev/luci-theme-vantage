@@ -186,9 +186,10 @@ test('wired hosts: the path counts those downstream only; filters, search and so
 	self.ui = { kind: 'wired', chip: 'all', filter: '' };
 
 	assert.deepEqual(self.wiredPorts(), [ 'lan1', 'lan2' ], 'the uplink\'s port leads to the gateway');
-	/* the path's Wired branch: a node per downstream port, their hosts counted */
+	/* the path's Wired branch: one node listing the hosts downstream */
 	const stub = () => ({ textContent: '', getAttribute() { return null; }, setAttribute() {} });
-	const branch = { ssids: self.wiredPorts().map(port => ({ port, el: stub(), name: stub(), count: stub(), rate: stub() })), title: stub(), sub: stub() };
+	const branch = { ssids: [ { el: stub(), name: stub(), count: stub(), rows: stub() } ], title: stub(), sub: stub() };
+	self.paintLeaf = () => {};
 	self.updateWiredBranch(branch);
 	assert.equal(branch.title.textContent, '3 devices');
 	/* a bridge with several ports, the gateway's port unknown: the
@@ -241,25 +242,35 @@ test('health checks about clients: several weak open their list, unless the layo
 	assert.deepEqual(opened, [ 'client:aa', 'client:bb' ]);
 });
 
-test('wired branch: each port node shows its traffic, all its hosts\' together', () => {
+test('wired branch: one node lists this device\'s own hosts, not access points or what is behind one; each port\'s traffic once', () => {
 	const self = Object.create(view);
 	const el = () => ({ textContent: '', attrs: {}, getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }, setAttribute(k, v) { this.attrs[k] = v; } });
-	const node = port => ({ port, el: el(), name: el(), count: el(), rate: el() });
 	const host = (mac, port, extra) => Object.assign({ mac, port, name: 'h' + mac.slice(-2), speed: { mbps: 1000 } }, extra);
 	self.m = { wiredHosts: [
 		host('00:00:5e:00:53:01', 'lan5', { shared: true, peers: 2 }),
 		host('00:00:5e:00:53:02', 'lan5', { shared: true, peers: 2 }),
-		host('00:00:5e:00:53:03', 'lan6')
+		host('00:00:5e:00:53:03', 'lan6'),
+		host('02:00:5e:00:00:02', 'lan1', { isAp: '192.0.2.2' }),
+		host('00:00:5e:00:53:04', 'lan1', { ap: { ip: '192.0.2.2', name: 'attic-ap' } })
 	] };
-	self.st = { devRates: { lan5: { rx: 3000, tx: 12345678 } } };
-	const b = { ssids: [ node('lan5'), node('lan6') ], title: el(), sub: el() };
+	self.st = { devRates: { lan5: { rx: 3000, tx: 12345678 }, lan1: { rx: 1e6, tx: 1e6 } } };
+	let listed = null;
+	self.paintLeaf = (rows, list) => { listed = list.map(c => c.name); };
+	const sn = { el: el(), name: el(), count: el(), rows: el() };
+	const b = { ssids: [ sn ], title: el(), sub: el() };
 	self.updateWiredBranch(b);
-	const [ shared, alone ] = b.ssids;
-	/* full units: each its own where they differ */
-	assert.deepEqual([ shared.name.textContent, shared.count.textContent, shared.rate.textContent ], [ 'lan5', '2 devices', '↓ 12.3 Mbit/s  ↑ 3 kbit/s' ]);
-	assert.equal(shared.el.attrs.title, 'Show the devices on lan5\nPort total: ↓ 12.3 Mbit/s · ↑ 3 kbit/s');
-	assert.deepEqual([ alone.name.textContent, alone.rate.textContent, alone.el.attrs.title ], [ 'lan6 · h03', '—', 'Show the devices on lan6' ], 'no counters yet: a dash, no total');
-	assert.equal(b.sub.textContent, '↓ 12.3 Mbit/s');
+	assert.deepEqual(listed, [ 'h01', 'h02', 'h03' ]);
+	assert.deepEqual([ sn.name.textContent, sn.count.textContent, b.title.textContent ], [ 'Wired', '3 devices', '3 devices' ]);
+	assert.equal(b.sub.textContent, '↓ 12.3 Mbit/s', 'lan5 once, not lan1 (an access point\'s)');
+	/* an access point plugged straight in is one of them, once for its two MACs */
+	self.m.accessPoints = [ { ip: '192.0.2.2', name: 'attic-ap', parent: { self: true, port: 'lan1' } } ];
+	self.m.wiredHosts.push(host('02:00:5e:00:00:03', 'lan1', { isAp: '192.0.2.2', name: 'attic-ap (port 2)' }));
+	self.updateWiredBranch(b);
+	assert.deepEqual(listed, [ 'h01', 'h02', 'h03', 'h02' ]);
+	/* one further down (behind another access point) is not */
+	self.m.accessPoints[0].parent = { ip: '192.0.2.9', name: 'x', port: 'lan4' };
+	self.updateWiredBranch(b);
+	assert.deepEqual(listed, [ 'h01', 'h02', 'h03' ]);
 });
 
 test('names beyond a poll: reverse DNS and the vendor table for wired hosts too', async () => {
@@ -862,14 +873,15 @@ test('no Wi-Fi: the path has the Wired branch too, even beside a network called 
 		const h = self.hero;
 		assert.deepEqual(h.radios.map(b => b.id), [ 'lan', 'wired', ':wired' ], 'beside the networks, and not mistaken for one');
 		const b = h.radios[2];
-		assert.deepEqual(b.ssids.map(sn => sn.port), [ 'lan5', 'lan6' ]);
+		assert.deepEqual(b.ssids.map(sn => sn.id), [ ':wired-own' ]);
+		self.paintLeaf = () => {};
 		self.updateHero();
 		assert.equal(b.title.textContent, '4 devices', 'the hosts on its ports, not the gateway');
-		assert.deepEqual(b.ssids.map(sn => [ sn.name.textContent, sn.count.textContent ]), [ [ 'lan5', '3 devices' ], [ 'lan6 · 04', '—' ] ], 'one host alone on a port goes by its name');
+		assert.deepEqual(b.ssids.map(sn => [ sn.name.textContent, sn.count.textContent ]), [ [ 'Wired', '4 devices' ] ]);
 		assert.equal(h.radios[0].title.textContent, 'lan', 'the networks still fill in');
 		const keys = self.wireList().map(w => w.key);
 		assert.equal(new Set(keys).size, keys.length, 'one wire per key');
-		assert.ok(keys.includes('r:wired') && keys.includes('r::wired') && keys.includes('s::wired:port:lan6'));
+		assert.ok(keys.includes('r:wired') && keys.includes('r::wired') && keys.includes('s::wired::wired-own'));
 	});
 	/* a port that comes or goes rebuilds the path */
 	hosts.push(host('06', 'lan7'));
@@ -1412,7 +1424,7 @@ test('other access points: a chip per access point with stations and one for thi
 	const sta = (n, band, a) => ({ mac: '00:00:5e:00:53:' + n, name: 'dev' + n, band, ap: a ? { ip: a.ip, name: a.name } : null, signal: -50 });
 	const attic = ap('192.0.2.2', 'attic-ap', 2), idle = ap('192.0.2.3', '192.0.2.3', 0);
 	const clients = [ sta('01', '2g', null), sta('02', '5g', attic), sta('03', '5g', attic) ];
-	self.m = { clients, wiredHosts: [], accessPoints: [ attic, idle ], radios: [], ssids: [], networks: [], uplinks: [], uplink: { gateway: '192.0.2.1' } };
+	self.m = { clients, wiredHosts: [], accessPoints: [ attic, idle ], radios: [], ssids: [], networks: [], uplinks: [], uplink: { gateway: '192.0.2.1', isWan: true } };
 	self.st = { staRates: {} };
 	self.ui = { kind: 'wifi', chip: 'all', filter: '' };
 	const ids = self.filterDefs().map(d => d.slice(0, 3));
@@ -1436,11 +1448,37 @@ test('other access points: a chip per access point with stations and one for thi
 	assert.equal(b.ssids[0].name.textContent, 'Home');
 	assert.equal(b.ssids[0].count.textContent, '2 clients');
 	assert.equal(b.active, false, 'no traffic known for another access point');
-	assert.deepEqual(self.otherAps().map(a => a.ip), [ '192.0.2.2', '192.0.2.3' ]);
+	/* a router: every access point, each under the one it is wired to */
+	assert.deepEqual(self.otherAps().map(a => [ a.ip, a.depth ]), [ [ '192.0.2.2', 0 ], [ '192.0.2.3', 0 ] ]);
+	idle.parent = { ip: '192.0.2.2', name: 'attic-ap', port: 'lan4' };
+	assert.deepEqual(self.otherAps().map(a => [ a.ip, a.depth ]), [ [ '192.0.2.2', 0 ], [ '192.0.2.3', 1 ] ]);
+	/* an access point's own page: only what hangs under it */
+	self.m.uplink.isWan = false;
+	assert.deepEqual(self.otherAps(), [], 'none behind this one');
+	attic.parent = { self: true, port: 'lan2' };
+	assert.deepEqual(self.otherAps().map(a => [ a.ip, a.depth ]), [ [ '192.0.2.2', 0 ], [ '192.0.2.3', 1 ] ], 'behind it, and behind those');
+	delete attic.parent; delete idle.parent;
+	self.m.uplink.isWan = true;
 	assert.equal(self.gatewayAp(), null);
 	self.m.uplink.gateway = '192.0.2.2';
 	assert.deepEqual(self.otherAps().map(a => a.ip), [ '192.0.2.3' ], 'the gateway is the gateway node, not a branch');
 	assert.equal(self.gatewayAp().ip, '192.0.2.2');
 	assert.doesNotMatch(self.heroKey(), /192\.0\.2\.2=/);
 	assert.equal(self.isWeak(Object.assign({}, clients[1], { signal: -85 })), false, 'a weak station of another access point is no warning here');
+});
+
+test('up chain: an access point\'s way to the internet, the one it hangs under first, then each step above it', () => {
+	const self = Object.create(view);
+	const ap = (ip, name, parent) => ({ ip, name, parent, nodes: [], clients: 0 });
+	const gw = ap('192.0.2.1', 'gw', null), mid = ap('192.0.2.2', 'mid', { ip: '192.0.2.1', name: 'gw', port: 'lan1' });
+	self.m = { accessPoints: [ gw, mid ], uplink: { gateway: '192.0.2.1', isWan: false }, selfParent: { ip: '192.0.2.2', name: 'mid', port: 'lan4' } };
+	let c = self.upChain();
+	assert.equal(c.near, mid);
+	assert.deepEqual(c.above.map(a => a.ip), [ ':internet', '192.0.2.1' ]);
+	self.m.selfParent = { ip: '192.0.2.1', name: 'gw', port: 'lan2' };
+	c = self.upChain();
+	assert.equal(c.near, gw);
+	assert.deepEqual(c.above.map(a => a.ip), [ ':internet' ]);
+	self.m.uplink.isWan = true;
+	assert.deepEqual(self.upChain(), { near: null, above: [] }, 'a router has the internet node already');
 });

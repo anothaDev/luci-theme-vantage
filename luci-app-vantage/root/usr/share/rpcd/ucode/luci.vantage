@@ -858,6 +858,7 @@ const MAX_MESH_STA = 128;
 const MAX_MESH_IPS = 192;
 const RE_PORT = /^[A-Za-z0-9_.@-]{1,15}$/;
 const RE_IPV4 = /^[0-9]{1,3}(\.[0-9]{1,3}){3}$/;
+const RE_IPV6 = /^[0-9a-fA-F:]{2,39}$/;
 const RE_NODE = /^(([0-9.]{7,15})#)?hostapd\.([A-Za-z0-9_.-]{1,32})$/;
 
 function mesh_ssid(n) {
@@ -915,22 +916,23 @@ function mesh_peer(d) {
 			break;
 		let mac = (type(w) == 'array') ? norm_mac(w[0]) : null;
 		if (mac && type(w[1]) == 'string' && match(w[1], RE_IPV4))
-			push(ips, [ mac, w[1] ]);
-	}
-	// internet traffic per host, from a router's hardware offload: [ mac, rx, tx ]
-	let inet = null;
-	if (type(d.inet) == 'array') {
-		inet = [];
-		for (let w in d.inet) {
-			if (length(inet) >= MAX_MESH_STA)
-				break;
-			let mac = (type(w) == 'array') ? norm_mac(w[0]) : null;
-			if (mac)
-				push(inet, [ mac, num(w[1], 0, 1e12), num(w[2], 0, 1e12) ]);
-		}
+			push(ips, short_string(w[2], 63) ? [ mac, w[1], short_string(w[2], 63) ] : [ mac, w[1] ]);
 	}
 	let up = short_string(d.up, 15);
-	return { name: short_string(d.name, 63), inet, model: short_string(d.model, 63), uptime: num(d.uptime, 0, 1e10),
+	// a router's public addresses: [ ipv4, ipv6 or null ]
+	let wan = null;
+	if (type(d.wan) == 'array' && type(d.wan[0]) == 'string' && match(d.wan[0], RE_IPV4))
+		wan = [ d.wan[0], (type(d.wan[1]) == 'string' && match(d.wan[1], RE_IPV6)) ? d.wan[1] : null ];
+	// the stations a peer saw in the last day
+	let past = [];
+	for (let v in (type(d.past) == 'array' ? d.past : [])) {
+		if (length(past) >= MAX_MESH_STA)
+			break;
+		let mac = norm_mac(v);
+		if (mac)
+			push(past, mac);
+	}
+	return { name: short_string(d.name, 63), wan, past, model: short_string(d.model, 63), uptime: num(d.uptime, 0, 1e10),
 		mac: norm_mac(d.mac), up: (up && match(up, RE_PORT)) ? up : null, wired, sta, ips };
 }
 
@@ -963,6 +965,9 @@ function mesh() {
 		}
 	}
 
+	// every MAC usteer knows as a Wi-Fi client, connected now or not: a
+	// station just gone is no wired host while a bridge still remembers it
+	let wifi = [];
 	let clients = u.call('usteer', 'get_clients');
 	if (type(clients) == 'object') {
 		for (let mac, seen in clients) {
@@ -971,6 +976,8 @@ function mesh() {
 			mac = norm_mac(mac);
 			if (!mac || type(seen) != 'object')
 				continue;
+			if (length(wifi) < MAX_MESH_STATIONS)
+				push(wifi, mac);
 			for (let key, s in seen) {
 				let node = nodes[key];
 				if (!node || type(s) != 'object' || s.connected !== true)
@@ -981,7 +988,11 @@ function mesh() {
 		}
 	}
 
-	return { available: true, aps, nodes, stations, peers, self };
+	for (let p in [ self, ...values(peers) ])
+		for (let mac in (p?.past ?? []))
+			if (length(wifi) < 4 * MAX_MESH_STATIONS && index(wifi, mac) < 0)
+				push(wifi, mac);
+	return { available: true, aps, nodes, stations, wifi, peers, self };
 }
 
 /* ------------------------------------------------------------ methods */

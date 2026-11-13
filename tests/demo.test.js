@@ -178,6 +178,8 @@ test('demo: canary mirror - free text, log names, MAC fragments, EUI-64, DUIDs, 
 		uci('uhttpd', sections('cert', [ { '.name': 'defaults', commonname: 'mario-router', location: 'Bologna', organization: 'Rossi Family', days: '397' } ])),
 		uci('network', sections('interface', [ { '.name': 'lan', proto: 'static', device: 'br-lan', ipaddr: LAN(2) } ])),
 		{ at: 1, object: 'hostapd.phy0-ap0', method: 'get_clients', args: {}, result: [ 0, { clients: { [ESP]: { auth: true } } } ] },
+		/* names only a peer access point knows: in its share of the mesh */
+		{ at: 1, object: 'luci.vantage', method: 'mesh', args: {}, result: [ 0, { available: true, peers: { [LAN(3)]: { name: 'ferrari-loft-ap', ips: [ [ mac(0x02, 0, 0x5e, 0, 0x53, 0x44), LAN(25), 'paolos-tablet.lan' ] ] } } } ] },
 		{ at: 1, object: 'network.interface', method: 'dump', args: {}, result: [ 0, { interface: [ { interface: 'lan', 'ipv6-address': [ { address: GUA + ':1:' + EUI_COLON, mask: 64 } ] } ] } ] },
 		{ at: 1, object: 'log', method: 'read', args: {}, result: [ 0, { log: [
 			`dnsmasq-dhcp[1]: DHCPACK(br-lan) ${LAN(23)} ${CLIENT} lucias-macbook`,
@@ -196,7 +198,7 @@ test('demo: canary mirror - free text, log names, MAC fragments, EUI-64, DUIDs, 
 
 	const store = new Store(dir, { synthetic: false, demo: true, plugins: false });
 	const text = crawl(store);
-	const canaries = [ 'mario', 'garage', 'rossi', 'bologna', 'lucias', 'gianni', BRIDGE, BRIDGE.match(/../g).join(':'), '445566', EUI_BARE, EUI_COLON,
+	const canaries = [ 'mario', 'ferrari', 'paolos', 'garage', 'rossi', 'bologna', 'lucias', 'gianni', BRIDGE, BRIDGE.match(/../g).join(':'), '445566', EUI_BARE, EUI_COLON,
 		'ff11:2233', DUID, 'deadbeef', 'abc123xyz', 'qx778', CLIENT, ESP ];
 	const left = canaries.filter(c => text.toLowerCase().includes(c.toLowerCase())).map(c => checker.mask(c));
 	assert.deepEqual(left, [], 'canaries left in the demo output');

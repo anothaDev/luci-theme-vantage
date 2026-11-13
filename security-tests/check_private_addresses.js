@@ -280,7 +280,11 @@ function mirrorIdentifiers(dir) {
 		ids.set(v, 'public IPv4');
 	}
 	function walk(x, key, ctx) {
-		if (Array.isArray(x)) { x.forEach(v => walk(v, key, ctx)); return; }
+		if (Array.isArray(x)) {
+			if (ctx === 'luci.vantage mesh' && key === 'ips') x.forEach(w => { if (Array.isArray(w) && typeof w[2] === 'string') add(w[2].replace(/\..*$/, ''), 'hostname'); });
+			x.forEach(v => walk(v, key, ctx));
+			return;
+		}
 		if (x && typeof x === 'object') {
 			for (const [ k, v ] of Object.entries(x)) {
 				if (ctx === 'umdns hosts' && v && typeof v === 'object') add(k, 'mDNS name');
@@ -290,7 +294,7 @@ function mirrorIdentifiers(dir) {
 		}
 		if (typeof x !== 'string') return;
 		if (NAME_KEYS.has(key)) add(x, key === 'ssid' || key === 'mesh_id' ? 'SSID' : key.endsWith('device_name') ? 'WPS device name' : 'hostname');
-		if (key === 'name' && /^(luci-rpc (getHostHints|getDHCPLeases)|dhcp ipv[46]leases|uci get dhcp)$/.test(ctx)) add(x, 'hostname');
+		if (key === 'name' && /^(luci-rpc (getHostHints|getDHCPLeases)|dhcp ipv[46]leases|uci get dhcp|luci\.vantage mesh)$/.test(ctx)) add(x, 'hostname');
 		if (key === 'signature') { const m = /(?:^|[|,:])wps:([^|,]{1,64})/.exec(x); if (m) { add(m[1], 'WPS device name'); add(m[1].replace(/_/g, ' '), 'WPS device name'); } }
 		if (ctx === 'network.rrdns lookup') add(x, 'reverse DNS name');
 		for (const n of logHostnames(x)) add(n, 'hostname from a DHCP log');

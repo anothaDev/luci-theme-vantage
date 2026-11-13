@@ -1050,10 +1050,12 @@ return view.extend({
 		var m = model.build({
 			board: this.board, info: raw.info, ifaces: raw.ifaces, devs: raw.devs, wifi: raw.wifi, iwinfo: raw.iwinfo,
 			assoc: raw.assoc, hapd: raw.hapd, hapdStatus: raw.hapdStatus, hints: raw.hints, fdb: raw.fdb,
-			switches: raw.switches, switchState: raw.switchState, routes: raw.routes, mesh: raw.mesh,
+			switches: raw.switches, switchState: raw.switchState, routes: raw.routes, mesh: raw.mesh, wifiSeen: this.wifiSeen(),
 			aliases: this.aliases, rdns: st.rdns, mdns: st.mdns,
 			vendor: st.oui ? function(k) { return k ? st.oui.lookup(k) : null; } : null
 		});
+		this.hideModel(m);
+		this.noteWifi(m);
 		this.markWired(m, raw);
 		if (m.device.memory) series.push(st.hist.mem, [ at, m.device.memory.usedPct ], WINDOW_MS, HIST_MAX);
 
@@ -1314,10 +1316,12 @@ return view.extend({
 		var m = model.build({
 			board: this.board, info: raw.info, ifaces: raw.ifaces, devs: raw.devs, wifi: raw.wifi, iwinfo: raw.iwinfo,
 			assoc: raw.assoc, hapd: raw.hapd, hapdStatus: raw.hapdStatus, hints: raw.hints, fdb: raw.fdb,
-			switches: raw.switches, switchState: raw.switchState, routes: raw.routes, mesh: raw.mesh,
+			switches: raw.switches, switchState: raw.switchState, routes: raw.routes, mesh: raw.mesh, wifiSeen: this.wifiSeen(),
 			aliases: this.aliases, rdns: st.rdns, mdns: st.mdns,
 			vendor: st.oui ? function(k) { return k ? st.oui.lookup(k) : null; } : null
 		});
+		this.hideModel(m);
+		this.noteWifi(m);
 		this.markWired(m, null);
 		this.stickyGen(m);
 		m.clients.forEach(function(c) { c.exp = insight.experience(c); c.firstSeen = st.presence && st.presence.firstSeen[c.mac]; c.isNew = !!st.isNew[c.mac]; });
@@ -2286,8 +2290,8 @@ return view.extend({
 	   SSID, network or wired port comes or goes); a poll updates text in
 	   place */
 	heroKey: function() {
-		var m = this.m, aps = this.otherAps().map(function(a) { return a.ip + '=' + a.nodes.map(function(n) { return n.id; }).join(',') + (a.wired ? ',:wired' : ''); }).join(';');
-		var tail = '\nwired=' + this.wiredPorts().join(',') + '\nlines=' + this.extraLines().map(function(x) { return x.iface; }).join(',') + (aps ? '\naps=' + aps : '');
+		var m = this.m, aps = this.otherAps().map(function(a) { return a.ip + (a.parent ? '<' + (a.parent.ip || ':self') : '') + '=' + a.nodes.map(function(n) { return n.id; }).join(',') + (a.wired ? ',:wired' : ''); }).join(';');
+		var tail = '\nme=' + (m.selfParent ? m.selfParent.ip || ':self' : '') + '\nchain=' + this.upChain().above.map(function(a) { return a.ip; }).join(',') + '\nwired=' + this.wiredPorts().join(',') + '\nlines=' + this.extraLines().map(function(x) { return x.iface; }).join(',') + (aps ? '\naps=' + aps : '');
 		if (m.wired) return 'w\n' + m.networks.filter(function(n) { return n.up; }).slice(0, 8).map(function(n) { return n.name; }).join('\n') + tail;
 		return 'r\n' + m.radios.map(function(r) {
 			return r.id + '=' + m.ssids.filter(function(s) { return s.radio === r.id; }).map(function(s) { return s.id; }).join(',');
@@ -2298,7 +2302,65 @@ return view.extend({
 	   this device reaches the internet through, which is the gateway node */
 	otherAps: function() {
 		var m = this.m, gw = m && m.uplink && m.uplink.gateway;
-		return ((m && m.accessPoints) || []).filter(function(a) { return a.ip !== gw; });
+		var all = (m && m.accessPoints) || [], byIp = Object.create(null), out = [];
+		all.forEach(function(a) { byIp[a.ip] = a; });
+		/* a router shows the whole network; an access point only what
+		   hangs under it */
+		function behindMe(a) {
+			for (var n = 0, p = a.parent; p && n < 8; n++, p = byIp[p.ip] && byIp[p.ip].parent) {
+				if (p.self) return true;
+				if (!p.ip || !byIp[p.ip]) return false;
+			}
+			return false;
+		}
+		var isWan = !!(m && m.uplink && m.uplink.isWan);
+		var list = all.filter(function(a) { return a.ip !== gw && (isWan || behindMe(a)); });
+		byIp = Object.create(null);
+		list.forEach(function(a) { byIp[a.ip] = a; });
+		/* each after the one it is wired to, one step further in */
+		function up(a) { return a.parent && a.parent.ip && byIp[a.parent.ip] && byIp[a.parent.ip] !== a ? byIp[a.parent.ip] : null; }
+		function walk(a, depth) {
+			if (out.indexOf(a) >= 0 || depth > 4) return;
+			a.depth = depth;
+			out.push(a);
+			list.forEach(function(b) { if (up(b) === a) walk(b, depth + 1); });
+		}
+		list.forEach(function(a) {
+			var r = a, n = 0;
+			while (up(r) && n++ < 8) r = up(r);
+			walk(r, 0);
+		});
+		list.forEach(function(a) { if (out.indexOf(a) < 0) { a.depth = 0; out.push(a); } });
+		return out;
+	},
+
+	/* the network's public addresses: this router's own, or those the
+	   router shares with its access points */
+	publicAddrs: function() {
+		var m = this.m, up = m && m.uplink;
+		function bare(a) { return String(a).split('/')[0]; }
+		if (up && up.isWan) {
+			var v6 = (up.ipv6 || []).map(bare).filter(function(a) { return !/^(f[cd]|fe80)/i.test(a); })[0] || null;
+			return { ipv4: up.ipv4 && up.ipv4[0] ? bare(up.ipv4[0]) : null, ipv6: v6 };
+		}
+		var gwAp = this.gatewayAp(), w = gwAp && gwAp.wan;
+		if (!w) (m && m.accessPoints || []).forEach(function(a) { if (!w && a.wan) w = a.wan; });
+		return w || { ipv4: null, ipv6: null };
+	},
+
+	/* an access point's way to the internet: the access point it hangs
+	   under (the gateway node) and, above that, each step on to the
+	   internet. Empty on a router or without other access points */
+	upChain: function() {
+		var m = this.m, up = m && m.uplink;
+		if (!m || !up || up.isWan || !(m.accessPoints || []).length) return { near: null, above: [] };
+		var byIp = Object.create(null), list = [], gwAp = this.gatewayAp();
+		m.accessPoints.forEach(function(a) { byIp[a.ip] = a; });
+		for (var p = m.selfParent; p && p.ip && byIp[p.ip] && list.indexOf(byIp[p.ip]) < 0 && list.length < 6; p = byIp[p.ip].parent) list.push(byIp[p.ip]);
+		if (gwAp && list.indexOf(gwAp) < 0) list.push(gwAp);
+		var above = list.slice(1).reverse();
+		above.unshift({ internet: true, ip: ':internet' });
+		return { near: list[0] || null, above: above };
 	},
 
 	/* an access point's stations and wired hosts, in a few words */
@@ -2332,6 +2394,20 @@ return view.extend({
 			if (out.indexOf(c.port) < 0) out.push(c.port);
 		});
 		return out.sort().slice(0, 8);
+	},
+
+	/* this device's own wired hosts: not the gateway nor what is behind
+	   another access point; an access point plugged straight into this
+	   device is one (once, whichever of its MACs is heard) */
+	ownWired: function() {
+		var self = this, m = this.m, direct = Object.create(null), seen = Object.create(null);
+		((m && m.accessPoints) || []).forEach(function(a) { if (a.parent && a.parent.self) direct[a.ip] = true; });
+		return ((m && m.wiredHosts) || []).filter(function(c) {
+			if (c.gateway || c.ap || self.linePort(c.port)) return false;
+			if (!c.isAp) return true;
+			if (!direct[c.isAp] || seen[c.isAp]) return false;
+			return (seen[c.isAp] = true);
+		});
 	},
 
 	/* the port is one a line to the internet leaves through */
@@ -2385,8 +2461,9 @@ return view.extend({
 		var extra = this.extraLines();
 		h.gwKicker = span(extra.length ? 'vt-node-name' : 'vt-node-kicker'); h.gwTitle = span('vt-node-title'); h.gwSub = span('vt-node-sub');
 		h.gwTag = extra.length ? E('span', { 'class': 'vt-node-tag' }, [ _('default route') ]) : null;
+		var chain = this.upChain();
 		h.gw = E('button', { 'type': 'button', 'class': 'vt-node vt-node-gw', 'click': function() { self.openDrawer('uplink', ''); } }, [
-			E('span', { 'class': 'vt-node-ico' }, [ icon('globe') ]),
+			E('span', { 'class': 'vt-node-ico' }, [ icon(chain.near ? 'ap' : 'globe') ]),
 			E('span', { 'class': 'vt-node-body' }, [
 				h.gwTag ? E('span', { 'class': 'vt-node-kicker vt-node-kicker-tag' }, [ h.gwKicker, h.gwTag ]) : h.gwKicker,
 				h.gwTitle, h.gwSub
@@ -2402,11 +2479,8 @@ return view.extend({
 			return ln;
 		});
 		h.linesEl = extra.length ? E('div', { 'class': 'vt-lines' }, h.lines.map(function(ln) { return ln.el; })) : null;
-		/* with other access points the branches need the room (app.css);
-		   on an access point the others are its siblings, wired from the
-		   gateway, and this device's node sits at the top */
-		var sib = this.otherAps().length && !(m.uplink && m.uplink.isWan);
-		setClass(path, 'vt-path' + (extra.length ? ' vt-path-lines' : '') + (this.otherAps().length ? ' vt-path-mesh' : '') + (sib ? ' vt-path-sib' : ''));
+		/* with other access points the branches need the room (app.css) */
+		setClass(path, 'vt-path' + (extra.length ? ' vt-path-lines' : '') + ((m.accessPoints || []).length ? ' vt-path-mesh' : ''));
 
 		h.dnVal = E('b'); h.dnUnit = E('small'); h.upVal = E('b'); h.upUnit = E('small'); h.linkMeta = span('vt-link-meta');
 		/* a full-tunnel VPN over the line: named on the link it runs through */
@@ -2466,21 +2540,19 @@ return view.extend({
 		}
 		/* wired hosts downstream: one branch beside the radios or the
 		   networks, a node per port; its id is no interface's name */
-		var ports = this.wiredPorts();
-		if (ports.length) {
+		if (this.ownWired().length) {
 			var wb = { id: ':wired', wired: true, ssids: [], title: span('vt-node-title vt-tn'), sub: span('vt-node-sub vt-tn') };
 			wb.el = E('button', { 'type': 'button', 'class': 'vt-node vt-node-radio', 'click': function() { self.showWired(null); } }, [
 				E('span', { 'class': 'vt-node-body' }, [ E('span', { 'class': 'vt-node-kicker' }, [ _('Wired') ]), wb.title, wb.sub ])
 			]);
+			/* one node listing every host, as an access point's has */
 			var wcol = E('div', { 'class': 'vt-branch-ssids' });
-			ports.forEach(function(p) {
-				var sn = { id: 'port:' + p, port: p, name: E('span'), count: span('vt-tn'), rate: span('vt-node-sub vt-tn') };
-				sn.el = E('button', { 'type': 'button', 'class': 'vt-node vt-node-ssid', 'click': function() { self.showWired(p); } }, [
-					E('span', { 'class': 'vt-node-body' }, [ E('span', { 'class': 'vt-node-title vt-ssid-name' }, [ sn.name ]), E('span', { 'class': 'vt-node-sub' }, [ sn.count ]), sn.rate ])
-				]);
-				wb.ssids.push(sn);
-				wcol.appendChild(sn.el);
-			});
+			var sn = { id: ':wired-own', name: E('span'), count: span('vt-tn'), rows: span('vt-leaf-rows') };
+			sn.el = E('button', { 'type': 'button', 'class': 'vt-node vt-node-ssid', 'click': function() { self.showWired(null); } }, [
+				E('span', { 'class': 'vt-node-body' }, [ E('span', { 'class': 'vt-node-title vt-ssid-name' }, [ sn.name ]), E('span', { 'class': 'vt-node-sub' }, [ sn.count ]), sn.rows ])
+			]);
+			wb.ssids.push(sn);
+			wcol.appendChild(sn.el);
 			wb.wrap = E('div', { 'class': 'vt-branch' }, [ wb.el, wcol ]);
 			h.radios.push(wb);
 		}
@@ -2488,7 +2560,7 @@ return view.extend({
 		   node per SSID and band and one for its wired hosts; each opens
 		   the Clients list on that access point */
 		this.otherAps().forEach(function(a) {
-			var ab = { id: ':ap:' + a.ip, ap: true, ip: a.ip, ssids: [], kicker: span('vt-node-kicker'), title: span('vt-node-title'), addr: span('vt-node-sub vt-mono'),
+			var ab = { id: ':ap:' + a.ip, ap: true, ip: a.ip, parentIp: a.depth ? a.parent.ip : null, ssids: [], kicker: span('vt-node-kicker'), title: span('vt-node-title'), addr: span('vt-node-sub vt-mono'),
 				up: span('vt-node-sub'), sub: span('vt-node-sub vt-tn'), rateEl: span('vt-node-sub vt-tn') };
 			ab.el = E('button', { 'type': 'button', 'class': 'vt-node vt-node-peer', 'click': function() { self.showClients('ap:' + a.ip); } }, [
 				E('span', { 'class': 'vt-node-ico' }, [ icon('ap') ]),
@@ -2513,7 +2585,7 @@ return view.extend({
 				acol.appendChild(wn.el);
 			}
 			if (!ab.ssids.length) acol.appendChild(E('span', { 'class': 'vt-empty-inline' }, [ _('No SSIDs') ]));
-			ab.wrap = E('div', { 'class': 'vt-branch vt-branch-peer' }, [ ab.el, acol ]);
+			ab.wrap = E('div', { 'class': 'vt-branch vt-branch-peer' + (a.depth ? ' vt-branch-child vt-branch-d' + Math.min(a.depth, 3) : '') }, [ ab.el, acol ]);
 			h.radios.push(ab);
 		});
 		/* the network's other access points after this device's own
@@ -2522,16 +2594,26 @@ return view.extend({
 		h.radios.forEach(function(b) {
 			if (b.ap && firstPeer) {
 				firstPeer = false;
-				var via = self.gatewayAp();
 				h.branches.appendChild(E('div', { 'class': 'vt-branches-label' }, [ m.uplink && m.uplink.isWan ? _('Access points')
-					: via ? _('Other access points · via %s').format(via.name) : _('Other access points') ]));
+					: _('Access points behind this one') ]));
 			}
 			h.branches.appendChild(b.wrap);
 			h.watch.push(b.wrap, b.el);
 			b.ssids.forEach(function(sn) { h.watch.push(sn.el); });
 		});
 
-		path.insertBefore(h.gw, this.el.wires);
+		/* an access point: the way on to the internet, a node per step,
+		   stacked above the one it hangs under */
+		h.chain = chain.above.map(function(a) {
+			var c = { ip: a.ip, internet: !!a.internet, kicker: span('vt-node-kicker'), title: span('vt-node-title'), sub: span('vt-node-sub') };
+			c.el = E('button', { 'type': 'button', 'class': 'vt-node vt-node-gw vt-node-chain', 'click': function() { if (a.internet) self.openDrawer('uplink', ''); else self.showClients('ap:' + a.ip); } }, [
+				E('span', { 'class': 'vt-node-ico' }, [ icon(a.internet ? 'globe' : 'ap') ]),
+				E('span', { 'class': 'vt-node-body' }, [ c.kicker, c.title, c.sub ])
+			]);
+			h.watch.push(c.el);
+			return c;
+		});
+		path.insertBefore(h.chain.length ? E('div', { 'class': 'vt-chain' }, h.chain.map(function(c) { return c.el; }).concat([ h.gw ])) : h.gw, this.el.wires);
 		path.insertBefore(h.link, this.el.wires);
 		/* after the main line's rates: on a phone they stay with it */
 		if (h.linesEl) path.insertBefore(h.linesEl, this.el.wires);
@@ -2555,12 +2637,42 @@ return view.extend({
 		txt(h.gwKicker, h.lines.length && up ? up.iface : up && up.isWan ? _('Internet') : _('Gateway'));
 		txt(h.gwTitle, gwName || (up && up.gateway ? up.gateway : up && up.defaultRoute ? up.l3dev : _('No default route', 'vantage')));
 		txt(h.gwSub, gwName ? up.gateway : up && up.dns.length ? _('DNS %s').format(up.dns[0]) : _('Reachability not probed'));
+		/* a router's line: its public addresses, the gateway and DNS on hover */
+		var pub = this.publicAddrs();
+		if (up && up.isWan && pub.ipv4 && !h.lines.length) {
+			txt(h.gwTitle, pub.ipv4);
+			txt(h.gwSub, pub.ipv6 || (up.dns.length ? _('DNS %s').format(up.dns[0]) : ''));
+		}
+		setTitle(h.gw, up && up.isWan ? [ up.gateway ? _('Gateway %s').format(up.gateway) : null, up.dns.length ? _('DNS %s').format(up.dns.join(', ')) : null ].filter(Boolean).join('\n') : '');
 		/* the gateway is also an access point of the network: its stations */
 		var gwAp = this.gatewayAp();
 		if (gwAp) {
 			if (!gwName && gwAp.named) txt(h.gwTitle, gwAp.name);
 			txt(h.gwSub, this.apCounts(gwAp) + ' · ' + up.gateway);
 		}
+		/* wired behind another access point: that one is the step up */
+		var sp = m.selfParent, pa = sp && sp.ip && sp.ip !== (up && up.gateway) ? (m.accessPoints || []).filter(function(a) { return a.ip === sp.ip; })[0] : null;
+		if (pa) {
+			txt(h.gwKicker, _('Access point'));
+			txt(h.gwTitle, pa.name);
+			txt(h.gwSub, [ sp.port, this.apCounts(pa), pa.ip ].filter(Boolean).join(' · '));
+		}
+		if (pa) setTitle(h.gw, _('Wired to %s on %s').format(pa.name, sp.port || '?'));
+		var aps = Object.create(null);
+		(m.accessPoints || []).forEach(function(a) { aps[a.ip] = a; });
+		(Array.isArray(h.chain) ? h.chain : []).forEach(function(c) {
+			if (c.internet) {
+				txt(c.kicker, _('Internet'));
+				txt(c.title, pub.ipv4 || (gwAp ? _('through %s').format(gwAp.name) : _('Internet')));
+				txt(c.sub, pub.ipv6 || '');
+				return;
+			}
+			var a = aps[c.ip];
+			if (!a) return;
+			txt(c.kicker, a === gwAp ? _('Gateway') : _('Access point'));
+			txt(c.title, a.name);
+			txt(c.sub, self.apCounts(a) + ' · ' + a.ip);
+		});
 
 		txt(h.dnVal, upR ? fmt.bitsParts(upR.rx).v : fmt.DASH);
 		txt(h.dnUnit, upR ? fmt.bitsParts(upR.rx).u : '');
@@ -2577,7 +2689,10 @@ return view.extend({
 
 		txt(h.apKicker, m.wired ? _('This device') : up && up.isWan ? _('This router') : _('This access point'));
 		txt(h.apTitle, d.model);
-		txt(h.apAddr, up && up.ipv4[0] ? up.ipv4[0].split('/')[0] : fmt.DASH);
+		/* a router: its LAN address, as an access point's card has (the
+		   public one is on the internet node) */
+		var lanNet = up && up.isWan ? (m.networks || []).filter(function(n) { return n.name === 'lan' && n.ipv4; })[0] : null;
+		txt(h.apAddr, lanNet && pub.ipv4 ? lanNet.ipv4.split('/')[0] : up && up.ipv4[0] ? up.ipv4[0].split('/')[0] : fmt.DASH);
 		txt(h.apUp, d.uptime != null ? _('up %s').format(fmt.duration(d.uptime)) : '');
 		h.upActive = !!(upR && upR.rx + upR.tx > 50e3);
 		h.upRate = upR ? upR.rx + upR.tx : 0;
@@ -2669,19 +2784,22 @@ return view.extend({
 	   with its link speed or how many share the port, and the port's
 	   traffic: all of its hosts' together, never split between them */
 	updateWiredBranch: function(b) {
-		var st = this.st, hosts = this.m.wiredHosts || [], n = 0, rx = 0, tx = 0, seen = false;
+		var self = this, on = this.ownWired(), n = on.length, rx = 0, tx = 0, seen = false;
+		/* the ports' totals, each once: the hosts' own traffic */
+		var ports = Object.create(null);
+		on.forEach(function(c) {
+			var r = self.st.devRates[c.port];
+			if (!r || ports[c.port]) return;
+			ports[c.port] = true;
+			rx += r.rx; tx += r.tx; seen = true;
+		});
 		b.ssids.forEach(function(sn) {
-			var on = hosts.filter(function(c) { return c.port === sn.port && !c.ap; }), r = st.devRates[sn.port], one = on.length === 1 ? on[0] : null;
-			var sw = on.length ? on[0].switch : null;
-			n += on.length;
-			if (r) { rx += r.rx; tx += r.tx; seen = true; }
-			setClass(sn.el, 'vt-node vt-node-ssid' + (on.length ? '' : ' vt-node-idle'));
-			setTitle(sn.el, _('Show the devices on %s').format(sn.port) + (r ? '\n' + _('Port total: %s').format('↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx)) : '') +
-				(sw ? '\n' + switchNote(sw) : ''));
-			txt(sn.name, one ? sn.port + ' · ' + one.name : sn.port);
-			txt(sn.count, one ? (one.speed ? fmt.phyRate(one.speed.mbps * 1000) : fmt.DASH) : _('%d devices').format(on.length));
-			txt(sn.rate, r ? fmt.rates(r.tx, r.rx) : fmt.DASH);
-			sn.active = !!(r && r.rx + r.tx > 50e3);
+			setClass(sn.el, 'vt-node vt-node-ssid' + (n ? '' : ' vt-node-idle'));
+			setTitle(sn.el, _('Show the wired devices'));
+			txt(sn.name, _('Wired'));
+			txt(sn.count, n === 1 ? _('1 device') : _('%d devices').format(n));
+			self.paintLeaf(sn.rows, on, true);
+			sn.active = !!(seen && rx + tx > 50e3);
 		});
 		txt(b.title, n === 1 ? _('1 device') : _('%d devices').format(n));
 		txt(b.sub, seen ? '↓ ' + fmt.bits(tx) : fmt.DASH);
@@ -2698,7 +2816,8 @@ return view.extend({
 		var nodes = Object.create(null);
 		a.nodes.forEach(function(n) { nodes[n.id] = n; });
 		var self = this, m = this.m, r = a.rate;
-		setTitle(b.el, [ _('Show the clients of %s').format(a.name), a.model, a.ip ].filter(Boolean).join('\n'));
+		setTitle(b.el, [ _('Show the clients of %s').format(a.name), a.model, a.ip,
+			a.parent && a.parent.port ? (a.parent.self ? _('Wired to this device on %s').format(a.parent.port) : _('Wired to %s on %s').format(a.parent.name, a.parent.port)) : null ].filter(Boolean).join('\n'));
 		txt(b.kicker, _('Access point'));
 		txt(b.title, a.name);
 		txt(b.addr, a.ip);
@@ -2711,7 +2830,7 @@ return view.extend({
 				txt(sn.name, _('Wired'));
 				txt(sn.count, a.wired === 1 ? _('1 device') : _('%d devices').format(a.wired));
 				setTitle(sn.el, _('Show the wired devices of %s').format(a.name));
-				self.paintLeaf(sn.rows, (m.wiredHosts || []).filter(function(c) { return c.ap && c.ap.ip === a.ip; }), true);
+				self.paintLeaf(sn.rows, (m.wiredHosts || []).filter(function(c) { return c.ap && c.ap.ip === a.ip && !c.ap.dup; }), true);
 				sn.active = false;
 				return;
 			}
@@ -2733,28 +2852,31 @@ return view.extend({
 	/* the devices at the end of a branch, a line each: name, signal (or
 	   link speed when wired) and traffic; the busiest first, at most five */
 	paintLeaf: function(el, list, wired) {
-		var self = this, st = this.st, MAX = 5;
+		var self = this, st = this.st;
 		function rate(c) { return wired ? self.portRate(c) : st.staRates[c.mac] || null; }
+		/* by address, as a lease table reads; those without one last, by name */
+		function ipKey(c) {
+			var ip = (c.ips || []).filter(function(x) { return /^\d{1,3}(\.\d{1,3}){3}$/.test(x); })[0];
+			return ip ? ip.split('.').reduce(function(n, o) { return n * 256 + +o; }, 0) : Infinity;
+		}
 		var rows = list.slice().sort(function(a, b) {
-			var ra = rate(a), rb = rate(b), va = ra ? ra.rx + ra.tx : -1, vb = rb ? rb.rx + rb.tx : -1;
-			return vb - va || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+			var ka = ipKey(a), kb = ipKey(b);
+			return (ka < kb ? -1 : ka > kb ? 1 : 0) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 		});
-		var shown = rows.slice(0, MAX), more = rows.length - shown.length;
 		/* compact, so the columns fit every card alike: 176, 62.2k, 3.42M (bit/s) */
 		function short(bps) {
 			var u = [ '', 'k', 'M', 'G' ], i = 0;
 			while (bps >= 1000 && i < u.length - 1) { bps /= 1000; i++; }
 			return (i ? (bps >= 100 ? bps.toFixed(0) : bps >= 10 ? bps.toFixed(1) : bps.toFixed(2)) : bps.toFixed(0)) + u[i];
 		}
-		var cells = shown.map(function(c) {
+		var cells = rows.map(function(c) {
 			var r = rate(c), live = r && r.rx + r.tx > 0;
 			var speed = c.ap && c.ap.speed ? c.ap.speed : c.speed;
 			var mid = wired ? (speed ? fmt.phyRate(speed.mbps * 1000) : '') : (c.signal != null ? String(c.signal) : '');
 			return [ c.mac, c.name, mid, c.level ? c.level.level : '', live ? '↓' + short(r.tx) : '', (c.ips || []).filter(function(ip) { return /^\d{1,3}(\.\d{1,3}){3}$/.test(ip); })[0] || '', live ? '↑' + short(r.rx) : '',
-				live ? '↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx) : '',
-				c.inet && c.inet.rx + c.inet.tx > 0 ? _('internet ↓ %s · ↑ %s').format(fmt.bits(c.inet.tx), fmt.bits(c.inet.rx)) : '' ];
+				live ? '↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx) : '' ];
 		});
-		var sig = JSON.stringify([ cells, more ]);
+		var sig = JSON.stringify(cells);
 		if (el.vtSig === sig) return;
 		el.vtSig = sig;
 		/* a row opens the device's details; inside the node's button, so
@@ -2762,7 +2884,7 @@ return view.extend({
 		function open(ev, mac) { ev.preventDefault(); ev.stopPropagation(); self.openDrawer('client', mac); }
 		dom.content(el, cells.map(function(x) {
 			return E('span', { 'class': 'vt-leaf-row', 'role': 'button', 'tabindex': '0',
-				'title': [ _('Show details'), x[1], x[5], wired ? x[2] : x[2] ? fmt.dbm(+x[2]) : '', x[7], x[8] ].filter(Boolean).join(' · '),
+				'title': [ _('Show details'), x[1], x[5], wired ? x[2] : x[2] ? fmt.dbm(+x[2]) : '', x[7] ].filter(Boolean).join(' · '),
 				'click': function(ev) { open(ev, x[0]); },
 				'keydown': function(ev) { if (ev.key === 'Enter' || ev.key === ' ') open(ev, x[0]); } }, [
 				E('span', { 'class': 'vt-leaf-name' }, [ x[1] ]),
@@ -2771,7 +2893,7 @@ return view.extend({
 				E('span', { 'class': 'vt-leaf-rate vt-tn' }, [ x[4] ]),
 				E('span', { 'class': 'vt-leaf-rate vt-tn' }, [ x[6] ])
 			]);
-		}).concat(more > 0 ? [ E('span', { 'class': 'vt-leaf-more' }, [ _('+%d more').format(more) ]) ] : []));
+		}));
 	},
 
 	scheduleWires: function() {
@@ -2787,9 +2909,16 @@ return view.extend({
 		if (!h) return out;
 		out.push({ key: 'gw', from: h.gw, to: h.ap, active: h.upActive, speed: wires.speed(h.upRate), main: true, tunnel: !!(this.m && this.m.uplink && this.m.uplink.tunnel) });
 		h.lines.forEach(function(ln, k) { out.push({ key: 'l:' + ln.id, from: ln.el, to: h.ap, active: ln.active, speed: wires.speed(ln.rate), line: k }); });
+		(Array.isArray(h.chain) ? h.chain : []).forEach(function(c, k) {
+			var next = h.chain[k + 1] ? h.chain[k + 1].el : h.gw;
+			out.push({ key: 'c:' + c.ip, from: c.el, to: next, active: h.upActive, speed: wires.speed(h.upRate) });
+		});
+		var apEl = Object.create(null);
+		h.radios.forEach(function(b) { if (b.ap) apEl[b.ip] = b.el; });
 		h.radios.forEach(function(b) {
-			var sib = b.ap && !(self.m && self.m.uplink && self.m.uplink.isWan);
-			out.push({ key: 'r:' + b.id, from: sib ? h.gw : h.ap, to: b.el, active: b.active, speed: wires.speed(b.rate), elbow: sib });
+			/* an access point wired behind another: from that one's card */
+			var parent = b.parentIp && apEl[b.parentIp];
+			out.push({ key: 'r:' + b.id, from: parent || h.ap, to: b.el, active: b.active, speed: wires.speed(b.rate), drop: !!parent });
 			b.ssids.forEach(function(sn) { out.push({ key: 's:' + b.id + ':' + sn.id, from: b.el, to: sn.el, active: sn.active, speed: 1 }); });
 		});
 		return out;
@@ -2834,7 +2963,7 @@ return view.extend({
 				svg.appendChild(g.flow);
 				self.el.flows.appendChild(g.fw);
 			}
-			var c = w.line != null ? wires.line(rect(w.from), rect(w.to), w.line) : w.elbow ? wires.elbow(rect(w.from), rect(w.to)) : wires.curve(rect(w.from), rect(w.to));
+			var c = w.line != null ? wires.line(rect(w.from), rect(w.to), w.line) : w.drop ? wires.drop(rect(w.from), rect(w.to)) : w.elbow ? wires.elbow(rect(w.from), rect(w.to)) : wires.curve(rect(w.from), rect(w.to));
 			if (g.d !== c.d) {
 				g.base.setAttribute('d', c.d);
 				g.flow.setAttribute('d', c.d);
@@ -3722,32 +3851,43 @@ return view.extend({
 			link,
 			E('td', { 'class': 'vt-td-net', 'data-title': _('Network') }, [ E('div', { 'class': 'vt-net' }, [ E('span', { 'class': 'vt-net-ssid' }, [ c.network || c.bridge || fmt.DASH ]) ]) ]),
 			E('td', { 'class': 'vt-td-live', 'data-title': _('Live') }, c.shared && !r ? [
-				E('span', { 'class': 'vt-muted', 'title': _('Not counted per device on a shared port') }, [ fmt.DASH ]),
-				this.inetLine(c)
+				E('span', { 'class': 'vt-muted', 'title': _('Not counted per device on a shared port') }, [ fmt.DASH ])
 			] : [
 				E('div', { 'class': 'vt-live-cell' }, [
 					E('span', { 'class': 'vt-tn vt-live-total' }, [ r ? fmt.bits(total) : fmt.DASH ]),
 					E('span', { 'class': 'vt-mini' }, [ bar ]),
-					E('span', { 'class': 'vt-live-split vt-tn', 'title': r ? _('To device %s, from device %s').format(fmt.bits(r.tx), fmt.bits(r.rx)) : '' }, [ r ? fmt.rates(r.tx, r.rx) : '' ]),
-					this.inetLine(c)
+					E('span', { 'class': 'vt-live-split vt-tn', 'title': r ? _('To device %s, from device %s').format(fmt.bits(r.tx), fmt.bits(r.rx)) : '' }, [ r ? fmt.rates(r.tx, r.rx) : '' ])
 				])
 			]),
 			E('td', { 'class': 'vt-td-seen vt-tn', 'data-title': _('Last heard') }, [ c.seen == null ? _('static entry') : fmt.ago(c.seen * 1000) ])
 		];
 	},
 
-	/* a device's internet traffic (the router's hardware offload counts
-	   it), under its total: LAN traffic is in the total only */
-	inetLine: function(c) {
-		var i = c.inet;
-		if (!i || c.gone) return '';
-		return E('span', { 'class': 'vt-live-inet vt-tn', 'title': _('Internet only, as the router\'s hardware offload counts it') }, [
-			icon('globe', 'vt-ico-sm'), i.rx + i.tx > 0 ? fmt.rates(i.tx, i.rx) : _('idle') ]);
+	/* stations seen this session, for 10 minutes after they leave: a
+	   bridge remembers a MAC for minutes, usteer forgets it sooner */
+	wifiSeen: function() {
+		var seen = this.wifiAt || (this.wifiAt = Object.create(null)), now = Date.now();
+		return Object.keys(seen).filter(function(mac) {
+			if (now - seen[mac] < 600e3) return true;
+			delete seen[mac];
+			return false;
+		});
 	},
 
-	inetKv: function(c) {
-		var i = c.inet;
-		return i ? kv(_('Internet'), i.rx + i.tx > 0 ? '↓ ' + fmt.bits(i.tx) + ' · ↑ ' + fmt.bits(i.rx) : _('idle')) : '';
+	noteWifi: function(m) {
+		var seen = this.wifiAt || (this.wifiAt = Object.create(null)), now = Date.now();
+		(m.clients || []).forEach(function(c) { if (!c.gone) seen[c.mac] = now; });
+	},
+
+	/* The theme's Appearance can hide the board's model name
+	   (vantage_theme.appearance.model 'hide'): the hostname stands in for
+	   this device, and the other access points show none. Without the
+	   theme the attribute is absent and nothing changes. */
+	hideModel: function(m) {
+		if (typeof document === 'undefined' || !document.documentElement || document.documentElement.getAttribute('data-vt-look-model') !== 'hide') return;
+		m.device.model = m.device.hostname || _('This device');
+		m.device.modelHidden = true;
+		(m.accessPoints || []).forEach(function(a) { a.model = null; });
 	},
 
 	clientCells: function(c, maxRate) {
@@ -3779,8 +3919,7 @@ return view.extend({
 				E('div', { 'class': 'vt-live-cell' }, [
 					E('span', { 'class': 'vt-tn vt-live-total' }, [ r ? fmt.bits(total) : fmt.DASH ]),
 					E('span', { 'class': 'vt-mini' }, [ bar ]),
-					E('span', { 'class': 'vt-live-split vt-tn', 'title': r ? _('To device %s, from device %s').format(fmt.bits(r.tx), fmt.bits(r.rx)) : '' }, [ r ? fmt.rates(r.tx, r.rx) : '' ]),
-					this.inetLine(c)
+					E('span', { 'class': 'vt-live-split vt-tn', 'title': r ? _('To device %s, from device %s').format(fmt.bits(r.tx), fmt.bits(r.rx)) : '' }, [ r ? fmt.rates(r.tx, r.rx) : '' ])
 				])
 			]),
 			E('td', { 'class': 'vt-td-exp', 'data-title': _('Experience') }, c.gone ? [ E('span', { 'class': 'vt-muted' }, [ fmt.DASH ]) ] : [
@@ -4053,7 +4192,6 @@ return view.extend({
 				c.ap && c.ap.bssid ? kv(_('BSSID'), fmt.mac(c.ap.bssid) + (c.ap.freq ? ' · ' + _('%d MHz').format(c.ap.freq) : ''), true) : '',
 				kv(_('Connected for'), c.gone ? fmt.DASH : fmt.duration(c.connected)),
 				kv(_('Last activity', 'vantage'), c.inactive == null || c.gone ? fmt.DASH : fmt.ago(c.inactive)),
-				c.gone ? '' : this.inetKv(c),
 				kv(_('Seen since'), c.firstSeen ? (c.isNew ? _('%s (new this session)').format(new Date(c.firstSeen).toLocaleTimeString()) : _('before this page opened')) : fmt.DASH)
 			]) ]),
 			c.ap ? '' : this.section(_('Traffic'), [ E('dl', { 'class': 'vt-kvs' }, [
@@ -4084,8 +4222,7 @@ return view.extend({
 				kv(_('Access point'), [ c.ap.name, c.ap.name !== c.ap.ip ? E('small', {}, [ c.ap.ip ]) : '' ], true),
 				kv(_('Port'), c.ap.port, true),
 				kv(_('Link', 'vantage'), c.ap.speed ? model.speedLabel(c.ap.speed) : fmt.DASH),
-				kv(_('Traffic'), this.portRate(c) ? '↓ ' + fmt.bits(this.portRate(c).tx) + ' · ↑ ' + fmt.bits(this.portRate(c).rx) : E('span', { 'class': 'vt-muted' }, [ _('not visible from here') ])),
-				this.inetKv(c)
+				kv(_('Traffic'), this.portRate(c) ? '↓ ' + fmt.bits(this.portRate(c).tx) + ' · ↑ ' + fmt.bits(this.portRate(c).rx) : E('span', { 'class': 'vt-muted' }, [ _('not visible from here') ]))
 			]) ]) : this.section(_('Connection'), [ E('dl', { 'class': 'vt-kvs' }, [
 				c.ap ? kv(_('Access point'), [ c.ap.name, E('small', {}, [ _('its port %s').format(c.ap.port) ]) ], true) : '',
 				kv(_('Port'), c.port, true),
@@ -4097,7 +4234,6 @@ return view.extend({
 					E('span', { 'class': 'vt-muted' }, [ _('Not counted per device on a shared port') ]),
 					shared ? E('small', {}, [ _('the port in total: %s').format('↓ ' + fmt.bits(shared.tx) + ' · ↑ ' + fmt.bits(shared.rx)) ]) : ''
 				] : r ?'↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx) : _('measuring')),
-				this.inetKv(c),
 				kv(_('Network'), [ c.network || c.bridge || fmt.DASH, c.vlan != null ? E('small', {}, [ _('VLAN %d').format(c.vlan) ]) : '' ]),
 				kv(_('Last heard'), c.seen == null ? _('static entry') : fmt.ago(c.seen * 1000))
 			]) ]),
@@ -4383,7 +4519,7 @@ return view.extend({
 			body: [
 				E('div', { 'class': 'vt-dactions' }, [ pageLink([ 'admin', 'system', 'system' ], _('System settings')), pageLink(insight.PAGES.processes, _('Processes')) ]),
 				this.section(_('Device'), [ E('dl', { 'class': 'vt-kvs' }, [
-					kv(_('Model'), d.model),
+					d.modelHidden ? '' : kv(_('Model'), d.model),
 					kv(_('Platform', 'vantage'), [ d.target || fmt.DASH, d.system ? E('small', {}, [ d.system ]) : '' ]),
 					kv(_('Firmware', 'vantage'), d.firmware || fmt.DASH),
 					kv(_('Kernel'), d.kernel || fmt.DASH),
