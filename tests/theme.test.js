@@ -494,8 +494,9 @@ test('translated column titles: the columns the English rule keeps on one line t
 	assert.ok(words.length >= 10, 'found the English words');
 	for (const t of list) assert.ok(words.some(w => t.toLowerCase().includes(w)), t + ' is matched in English');
 	assert.match(rule[2], /white-space:\s*nowrap/);
-	for (const t of [ 'Remaining time', 'Lease time remaining', 'IPv4 address', 'IPv6 addresses', 'MAC address', 'DUID', 'Gateway', 'Metric', 'Target', 'PID' ])
-		assert.ok(list.includes(t), t + ' (LuCI 25.12 and 24.10 column titles)');
+	/* LuCI 25.12 and 24.10 column titles, the whole list: one dropped from it would wrap again in every language but English */
+	assert.deepEqual(list, [ 'CPU usage (%)', 'DUID', 'Gateway', 'IP address', 'IPv4 address', 'IPv6 address', 'IPv6 addresses', 'Lease time remaining', 'MAC address',
+		'Memory usage (%)', 'Metric', 'PID', 'Priority', 'Remaining time', 'Source', 'Start priority', 'Target' ]);
 	/* English: nothing to add, the CSS has it */
 	assert.equal(nowrapTitles(t => t).size, 0);
 	/* Chinese, as LuCI's catalogue has it; uppercase, as the theme shows titles */
@@ -507,12 +508,20 @@ test('translated column titles: the columns the English rule keeps on one line t
 	const ru = nowrapTitles(t => (t === 'Remaining time' ? 'Оставшееся время' : t));
 	assert.ok(ru.has(titleKey('ОСТАВШЕЕСЯ ВРЕМЯ')) && ru.has(titleKey('Оставшееся время')));
 	assert.ok(nowrapTitles(t => (t === 'Source' ? 'Straße' : t)).has(titleKey('STRASSE')), 'ß as CSS uppercases it');
+	/* the browser uppercases a heading by the page's language, and innerText gives that: Turkish i, Greek accents */
+	const tr = nowrapTitles(t => (t === 'IPv4 address' ? 'IPv4 adresi' : t), 'tr');
+	assert.ok(tr.has(titleKey('IPV4 ADRESİ', 'tr')) && !tr.has('IPV4 ADRESI'), 'as Chromium shows it under lang="tr"');
+	const el = nowrapTitles(t => (t === 'IPv4 address' ? 'Διεύθυνση IPv4' : t), 'el');
+	assert.ok(el.has(titleKey('ΔΙΕΥΘΥΝΣΗ IPV4', 'el')), 'as Chromium shows it under lang="el"');
+	/* LuCI's language codes (zh-cn, pt-br) are taken; one the browser refuses falls back to plain uppercase */
+	assert.ok(nowrapTitles(t => zh[t] || t, 'zh-cn').has('IPV4 地址'));
+	assert.equal(titleKey('Straße', 'not a language'), 'STRASSE');
 	/* an empty or missing translation adds nothing */
 	assert.equal(nowrapTitles(t => (t === 'PID' ? '' : t === 'DUID' ? null : t)).size, 0);
 	/* the numerals scan marks them, once a cell, never a form field */
 	const scan = src.slice(src.indexOf('\tsetupNumerals() {'), src.indexOf('\t/* --------------------------------------------------------- tooltips */'));
-	assert.match(scan, /const nowrap = nowrapTitles\(_\);/);
-	assert.match(scan, /cell\._vtNowrap = !cell\.classList\.contains\('cbi-value-field'\) && nowrap\.has\(titleKey\(cell\.getAttribute\('data-title'\)\)\);/);
+	assert.match(scan, /const lang = document\.documentElement\.lang, nowrap = nowrapTitles\(_, lang\);/);
+	assert.match(scan, /cell\._vtNowrap = !cell\.classList\.contains\('cbi-value-field'\) && nowrap\.has\(titleKey\(cell\.getAttribute\('data-title'\), lang\)\);/);
 	assert.match(scan, /if \(cell\._vtNowrap\) cell\.classList\.add\('vt-nowrap'\);/);
 	/* LuCI's own catalogue translates them: no literal _('...') of these titles in the theme */
 	for (const t of list) assert.ok(!src.includes("_('" + t + "')"), t + ' stays out of the theme catalogue');

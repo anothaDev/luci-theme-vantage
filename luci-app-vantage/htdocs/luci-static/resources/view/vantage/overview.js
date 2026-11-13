@@ -372,11 +372,18 @@ function setClass(el, c) { if (el.getAttribute('class') !== c) el.setAttribute('
 function setTitle(el, v) { if (el.getAttribute('title') !== v) el.setAttribute('title', v); }
 /* a line's own IPv4 address, without its prefix length */
 function lineAddr(x) { return x && x.ipv4 && x.ipv4[0] ? String(x.ipv4[0]).split('/')[0] : null; }
-/* the address this device has on its own network: lan's, else that of
-   the first network that is up */
-function lanAddr(nets) {
-	var with4 = (nets || []).filter(function(n) { return n && n.ipv4; });
-	var n = with4.filter(function(n) { return n.name === 'lan'; })[0] || with4.filter(function(n) { return n.up; })[0];
+/* the address this device has on its own network: lan's; without a
+   network of that name, that of the one its SSIDs and wired hosts are on
+   (a LAN by another name, beside a container bridge); else that of the
+   first network that is up */
+function lanAddr(nets, m) {
+	var with4 = (nets || []).filter(function(n) { return n && n.ipv4; }), on = Object.create(null);
+	function add(name, k) { if (typeof name === 'string') on[name] = (on[name] || 0) + k; }
+	((m && m.wiredHosts) || []).forEach(function(h) { if (h) add(h.network, 1); });
+	((m && m.ssids) || []).forEach(function(s) { ((s && s.networks) || []).forEach(function(n) { add(n, 1 + (s.clients > 0 ? s.clients : 0)); }); });
+	var up = with4.filter(function(n) { return n.up; }), most = null;
+	up.forEach(function(n) { if (on[n.name] > 0 && (!most || on[n.name] > on[most.name])) most = n; });
+	var n = with4.filter(function(n) { return n.name === 'lan'; })[0] || most || up[0];
 	return n ? String(n.ipv4).split('/')[0] : null;
 }
 /* the throughput history of a line to the internet, the main one too,
@@ -2505,7 +2512,7 @@ return view.extend({
 		txt(h.apTitle, d.model);
 		/* beside a line that shows its own address, this device shows the
 		   one its own network reaches it at; else the uplink's, as before */
-		txt(h.apAddr, (own ? lanAddr(m.networks) : up ? lineAddr(up) : null) || fmt.DASH);
+		txt(h.apAddr, (own ? lanAddr(m.networks, m) : up ? lineAddr(up) : null) || fmt.DASH);
 		txt(h.apUp, d.uptime != null ? _('up %s').format(fmt.duration(d.uptime)) : '');
 		h.upActive = !!(upR && upR.rx + upR.tx > 50e3);
 		h.upRate = upR ? upR.rx + upR.tx : 0;

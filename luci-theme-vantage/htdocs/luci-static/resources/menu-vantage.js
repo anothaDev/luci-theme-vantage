@@ -347,18 +347,22 @@ const NOWRAP_TITLES = [ 'CPU usage (%)', 'DUID', 'Gateway', 'IP address', 'IPv4 
 	'Start priority', 'Target' ];
 
 /* a column title as compared: uppercase, as the theme shows it (LuCI takes
-   a cell's data-title from its heading's innerText), spaces collapsed */
-function titleKey(text) {
-	return String(text == null ? '' : text).replace(/\s+/g, ' ').trim().toUpperCase();
+   a cell's data-title from its heading's innerText), spaces collapsed. The
+   browser uppercases by the page's language (lang: Turkish i becomes İ,
+   Greek loses its accents), so this does too */
+function titleKey(text, lang) {
+	const s = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+	try { return s.toLocaleUpperCase(lang || undefined); }
+	catch (e) { return s.toUpperCase(); }
 }
 
 /* the titleKey()s of NOWRAP_TITLES as tr (LuCI's _) translates them, those
    that differ from the English the CSS matches: none in English */
-function nowrapTitles(tr) {
+function nowrapTitles(tr, lang) {
 	const out = new Set();
 	NOWRAP_TITLES.forEach(t => {
 		const s = tr(t);
-		if (typeof s === 'string' && s !== t && s.trim()) out.add(titleKey(s));
+		if (typeof s === 'string' && s !== t && s.trim()) out.add(titleKey(s, lang));
 	});
 	return out;
 }
@@ -2105,13 +2109,13 @@ return baseclass.extend({
 		let queued = false;
 		const skip = 'input,select,textarea,button,.btn,.cbi-button,.cbi-dropdown,img,.ifacebadge,.zonebadge,.cbi-progressbar,table,.table';
 		/* columns of numbers and addresses under a translated title (#111) */
-		const nowrap = nowrapTitles(_);
+		const lang = document.documentElement.lang, nowrap = nowrapTitles(_, lang);
 		const scan = () => {
 			queued = false;
 			main.querySelectorAll('td, .td, .ifacebox-body > span > span').forEach(cell => {
 				if (cell.closest('.vt-app')) return;
 				if (nowrap.size && cell._vtNowrap === undefined) {
-					cell._vtNowrap = !cell.classList.contains('cbi-value-field') && nowrap.has(titleKey(cell.getAttribute('data-title')));
+					cell._vtNowrap = !cell.classList.contains('cbi-value-field') && nowrap.has(titleKey(cell.getAttribute('data-title'), lang));
 					if (cell._vtNowrap) cell.classList.add('vt-nowrap');
 				}
 				const text = cell.textContent;

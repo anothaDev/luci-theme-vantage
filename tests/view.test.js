@@ -839,6 +839,10 @@ test('other lines: each node shows its name, its own address and live rates, wir
 	/* one wire per line into the device, numbered for nesting */
 	assert.deepEqual(self.wireList().filter(w => w.line != null).map(w => [ w.key, w.from === h.lines[w.line].el, w.to === h.ap, w.speed ]),
 		[ [ 'l:wanb', true, true, 2 ], [ 'l:lte', true, true, 1 ], [ 'l:gone', true, true, 1 ] ]);
+	/* a line with an address and no gateway (a point-to-point modem): its address, and no gateway in the tooltip */
+	self.m.uplinks = [ wan, wanb, Object.assign({}, lte, { ipv4: [ '203.0.113.32/30' ] }) ];
+	self.updateHero();
+	assert.deepEqual([ l.title.textContent, l.el.attrs.title ], [ '203.0.113.32', 'lte · wwan0' ]);
 	/* one line: the gateway's own kicker */
 	h.lines = [];
 	self.m.uplinks = [ wan ];
@@ -874,10 +878,32 @@ test('the path: a line shows its own address and this device its LAN address; an
 	const nets = [ { name: 'guest', up: false, ipv4: '192.0.2.129/25' }, { name: 'home', up: true, ipv4: '192.0.2.65/26' } ];
 	assert.equal(run({ uplink: wan, uplinks: [ wan ], networks: nets }).apAddr.textContent, '192.0.2.65');
 	assert.equal(run({ uplink: wan, uplinks: [ wan ], networks: [] }).apAddr.textContent, '—');
+	/* a LAN by another name beside a container bridge that sorts before it: the network the SSIDs and wired hosts are on */
+	const beside = [ { name: 'docker', up: true, ipv4: '198.51.100.1/24' }, { name: 'home', up: true, ipv4: '192.0.2.65/26' }, { name: 'iot', up: true, ipv4: '192.0.2.129/26' } ];
+	const at = extra => run(Object.assign({ uplink: wan, uplinks: [ wan ], networks: beside }, extra)).apAddr.textContent;
+	assert.equal(at({}), '198.51.100.1', 'nothing known of any: the first that is up, as before');
+	assert.equal(at({ wiredHosts: [ { mac: '00:00:5e:00:53:01', network: 'home' }, { mac: '00:00:5e:00:53:02', network: null } ] }), '192.0.2.65', 'its wired hosts');
+	assert.equal(at({ ssids: [ { networks: [ 'home' ], clients: 0 } ] }), '192.0.2.65', 'an SSID on it, without clients');
+	assert.equal(at({ ssids: [ { networks: [ 'iot' ], clients: 1 }, { networks: [ 'home' ], clients: 4 } ], wiredHosts: [ { network: 'iot' } ] }), '192.0.2.65', 'the one with more on it');
+	assert.equal(at({ ssids: [ { networks: [ 'gone', 7 ], clients: 9 } ], wiredHosts: [ { network: 'gone' } ] }), '198.51.100.1', 'a network that is not there counts for nothing');
+	assert.equal(at({ networks: beside.concat(LAN), wiredHosts: [ { network: 'home' } ] }), '192.0.2.1', 'lan by its name, whatever is on the others');
 
 	/* a line without an IPv4 address of its own: its gateway, as before */
 	const v6 = Object.assign(LINE('wan', 'eth1', 10), { ipv4: [], gateway: 'fe80::1' });
 	assert.deepEqual(node(run({ uplink: v6, uplinks: [ v6 ] })), [ 'Internet', 'fe80::1', 'Reachability not probed', null, '—' ]);
+	/* the same node over two polls: the line loses its address, and the tooltip goes with it */
+	const again = Object.create(view), kept = pathHero();
+	again.hero = kept;
+	again.st = { uplinkRate: null, devRates: {} };
+	again.m = { wired: true, networks: [ LAN ], radios: [], ssids: [], wiredHosts: [], device: { model: 'Router', uptime: 1 }, uplink: wan, uplinks: [ wan ] };
+	again.updateHero();
+	assert.equal(kept.gw.getAttribute('title'), 'Gateway 203.0.113.11');
+	again.m = Object.assign({}, again.m, { uplink: v6, uplinks: [ v6 ] });
+	again.updateHero();
+	assert.deepEqual(node(kept), [ 'Internet', 'fe80::1', 'Reachability not probed', null, '—' ]);
+	/* a gateway this device knows by name (a bridged WAN): the name under the line's own address, not instead of it */
+	const named = { mac: '00:00:5e:00:53:fe', name: 'isp-box', nameSource: 'dhcp', port: 'wan', gateway: true };
+	assert.deepEqual(node(run({ uplink: wan, uplinks: [ wan ], wiredHosts: [ named ] })).slice(0, 4), [ 'Internet', '203.0.113.12', 'isp-box', 'Gateway 203.0.113.11' ]);
 
 	/* an access point: one line that is no WAN. The gateway by its name and address, its own address on its node, no tooltip */
 	const lan = Object.assign(LINE('lan', 'br-lan', 0), { isWan: false, ipv4: [ '192.0.2.4/24' ], gateway: '192.0.2.1' });
