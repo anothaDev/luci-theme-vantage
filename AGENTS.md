@@ -74,8 +74,10 @@ add-on to it) plus offline tooling. No npm, no
    and writes files outside uci, each listed line by line in
    `test_acl_policy.js` (the pairing plugin, the report, the collector):
    changing one of those lines means changing the test with it, and saying
-   why. Its group (`luci-app-vantage-aps`) is for administrators; the
-   dashboard's groups grant nothing of it but `vantage.collector report`.
+   why. Its group (`luci-app-vantage-aps`) is for administrators; seeing
+   the access points (`vantage.collector report`) is its second group,
+   `luci-app-vantage-aps-view`. The dashboard's groups grant nothing of
+   the add-on.
 7. **Theme and app stay independent.** The app is styled only through the
    theme's `--v-*` custom properties, each with a fallback, and its classes
    are `vt-*` scoped under `.vt-app`. The theme doesn't style app

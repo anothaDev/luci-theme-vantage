@@ -10,9 +10,12 @@
 //                   ap: { ssh, routers: [ { name, key } ], reply } }
 //                 code: this router's pairing code (null before the
 //                 first router_code); ssh: 'ok', or why this device cannot
-//                 be read ('no-dropbear', 'no-key-options', 'unsupported',
-//                 'no-host-key', 'not-running', 'no-address'); reply: this device's
-//                 answer to a router (null without one allowed, or ssh not ok)
+//                 be read or paired ('no-dropbear', 'no-key-options',
+//                 'unsupported', 'no-host-key', 'not-running',
+//                 'keys-unreadable': authorized_keys is there and cannot be
+//                 read whole, so who may log in is not known; 'no-address');
+//                 reply: this device's answer to a router (null without one
+//                 allowed, or ssh not ok)
 //   router_code   {}: { code }, this router's key made on first use
 //   add_ap        { code, addr }: pair with the access point whose reply
 //                 code this is, at addr when given (else the reply's); { id }
@@ -31,15 +34,18 @@
 //           /etc/init.d/vantage-collector enable, start, stop, disable
 //           (add_ap, remove_ap)
 //   writes  /etc/vantage/aps.json (add_ap, remove_ap); in
-//           /etc/dropbear/authorized_keys its own lines, each the report
-//           command's options, then ssh-ed25519 <key> vantage-router@<name>,
-//           every other line kept byte for byte (allow_router, revoke_router)
+//           /etc/dropbear/authorized_keys its own lines (vantage.aps
+//           auth_line: the report command's options, then ssh-ed25519
+//           <key> vantage-router@<name>+<key id>), every other line kept
+//           byte for byte (allow_router, revoke_router). Neither file is
+//           written when it is there and cannot be read whole: what it
+//           holds would be lost.
 // Public keys are read from dropbear's key files themselves, not through
 // a program.
 
 'use strict';
 
-import { access, chmod, mkdir, readfile, rename, stat, writefile } from 'fs';
+import { access, chmod, lstat, mkdir, readfile, rename, stat, writefile } from 'fs';
 import { connect } from 'ubus';
 import { cursor } from 'uci';
 import * as vaps from 'vantage.aps';
@@ -58,8 +64,6 @@ const COLLECTOR = '/etc/init.d/vantage-collector';
 const HOSTNAME = '/proc/sys/kernel/hostname';
 const RANDOM = '/dev/urandom';
 const NET = '/sys/class/net';
-const KEY_OPTIONS = 'command="/usr/libexec/vantage/report",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding';
-const COMMENT = 'vantage-router@';
 const MAX_AUTH = 262144;          // bytes of authorized_keys read
 const MAX_DROPBEAR = 4194304;     // bytes of the dropbear binary searched
 const MAX_APS_FILE = 65536;
@@ -95,8 +99,23 @@ function hostname(fallback) {
 
 /* ----------------------------------------------------------- router */
 
+// a file's text, at most max bytes of it: '' when there is no such file,
+// null when it is there and cannot be read or is longer. The two must not
+// be taken for one another: a file that reads as empty is written anew.
+function whole(file, max) {
+	let text = readfile(file, max + 1);
+
+	if (text == null)
+		return lstat(file) ? null : '';
+
+	return (length(text) <= max) ? text : null;
+}
+
+// the paired list; null when it cannot be read whole
 function load_aps() {
-	return vaps.aps(readfile(APS, MAX_APS_FILE));
+	let text = whole(APS, MAX_APS_FILE);
+
+	return (text == null) ? null : vaps.aps(text);
 }
 
 function save_aps(list) {
@@ -144,6 +163,9 @@ function add_ap(args) {
 
 	let list = load_aps();
 
+	if (!list)
+		return { error: 'failed' };
+
 	for (let e in list)
 		if (e.key == a.key)
 			return { error: 'duplicate' };
@@ -172,7 +194,12 @@ function add_ap(args) {
 }
 
 function remove_ap(args) {
-	let list = load_aps(), left = filter(list, (e) => e.id !== args.id);
+	let list = load_aps();
+
+	if (!list)
+		return { error: 'failed' };
+
+	let left = filter(list, (e) => e.id !== args.id);
 
 	if (length(left) == length(list))
 		return { error: 'unknown' };
@@ -244,6 +271,30 @@ function lan(ubus) {
 	return (a && m) ? { addr: a, mac: m[0] } : null;
 }
 
+// authorized_keys -> { lines, ours: [ { key, name, at } ] }, ours being
+// the lines vantage.aps parse_auth_line knows; null when the file is
+// there and cannot be read whole (MAX_AUTH bytes)
+function read_auth() {
+	let text = whole(AUTH, MAX_AUTH);
+
+	if (text == null)
+		return null;
+
+	let lines = (text == '') ? [] : split(text, '\n'), ours = [];
+
+	if (length(lines) && lines[length(lines) - 1] == '')
+		pop(lines);
+
+	for (let i = 0; i < length(lines); i++) {
+		let o = vaps.parse_auth_line(lines[i]);
+
+		if (o)
+			push(ours, { key: o.key, name: o.name, at: i });
+	}
+
+	return { lines, ours };
+}
+
 function ssh_state() {
 	if (!access(DROPBEAR, 'x'))
 		return 'no-dropbear';
@@ -267,38 +318,18 @@ function ssh_state() {
 	if (!running)
 		return 'not-running';
 
+	if (!read_auth())
+		return 'keys-unreadable';
+
 	return lan(ubus) ? 'ok' : 'no-address';
 }
 
-// authorized_keys -> { lines, ours: [ { key, name, at } ] }: our lines
-// are exactly the report command's options, then ssh-ed25519 <key>
-// vantage-router@<name>
-function read_auth() {
-	let text = readfile(AUTH, MAX_AUTH + 1);
-
-	if (text != null && length(text) > MAX_AUTH)
-		return null;
-
-	let lines = (text == null || text == '') ? [] : split(text, '\n'), ours = [];
-
-	if (length(lines) && lines[length(lines) - 1] == '')
-		pop(lines);
-
-	for (let i = 0; i < length(lines); i++) {
-		let f = split(lines[i], ' ');
-
-		if (length(f) == 4 && f[0] == KEY_OPTIONS && f[1] == 'ssh-ed25519' && vaps.key(f[2]) &&
-		    substr(f[3], 0, length(COMMENT)) == COMMENT && vaps.name(substr(f[3], length(COMMENT))))
-			push(ours, { key: f[2], name: substr(f[3], length(COMMENT)), at: i });
-	}
-
-	return { lines, ours };
-}
-
+// never longer than read_auth() reads: past that this page could neither
+// list nor revoke what it wrote
 function write_auth(lines) {
 	let text = length(lines) ? join('\n', lines) + '\n' : '';
 
-	return put(AUTH_TMP, AUTH, text);
+	return length(text) <= MAX_AUTH && put(AUTH_TMP, AUTH, text);
 }
 
 function reply(ubus) {
@@ -335,12 +366,18 @@ function allow_router(args) {
 	if (length(auth.ours) >= vaps.MAX_ROUTERS)
 		return { error: 'full' };
 
-	push(auth.lines, KEY_OPTIONS + ' ssh-ed25519 ' + r.key + ' ' + COMMENT + r.name);
+	// the answer first: with the line written there is no failing left
+	let answer = reply();
+
+	if (!answer)
+		return { error: 'failed' };
+
+	push(auth.lines, vaps.auth_line(r.key, r.name));
 
 	if (!write_auth(auth.lines))
 		return { error: 'failed' };
 
-	return { reply: reply() };
+	return { reply: answer };
 }
 
 function revoke_router(args) {
@@ -376,7 +413,7 @@ function status() {
 	return {
 		router: {
 			code: k ? vaps.router_code(k, hostname('router')) : null,
-			aps: map(load_aps(), (e) => ({ id: e.id, name: e.name, addr: e.addr, port: e.port }))
+			aps: map(load_aps() ?? [], (e) => ({ id: e.id, name: e.name, addr: e.addr, port: e.port }))
 		},
 		ap: { ssh, routers, reply: (ssh == 'ok' && length(routers)) ? reply() : null }
 	};

@@ -172,7 +172,11 @@ const OFFLINE_ERRORS = literals((/\(([^()]*)\)\s*\?\s*'offline'/.exec(body(APS_U
 const pairs = ubus => Object.entries(ubus || {}).flatMap(([ o, ms ]) => ms.map(m => o + ' ' + m)).sort();
 
 test('aps: the declares are exactly the luci-app-vantage-aps grants; status and report read, the rest write', () => {
-	assert.deepEqual(Object.keys(acl), [ GROUP ]);
+	/* the page's group, for administrators, and the one that only shows the access points on the dashboard:
+	   that one reads the collector's report and nothing else, and writes nothing */
+	assert.deepEqual(Object.keys(acl).sort(), [ GROUP, GROUP + '-view' ]);
+	assert.deepEqual(acl[GROUP + '-view'].read, { ubus: { 'vantage.collector': [ 'report' ] } });
+	assert.deepEqual(Object.keys(acl[GROUP + '-view']).sort(), [ 'description', 'read' ]);
 	const g = acl[GROUP];
 	assert.deepEqual(Object.keys(g).sort(), [ 'description', 'read', 'write' ]);
 	assert.deepEqual(Object.keys(g.read), [ 'ubus' ], 'no uci or file grants');
@@ -655,6 +659,11 @@ test('aps render: the routers that may read this device, the SSH warning, the re
 	const lone = mount(statusOf([], { ap: { ssh: 'ok', routers: [], reply: null } }), null);
 	assert.match(lone.el.routerRows.text, /^No router can read this access point/);
 	assert.equal(lone.el.againBox.hidden, true);
+	/* the key file cannot be read: an empty list is not "none" */
+	const blind = mount(statusOf([], { ap: { ssh: 'keys-unreadable', routers: [], reply: null } }), null);
+	assert.equal(blind.el.routerRows.text, 'Not known while the key file cannot be read.');
+	assert.deepEqual(notes(tile(blind, 'ap')), [ 'This device\'s SSH key file (/etc/dropbear/authorized_keys) cannot be read, or is larger than 256 KiB. Which routers can read this device is not known, so pairing is off.' ]);
+	assert.equal(blind.el.allowBtn.hidden, true);
 });
 
 test('aps render: a poll updates the rows in place and rebuilds them only when the list changes', async () => {

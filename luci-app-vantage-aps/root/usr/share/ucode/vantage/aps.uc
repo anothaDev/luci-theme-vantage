@@ -85,14 +85,16 @@ function ipv4(v) {
 	return +m[1] >= 1 && +m[1] <= 223 && +m[1] != 127 && !(+m[1] == 169 && +m[2] == 254);
 }
 
-function ipv6(v) {
+// an IPv6 address, lower case -> its eight groups, :: filled in; null
+// when it is none
+function groups6(v) {
 	if (!match(v, RE_IPV6) || index(v, ':::') >= 0)
-		return false;
+		return null;
 
 	let parts = split(v, '::'), sides = [ [], [] ];
 
 	if (length(parts) > 2)
-		return false;
+		return null;
 
 	for (let k = 0; k < length(parts); k++) {
 		if (parts[k] == '')
@@ -100,7 +102,7 @@ function ipv6(v) {
 
 		for (let g in split(parts[k], ':')) {
 			if (!match(g, RE_GROUP))
-				return false;
+				return null;
 
 			push(sides[k], hex(g));
 		}
@@ -109,19 +111,23 @@ function ipv6(v) {
 	let n = length(sides[0]) + length(sides[1]);
 
 	if ((length(parts) == 2) ? n > 7 : n != 8)
-		return false;
+		return null;
 
-	// the eight groups, :: filled in: judged by value, however spelled
 	let groups = [ ...sides[0] ];
 
 	for (let k = n; k < 8; k++)
 		push(groups, 0);
 
-	groups = [ ...groups, ...sides[1] ];
+	return [ ...groups, ...sides[1] ];
+}
+
+function ipv6(v) {
+	// judged by value, however spelled
+	let groups = groups6(v);
 
 	// ::/8 holds no host to reach (unspecified, loopback, IPv4-mapped);
 	// link-local needs a zone, multicast is no host
-	return groups[0] >= 0x100 && (groups[0] & 0xffc0) != 0xfe80 && groups[0] < 0xff00;
+	return groups != null && groups[0] >= 0x100 && (groups[0] & 0xffc0) != 0xfe80 && groups[0] < 0xff00;
 }
 
 // an address to reach an access point at: unicast IPv4, or IPv6 without
@@ -140,6 +146,10 @@ function mac(v) {
 	v = str(v) ? lc(v) : null;
 
 	return (v && match(v, RE_MAC) && v != '00:00:00:00:00:00' && !(hex(substr(v, 0, 2)) & 1)) ? v : null;
+}
+
+function netdev(v) {
+	return (str(v) && match(v, RE_NETDEV)) ? v : null;
 }
 
 function port(v) {
@@ -185,6 +195,47 @@ function parse_ap(s) {
 	return { key: f[3], addr: addr(f[4]), port: port(f[5]), mac: mac(f[6]), name: f[7] };
 }
 
+/* --------------------------------------------- a router's key line */
+
+// What a router's key may do on an access point: run the report, and
+// nothing else. The line's comment names the router and its key (the
+// first 8 of the key's 32 bytes, in hex): Dropbear hands the comment of
+// the line that let a caller in to the command it runs (SSH_PUBKEYINFO,
+// the first word of it, of letters, digits and .,_-+@ only), and the
+// report looks for that line again.
+const KEY_OPTIONS = 'command="/usr/libexec/vantage/report",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding';
+const COMMENT = 'vantage-router@';
+const RE_TAIL = /[ \t\r]+$/;
+
+function key_id(k) {
+	let b = b64dec(k), h = '';
+
+	for (let i = 19; i < 27; i++)
+		h += sprintf('%02x', ord(b, i));
+
+	return h;
+}
+
+// the authorized_keys line for router key k, named n (both checked by
+// the caller: key(), name())
+function auth_line(k, n) {
+	return KEY_OPTIONS + ' ssh-ed25519 ' + k + ' ' + COMMENT + n + '+' + key_id(k);
+}
+
+// such a line back: { key, name, comment }, or null for any other line.
+// Blanks or a carriage return after it (an editor's) leave it that line:
+// Dropbear takes it all the same.
+function parse_auth_line(line) {
+	let f = str(line) ? split(replace(line, RE_TAIL, ''), ' ') : [];
+
+	if (length(f) != 4 || f[0] != KEY_OPTIONS || f[1] != ED25519 || !key(f[2]) || substr(f[3], 0, length(COMMENT)) != COMMENT)
+		return null;
+
+	let rest = split(substr(f[3], length(COMMENT)), '+');
+
+	return (length(rest) == 2 && name(rest[0]) && rest[1] === key_id(f[2])) ? { key: f[2], name: rest[0], comment: f[3] } : null;
+}
+
 /* ------------------------------------------------- the paired list */
 
 // /etc/vantage/aps.json -> [ { id, name, key, addr, port, mac } ], the valid
@@ -218,30 +269,98 @@ function aps(text) {
 	return out;
 }
 
-// The IPv4 addresses a MAC has now, from the neighbour table
-// (/proc/net/arp: complete entries) and dnsmasq's leases ("<expiry> <mac>
-// <ip> ..."): where to look for an access point whose address changed.
-// Safe to try: the pinned host key turns away any other device there.
-function find_addrs(m, arp, leases) {
+// The network an address is on, of this device's own (ifaces: the
+// interfaces of ubus network.interface dump): { dev, nets }, the device
+// of the one interface with a subnet that holds the address, and that
+// interface's IPv4 subnets as [ address, mask ] pairs. null when no
+// interface holds it (an access point behind another router).
+function v4(a) {
+	let m = str(a) ? match(a, RE_IPV4) : null;
+
+	return (m && +m[1] <= 255 && +m[2] <= 255 && +m[3] <= 255 && +m[4] <= 255) ? [ +m[1], +m[2], +m[3], +m[4] ] : null;
+}
+
+// whether the first bits bits of two addresses (lists of numbers, width
+// bits each) are the same
+function same_net(x, y, bits, width) {
+	for (let i = 0; i < length(x) && bits > 0; i++, bits -= width) {
+		let drop = (bits >= width) ? 0 : width - bits;
+
+		if ((x[i] >> drop) != (y[i] >> drop))
+			return false;
+	}
+
+	return true;
+}
+
+function subnets(list, parse, most) {
+	let out = [];
+
+	for (let e in ((type(list) == 'array') ? list : [])) {
+		let a = (type(e) == 'object' && str(e.address)) ? parse(lc(e.address)) : null;
+
+		if (a && type(e.mask) == 'int' && e.mask >= 1 && e.mask <= most)
+			push(out, [ a, e.mask ]);
+	}
+
+	return out;
+}
+
+function network_of(a, ifaces) {
+	let want4 = v4(a), want6 = want4 ? null : (str(a) ? groups6(lc(a)) : null);
+
+	if (!want4 && !want6)
+		return null;
+
+	for (let i in ((type(ifaces) == 'array') ? ifaces : [])) {
+		if (type(i) != 'object' || i.up !== true || !netdev(i.l3_device))
+			continue;
+
+		let nets = subnets(i['ipv4-address'], v4, 32);
+		let held = want4
+			? length(filter(nets, (n) => same_net(want4, n[0], n[1], 8)))
+			: length(filter([ ...subnets(i['ipv6-address'], groups6, 128), ...subnets(i['ipv6-prefix-assignment'], groups6, 128) ],
+				(n) => same_net(want6, n[0], n[1], 16)));
+
+		if (held)
+			return { dev: i.l3_device, nets };
+	}
+
+	return null;
+}
+
+// The IPv4 addresses a MAC has now on the network it was paired on (net:
+// network_of() its pairing address), where to look for an access point
+// whose address changed: first what dnsmasq leased it ("<expiry> <mac>
+// <ip> ...", one lease a MAC), then the neighbour table's complete
+// entries (/proc/net/arp) on that network's device, each inside one of
+// the network's subnets, at most four. Any device gets a row under any
+// MAC and address into the neighbour table of a network it is on, so
+// rows of other networks are not followed: this router would open a
+// connection to wherever they say. The pinned host key turns away any
+// other device at an address that is tried.
+function find_addrs(m, arp, leases, net) {
 	let out = [];
 
 	m = mac(m);
 
-	if (!m)
+	if (!m || type(net) != 'object' || !netdev(net.dev))
 		return out;
 
-	for (let line in split(str(arp) ? arp : '', '\n')) {
-		let f = split(trim(line), RE_SPACE);
-
-		if (length(f) >= 6 && (+f[2] & 2) && mac(f[3]) == m && ipv4(f[0]) && index(out, f[0]) < 0)
-			push(out, f[0]);
-	}
+	let inside = (a) => ipv4(a) && length(filter(net.nets, (n) => same_net(v4(a), n[0], n[1], 8))) > 0;
 
 	for (let line in split(str(leases) ? leases : '', '\n')) {
 		let f = split(trim(line), RE_SPACE);
 
-		if (length(f) >= 3 && mac(f[1]) == m && ipv4(f[2]) && index(out, f[2]) < 0)
+		if (length(f) >= 3 && mac(f[1]) == m && inside(f[2]) && index(out, f[2]) < 0)
 			push(out, f[2]);
+	}
+
+	for (let line in split(str(arp) ? arp : '', '\n')) {
+		let f = split(trim(line), RE_SPACE);
+
+		if (length(f) >= 6 && (+f[2] & 2) && mac(f[3]) == m && f[5] === net.dev && inside(f[0]) && index(out, f[0]) < 0)
+			push(out, f[0]);
 	}
 
 	return slice(out, 0, 4);
@@ -249,8 +368,8 @@ function find_addrs(m, arp, leases) {
 
 // The first address its MAC has now that is neither where it is known
 // (current) nor already tried; null when there is none
-function next_addr(m, current, tried, arp, leases) {
-	for (let to in find_addrs(m, arp, leases))
+function next_addr(m, current, tried, arp, leases, net) {
+	for (let to in find_addrs(m, arp, leases, net))
 		if (to != current && !tried?.[to])
 			return to;
 
@@ -260,33 +379,66 @@ function next_addr(m, current, tried, arp, leases) {
 /* ---------------------------------------------------- a fetch's outcome */
 
 const RE_HOSTKEY = /host key mismatch|Not accepted automatically|Didn't validate host key/;
-const RE_DENIED = /No auth methods could be used|Permission denied|Disconnect received/;
-const RE_NO_REPORT = /vantage\/report: not found|vantage\/report: No such file/;
+const RE_EXITED = /^[^ ]+: Connection to [^ ]+$/;
+const RE_NO_REPORT = /^-?[a-z\/]*sh: [^ ]*vantage\/report: (not found|No such file or directory|Permission denied)$/;
+const NO_AUTH = 'No auth methods could be used.';
+
+// Why dbclient gave up, in its own words: the text after " exited:" in
+// its line "<program>: Connection to <user>@<host>:<port> exited: <why>";
+// null when it wrote no such line (the session ran to its end). The first
+// " exited:" of the line is dbclient's: whatever the other end sent can
+// only follow it (its version line is quoted there before any key is
+// checked) and holds no line break.
+function exited(err) {
+	for (let line in split(err, '\n')) {
+		let i = index(line, ' exited:');
+
+		if (i > 0 && match(substr(line, 0, i), RE_EXITED))
+			return trim(substr(line, i + 8));
+	}
+
+	return null;
+}
 
 // Why a fetch gave no report, from how dbclient ended (its exit code, the
 // bytes it printed, its error text, whether it was killed for taking too
 // long); null when what it printed is to be read as a report (at most
 // max bytes). 'missing': the access point has no report command (the
 // add-on is not installed there).
+//
+// Only an access point that showed its pinned host key may be 'denied',
+// 'missing' or 'invalid': those end the search for it at other addresses,
+// and any device answers at an address it has left. Before the key is
+// checked that device already has a say in dbclient's error text and exit
+// code, so 'denied' is dbclient's one reason that comes after the check,
+// word for word; 'missing' is a line of the access point's own shell,
+// which only a session brings; 'invalid' needs bytes on standard output,
+// which only a session brings too. Everything else was not the access
+// point's answer.
 function fetch_error(code, out, err, timedout, max) {
 	if (timedout)
 		return 'timeout';
 
-	if (code == 0 && type(out) == 'string' && length(out) > 0 && length(out) <= max)
+	out = (type(out) == 'string') ? out : '';
+
+	if (code == 0 && length(out) > 0 && length(out) <= max)
 		return null;
 
 	err = (type(err) == 'string') ? err : '';
 
+	let why = exited(err);
+
 	if (match(err, RE_HOSTKEY))
 		return 'hostkey';
 
-	if (match(err, RE_DENIED))
-		return 'denied';
+	if (why != null)
+		return (why == NO_AUTH) ? 'denied' : 'unreachable';
 
-	if (match(err, RE_NO_REPORT))
-		return 'missing';
+	for (let line in split(err, '\n'))
+		if (match(line, RE_NO_REPORT))
+			return 'missing';
 
-	return (code == 0 || length(out ?? '')) ? 'invalid' : 'unreachable';
+	return length(out) ? 'invalid' : 'unreachable';
 }
 
 // An access point's state on the dashboard: 'ok' with a report to show,
@@ -304,8 +456,22 @@ function moved(error) {
 
 /* ----------------------------------------------------------- reports */
 
-function netdev(v) {
-	return (str(v) && match(v, RE_NETDEV)) ? v : null;
+// A report's text, before json() reads it: json() builds every value it
+// names before normalize() can drop one, and an empty object costs about
+// 1.5 kB (128 KiB of "{}," took 66 MB). So the text may open at most
+// MAX_OPEN objects and arrays and hold at most MAX_COMMAS commas, counted
+// as bytes wherever they stand, in a string too. The fullest report an
+// access point can make has 437 and 2516, and its free text (16 SSIDs,
+// its name and model) could add 639 to either.
+const MAX_OPEN = 1280;
+const MAX_COMMAS = 4096;
+const RE_NOT_OPEN = /[^[{]+/g;
+const RE_NOT_COMMA = /[^,]+/g;
+
+function parseable(text) {
+	return str(text) &&
+		length(replace(text, RE_NOT_OPEN, '')) <= MAX_OPEN &&
+		length(replace(text, RE_NOT_COMMA, '')) <= MAX_COMMAS;
 }
 
 function int_in(v, lo, hi) {
@@ -471,4 +637,4 @@ function view(r, prev, dt) {
 	};
 }
 
-export { MAX_APS, MAX_ROUTERS, MAX_CODE, key, name, name_of, id, addr, mac, port, router_code, ap_code, parse_router, parse_ap, aps, find_addrs, next_addr, fetch_error, state, moved, band, normalize, view };
+export { MAX_APS, MAX_ROUTERS, MAX_CODE, COMMENT, key, name, name_of, id, addr, mac, port, router_code, ap_code, parse_router, parse_ap, auth_line, parse_auth_line, aps, network_of, find_addrs, next_addr, fetch_error, state, moved, band, parseable, normalize, view };

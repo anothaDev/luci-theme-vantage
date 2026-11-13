@@ -356,6 +356,11 @@ test('extraUplinks: a backup on a bridge VLAN takes the port its gateway was lea
 	assert.deepEqual([ b.dev, b.statsDev, b.port ], [ 'lan4', 'lan4', 'lan4' ]);
 	assert.deepEqual(b.speed, { mbps: 1000, duplex: 'full' });
 	assert.equal(m.wiredHosts.find(h => h.mac === gw).gateway, false, 'the main line\'s gateway only');
+	/* a host of another bridge with that address gives the line no port, alone or beside the gateway */
+	const liar = '00:00:5e:00:53:66', other = { mac: liar, port: 'lan9', bridge: 'br-guest', seen: 1 };
+	assert.equal(model.build({ ifaces, devs, hints: { [liar.toUpperCase()]: { ipaddrs: [ '203.0.113.21' ] } }, fdb: [ other ] }).uplinks[1].port, null);
+	assert.equal(model.build({ ifaces, devs, hints: { [gw.toUpperCase()]: { ipaddrs: [ '203.0.113.21' ] }, [liar.toUpperCase()]: { ipaddrs: [ '203.0.113.21' ] } },
+		fdb: [ { mac: gw, port: 'lan4', bridge: 'br-lan', vlan: 20, seen: 3 }, other ] }).uplinks[1].port, 'lan4');
 	/* a bridge with one wired port still leads to it */
 	const one = { ...devs, 'br-wan': { type: 'bridge', 'bridge-members': [ 'lan3' ] } };
 	assert.equal(model.build({ ifaces: [ ifaces[1], wanIf('wanb', 'br-wan', 20) ], devs: one }).uplinks[1].dev, 'lan3');
@@ -543,6 +548,23 @@ test('hintAddrs: at most 8 addresses per device (SEC-001)', () => {
 	const ips = model.hintAddrs({ ipaddrs: [ '192.0.2.44' ], ip6addrs: v6 }, [ '192.0.2.10/24' ]);
 	assert.equal(ips.length, 8);
 	assert.equal(ips[0], '192.0.2.44');
+});
+
+test('parseIPv6: the eight groups of an address whatever its spelling; anything else is none', () => {
+	const ten = [ 0x2001, 0xdb8, 1, 0, 0, 0, 0, 0x10 ];
+	for (const s of [ '2001:db8:1::10', '2001:db8:1:0::10', '2001:0db8:1::10', '2001:db8:1::0010', '2001:db8:0001::10', '2001:db8:1:0:0:0:0:10',
+		'2001:db8:1:0:0:0::10', '2001:0db8:0001:0000:0000:0000:0000:0010', '2001:DB8:1::10', '2001:0DB8:1:0:0:0:0:10' ])
+		assert.deepEqual(model.parseIPv6(s), ten, s);
+	assert.deepEqual(model.parseIPv6('2001:db8:1::11'), [ 0x2001, 0xdb8, 1, 0, 0, 0, 0, 0x11 ], 'another address');
+	assert.deepEqual(model.parseIPv6('2001:db8::1:10'), [ 0x2001, 0xdb8, 0, 0, 0, 0, 1, 0x10 ], 'the groups in their places');
+	assert.deepEqual(model.parseIPv6('2001:db8::'), [ 0x2001, 0xdb8, 0, 0, 0, 0, 0, 0 ]);
+	assert.deepEqual(model.parseIPv6('::1'), [ 0, 0, 0, 0, 0, 0, 0, 1 ]);
+	assert.deepEqual(model.parseIPv6('::'), [ 0, 0, 0, 0, 0, 0, 0, 0 ]);
+	assert.deepEqual(model.parseIPv6('2001:db8::ffff:FFFF'), [ 0x2001, 0xdb8, 0, 0, 0, 0, 0xffff, 0xffff ]);
+	for (const s of [ '', ':', ':::', '::::', '1:2:3', '1:2:3:4:5:6:7', '1:2:3:4:5:6:7:8:9', '1:2:3:4:5:6:7:8::', '::1:2:3:4:5:6:7:8', '1::2::3',
+		':1:2:3:4:5:6:7', '1:2:3:4:5:6:7:', '2001:db8:1:::10', '2001:db8::12345', '2001:db8::g', '2001:db8::-1', '2001:db8::0x1', '2001:db8::1 ', ' 2001:db8::1',
+		'2001:db8::1%br-lan', '[2001:db8::1]', '2001:db8::1/64', '::ffff:192.0.2.1', '192.0.2.1', 'NaN', null, undefined, 7, NaN, {}, [ '::1' ] ])
+		assert.equal(model.parseIPv6(s), null, JSON.stringify(s));
 });
 
 /* a two-radio AP: 2.4 GHz with two SSIDs, 6 GHz with one */
@@ -796,6 +818,92 @@ test('build: an access point on a bridge with several ports takes the uplink whe
 	assert.deepEqual([ n.uplink.dev, n.uplink.port ], [ 'lan2', null ]);
 	/* one wired member: that one leads to the gateway */
 	assert.equal(model.resolveUplink(IFACES, DEVS).port, 'eth0');
+});
+
+test('build: a host of this device that claims the gateway\'s address is not the gateway', () => {
+	/* a router: the LAN on a bridge, the line on a device of its own. Any LAN device gets its MAC into
+	   the host hints under any address with one ARP request */
+	const ifaces = [
+		{ interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] },
+		{ interface: 'wan', up: true, l3_device: 'wan', device: 'wan', 'ipv4-address': [ { address: '198.51.100.2', mask: 24 } ],
+			route: [ { target: '0.0.0.0', mask: 0, nexthop: '198.51.100.1' } ] }
+	];
+	const devs = {
+		'br-lan': { type: 'bridge', devtype: 'bridge', 'bridge-members': [ 'lan1', 'lan2', 'phy0-ap0' ] },
+		lan1: { devtype: 'ethernet', speed: '1000F', carrier: true }, lan2: { devtype: 'ethernet', speed: '1000F', carrier: true },
+		wan: { devtype: 'ethernet', speed: '1000F', carrier: true }, 'phy0-ap0': { devtype: 'wlan' }
+	};
+	const GW = '00:00:5e:00:53:01', LIAR = '00:00:5e:00:53:66', STA = '00:00:5e:00:53:20';
+	const hop = { ipaddrs: [ '198.51.100.1' ] };
+	const onWan = { mac: GW, port: 'wan', bridge: null, seen: 1 }, onLan = { mac: LIAR, port: 'lan1', bridge: 'br-lan', seen: 1 };
+	const flags = m => m.wiredHosts.map(h => [ h.mac, h.gateway ]);
+	const build = (hints, fdb, more) => model.build(Object.assign({ ifaces, devs, hints, fdb }, more));
+
+	/* listed after the gateway, listed before it, and where this device lists no host for the gateway at all */
+	assert.deepEqual(flags(build({ [GW.toUpperCase()]: hop, [LIAR.toUpperCase()]: hop }, [ onWan, onLan ])), [ [ GW, true ], [ LIAR, false ] ]);
+	assert.deepEqual(flags(build({ [LIAR.toUpperCase()]: hop, [GW.toUpperCase()]: hop }, [ onWan, onLan ])), [ [ GW, true ], [ LIAR, false ] ]);
+	assert.deepEqual(flags(build({ [GW.toUpperCase()]: hop, [LIAR.toUpperCase()]: hop }, [ onLan ])), [ [ LIAR, false ] ]);
+	/* alone with the address (a PPPoE peer has no MAC to list): still a host of the LAN */
+	assert.deepEqual(flags(build({ [LIAR.toUpperCase()]: hop }, [ onLan ])), [ [ LIAR, false ] ]);
+	const m = build({ [GW.toUpperCase()]: hop, [LIAR.toUpperCase()]: hop }, [ onWan, onLan ]);
+	assert.deepEqual([ m.uplink.iface, m.uplink.dev, m.uplink.port ], [ 'wan', 'wan', 'wan' ], 'and the line stays where it is');
+
+	/* a station of this device's own Wi-Fi with the address: not the gateway either */
+	const wifi = { radio0: { up: true, config: { band: '2g', channel: '1', htmode: 'HE20' }, interfaces: [ { ifname: 'phy0-ap0', config: { ssid: 'Home', mode: 'ap', network: [ 'lan' ] } } ] } };
+	const s = build({ [GW.toUpperCase()]: hop, [STA.toUpperCase()]: hop }, [ onWan ], { wifi, assoc: { 'phy0-ap0': [ { mac: STA.toUpperCase(), signal: -50 } ] } });
+	assert.deepEqual([ flags(s), s.clients.length ], [ [ [ GW, true ] ], 1 ]);
+
+	/* two that may both be it (neither a host of another bridge): unknown, rather than the one listed last */
+	const two = build({ [GW.toUpperCase()]: hop, '00:00:5E:00:53:67': hop }, [ onWan ]);
+	assert.deepEqual(flags(two), [ [ GW, false ] ]);
+	assert.deepEqual(flags(build({ '00:00:5E:00:53:67': hop, [GW.toUpperCase()]: hop }, [ onWan ])), [ [ GW, false ] ]);
+
+	/* an access point: gateway and hosts share the bridge the line leaves through. One holder: the gateway and its
+	   port, as before; a second one on that bridge: neither, and no port is claimed to lead to the gateway */
+	const ap = [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.10', mask: 24 } ],
+		route: [ { target: '0.0.0.0', mask: 0, nexthop: '192.0.2.1' } ] } ];
+	const gwHop = { ipaddrs: [ '192.0.2.1' ] }, rows = [ { mac: GW, port: 'lan2', bridge: 'br-lan', seen: 1 }, { mac: LIAR, port: 'lan1', bridge: 'br-lan', seen: 1 } ];
+	const one = model.build({ ifaces: ap, devs, hints: { [GW.toUpperCase()]: gwHop }, fdb: rows });
+	assert.deepEqual([ one.uplink.port, flags(one) ], [ 'lan2', [ [ GW, true ], [ LIAR, false ] ] ]);
+	const both = model.build({ ifaces: ap, devs, hints: { [GW.toUpperCase()]: gwHop, [LIAR.toUpperCase()]: gwHop }, fdb: rows });
+	assert.deepEqual([ both.uplink.port, flags(both) ], [ null, [ [ GW, false ], [ LIAR, false ] ] ]);
+	/* two bridges on one wire (a guest VLAN beside the LAN): the gateway's MAC is on both, and the row kept for
+	   it is the one heard last, the guest bridge's here. It is on the line's bridge too: still the gateway. A host
+	   of the guest bridge alone is not */
+	const trunk = Object.assign({ 'br-guest': { type: 'bridge', devtype: 'bridge', 'bridge-members': [ 'lan2.20' ] }, 'lan2.20': { devtype: 'vlan', carrier: true } }, devs);
+	const both2 = [ { mac: GW, port: 'lan2', bridge: 'br-lan', seen: 9 }, { mac: GW, port: 'lan2.20', bridge: 'br-guest', seen: 1 } ];
+	const wire = model.build({ ifaces: ap, devs: trunk, hints: { [GW.toUpperCase()]: gwHop }, fdb: both2 });
+	assert.deepEqual(wire.wiredHosts.map(h => [ h.mac, h.bridge, h.gateway ]), [ [ GW, 'br-guest', true ] ]);
+	const guest = model.build({ ifaces: ap, devs: trunk, hints: { [GW.toUpperCase()]: gwHop, [LIAR.toUpperCase()]: gwHop },
+		fdb: both2.concat([ { mac: LIAR, port: 'lan2.20', bridge: 'br-guest', seen: 1 } ]) });
+	assert.deepEqual(guest.wiredHosts.map(h => [ h.mac, h.gateway ]), [ [ GW, true ], [ LIAR, false ] ]);
+	/* the line on a VLAN of the bridge: a host the bridge lists is on the line's bridge */
+	const vlan = [ Object.assign({}, ap[0], { l3_device: 'br-lan.10', device: 'br-lan.10' }) ];
+	const v = model.build({ ifaces: vlan, devs: Object.assign({ 'br-lan.10': { devtype: 'vlan', carrier: true } }, devs), hints: { [GW.toUpperCase()]: gwHop },
+		fdb: [ { mac: GW, port: 'lan2', bridge: 'br-lan', vlan: 10, seen: 1 } ] });
+	assert.deepEqual([ v.uplink.port, flags(v) ], [ 'lan2', [ [ GW, true ] ] ]);
+});
+
+/* the next hop is found by its value, as an access point's address is (holders) */
+test('build: an IPv6 gateway is the one host hint that holds the next hop, however either is spelled', () => {
+	const devs = { 'br-lan': { type: 'bridge', devtype: 'bridge', 'bridge-members': [ 'lan1', 'lan2' ] },
+		lan1: { devtype: 'ethernet', carrier: true, speed: '1000F' }, lan2: { devtype: 'ethernet', carrier: true, speed: '2500F' } };
+	const GW = '00:00:5e:00:53:01', OTHER = '00:00:5e:00:53:66';
+	const fdb = [ { mac: GW, port: 'lan2', bridge: 'br-lan', seen: 1 }, { mac: OTHER, port: 'lan1', bridge: 'br-lan', seen: 1 } ];
+	const build = (nexthop, hints) => {
+		const m = model.build({ ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv6-address': [ { address: '2001:db8::10', mask: 64 } ],
+			route: [ { target: '::', mask: 0, nexthop } ] } ], devs, hints, fdb });
+		return [ m.uplink.port, m.wiredHosts.map(h => h.gateway) ];
+	};
+	const at = (mac, v6) => ({ [mac.toUpperCase()]: { ip6addrs: [ v6 ] } });
+	for (const [ hop, hint ] of [ [ '2001:db8::1', '2001:db8::1' ], [ '2001:db8::1', '2001:DB8::1' ], [ '2001:db8::1', '2001:0db8:0:0:0:0:0:1' ], [ '2001:db8:0::1', '2001:db8::0001' ],
+		[ '2001:DB8:0:0:0:0:0:1', '2001:db8::1' ] ])
+		assert.deepEqual(build(hop, at(GW, hint)), [ 'lan2', [ true, false ] ], hop + ' / ' + hint);
+	/* a second holder in another spelling counts as one: two on the line's bridge, neither */
+	assert.deepEqual(build('2001:db8::1', Object.assign(at(GW, '2001:db8::1'), at(OTHER, '2001:0DB8::1'))), [ null, [ false, false ] ]);
+	/* another address, or text that is none: no gateway, and nothing throws */
+	for (const hint of [ '2001:db8::2', '2001:db8::1:0', '2001:db8:::1', '' ]) assert.deepEqual(build('2001:db8::1', at(GW, hint)), [ null, [ false, false ] ], hint);
+	assert.deepEqual(build('2001:db8:::1', at(GW, '2001:db8:::1')), [ null, [ false, false ] ]);
 });
 
 test('build: the uplink port through a bridge VLAN, an IPv6 gateway, and a port with a link before one without', () => {
@@ -1110,6 +1218,65 @@ test('build: a paired access point\'s stations and wired hosts are added, marked
 	assert.deepEqual(a.nodes.map(n => [ n.id, n.band, n.clients ]), [ [ 'phy1-ap0', '5g', 1 ], [ 'phy0-ap0', '2g', 0 ] ]);
 });
 
+/* mDNS names only when uncontested (names.mdnsForStations): the entries a
+   report adds are parties as this device's own are */
+test('build: an address the hints give an entry of this device and an entry a report adds is named by mDNS for neither', () => {
+	const X = '192.0.2.44';
+	const build = (hints, collector, extra) => model.build(router(collector,
+		Object.assign({ hints: Object.assign({}, router(null).hints, hints), mdns: { [X]: 'printer-mdns' } }, extra)));
+	const holders = m => m.clients.concat(m.wiredHosts).filter(e => e.ips.indexOf(X) >= 0).map(e => [ e.mac, e.ap ? e.ap.name : null, e.nameSource ]);
+	const neither = (m, own, added, what) => {
+		assert.deepEqual(holders(m).map(e => e.slice(0, 2)), [ [ own, null ], [ added, 'ap-hall' ] ], what + ': both hold the address');
+		for (const e of holders(m)) assert.notEqual(e[2], 'mdns', what + ': ' + e[0]);
+	};
+	/* a station of this device, and a station only the access point lists (on no port here) */
+	const sta = { '00:00:5E:00:53:01': { ipaddrs: [ X ] }, '00:00:5E:00:53:21': { ipaddrs: [ X ] } };
+	const stations = { aps: [ ap(AP1, 'ap-hall', report({ wired: [] })) ] };
+	assert.deepEqual(holders(build(sta, null)), [ [ '00:00:5e:00:53:01', null, 'mdns' ] ], 'the control: nothing listed contests it');
+	neither(build(sta, stations), '00:00:5e:00:53:01', '00:00:5e:00:53:21', 'two stations');
+	/* a wired host of this device (lan2), and a wired host only the access point lists */
+	const host = { '00:00:5E:00:53:32': { ipaddrs: [ X ] }, '00:00:5E:00:53:41': { ipaddrs: [ X ] } };
+	assert.deepEqual(holders(build(host, null)), [ [ '00:00:5e:00:53:32', null, 'mdns' ] ], 'the control, wired');
+	neither(build(host, { aps: [ ap(AP1, 'ap-hall', report({ stations: [] })) ] }), '00:00:5e:00:53:32', '00:00:5e:00:53:41', 'two wired hosts');
+	/* the access point linked over Wi-Fi (WDS): what the bridge hears on that port is no wired host here */
+	const wds = [ HALL_MAC, '00:00:5e:00:53:21' ].map(mac => ({ mac, port: 'phy0-ap0.sta1', bridge: 'br-lan', seen: 1 }));
+	const linked = build(sta, stations, { fdb: wds });
+	assert.deepEqual(linked.wiredHosts, [], 'neither is a wired host');
+	neither(linked, '00:00:5e:00:53:01', '00:00:5e:00:53:21', 'over a Wi-Fi link');
+	/* heard on a wired port instead it is this device's own entry, a party as before: kept on lan2, moved from the access point's lan1 */
+	for (const port of [ 'lan2', 'lan1' ]) {
+		const heard = build(sta, stations, { fdb: router(null).fdb.concat([ { mac: '00:00:5e:00:53:21', port, bridge: 'br-lan', seen: 2 } ]) });
+		assert.deepEqual(holders(heard).map(e => e[0]), [ '00:00:5e:00:53:01', '00:00:5e:00:53:21' ], port);
+		for (const e of holders(heard)) assert.notEqual(e[2], 'mdns', port + ': ' + e[0]);
+	}
+	/* a MAC the report lists that adds no entry (this device's own) is no party */
+	const mine = build({ '00:00:5E:00:53:01': { ipaddrs: [ X ] }, '00:00:5E:00:53:F0': { ipaddrs: [ X ] } },
+		{ aps: [ ap(AP1, 'ap-hall', report({ stations: [], wired: [ { mac: '00:00:5e:00:53:f0', port: 'lan3' } ] })) ] });
+	assert.deepEqual(holders(mine), [ [ '00:00:5e:00:53:01', null, 'mdns' ] ]);
+});
+
+test('build: an entry a report adds that alone holds an announced address is named by it, below its DHCP name; one name at two entries labels neither', () => {
+	const hints = Object.assign({}, router(null).hints, { '00:00:5E:00:53:01': { ipaddrs: [ '192.0.2.44' ] }, '00:00:5E:00:53:21': { ipaddrs: [ '192.0.2.45' ] },
+		'00:00:5E:00:53:41': { ipaddrs: [ '192.0.2.46' ] } });
+	const named = mdns => {
+		const m = model.build(router({ aps: [ ap(AP1, 'ap-hall', report()) ] }, { hints, mdns }));
+		return Object.fromEntries(m.clients.concat(m.wiredHosts).map(e => [ e.mac, [ e.nameSource, e.name ] ]));
+	};
+	let by = named({ '192.0.2.44': 'laptop-mdns', '192.0.2.45': 'phone-mdns', '192.0.2.46': 'nas-mdns' });
+	assert.deepEqual(by['00:00:5e:00:53:01'], [ 'mdns', 'laptop-mdns' ], 'this device\'s station, as before');
+	assert.deepEqual(by['00:00:5e:00:53:21'], [ 'mdns', 'phone-mdns' ], 'the access point\'s station');
+	assert.deepEqual(by['00:00:5e:00:53:41'], [ 'mdns', 'nas-mdns' ], 'the access point\'s wired host');
+	assert.equal(by['00:00:5e:00:53:42'][0], 'mac', 'no address, no name');
+	/* the DHCP host name of its own MAC outranks mDNS */
+	hints['00:00:5E:00:53:21'].name = 'phone-dhcp';
+	assert.deepEqual(named({ '192.0.2.45': 'phone-mdns' })['00:00:5e:00:53:21'], [ 'dhcp', 'phone-dhcp' ]);
+	delete hints['00:00:5E:00:53:21'].name;
+	/* one name announced for this device's station and the access point's labels neither */
+	by = named({ '192.0.2.44': 'Dads-iPhone', '192.0.2.45': 'Dads-iPhone' });
+	assert.notEqual(by['00:00:5e:00:53:01'][0], 'mdns');
+	assert.notEqual(by['00:00:5e:00:53:21'][0], 'mdns');
+});
+
 test('build: an access point listing a local station\'s, a local wired host\'s, this device\'s or the gateway\'s MAC adds nothing and changes nothing', () => {
 	const base = model.build(router(null));
 	const claims = [ '00:00:5e:00:53:01', '00:00:5e:00:53:32', '00:00:5e:00:53:f0', '00:00:5e:00:53:f1', '00:00:5e:00:53:f2', GW_MAC ];
@@ -1207,6 +1374,68 @@ test('build: no move on another port, through an access point not reporting or w
 		assert.deepEqual(moved(model.build(apDevice({ aps: [ ap(AP1, 'ap-hall', Object.assign(sta([ '00:00:5e:00:53:31' ]), { mac })) ] }))), [], mac);
 });
 
+test('build: while no host hint gives the next hop a MAC, no host on the uplink\'s bridge is an access point\'s to move or note', () => {
+	const sta = macs => report({ stations: macs.map(mac => roam(mac, -40)), wired: [] });
+	const moved = m => m.clients.filter(c => c.ap).map(c => c.mac);
+	const claim = { aps: [ ap(AP1, 'ap-hall', sta([ GW_MAC, '00:00:5e:00:53:31' ])) ] };
+	for (const hints of [ {}, { '00:00:5E:00:53:FE': { name: 'gateway', ipaddrs: [ '192.0.2.254' ] } }, { '02:00:5E:10:00:01': { ipaddrs: [ '192.0.2.10' ] } } ]) {
+		const base = model.build(apDevice(null, { hints }));
+		const m = model.build(apDevice(claim, { hints }));
+		assert.deepEqual(moved(m), [], JSON.stringify(hints));
+		assert.deepEqual(m.wiredHosts, base.wiredHosts, 'the gateway\'s entry and the others as they were');
+		const noted = model.build(apDevice({ aps: [ ap(AP1, 'ap-hall', report({ stations: [], wired: [ { mac: GW_MAC, port: 'lan2' } ] })) ] }, { hints }));
+		assert.deepEqual(noted.wiredHosts.filter(h => h.behind).map(h => h.mac), [], 'no note either');
+		/* the gateway itself paired: a host on the uplink's bridge is not its to claim either (portOf itself is unchanged) */
+		const own = model.build(apDevice({ aps: [ ap(AP1, 'ap-hall', Object.assign(sta([ '00:00:5e:00:53:31' ]), { mac: GW_MAC })) ] }, { hints }));
+		assert.deepEqual(moved(own), [], 'nor through an access point with the gateway\'s MAC');
+	}
+	/* the bridge under its own name, whatever that is, and under a VLAN of it */
+	for (const [ bridge, l3, vlan ] of [ [ 'br.10', 'br.10', null ], [ 'br-lan', 'br-lan.10', 10 ] ]) {
+		const d = apDevice(claim, { hints: {} });
+		d.devs[bridge] = d.devs['br-lan'];
+		d.ifaces[0].l3_device = d.ifaces[0].device = l3;
+		d.fdb.forEach(h => { h.bridge = bridge; h.vlan = vlan; });
+		assert.deepEqual(moved(model.build(d)), [], l3);
+	}
+	/* a second bridge on the same wire: the gateway's MAC heard last there is the gateway's all the same */
+	const two = apDevice(null, { hints: {} });
+	two.devs['br-guest'] = { devtype: 'bridge', 'bridge-members': [ 'lan1.20' ], macaddr: '00:00:5e:00:53:f0' };
+	two.devs['lan1.20'] = { devtype: 'vlan', carrier: true, macaddr: '00:00:5e:00:53:f0' };
+	two.fdb = two.fdb.concat([ GW_MAC, HALL_MAC ].map(mac => ({ mac, port: 'lan1.20', bridge: 'br-guest', seen: 0 })));
+	assert.equal(model.build(two).wiredHosts.filter(h => h.mac === GW_MAC)[0].bridge, 'br-guest', 'the entry listed is the other bridge\'s');
+	for (const rep of [ sta([ GW_MAC ]), report({ stations: [], wired: [ { mac: GW_MAC, port: 'lan2' } ] }) ]) {
+		const t = model.build(Object.assign({}, two, { collector: { aps: [ ap(AP1, 'ap-hall', rep) ] } }));
+		assert.deepEqual([ moved(t), t.wiredHosts.filter(h => h.behind).map(h => h.mac) ], [ [], [] ], 'two bridges on one wire');
+	}
+	/* known again: the gateway stays, the other host moves */
+	assert.deepEqual(moved(model.build(apDevice(claim))), [ '00:00:5e:00:53:31' ]);
+	/* no next hop at all: nothing is the gateway, the rules are as before */
+	const noRoute = { hints: {}, ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.4', mask: 24 } ], route: [] } ] };
+	assert.deepEqual(moved(model.build(apDevice({ aps: [ ap(AP1, 'ap-hall', sta([ '00:00:5e:00:53:31' ])) ] }, noRoute))), [ '00:00:5e:00:53:31' ]);
+});
+
+/* macOf's other way of not knowing: two hosts of the uplink's bridge hold the next hop */
+test('build: with two hosts of the uplink\'s bridge at the next hop neither is the gateway, and neither is an access point\'s to move or note', () => {
+	const moved = m => m.clients.filter(c => c.ap).map(c => c.mac);
+	const hop = { ipaddrs: [ '192.0.2.1' ] };
+	for (const hints of [ { '00:00:5E:00:53:FE': hop, '00:00:5E:00:53:31': hop }, { '00:00:5E:00:53:31': hop, '00:00:5E:00:53:FE': hop } ]) {
+		const base = model.build(apDevice(null, { hints }));
+		assert.deepEqual(base.wiredHosts.filter(h => h.gateway), [], 'unknown, rather than either');
+		for (const mac of [ GW_MAC, '00:00:5e:00:53:31' ]) {
+			const m = model.build(apDevice({ aps: [ ap(AP1, 'ap-hall', report({ stations: [ roam(mac, -40) ], wired: [] })) ] }, { hints }));
+			assert.deepEqual([ moved(m), m.wiredHosts ], [ [], base.wiredHosts ], mac + ' as its station');
+			const n = model.build(apDevice({ aps: [ ap(AP1, 'ap-hall', report({ stations: [], wired: [ { mac, port: 'lan2' } ] })) ] }, { hints }));
+			assert.deepEqual(n.wiredHosts.filter(h => h.behind).map(h => h.mac), [], mac + ' as its wired host');
+		}
+	}
+	/* one of the two a host of another bridge: the other is the gateway, and what is not the gateway moves as before */
+	const d = apDevice({ aps: [ ap(AP1, 'ap-hall', report({ stations: [ roam(GW_MAC, -40), roam('00:00:5e:00:53:21', -40) ], wired: [] })) ] },
+		{ hints: { '00:00:5E:00:53:FE': hop, '00:00:5E:00:53:31': hop } });
+	d.fdb.filter(h => h.mac === '00:00:5e:00:53:31')[0].bridge = 'br-guest';
+	const k = model.build(d);
+	assert.deepEqual([ k.wiredHosts.filter(h => h.gateway).map(h => h.mac), moved(k) ], [ [ GW_MAC ], [ '00:00:5e:00:53:21' ] ]);
+});
+
 test('build: a moved station goes to the access point that hears it best of those it is heard behind; the branch counts and the lists agree', () => {
 	/* ap-den is on lan2 and hears 53:31 better, but this device hears 53:31 behind ap-hall */
 	const den = Object.assign(report({ mac: '02:00:5e:10:00:02', stations: [ roam('00:00:5e:00:53:31', -40, 'phy0-ap0') ], wired: [] }));
@@ -1251,6 +1480,69 @@ test('build: a station two access points list goes to the one that hears it best
 	assert.deepEqual(m.accessPoints.map(a => [ a.clients, a.wired ]), [ [ 0, 1 ], [ 1, 0 ] ], 'each branch counts what it was given, as the lists have it');
 });
 
+/* one entry a MAC, placed as above; every other access point that lists it stays named on it */
+test('build: a client two access points report keeps its place and names the others (ap.also, behind.also); a single or a refuted claim is named nowhere', () => {
+	const DEN_MAC = '02:00:5e:10:00:02', LOFT = '1111111111111111';
+	const HALL = { id: AP1, name: 'ap-hall' }, DEN = { id: AP2, name: 'ap-den' };
+	const hall = ap(AP1, 'ap-hall', report({ stations: [ roam('00:00:5e:00:53:51', -55) ], wired: [ { mac: '00:00:5e:00:53:61', port: 'lan3' } ] }));
+	const den = (stations, wired) => ap(AP2, 'ap-den', report({ mac: DEN_MAC, ssids: [ ssid('phy0-ap0', '2g', 2437, '00:00:5e:00:53:b0') ], stations, wired }));
+	/* this device hears ap-hall on lan1 (the fixture) and, unless told otherwise, ap-den on lan2 */
+	const build = (aps, rows) => model.build(router({ aps }, { fdb: router(null).fdb.concat((rows || [ [ DEN_MAC, 'lan2' ] ]).map(([ mac, port ]) => ({ mac, port, bridge: 'br-lan', seen: 1 }))) }));
+	/* [ whose it is, the others named on it ] or, for a host of this device with a note, [ null, null, behind whom, the others ] */
+	const at = (m, mac) => m.clients.concat(m.wiredHosts).filter(e => e.mac === mac).map(e =>
+		(e.ap ? [ e.ap.name, e.ap.also || null ] : [ null, null ]).concat(e.behind ? [ e.behind.name, e.behind.also || null ] : []));
+	const counts = m => m.accessPoints.map(a => [ a.clients, a.wired ]);
+	const named = m => m.clients.concat(m.wiredHosts).filter(e => (e.ap && 'also' in e.ap) || (e.behind && 'also' in e.behind)).map(e => e.mac);
+
+	/* the control: ap-den lists neither */
+	const honest = build([ hall, den([], []) ]);
+	assert.deepEqual([ at(honest, '00:00:5e:00:53:51'), at(honest, '00:00:5e:00:53:61'), counts(honest), named(honest) ],
+		[ [ [ 'ap-hall', null ] ], [ [ 'ap-hall', null ] ], [ [ 1, 1 ], [ 0, 0 ] ], [] ], 'one claimant: no field of it');
+	/* the hostile reply: ap-den lists ap-hall's station at -1 dBm and its wired host as a station without a signal. Placed as
+	   before (the best signal; a station before a wired host), and ap-hall stays named on both */
+	const taken = [ { mac: '00:00:5e:00:53:51', ifname: 'phy0-ap0', signal: -1, rx: 0, tx: 0, connected: 1 }, { mac: '00:00:5e:00:53:61', ifname: 'phy0-ap0' } ];
+	for (const aps of [ [ hall, den(taken, []) ], [ den(taken, []), hall ] ]) {
+		const m = build(aps);
+		assert.deepEqual([ at(m, '00:00:5e:00:53:51'), at(m, '00:00:5e:00:53:61') ], [ [ [ 'ap-den', [ HALL ] ] ], [ [ 'ap-den', [ HALL ] ] ] ], aps[0].name + ' first');
+		assert.deepEqual(m.clients.filter(c => c.ap).map(c => [ c.mac, c.signal ]), [ [ '00:00:5e:00:53:51', -1 ], [ '00:00:5e:00:53:61', null ] ]);
+		assert.deepEqual(Object.fromEntries(m.accessPoints.map(a => [ a.name, [ a.clients, a.wired ] ])), { 'ap-hall': [ 0, 0 ], 'ap-den': [ 2, 0 ] }, 'the branches count as before');
+	}
+	/* a claim that loses is named as well: an equal signal, none, and a wired claim against a station */
+	for (const s of [ roam('00:00:5e:00:53:51', -55, 'phy0-ap0'), { mac: '00:00:5e:00:53:51', ifname: 'phy0-ap0' } ])
+		assert.deepEqual(at(build([ hall, den([ s ], []) ]), '00:00:5e:00:53:51'), [ [ 'ap-hall', [ DEN ] ] ]);
+	assert.deepEqual(at(build([ hall, den([], [ { mac: '00:00:5e:00:53:51', port: 'lan9' } ]) ]), '00:00:5e:00:53:51'), [ [ 'ap-hall', [ DEN ] ] ]);
+	/* two wired claims: the first in the list has the host, the other is named */
+	const both = [ { mac: '00:00:5e:00:53:61', port: 'lan9', speed: 10 } ];
+	assert.deepEqual(at(build([ hall, den([], both) ]), '00:00:5e:00:53:61'), [ [ 'ap-hall', [ DEN ] ] ]);
+	assert.deepEqual(at(build([ den([], both), hall ]), '00:00:5e:00:53:61'), [ [ 'ap-den', [ HALL ] ] ]);
+	/* three of them: each of the others once, in the order they lost; one that lists a MAC twice (station and wired host) is one */
+	const loft = ap(LOFT, 'ap-loft', report({ mac: '00:00:5e:00:53:a3', stations: [ roam('00:00:5e:00:53:51', -40) ], wired: [ { mac: '00:00:5e:00:53:51', port: 'lan5' } ] }));
+	const three = build([ hall, den([ roam('00:00:5e:00:53:51', -70, 'phy0-ap0') ], [ { mac: '00:00:5e:00:53:51', port: 'lan9' } ]), loft ]);
+	assert.deepEqual(at(three, '00:00:5e:00:53:51'), [ [ 'ap-loft', [ DEN, HALL ] ] ]);
+	assert.deepEqual(at(build([ ap(AP1, 'ap-hall', report({ stations: [ roam('00:00:5e:00:53:51', -55) ], wired: [ { mac: '00:00:5e:00:53:51', port: 'lan3' } ] })) ]), '00:00:5e:00:53:51'),
+		[ [ 'ap-hall', null ] ], 'its own station and wired host: no other');
+
+	/* a wired host this device hears on the port it hears two access points on, listed as wired by both: it stays this
+	   device's, the first has the note and its count, and the other is named */
+	const lan1 = [ [ DEN_MAC, 'lan1' ], [ '00:00:5e:00:53:61', 'lan1' ] ];
+	const noted = build([ hall, den([], both) ], lan1);
+	assert.deepEqual([ at(noted, '00:00:5e:00:53:61'), counts(noted) ], [ [ [ null, null, 'ap-hall', [ DEN ] ] ], [ [ 1, 1 ], [ 0, 0 ] ] ]);
+	assert.deepEqual(at(build([ den([], both), hall ], lan1), '00:00:5e:00:53:61'), [ [ null, null, 'ap-den', [ HALL ] ] ]);
+	const third = ap(LOFT, 'ap-loft', report({ mac: '00:00:5e:00:53:a3', stations: [], wired: [ { mac: '00:00:5e:00:53:61', port: 'lan5' } ] }));
+	assert.deepEqual(at(build([ hall, den([], both), third ], lan1.concat([ [ '00:00:5e:00:53:a3', 'lan1' ] ])), '00:00:5e:00:53:61'),
+		[ [ null, null, 'ap-hall', [ DEN, { id: LOFT, name: 'ap-loft' } ] ] ]);
+	/* moved to the one that hears it best of the two it is heard behind: the other is named there too */
+	const roamed = build([ ap(AP1, 'ap-hall', report({ stations: [ roam('00:00:5e:00:53:61', -70) ], wired: [] })), den([ roam('00:00:5e:00:53:61', -40, 'phy0-ap0') ], []) ], lan1);
+	assert.deepEqual(at(roamed, '00:00:5e:00:53:61'), [ [ 'ap-den', [ HALL ] ] ]);
+
+	/* a claim this device's own bridge refutes is named nowhere: both MACs heard on ap-hall's port, ap-den on lan2 */
+	const mine = [ [ DEN_MAC, 'lan2' ], [ '00:00:5e:00:53:51', 'lan1' ], [ '00:00:5e:00:53:61', 'lan1' ] ];
+	for (const claim of [ den(taken, []), den([], [ { mac: '00:00:5e:00:53:51', port: 'lan9' }, { mac: '00:00:5e:00:53:61', port: 'lan9' } ]) ]) {
+		const m = build([ hall, claim ], mine);
+		assert.deepEqual([ at(m, '00:00:5e:00:53:51'), at(m, '00:00:5e:00:53:61'), named(m) ], [ [ [ 'ap-hall', null ] ], [ [ null, null, 'ap-hall', null ] ], [] ]);
+	}
+});
+
 test('build: an access point not reporting (waiting, offline, error) keeps its branch, with no SSIDs, stations, hosts or notes', () => {
 	for (const extra of [ { state: 'waiting', report: null, age: null }, { state: 'offline', age: 120 }, { state: 'error', error: 'timeout' } ]) {
 		const m = model.build(apDevice({ aps: [ ap(AP1, 'ap-hall', report({ wired: [ { mac: '00:00:5e:00:53:31', port: 'lan2' } ] }), extra) ] }));
@@ -1261,13 +1553,14 @@ test('build: an access point not reporting (waiting, offline, error) keeps its b
 });
 
 test('build: a gateway heard only over this device\'s own client, mesh or WDS link makes it the uplink; over an access point interface it does not', () => {
-	const build = (port, mode, seen) => model.build({
+	const build = (port, mode, seen, assoc) => model.build({
 		ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.4', mask: 24 } ],
 			route: [ { target: '0.0.0.0', mask: 0, nexthop: '192.0.2.1' } ] } ],
 		devs: { 'br-lan': { devtype: 'bridge', 'bridge-members': [ 'lan1', 'phy0-link0', 'phy0-ap0', 'phy0-ap0.sta1' ] }, lan1: { devtype: 'ethernet', carrier: false },
 			'phy0-link0': { devtype: 'wlan', carrier: true }, 'phy0-ap0': { devtype: 'wlan' }, 'phy0-ap0.sta1': { devtype: 'wlan' } },
 		wifi: { radio0: { up: true, config: { band: '5g' }, interfaces: [ { ifname: 'phy0-link0', config: { ssid: 'bh', mode } }, { ifname: 'phy0-ap0', config: { ssid: 'Home', mode: 'ap' } } ] } },
 		hints: { '02:00:5E:00:00:01': { ipaddrs: [ '192.0.2.1' ] } },
+		assoc: assoc || {},
 		fdb: [].concat(port).map((p, i) => ({ mac: '02:00:5e:00:00:01', port: p, bridge: 'br-lan', seen: (seen || [])[i] }))
 	}).uplink;
 	assert.equal(build('phy0-link0', 'mesh').port, 'phy0-link0', 'mesh');
@@ -1277,6 +1570,15 @@ test('build: a gateway heard only over this device\'s own client, mesh or WDS li
 	assert.equal(build('phy0-link0', 'ap').port, 'lan1', 'an access point interface by its mode');
 	assert.equal(build('phy0-link0', 'adhoc').port, 'lan1');
 	assert.equal(build([ 'phy0-ap0.sta1', 'phy0-link0' ], 'mesh', [ 50, 2 ]).port, 'phy0-link0', 'the one heard last');
+	/* the far end of such a link is in that interface's station list, and
+	   many routers answer for their address from the MAC their radio uses:
+	   it is still the gateway */
+	const PEER = [ { mac: '02:00:5E:00:00:01', signal: -50 } ];
+	assert.equal(build('phy0-link0', 'mesh', null, { 'phy0-link0': PEER }).port, 'phy0-link0', 'a mesh peer');
+	assert.equal(build('phy0-link0', 'sta', null, { 'phy0-link0': PEER }).port, 'phy0-link0', 'the access point this device is a client of');
+	assert.equal(build('phy0-ap0.sta1', 'ap', null, { 'phy0-ap0': PEER }).port, 'phy0-ap0.sta1', 'a WDS station, listed by its access point interface');
+	/* a plain station of an access point interface is one host using this device */
+	assert.equal(build('phy0-ap0', 'mesh', null, { 'phy0-ap0': PEER }).port, 'lan1');
 });
 
 /* review F1: the port an access point is on is where this device hears its
@@ -1306,6 +1608,61 @@ test('build: an access point whose address this device knows under another MAC m
 	const v6 = model.build(router({ aps: [ ap(AP1, 'ap-hall', report({ mac: '00:00:5e:00:53:32', stations: [ roam('00:00:5e:00:53:33', -40) ] }), { addr: '2001:db8::A' }) ] },
 		{ fdb, hints: Object.assign({}, router(null).hints, { '02:00:5E:10:00:01': { ip6addrs: [ '2001:DB8::a' ] } }) }));
 	assert.deepEqual(taken(v6), [ [], [] ]);
+});
+
+/* the same guard, by the address's value: an IPv6 address has many
+   spellings, and the pairing keeps the one it was given */
+test('build: an access point whose IPv6 address this device knows under another MAC moves and notes nothing, however either is spelled', () => {
+	const fdb = router(null).fdb.concat([ { mac: '00:00:5e:00:53:33', port: 'lan2', bridge: 'br-lan', seen: 2 } ]);
+	const build = (mac, addr, hints) => model.build(router({ aps: [ ap(AP1, 'ap-hall', report({ mac,
+		stations: [ roam('00:00:5e:00:53:33', -40) ], wired: [ { mac: '00:00:5e:00:53:32', port: 'lan4' } ] }), { addr }) ] },
+		{ fdb, hints: Object.assign({}, router(null).hints, hints) }));
+	const taken = m => [ m.clients.filter(c => c.ap).map(c => c.mac), m.wiredHosts.filter(h => h.behind).map(h => h.mac) ];
+	const hall = v6 => ({ '02:00:5E:10:00:01': { name: 'ap-hall', ip6addrs: [ v6 ] } });
+	const LIE = '00:00:5e:00:53:32', SHORT = '2001:db8:1::10';
+	const spellings = [ '2001:db8:1:0::10', '2001:0db8:1::10', '2001:db8:1::0010', '2001:db8:0001::10', '2001:db8:1:0:0:0:0:10',
+		'2001:0db8:0001:0000:0000:0000:0000:0010', '2001:DB8:1::10', '2001:DB8:0001:0:0:0:0:10' ];
+	/* its own MAC, on lan1: neither host on lan2 is behind it */
+	const honest = build(HALL_MAC, SHORT, hall(SHORT));
+	assert.deepEqual(taken(honest), [ [], [] ]);
+	/* 53:32's MAC as its own would put it on lan2: refused in the hint's spelling, and in any other */
+	for (const addr of [ SHORT ].concat(spellings)) {
+		const lying = build(LIE, addr, hall(SHORT));
+		assert.deepEqual(taken(lying), [ [], [] ], addr);
+		assert.deepEqual([ lying.wiredHosts, lying.clients ], [ honest.wiredHosts, honest.clients ], addr);
+		assert.deepEqual([ lying.accessPoints.length, lying.accessPoints[0].clients, lying.accessPoints[0].wired ], [ 1, 0, 0 ], addr + ': its branch stays, empty');
+	}
+	/* the hint spelled otherwise than the access point's address, or both otherwise than each other */
+	for (const hint of spellings) {
+		assert.deepEqual(taken(build(LIE, SHORT, hall(hint))), [ [], [] ], 'hint ' + hint);
+		assert.deepEqual(taken(build(LIE, '2001:db8:1:0::10', hall(hint))), [ [], [] ], 'both, hint ' + hint);
+	}
+	/* an IPv6 address the hints list among the IPv4 ones */
+	assert.deepEqual(taken(build(LIE, '2001:db8:1:0::10', { '02:00:5E:10:00:01': { ipaddrs: [ '192.0.2.10', SHORT ] } })), [ [], [] ]);
+	/* the address under its MAC among others, in another spelling: known, and the same */
+	assert.deepEqual(taken(build(LIE, '2001:db8:1:0::10', { '00:00:5E:00:53:32': { ip6addrs: [ '2001:0DB8:1::10' ] }, '02:00:5E:10:00:01': { ip6addrs: [ SHORT ] } }))[0], [ '00:00:5e:00:53:33' ]);
+	/* another address, or no hint for it: the other guards alone */
+	for (const other of [ '2001:db8:1::11', '2001:db8:1::1', '2001:db8:10::1', '2001:db8::1:10', '2001:db8:1::10:0' ])
+		assert.deepEqual(taken(build(LIE, SHORT, hall(other)))[0], [ '00:00:5e:00:53:33' ], other);
+	assert.deepEqual(taken(build(LIE, '2001:db8:1:0::10', {}))[0], [ '00:00:5e:00:53:33' ]);
+	/* text that is no address equals nothing, itself included, and nothing throws */
+	const junk = { '02:00:5E:10:00:01': { ipaddrs: [ null, 7, {}, [ SHORT ] ], ip6addrs: [ '', ':::', '1:2:3', '2001:db8:1:::10', '2001:db8:1::10%lan', '::ffff:192.0.2.10', 'NaN:NaN:NaN:NaN:NaN:NaN:NaN:NaN', null ] } };
+	for (const addr of [ SHORT, '1:2:3', ':::', '2001:db8:1:::10', '65535:0:0:0:0:0:0:1' ])
+		assert.deepEqual(taken(build(LIE, addr, junk))[0], [ '00:00:5e:00:53:33' ], addr);
+});
+
+/* the gateway is the one plausible holder of the next hop (macOf): a MAC heard on the LAN bridge is none on a
+   router's line, a paired access point's own MAC included */
+test('build: a paired access point\'s MAC under the gateway\'s address in the hints is not the gateway: it keeps its port and what is behind it', () => {
+	const hop = router(null).hints['00:00:5E:00:53:FE'];
+	const sta31 = { aps: [ ap(AP1, 'ap-hall', report({ stations: [ roam('00:00:5e:00:53:31', -58) ], wired: [] })) ] };
+	const honest = model.build(router(sta31));
+	assert.deepEqual(honest.clients.filter(c => c.ap).map(c => c.mac), [ '00:00:5e:00:53:31' ], 'the control: 53:31, heard on its port, is its station');
+	/* listed after the gateway's own key, as luci-rpc orders them: by the MAC's text */
+	const m = model.build(router(sta31, { hints: Object.assign({}, router(null).hints, { '02:00:5E:10:00:01': hop }) }));
+	assert.deepEqual(m.wiredHosts.map(h => [ h.mac, h.gateway ]), honest.wiredHosts.map(h => [ h.mac, h.gateway ]), 'no host of the LAN is the gateway');
+	assert.deepEqual([ m.clients.filter(c => c.ap).map(c => c.mac), m.accessPoints[0].clients ], [ [ '00:00:5e:00:53:31' ], 1 ]);
+	assert.equal(m.uplink.gateway, '203.0.113.1');
 });
 
 /* a host that moved to an access point's stations is no longer on the port */

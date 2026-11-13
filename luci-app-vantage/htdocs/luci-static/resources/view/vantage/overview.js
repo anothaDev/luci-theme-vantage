@@ -69,6 +69,11 @@ var HIST_FAST = 160;                  /* five minutes at FAST_S, and some */
 var GONE_KEEP_MS = 5 * 60 * 1000;     /* disconnected stations stay listed */
 var TALKERS = 3;                      /* top talkers shown; the tile keeps room for all */
 var SWITCH_MS = 30 * 1000;            /* LuCI runs swconfig for each switch's link state: at most this often */
+/* how long a poll waits for the paired access points' report (the add-on's
+   collector) before it goes on without this call's answer: under POLL_S,
+   so a collector that does not answer costs no poll, and far above what
+   an answer from its memory takes */
+var COLLECTOR_WAIT_MS = 4 * 1000;
 var STORE_KEY = 'vantage.hist.v1';
 var VERSION = '1.0.20';               /* this package's, as its Makefile has it (tests/version.test.js) */
 var SVGNS = 'http://www.w3.org/2000/svg';
@@ -91,8 +96,11 @@ var callWired = rpc.declare({ object: 'luci.vantage', method: 'wired', expect: {
    with one metric; { routes: null } when it could not be asked */
 var callRoutes = rpc.declare({ object: 'luci.vantage', method: 'routes', expect: { '': {} } });
 /* the paired access points as the collector service last read them;
-   fails when none is paired (no object) or the ACL lacks it */
-var callCollector = rpc.declare({ object: 'vantage.collector', method: 'report', expect: { '': {} } });
+   fails when none is paired (no object) or the ACL lacks it. In a request
+   of its own (nobatch): LuCI sends the calls of one moment as one request
+   and answers them together, so a collector that does not answer would
+   hold back every other reply of the poll */
+var callCollector = rpc.declare({ object: 'vantage.collector', method: 'report', expect: { '': {} }, nobatch: true });
 /* LuCI's own (its switch page's): link and speed of a switch's ports, in
    result. The whole reply, and a failed call rejected: a default [] would
    read as every port down */
@@ -478,6 +486,13 @@ function kv(label, value, mono) {
 	]);
 }
 
+/* the other paired access points that list an entry too (the model's
+   ap.also and behind.also), for its details only: their names, as text */
+function alsoLine(x) {
+	var l = x && Array.isArray(x.also) ? x.also : [];
+	return l.length ? E('small', {}, [ _('Also reported by %s').format(l.map(function(a) { return a.name; }).join(', ')) ]) : '';
+}
+
 function tileHead(ic, title, extra) {
 	return E('header', { 'class': 'vt-tile-head' }, [
 		E('h3', { 'class': 'vt-tile-title' }, [ icon(ic), E('span', {}, [ title ]) ]),
@@ -793,6 +808,29 @@ return view.extend({
 		});
 	},
 
+	/* The paired access points' report for a slow poll, kept in
+	   this.collector: this call's answer only, never an older one, and a
+	   failed call (no such object: the add-on not installed or nothing
+	   paired; access denied; a timeout) is none and shows nothing. The
+	   add-on's call must not hold up the dashboard: the promise settles
+	   when the call does or after COLLECTOR_WAIT_MS, whichever is first,
+	   and the poll goes on with the answer it had. The call stays out
+	   (LuCI gives it up after its own timeout), no second one is made
+	   beside it and no later poll waits for it; its answer, late, is the
+	   next poll's. */
+	askCollector: function() {
+		var self = this;
+		if (this.collectorCall) return Promise.resolve();
+		var call = this.collectorCall = L.resolveDefault(callCollector(), null).then(function(v) {
+			self.collector = v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+			self.collectorCall = null;
+		});
+		return new Promise(function(resolve) {
+			var timer = setTimeout(resolve, COLLECTOR_WAIT_MS);
+			call.then(function() { clearTimeout(timer); resolve(); });
+		});
+	},
+
 	/* one poll's worth of raw replies; missing pieces degrade to {} */
 	fetch: function() {
 		var started = Date.now(), self = this;
@@ -803,6 +841,10 @@ return view.extend({
 		/* the host hints: their last reply until they are due */
 		var hintsAge = started - (this.hintsAt || 0);
 		var hintsDue = !this.hintsCache || this.hintsHot > 0 || !(hintsAge >= 0 && hintsAge < HINTS_MS);
+		/* the paired access points ride the slow part, beside the device's
+		   own calls: these are made and stamped as always, and the poll's
+		   end waits for that answer or its deadline (askCollector) */
+		var collected = slow ? this.askCollector() : Promise.resolve();
 		return Promise.all([
 			L.resolveDefault(callInfo(), {}),
 			L.resolveDefault(callRead('/proc/stat'), ''),
@@ -815,9 +857,7 @@ return view.extend({
 			slow ? L.resolveDefault(callThermal(), null) : Promise.resolve(kept.thermal),
 			slow ? L.resolveDefault(callWired(), null) : Promise.resolve(kept.wired),
 			/* null when the call fails (an older plugin): netifd's metrics decide */
-			L.resolveDefault(callRoutes(), null),
-			/* the paired access points ride the slow part; a failed call is none */
-			slow ? L.resolveDefault(callCollector(), null) : Promise.resolve(self.collector)
+			L.resolveDefault(callRoutes(), null)
 		]).then(function(r) {
 			var wifiDevs = (r[4] && typeof r[4] === 'object') ? r[4] : null;
 			var wiredReply = (r[7] && typeof r[7] === 'object') ? r[7] : {};
@@ -931,8 +971,6 @@ return view.extend({
 					self.slowAt = started;
 					self.slowCache = { wifi: r[4], thermal: r[6], wired: r[7], hapd: hapd, iwinfo: iwinfo, survey: survey };
 				}
-				/* this slow poll's answer only, never an older one */
-				if (slow) self.collector = r[9] && typeof r[9] === 'object' && !Array.isArray(r[9]) ? r[9] : null;
 				/* a station or wired host seen for the first time: its name
 				   may be in the next host hints */
 				var known = self.knownMacs || (self.knownMacs = new Set()), fresh = false, first = !self.macsSeen;
@@ -950,13 +988,14 @@ return view.extend({
 				});
 				var switchState = Object.create(null);
 				Object.keys(swState).forEach(function(n) { switchState[n] = swState[n].ports; });
-				return { info: r[0] || {}, stat: r[1] || '', ifaces: r[2] || [], devs: r[3] || {}, wifi: wifiDevs, hints: r[5] || self.hintsCache || {}, thermal: r[6] || [],
+				var raw = { info: r[0] || {}, stat: r[1] || '', ifaces: r[2] || [], devs: r[3] || {}, wifi: wifiDevs, hints: r[5] || self.hintsCache || {}, thermal: r[6] || [],
 					fdb: Array.isArray(wiredReply.hosts) ? wiredReply.hosts : [], fdbCrowded: wiredReply.crowded === true, switches: switches, switchState: switchState,
 					/* no answer (an older plugin, a lookup not sent, a failed call)
 					   keeps the last one: no tunnel blinking off */
 					routes: r[8] && Array.isArray(r[8].routes) ? (self.kernelRoutes = r[8].routes) : (self.kernelRoutes || null),
-					collector: self.collector,
+					collector: null,
 					assoc: assoc, hapd: hapd, hapdStatus: hapdStatus, iwinfo: iwinfo, survey: survey, at: Date.now(), started: started };
+				return collected.then(function() { raw.collector = self.collector || null; return raw; });
 			});
 		});
 	},
@@ -4115,7 +4154,7 @@ return view.extend({
 			]) ]),
 			this.section(_('Connection'), [ E('dl', { 'class': 'vt-kvs' }, [
 				kv(_('Network'), [ c.ssid, ' ', bandBadge(c.band) ]),
-				c.ap ? kv(_('Access point'), [ c.ap.name, c.ap.addr ? E('small', {}, [ c.ap.addr ]) : '' ]) :
+				c.ap ? kv(_('Access point'), [ c.ap.name, c.ap.addr ? E('small', {}, [ c.ap.addr ]) : '', alsoLine(c.ap) ]) :
 					kv(_('Radio', 'vantage'), radio ? _('%s · channel %d · %d MHz').format(radio.id, radio.channel || 0, radio.width || 20) : c.radio)
 			].concat(c.ap && c.ap.bssid ? [ kv(_('BSSID'), [ fmt.mac(c.ap.bssid), c.ap.channel ? E('small', {}, [ _('channel %d').format(c.ap.channel) ]) : '' ]) ] : [], [
 				kv(_('Connected for'), c.gone ? fmt.DASH : fmt.duration(c.connected)),
@@ -4150,7 +4189,7 @@ return view.extend({
 			E('div', { 'class': 'vt-dactions' }, [ rename, c.ap ? '' : pageLink(insight.PAGES.network, _('Interfaces')) ]),
 			this.el.renameSlot = E('div', { 'class': 'vt-rename-slot' }),
 			c.ap ? this.section(_('Connection'), [ E('dl', { 'class': 'vt-kvs' }, [
-				kv(_('Access point'), [ c.ap.name, c.ap.addr ? E('small', {}, [ c.ap.addr ]) : '' ]),
+				kv(_('Access point'), [ c.ap.name, c.ap.addr ? E('small', {}, [ c.ap.addr ]) : '', alsoLine(c.ap) ]),
 				kv(_('Port'), c.ap.port, true),
 				kv(_('Link', 'vantage'), c.ap.speed ? model.speedLabel(c.ap.speed) : fmt.DASH),
 				kv(_('Traffic'), r ? '↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx) : E('span', { 'class': 'vt-muted' }, [ _('not reported') ]))
@@ -4166,7 +4205,7 @@ return view.extend({
 				] : r ?'↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx) : _('measuring')),
 				kv(_('Network'), [ c.network || c.bridge || fmt.DASH, c.vlan != null ? E('small', {}, [ _('VLAN %d').format(c.vlan) ]) : '' ]),
 				kv(_('Last heard'), c.seen == null ? _('static entry') : fmt.ago(c.seen * 1000))
-			].concat(c.behind ? [ kv(_('Access point'), [ c.behind.name, E('small', {}, [ _('its port %s').format(c.behind.port) ]) ]) ] : [])) ]),
+			].concat(c.behind ? [ kv(_('Access point'), [ c.behind.name, E('small', {}, [ _('its port %s').format(c.behind.port) ]), alsoLine(c.behind) ]) ] : [])) ]),
 			this.section(_('Identity'), [ E('dl', { 'class': 'vt-kvs' }, [
 				kv(_('MAC address'), c.macLabel, true),
 				kv(_('Address type'), c.isPrivate ? _('Private address (randomised by the device)') : (c.vendor ? _('Globally unique · %s').format(c.vendor) : _('Globally unique'))),

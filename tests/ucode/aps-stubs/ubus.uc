@@ -1,6 +1,8 @@
 // Test double for ucode's ubus module (tests/aps.test.js): replies from
 // STUB.ubus, keyed 'object method' plus the args' device or name when
-// given. STUB is global STUB, else the JSON file named by -D STUBFILE.
+// given; a reply { __seq: [ ... ] } gives its values one call after the
+// other, the last one from then on. STUB is global STUB, else the JSON
+// file named by -D STUBFILE.
 // Every call is recorded in STUB.calls (and appended to -D CALLSFILE as
 // JSON lines), so a test can hold a script to the calls it may make.
 'use strict';
@@ -38,7 +40,12 @@ function connect() {
 				f.close();
 			}
 
-			return s.ubus?.[k];
+			let v = s.ubus?.[k];
+
+			if (type(v) == 'object' && type(v.__seq) == 'array')
+				return (length(v.__seq) > 1) ? shift(v.__seq) : v.__seq[0];
+
+			return v;
 		},
 		// the collector's object: kept for the uloop double, which calls it
 		publish: function(name, methods) {

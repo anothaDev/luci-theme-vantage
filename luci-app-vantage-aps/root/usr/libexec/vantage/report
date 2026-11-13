@@ -8,7 +8,9 @@
 // reads this device's state, prints one JSON object and exits. It takes
 // no input (arguments, standard input and SSH_ORIGINAL_COMMAND are ignored) and
 // changes nothing, one run at a time; SSH_CLIENT, which dropbear sets from the connection
-// itself, only tells which port leads to the router.
+// itself, only tells which port leads to the router, and SSH_PUBKEYINFO,
+// which dropbear sets from the key line that let the caller in, whether
+// that line is still there.
 //
 //   { v: 1, name, model, uptime, mac,
 //     ssids:    [ { ifname, bssid, ssid, freq, channel } ],
@@ -27,8 +29,11 @@
 
 import { connect } from 'ubus';
 import { access, lsdir, open, readfile } from 'fs';
+import * as vaps from 'vantage.aps';
 
 const SELF = '/usr/libexec/vantage/report';
+const AUTH = '/etc/dropbear/authorized_keys';
+const MAX_AUTH = 262144;          // bytes of authorized_keys read, as luci.vantage.pair reads it
 const NET = '/sys/class/net';
 const ARP = '/proc/net/arp';
 const HOSTNAME = '/proc/sys/kernel/hostname';
@@ -97,6 +102,26 @@ function neighbours() {
 	}
 
 	return out;
+}
+
+// Revoked, and still connected: dropbear checks a key when a connection
+// logs in, not again for each session opened on it, so a router that
+// keeps one open would go on reading after its line is gone. Dropbear
+// names the line that let the caller in by its comment; one of the
+// add-on's that authorized_keys no longer holds gets nothing. Any other
+// caller (a line of the administrator's own, a login without a key) is
+// not the add-on's to judge.
+let who = getenv('SSH_PUBKEYINFO');
+
+if (type(who) == 'string' && index(who, vaps.COMMENT) == 0) {
+	let held = false;
+
+	for (let line in split(readfile(AUTH, MAX_AUTH) ?? '', '\n'))
+		if (vaps.parse_auth_line(line)?.comment === who)
+			held = true;
+
+	if (!held)
+		exit(1);
 }
 
 // One report at a time: a router's key may open many sessions at once,

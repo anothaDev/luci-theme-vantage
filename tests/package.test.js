@@ -347,6 +347,26 @@ test('add-on: it ships exactly these files, the ones the device runs executable'
 	assert.deepEqual(Object.keys(mk.script).filter(k => mk.script[k] != null), [], 'no install or removal scripts of its own');
 });
 
+test('dashboard: it ships exactly these root files, none of them a program', () => {
+	/* The dashboard package reads; it has no service, no init script and nothing the device runs. (An earlier
+	   form of the access points feature had put a root service here: such a file must not come in unseen.) */
+	const APP = path.join(ROOT, 'luci-app-vantage');
+	const files = tree(path.join(APP, 'root'), path.join(APP, 'root'));
+	assert.deepEqual(files, [
+		'etc/config/vantage',
+		'usr/share/luci/menu.d/zz-luci-app-vantage.json',
+		'usr/share/rpcd/acl.d/luci-app-vantage.json',
+		'usr/share/rpcd/ucode/luci.vantage'
+	]);
+	for (const f of files) {
+		const st = fs.lstatSync(path.join(APP, 'root', f));
+		assert.ok(st.isFile(), f + ' is a plain file');
+		assert.equal(st.mode & 0o111, 0, f + ' must not be executable');
+	}
+	const mk = V.parseMakefile(fs.readFileSync(path.join(APP, 'Makefile'), 'utf8'), 'luci-app-vantage/Makefile');
+	assert.ok(!mk.depends.some(d => /uloop|dropbear|dbclient/.test(d)), 'no daemon\'s or SSH\'s modules among its dependencies: ' + mk.depends);
+});
+
 test('add-on: the collector starts only with an access point paired and dbclient there', () => {
 	const dir = tmp();
 	try {
@@ -360,13 +380,31 @@ test('add-on: the collector starts only with an access point paired and dbclient
 		fs.writeFileSync(script, [ 'procd_open_instance() { echo open; }', 'procd_close_instance() { echo close; }', 'procd_set_param() { echo "param $*"; }',
 			init.replace('APS=/etc/vantage/aps.json', 'APS=' + aps).replace('/usr/bin/dbclient', db), 'start_service', '' ].join('\n'));
 		const start = () => spawnSync('/bin/sh', [ script ], { encoding: 'utf8' }).stdout;
+		/* stopped: its run directory goes, that one path and nothing given from outside */
+		assert.ok(init.includes('\nRUN=/var/run/vantage-collector\n') && init.includes('\nservice_stopped() {\n\trm -rf "$RUN"\n}\n'), 'service_stopped removes RUN');
+		assert.equal((init.match(/\brm\b/g) || []).length, 1, 'the one removal');
+		assert.equal((init.match(/\bRUN=/g) || []).length, 1, 'RUN is set once');
+		const run = path.join(dir, 'run'), beside = path.join(dir, 'beside');
+		fs.mkdirSync(path.join(run, '00000000000000a1/.ssh'), { recursive: true });
+		fs.writeFileSync(path.join(run, '00000000000000a1/.ssh/known_hosts'), 'x\n');
+		fs.writeFileSync(beside, 'kept\n');
+		const stopped = path.join(dir, 'stopped.sh');
+		fs.writeFileSync(stopped, [ init.replace('RUN=/var/run/vantage-collector', 'RUN=' + run), 'service_stopped', '' ].join('\n'));
+		assert.equal(spawnSync('/bin/sh', [ stopped ], { encoding: 'utf8' }).status, 0);
+		assert.deepEqual([ fs.existsSync(run), fs.readFileSync(beside, 'utf8') ], [ false, 'kept\n' ]);
 		assert.equal(start(), '', 'no list');
 		fs.writeFileSync(aps, '[ ]');
 		assert.equal(start(), '', 'an empty list');
 		fs.writeFileSync(aps, '[ { "id": "00000000000000a1" } ]');
 		assert.equal(start(), '', 'no dbclient');
 		fs.writeFileSync(db, '#!/bin/sh\n', { mode: 0o755 });
-		assert.equal(start(), 'open\nparam command /usr/libexec/vantage/collector\nparam respawn 3600 5 5\nparam stderr 1\nclose\n');
+		/* `file`: an upgrade only runs "start", and procd restarts a running instance on it only when one of these has changed.
+		   So every program file of the daemon is in the list, and each is a file of the package */
+		const programs = [ '/usr/libexec/vantage/collector', '/usr/share/ucode/vantage/aps.uc' ];
+		assert.equal(start(), 'open\nparam command /usr/libexec/vantage/collector\nparam file ' + programs.join(' ') + '\nparam respawn 3600 5 5\nparam stderr 1\nclose\n');
+		for (const f of programs) assert.ok(fs.statSync(path.join(APS, 'root', f)).isFile(), f);
+		const collector = fs.readFileSync(path.join(APS, 'root/usr/libexec/vantage/collector'), 'utf8');
+		assert.deepEqual([ ...collector.matchAll(/^import .* from '([^']+)';$/gm) ].map(m => m[1]).filter(m => !/^(uloop|ubus|fs)$/.test(m)), [ 'vantage.aps' ], 'the one module of its own it loads');
 	} finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

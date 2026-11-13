@@ -597,8 +597,9 @@ What it needs:
   ships with Dropbear.
 - **An address that stays, or DHCP from this router.** If the access
   point's IPv4 address changes, the router finds it again by its MAC
-  address in its own DHCP leases and neighbour table. A DHCP reservation
-  avoids the question.
+  address in its own DHCP leases and neighbour table, on the network it
+  was paired on. A DHCP reservation avoids the question. An access point
+  moved to another of the router's networks has to be paired again.
 - **After a firmware upgrade,** install the add-on again on the upgraded
   device, as with the other Vantage packages (see
   [Upgrading OpenWrt itself](#upgrading-openwrt-itself)). The pairing
@@ -619,8 +620,25 @@ add-on shares nothing and runs nothing. Its page needs the
 `luci-app-vantage-aps` permission, which only an administrator should
 have: whoever holds it can let a router read the device.
 
+Two things to know about the router's key:
+
+- **A backup contains it.** `/etc/vantage/` is part of a configuration
+  backup (System → Backup / Flash Firmware), so such an archive holds the
+  key that reads every paired access point. Keep it as you would keep the
+  router's own SSH keys.
+- **Seeing the access points is a permission of its own.** An
+  administrator has it. A login you restricted to the dashboard
+  (`luci-app-vantage`) sees the dashboard without the access points;
+  grant it `luci-app-vantage-aps-view` as well to show them. Whoever
+  holds that sees the access points' clients, and each look makes the
+  router log in to them.
+
 To unpair, **Remove** the access point on the router and **Revoke** the
-router on the access point.
+router on the access point. Revoke also cuts off a router that still has
+a connection open: from then on it gets no report. One thing can undo
+it: LuCI's own System → Administration → SSH-Keys page saves the whole
+key file, so a tab of that page opened before the Revoke puts the line
+back when it is saved afterwards. Reload that page first.
 
 Before removing the add-on:
 
@@ -628,7 +646,7 @@ Before removing the add-on:
   lines stay in `authorized_keys`; they can then only run a command that
   is gone, but would work again if the add-on came back. Without the
   add-on, delete them under System → Administration → SSH-Keys (the lines
-  ending in `vantage-router@<name>`).
+  ending in `vantage-router@<name>+<id>`).
 - **From a router:** revoke it on each access point, then delete its key
   and list with `rm -r /etc/vantage`. Removing the package leaves that
   folder, and every access point keeps accepting the key until it is
@@ -989,10 +1007,8 @@ Then reload the page. To remove Vantage entirely, see
 
 - **What the dashboard may do.** Its rpcd permissions (ACL) are read-only:
   system, network, radio and station status, host hints, mDNS,
-  `/proc/stat`, the kernel's route to the internet, the link state of a
-  swconfig switch's ports and, with the optional access point add-on, the
-  reports of the paired access points (asking for them makes the router's
-  collector log in to those access points). It cannot
+  `/proc/stat`, the kernel's route to the internet and the link state of a
+  swconfig switch's ports. It cannot
   run commands; for that link state LuCI's own method runs `swconfig dev
   <switch> show`, read-only. Its only write permission, in a
   separate group (`luci-app-vantage-names`), is the plugin methods
@@ -1006,7 +1022,11 @@ Then reload the page. To remove Vantage entirely, see
   SSH key, keeps the paired access points in `/etc/vantage`, runs the
   collector service, and on an access point adds or removes a router's
   key in `/etc/dropbear/authorized_keys`, each limited to a read-only
-  report. See [Other access points](#other-access-points-optional).
+  report. The reports of the paired access points are behind a second
+  group, `luci-app-vantage-aps-view`: asking for them makes the router's
+  collector log in to those access points, so the dashboard's own
+  permission does not include it. See
+  [Other access points](#other-access-points-optional).
 - **The theme's Appearance.** The theme's own permission group,
   `luci-theme-vantage`, may write `/etc/config/vantage_theme` and nothing
   else. It exists to save the colour mode, the backgrounds, what shows next

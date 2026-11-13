@@ -28,15 +28,16 @@
 // reports in a row.
 //
 // An access point whose address changed (DHCP) is looked for by the MAC it
-// gave at pairing, in this router's neighbour table and DHCP leases; the
-// pinned host key decides whether it is the one. The address it answers
-// at is kept in memory only: /etc/vantage stays as paired.
+// gave at pairing, in this router's DHCP leases and neighbour table, on
+// the network it was paired on only; the pinned host key decides whether
+// it is the one. The address it answers at is kept in memory only:
+// /etc/vantage stays as paired.
 
 'use strict';
 
 import * as uloop from 'uloop';
 import { connect } from 'ubus';
-import { mkdir, readfile, unlink, writefile } from 'fs';
+import { lstat, mkdir, readfile, rmdir, unlink, writefile } from 'fs';
 import * as vaps from 'vantage.aps';
 
 const KEY = '/etc/vantage/id_ed25519';
@@ -69,10 +70,22 @@ const MAX_ALL_STATIONS = 1024;    // in one reply, all access points
 // much an access point sends and even with this daemon gone; no core.
 const RUN_SH = 'ulimit -c 0; ulimit -f 272; exec "$@" >"$VT_OUT" 2>"$VT_ERR" </dev/null';
 
-let aps = [], aps_text = null, st = {}, viewed = null, ticker = null;
+let aps = [], aps_text = null, st = {}, viewed = null, ticker = null, ubus = null;
 
 function now() {
 	return clock(true)?.[0] ?? 0;
+}
+
+// what a fetch leaves in RUN for an access point: gone with it (id: from
+// the paired list, sixteen hex digits)
+function forget(id) {
+	let home = RUN + '/' + id;
+
+	unlink(home + '/out');
+	unlink(home + '/err');
+	unlink(home + '/.ssh/known_hosts');
+	rmdir(home + '/.ssh');
+	rmdir(home);
 }
 
 // the paired list, read again whenever its bytes differ (its time stamp
@@ -100,10 +113,26 @@ function load() {
 			keep[a.id].tried = {};
 		}
 
-	// gone from the list: forgotten, a fetch still running ends unheard
+	// gone from the list: forgotten, with what was kept for it; a fetch
+	// still running ends unheard and clears up after itself
 	for (let i in keys(st))
-		if (!keep[i])
+		if (!keep[i]) {
+			if (!st[i].busy)
+				forget(i);
+
 			delete st[i];
+		}
+}
+
+// dnsmasq's leases, only as a plain file of root's or of this daemon's
+// own account (the one RUN, which it made, belongs to): /tmp takes a
+// name from any account, and opening a FIFO there would hold this daemon,
+// and with it every reply, until someone writes to it. What those two own
+// in /tmp no other account can swap, nor fill with addresses to try.
+function leases() {
+	let f = lstat(LEASES);
+
+	return (f?.type == 'file' && (f.uid == 0 || f.uid === lstat(RUN)?.uid)) ? readfile(LEASES, MAX_TABLE) : null;
 }
 
 function took(a, s, r, at) {
@@ -130,15 +159,19 @@ function done(a, s, home, code) {
 	unlink(home + '/out');
 	unlink(home + '/err');
 
-	// removed while it ran
-	if (st[a.id] !== s)
+	// removed while it ran (and not paired again since)
+	if (st[a.id] !== s) {
+		if (!st[a.id])
+			forget(a.id);
+
 		return;
+	}
 
 	let e = vaps.fetch_error(code, out, err, s.timedout, MAX_OUT), r = null;
 
 	if (!e) {
 		try {
-			r = vaps.normalize(json(out));
+			r = vaps.parseable(out) ? vaps.normalize(json(out)) : null;
 		}
 		catch (x) {
 			r = null;
@@ -170,11 +203,12 @@ function done(a, s, home, code) {
 		s.error = e;
 
 	// Not found where it was (or another device is there): the next
-	// address its MAC has now, in this router's neighbour table or DHCP
-	// leases, each once while someone looks. The pinned host key turns
-	// away any other device there.
+	// address its MAC has now on the network it was paired on, in this
+	// router's DHCP leases or neighbour table, each once while someone
+	// looks. The pinned host key turns away any other device there.
 	if (tried || vaps.moved(e)) {
-		let to = vaps.next_addr(a.mac, s.addr, s.tried, readfile(ARP, MAX_TABLE), readfile(LEASES, MAX_TABLE));
+		let net = vaps.network_of(a.addr, ubus.call('network.interface', 'dump')?.interface);
+		let to = net ? vaps.next_addr(a.mac, s.addr, s.tried, readfile(ARP, MAX_TABLE), leases(), net) : null;
 
 		if (to) {
 			s.trying = to;
@@ -274,7 +308,7 @@ mkdir(RUN, 0700);
 load();
 uloop.init();
 
-let ubus = connect();
+ubus = connect();
 
 if (!ubus || !ubus.publish('vantage.collector', {
 	report: {
@@ -283,11 +317,12 @@ if (!ubus || !ubus.publish('vantage.collector', {
 			load();
 
 			// someone looks again: every address may be tried again, and
-			// what each said last stands until its next fetch has ended
+			// what each said last stands until its next fetch has ended,
+			// unless the fetch before the pause had already failed
 			if (!ticker) {
 				for (let i, s in st) {
 					s.tried = {};
-					s.hold = !!s.report;
+					s.hold = !!s.report && !s.error;
 				}
 
 				tick();

@@ -128,9 +128,42 @@ test('vantage.aps find_addrs: where a MAC is now, from the neighbour table and t
 		'127.0.0.1        0x1         0x2         00:00:5e:00:53:a1     *        lo\n';
 	const leases = '1700000000 00:00:5e:00:53:a1 192.0.2.43 ap-hall *\n1700000000 00:00:5e:00:53:a1 192.0.2.40 ap-hall *\n' +
 		'1700000000 00:00:5e:00:53:a3 192.0.2.44 other *\n1700000000 00:00:5e:00:53:a1 2001:db8::5 ap-hall *\ngarbage\n';
-	const r = runModule([ [ 'find_addrs', AP_MAC, arp, leases ], [ 'find_addrs', '00:00:5E:00:53:A1', arp, null ], [ 'find_addrs', null, arp, leases ],
-		[ 'find_addrs', '01:00:5e:00:53:a1', arp, leases ], [ 'find_addrs', AP_MAC, null, null ] ]);
-	assert.deepEqual(r, [ [ '192.0.2.40', '192.0.2.43' ], [ '192.0.2.40' ], [], [], [] ]);
+	const r = runModule([ [ 'find_addrs', AP_MAC, arp, leases, LAN_NET ], [ 'find_addrs', '00:00:5E:00:53:A1', arp, null, LAN_NET ], [ 'find_addrs', null, arp, leases, LAN_NET ],
+		[ 'find_addrs', '01:00:5e:00:53:a1', arp, leases, LAN_NET ], [ 'find_addrs', AP_MAC, null, null, LAN_NET ] ]);
+	assert.deepEqual(r, [ [ '192.0.2.43', '192.0.2.40' ], [ '192.0.2.40' ], [], [], [] ], 'what dnsmasq leased it first, then the neighbour table');
+});
+
+/* this router's LAN as ubus network.interface dump gives it, and as network_of() hands it on */
+const LAN_IF = { interface: 'lan', up: true, l3_device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ],
+	'ipv6-address': [], 'ipv6-prefix-assignment': [ { address: '2001:db8:1::', mask: 64, 'local-address': { address: '2001:db8:1::1', mask: 64 } } ] };
+const WAN_IF = { interface: 'wan', up: true, l3_device: 'eth1', 'ipv4-address': [ { address: '203.0.113.2', mask: 29 } ], 'ipv6-address': [ { address: '2001:db8:ffff::2', mask: 64 } ] };
+const GUEST_IF = { interface: 'guest', up: true, l3_device: 'br-guest', 'ipv4-address': [ { address: '198.51.100.1', mask: 25 } ] };
+const LAN_NET = { dev: 'br-lan', nets: [ [ [ 192, 0, 2, 1 ], 24 ] ] };
+const DUMP = { interface: [ { interface: 'loopback', up: true, l3_device: 'lo', 'ipv4-address': [ { address: '127.0.0.1', mask: 8 } ] }, WAN_IF, LAN_IF, GUEST_IF ] };
+
+test('vantage.aps: an access point is looked for on the network it was paired on only', { skip: NO_UCODE }, () => {
+	const N = a => [ 'network_of', a, DUMP.interface ];
+	const nets = runModule([ N('192.0.2.10'), N('192.0.2.255'), N('198.51.100.10'), N('198.51.100.200'), N('203.0.113.6'), N('203.0.113.9'), N('2001:db8:1::10'), N('2001:DB8:1:0::10'),
+		N('2001:db8:ffff::9'), N('2001:db8:2::10'), N('192.0.3.10'), N(null), N('x'), [ 'network_of', '192.0.2.10', null ],
+		[ 'network_of', '192.0.2.10', [ Object.assign({}, LAN_IF, { up: false }) ] ], [ 'network_of', '192.0.2.10', [ Object.assign({}, LAN_IF, { l3_device: '../x' }) ] ],
+		[ 'network_of', '192.0.2.10', [ { interface: 'lan', up: true, l3_device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 0 } ] }, null, 7 ] ] ]);
+	assert.deepEqual(nets.map(n => n && n.dev), [ 'br-lan', 'br-lan', 'br-guest', null, 'eth1', null, 'br-lan', 'br-lan', 'eth1', null, null, null, null, null, null, null, null ]);
+	assert.deepEqual(nets[0], LAN_NET);
+	assert.deepEqual(nets[6], LAN_NET, 'paired by an IPv6 address: that network\'s IPv4 subnets');
+	/* the neighbour table takes a row under any MAC and address from any device of a network: rows of other
+	   networks, rows outside the network's subnets and leases outside them are not followed */
+	const row = (ip, dev) => ip + ' 0x1 0x2 ' + AP_MAC + ' * ' + dev + '\n';
+	const arp = 'IP address HW type Flags HW address Mask Device\n' + row('203.0.113.5', 'eth1') + row('198.51.100.9', 'br-guest') + row('192.0.2.50', 'br-guest') + row('192.0.2.51', 'eth1') +
+		row('198.51.100.10', 'br-lan') + row('192.0.3.7', 'br-lan') + row('192.0.2.60', 'br-lan') + row('192.0.2.61', 'br-lan.10');
+	const leases = '1 ' + AP_MAC + ' 198.51.100.20 x *\n1 ' + AP_MAC + ' 192.0.2.70 x *\n';
+	assert.deepEqual(runModule([ [ 'find_addrs', AP_MAC, arp, leases, LAN_NET ], [ 'find_addrs', AP_MAC, arp, leases, null ], [ 'find_addrs', AP_MAC, arp, leases, { dev: 'br-lan', nets: [] } ],
+		[ 'find_addrs', AP_MAC, arp, leases, { dev: 'eth1', nets: [ [ [ 203, 0, 113, 2 ], 29 ] ] } ], [ 'find_addrs', AP_MAC, arp, leases, { dev: '../x', nets: LAN_NET.nets } ] ]),
+		[ [ '192.0.2.70', '192.0.2.60' ], [], [], [ '203.0.113.5' ], [] ]);
+	/* four rows of other networks no longer push the real one out of the four that are tried */
+	const planted = 'h\n' + [ 1, 2, 3, 4 ].map(i => row('198.51.100.' + i, 'br-guest')).join('') + row('192.0.2.90', 'br-lan');
+	assert.deepEqual(runModule([ [ 'find_addrs', AP_MAC, planted, '', LAN_NET ], [ 'next_addr', AP_MAC, '192.0.2.10', {}, planted, '', LAN_NET ] ]), [ [ '192.0.2.90' ], '192.0.2.90' ]);
+	/* at most four, of the right network too */
+	assert.equal(runModule([ [ 'find_addrs', AP_MAC, 'h\n' + [ 1, 2, 3, 4, 5, 6 ].map(i => row('192.0.2.' + (100 + i), 'br-lan')).join(''), '', LAN_NET ] ])[0].length, 4);
 });
 
 test('vantage.aps: no NUL byte passes a check; loopback, link-local and IPv4-mapped addresses however spelled do not either', { skip: NO_UCODE }, () => {
@@ -146,22 +179,53 @@ test('vantage.aps: no NUL byte passes a check; loopback, link-local and IPv4-map
 	assert.deepEqual(runModule([ [ 'addr', '100::1' ], [ 'addr', '2001:db8:0:1::20' ], [ 'addr', '2001:db8::' ] ]), [ '100::1', '2001:db8:0:1::20', '2001:db8::' ]);
 });
 
+/* dbclient's own last line, up to its reason */
+const DBC = '/usr/bin/dbclient: Connection to root@192.0.2.10:22 exited: ';
+
 test('vantage.aps: how a fetch ended, the state it makes, and where to look next', { skip: NO_UCODE }, () => {
 	const E = (code, out, err, timedout) => [ 'fetch_error', code, out, err, !!timedout, 100 ];
 	assert.deepEqual(runModule([
 		E(0, '{}', ''), E(0, '{}', '', true), E(0, '', ''), E(0, 'x'.repeat(101), ''), E(0, null, ''), E(1, '{}', ''),
 		E(1, '', 'dbclient: Connection to root@192.0.2.10:22 exited: Connect failed: Connection refused'), E(1, '', null),
 		E(1, '', '\n\nssh-ed25519 host key mismatch for 192.0.2.10 !\nFingerprint is SHA256:x'), E(1, '', "Host '192.0.2.10' key unknown.\nexited: Not accepted automatically"),
-		E(1, '', 'exited: No auth methods could be used.'), E(127, '', 'ash: /usr/libexec/vantage/report: not found'), E(126, '', 'ash: /usr/libexec/vantage/report: No such file or directory'),
+		E(1, '', DBC + 'No auth methods could be used.'), E(127, '', 'ash: /usr/libexec/vantage/report: not found'), E(126, '', 'ash: /usr/libexec/vantage/report: No such file or directory'),
 		E(127, '', 'ash: something-else: not found')
-	]), [ null, 'timeout', 'invalid', 'invalid', 'invalid', 'invalid', 'unreachable', 'unreachable', 'hostkey', 'hostkey', 'denied', 'missing', 'missing', 'unreachable' ]);
+	]), [ null, 'timeout', 'unreachable', 'invalid', 'unreachable', 'invalid', 'unreachable', 'unreachable', 'hostkey', 'hostkey', 'denied', 'missing', 'missing', 'unreachable' ],
+		'no bytes on standard output and no word of dbclient\'s or of the access point\'s shell: not its answer');
+	/* dbclient's error text as Dropbear 2024.86 and 2025.89 write it (taken from both, on OpenWrt 24.10 and 25.12) */
+	assert.deepEqual(runModule([
+		E(1, '', '\n' + DBC + 'No auth methods could be used.\n'),
+		E(1, '', '/usr/bin/dbclient: Connection to root@2001:db8::10:22 exited: No auth methods could be used.'),
+		E(1, '', '\n' + DBC + '\n\nssh-ed25519 host key mismatch for 192.0.2.10 !\nFingerprint is SHA256:x\nExpected SHA256:y\nIf you know that the host key is correct you can\nremove the bad entry from ~/.ssh/known_hosts\n'),
+		E(1, '', "/usr/bin/dbclient: \nHost '192.0.2.10' key unknown.\n(ssh-ed25519 fingerprint SHA256:x)\n\n" + DBC + 'Not accepted automatically\n'),
+		E(1, '', '\n' + DBC + 'Connect failed: Connection refused\n'),
+		E(127, '', 'ash: /usr/libexec/vantage/report: not found\n'), E(126, '', 'ash: /usr/libexec/vantage/report: Permission denied\n')
+	]), [ 'denied', 'denied', 'hostkey', 'hostkey', 'unreachable', 'missing', 'missing' ]);
+	/* A device that never showed the pinned host key: its version line is quoted in dbclient's error text, it
+	   can send a disconnect before any key is checked (dbclient then ends with 0), or just close. None of that
+	   is the access point's answer: 'denied', 'missing' and 'invalid' would end the search for the one that moved */
+	const liar = [
+		E(1, '', '\n' + DBC + "Incompatible remote version 'SSH-1.5-Permission denied'\n"),
+		E(1, '', '\n' + DBC + "Incompatible remote version 'SSH-1.5-No auth methods could be used.'\n"),
+		E(1, '', '\n' + DBC + "Incompatible remote version 'SSH-1.5-/usr/libexec/vantage/report: not found'\n"),
+		E(1, '', '\n' + DBC + "Incompatible remote version 'SSH-1.5-ash: /usr/libexec/vantage/report: not found'\n"),
+		E(1, '', '\n' + DBC + "Incompatible remote version 'SSH-1.5-x: Connection to root@192.0.2.10:22 exited: No auth methods could be used.'\n"),
+		E(0, '', '\n' + DBC + 'Disconnect received\n'), E(1, '', '\n' + DBC + 'Remote closed the connection\n'),
+		/* and should dbclient ever word its own line otherwise: still nothing of the other end's counts */
+		E(1, '', "dbclient: remote version 'SSH-1.5-No auth methods could be used.'"), E(1, '', "dbclient: gone: 'ash: /usr/libexec/vantage/report: not found'"),
+		E(0, '', "dbclient: closed: 'SSH-1.5-Disconnect received'"), E(1, '', 'Permission denied'), E(0, '', 'exited: No auth methods could be used.')
+	];
+	const said = runModule(liar);
+	assert.deepEqual(said, liar.map(() => 'unreachable'));
+	assert.deepEqual(runModule(said.map(e => [ 'moved', e ])), liar.map(() => true), 'so the search goes on');
 	assert.deepEqual(runModule([ [ 'state', true, 'timeout' ], [ 'state', false, 'timeout' ], [ 'state', false, 'unreachable' ], [ 'state', false, 'hostkey' ], [ 'state', false, 'denied' ],
 		[ 'state', false, 'invalid' ], [ 'state', false, 'missing' ], [ 'state', false, null ] ]), [ 'ok', 'offline', 'offline', 'error', 'error', 'error', 'error', 'waiting' ]);
 	assert.deepEqual(runModule([ 'unreachable', 'timeout', 'hostkey', 'denied', 'invalid', 'missing', null ].map(e => [ 'moved', e ])), [ true, true, true, false, false, false, false ]);
 	const arp = 'h\n192.0.2.40 0x1 0x2 ' + AP_MAC + ' * br-lan\n192.0.2.44 0x1 0x2 ' + AP_MAC + ' * br-lan\n', leases = '1 ' + AP_MAC + ' 192.0.2.43 x *\n';
-	assert.deepEqual(runModule([ [ 'next_addr', AP_MAC, '192.0.2.40', {}, arp, leases ], [ 'next_addr', AP_MAC, '192.0.2.40', { '192.0.2.44': true }, arp, leases ],
-		[ 'next_addr', AP_MAC, '192.0.2.40', { '192.0.2.44': true, '192.0.2.43': true }, arp, leases ], [ 'next_addr', AP_MAC, '192.0.2.9', null, '', '' ] ]),
-		[ '192.0.2.44', '192.0.2.43', null, null ]);
+	assert.deepEqual(runModule([ [ 'next_addr', AP_MAC, '192.0.2.40', {}, arp, leases, LAN_NET ], [ 'next_addr', AP_MAC, '192.0.2.40', { '192.0.2.43': true }, arp, leases, LAN_NET ],
+		[ 'next_addr', AP_MAC, '192.0.2.40', { '192.0.2.44': true, '192.0.2.43': true }, arp, leases, LAN_NET ], [ 'next_addr', AP_MAC, '192.0.2.9', null, '', '', LAN_NET ],
+		[ 'next_addr', AP_MAC, '192.0.2.40', {}, arp, leases, null ] ]),
+		[ '192.0.2.43', '192.0.2.44', null, null, null ]);
 });
 
 const MAC_ = n => '00:00:5e:00:53:' + n.toString(16).padStart(2, '0');
@@ -226,7 +290,25 @@ test('vantage.aps view: rates from two reports, none across a reset or on a shar
 /* ------------------------------------------------------------ plugin */
 
 const DROPBEAR_OK = 'ELF...no-port-forwarding...command="...';
-const LINE = (k, n) => 'command="/usr/libexec/vantage/report",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 ' + k + ' vantage-router@' + n;
+/* a router's key line: the report command's options, the key, and a comment naming the router and its key (the first 8 of its 32 bytes) */
+const KID = k => Buffer.from(k, 'base64').subarray(19, 27).toString('hex');
+const COMMENT = (k, n) => 'vantage-router@' + n + '+' + KID(k);
+const OPTIONS = 'command="/usr/libexec/vantage/report",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding';
+const LINE = (k, n) => OPTIONS + ' ssh-ed25519 ' + k + ' ' + COMMENT(k, n);
+
+test('vantage.aps: a router\'s key line is written one way and known again only as that', { skip: NO_UCODE }, () => {
+	const mixed = Buffer.concat([ blob(0).subarray(0, 19), Buffer.from(Array.from({ length: 32 }, (_, i) => 0xa0 + i)) ]).toString('base64');
+	assert.equal(COMMENT(mixed, 'gw'), 'vantage-router@gw+a0a1a2a3a4a5a6a7');
+	assert.deepEqual(runModule([ [ 'auth_line', K1, 'gw' ], [ 'auth_line', mixed, 'My-Router.lan' ] ]), [ LINE(K1, 'gw'), LINE(mixed, 'My-Router.lan') ]);
+	assert.match(COMMENT(mixed, 'My-Router.lan'), /^[A-Za-z0-9.,_+@-]+$/, 'only what dropbear hands on as SSH_PUBKEYINFO');
+	const P = l => [ 'parse_auth_line', l ], one = { key: K1, name: 'gw', comment: COMMENT(K1, 'gw') };
+	assert.deepEqual(runModule([ P(LINE(K1, 'gw')), P(LINE(K1, 'gw') + ' '), P(LINE(K1, 'gw') + '\r'), P(LINE(K1, 'gw') + ' \t\r') ]), [ one, one, one, one ], 'an editor\'s blanks or carriage return after it: still that line');
+	const not = [ OPTIONS + ' ssh-ed25519 ' + K1 + ' vantage-router@gw', OPTIONS + ' ssh-ed25519 ' + K1 + ' ' + COMMENT(K2, 'gw'), OPTIONS + ' ssh-ed25519 ' + K1 + ' ' + COMMENT(K1, 'g w'),
+		OPTIONS + ' ssh-ed25519 ' + K1 + ' ' + COMMENT(K1, 'gw') + '+x', OPTIONS + ' ssh-ed25519 ' + K1 + ' ' + COMMENT(K1, 'gw') + ' more', ' ' + LINE(K1, 'gw'), LINE(K1, 'gw').replace(' ssh-ed25519 ', '  ssh-ed25519 '),
+		LINE(K1, 'gw').replace(',no-port-forwarding', ''), LINE(K1, 'gw').replace('/vantage/report', '/vantage/report2'), 'ssh-ed25519 ' + K1 + ' ' + COMMENT(K1, 'gw'), LINE(K1, 'gw').replace(K1, 'AAAA'),
+		LINE(K1, 'gw').replace('vantage-router@', 'vantage-routers@'), LINE(K1, 'gw') + '\u0000', LINE(K1, 'gw') + '\nx', '', null, 7 ];
+	assert.deepEqual(runModule(not.map(P)), not.map(() => null));
+});
 
 /* a sandbox of the plugin's files: dropbear (with or without the options
    parser), its host key, dbclient, dropbearkey (copies a prepared key),
@@ -265,6 +347,7 @@ const UBUS_OK = {
 /* run calls on one load of the plugin in a sandbox: { results, ubus, sb } */
 function runPlugin(o, calls) {
 	const sb = sandbox(o);
+	if (o.before) o.before(sb);
 	let src = fs.readFileSync(PLUGIN, 'utf8');
 	for (const [ name, rel ] of Object.entries(PATHS)) {
 		const re = new RegExp('^const ' + name + ' = .*$', 'm');
@@ -386,6 +469,63 @@ test('pair: revoke_router removes only that router\'s line', { skip: NO_UCODE },
 	assert.equal(read(sb, 'etc/dropbear/authorized_keys'), 'ssh-ed25519 ' + K1 + ' admin\n' + LINE(K2, 'gw2') + '\n');
 });
 
+test('pair: a line an editor left a blank or a carriage return on is still listed and can be revoked', { skip: NO_UCODE }, () => {
+	/* dropbear lets such a line in all the same; unlisted, the page would say no router can read this device */
+	const auth = '# keys\r\n' + LINE(K1, 'gw') + '\r\n' + LINE(K2, 'gw2') + ' \n' + LINE(K3, 'old').replace('+' + KID(K3), '') + '\n';
+	const { results, sb } = runPlugin({ auth }, [ { method: 'status' }, { method: 'allow_router', args: { code: routerCode(K1, 'gw') } }, { method: 'revoke_router', args: { key: K1 } },
+		{ method: 'revoke_router', args: { key: K2 } }, { method: 'status' } ]);
+	assert.deepEqual(results[0].reply.ap.routers, [ { name: 'gw', key: K1 }, { name: 'gw2', key: K2 } ], 'both; a line without the key\'s id in its comment is not the add-on\'s');
+	assert.ok(results[1].reply.reply, 'already allowed: the answer, no second line');
+	assert.deepEqual([ results[2].reply, results[3].reply, results[4].reply.ap.routers ], [ { ok: true }, { ok: true }, [] ]);
+	assert.equal(read(sb, 'etc/dropbear/authorized_keys'), '# keys\r\n' + LINE(K3, 'old').replace('+' + KID(K3), '') + '\n', 'every other byte kept');
+});
+
+test('pair: a key file or a paired list that is there and cannot be read whole is never written anew', { skip: NO_UCODE }, () => {
+	const code = routerCode(K1, 'gw'), own = 'ssh-ed25519 ' + K3 + ' admin@laptop\n';
+	const asDir = (sb, rel) => fs.mkdirSync(sb.p(rel), { recursive: true });
+	/* the keys: a name that is there and gives no text (here a directory; an I/O error reads the same), and a file longer than is read */
+	const cases = [ [ 'unreadable', sb => asDir(sb, 'etc/dropbear/authorized_keys'), sb => fs.statSync(sb.p('etc/dropbear/authorized_keys')).isDirectory() ],
+		[ 'too long', sb => fs.writeFileSync(sb.p('etc/dropbear/authorized_keys'), own + '#'.repeat(262144 - own.length) + '\n'), sb => read(sb, 'etc/dropbear/authorized_keys').length === 262145 ] ];
+	for (const [ what, make, intact ] of cases) {
+		const { results, sb } = runPlugin({ before: make }, [ { method: 'allow_router', args: { code } }, { method: 'revoke_router', args: { key: K1 } }, { method: 'status' } ]);
+		assert.deepEqual([ results[0].reply, results[1].reply ], [ { error: 'keys-unreadable' }, { error: 'failed' } ], what);
+		assert.deepEqual(results[2].reply.ap, { ssh: 'keys-unreadable', routers: [], reply: null }, what + ': the page is told it does not know, not that there is none');
+		assert.ok(intact(sb), what + ': left as it was');
+		assert.equal(fs.existsSync(sb.p('etc/dropbear/authorized_keys.vantage')), false);
+	}
+	/* exactly as long as is read: fine; and a line that would take it past that is not added, since it could not be listed or revoked after */
+	const fill = n => own + '#'.repeat(n - own.length - 1) + '\n', line = LINE(K1, 'gw') + '\n';
+	const fits = runPlugin({ auth: fill(262144 - line.length) }, [ { method: 'allow_router', args: { code } }, { method: 'status' } ]);
+	assert.ok(fits.results[0].reply.reply);
+	assert.equal(read(fits.sb, 'etc/dropbear/authorized_keys').length, 262144);
+	assert.deepEqual(fits.results[1].reply.ap.routers, [ { name: 'gw', key: K1 } ]);
+	const over = runPlugin({ auth: fill(262144 - line.length + 1) }, [ { method: 'allow_router', args: { code } }, { method: 'status' } ]);
+	assert.deepEqual(over.results[0].reply, { error: 'failed' });
+	assert.equal(read(over.sb, 'etc/dropbear/authorized_keys'), fill(262144 - line.length + 1), 'untouched');
+	assert.deepEqual([ over.results[1].reply.ap.ssh, over.results[1].reply.ap.routers ], [ 'ok', [] ]);
+
+	/* the paired list */
+	const ap = apCode(K2, '192.0.2.20', 22, 'ap-hall'), kept = [ { id: '00000000000000a1', name: 'ap-den', key: K3, addr: '192.0.2.11', port: 22, mac: AP_MAC } ];
+	const long = JSON.stringify(kept) + ' '.repeat(65537);
+	for (const [ what, make, intact ] of [ [ 'unreadable', sb => asDir(sb, 'etc/vantage/aps.json'), sb => fs.statSync(sb.p('etc/vantage/aps.json')).isDirectory() ],
+		[ 'too long', sb => { fs.mkdirSync(sb.p('etc/vantage'), { recursive: true }); fs.writeFileSync(sb.p('etc/vantage/aps.json'), long); }, sb => read(sb, 'etc/vantage/aps.json') === long ] ]) {
+		const { results, sb } = runPlugin({ haveKey: true, before: make }, [ { method: 'add_ap', args: { code: ap } }, { method: 'remove_ap', args: { id: kept[0].id } }, { method: 'status' } ]);
+		assert.deepEqual([ results[0].reply, results[1].reply, results[2].reply.router.aps ], [ { error: 'failed' }, { error: 'failed' }, [] ], what);
+		assert.ok(intact(sb), what + ': left as it was');
+		assert.equal(read(sb, 'collector.log'), null, what);
+	}
+	/* no file at all is no list yet, as before */
+	assert.deepEqual(runPlugin({ haveKey: true }, [ { method: 'add_ap', args: { code: ap } } ]).results[0].reply, { id: '0123456789abcdef' });
+});
+
+test('pair: allow_router has its answer before it writes the line', { skip: NO_UCODE }, () => {
+	/* the LAN address gone between the check and the answer: without one there is nothing to hand the router, so no line either */
+	const lanStatus = UBUS_OK['network.interface.lan status'];
+	const { results, sb } = runPlugin({ ubus: Object.assign({}, UBUS_OK, { 'network.interface.lan status': { __seq: [ lanStatus, {} ] } }) }, [ { method: 'allow_router', args: { code: routerCode(K1, 'gw') } } ]);
+	assert.deepEqual(results[0].reply, { error: 'failed' });
+	assert.equal(read(sb, 'etc/dropbear/authorized_keys'), null, 'nothing written');
+});
+
 test('pair: add_ap stores the access point and starts the collector; remove_ap stops it with the last', { skip: NO_UCODE }, () => {
 	const code = apCode(K2, '192.0.2.20', 22, 'ap-hall');
 	const { results, sb } = runPlugin({ haveKey: true }, [
@@ -443,7 +583,9 @@ function reportRun(o) {
 	const host = path.join(dir, 'hostname');
 	fs.writeFileSync(host, (o.hostname ?? 'ap-hall') + '\n');
 	let src = fs.readFileSync(REPORT, 'utf8');
-	for (const [ name, v ] of Object.entries({ NET: net, ARP: arp, HOSTNAME: host })) {
+	const auth = path.join(dir, 'authorized_keys');
+	if (o.auth != null) fs.writeFileSync(auth, o.auth);
+	for (const [ name, v ] of Object.entries({ NET: net, ARP: arp, HOSTNAME: host, AUTH: auth })) {
 		const re = new RegExp('^const ' + name + ' = .*$', 'm');
 		assert.match(src, re);
 		src = src.replace(re, () => 'const ' + name + ' = ' + JSON.stringify(v) + ';');
@@ -451,10 +593,14 @@ function reportRun(o) {
 	const script = path.join(dir, 'report.uc'), stub = path.join(dir, 'stub.json'), calls = path.join(dir, 'calls');
 	fs.writeFileSync(script, src);
 	fs.writeFileSync(stub, JSON.stringify({ ubus: o.ubus }));
-	const r = spawnSync(UCODE, ucodeArgs().concat([ '-D', 'STUBFILE=' + stub, '-D', 'CALLSFILE=' + calls, script, 'ignored', 'args' ]),
-		{ encoding: 'utf8', input: 'ignored stdin', env: Object.assign({}, process.env, { SSH_CLIENT: o.client ?? '', SSH_ORIGINAL_COMMAND: 'rm -rf /' }) });
+	const env = Object.assign({}, process.env, { SSH_CLIENT: o.client ?? '', SSH_ORIGINAL_COMMAND: 'rm -rf /' });
+	delete env.SSH_PUBKEYINFO;
+	if (o.keyinfo != null) env.SSH_PUBKEYINFO = o.keyinfo;
+	const r = spawnSync(UCODE, ucodeArgs().concat([ '-D', 'STUBFILE=' + stub, '-D', 'CALLSFILE=' + calls, script, 'ignored', 'args' ]), { encoding: 'utf8', input: 'ignored stdin', env });
+	const made = fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8').trim().split('\n').map(l => JSON.parse(l)) : [];
+	if (o.refused) return { status: r.status, stdout: r.stdout, calls: made };
 	assert.equal(r.status, 0, r.stderr);
-	return { out: JSON.parse(r.stdout), calls: fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8').trim().split('\n').map(l => JSON.parse(l)) : [] };
+	return { out: JSON.parse(r.stdout), calls: made };
 }
 
 const REPORT_UBUS = {
@@ -502,6 +648,26 @@ test('report: no uplink found, no wired hosts; the router\'s own address finds i
 	const viaRouter = reportRun({ ubus, client: '192.0.2.9 50000 22', arp: [ [ '192.0.2.9', '0x1', '0x2', MAC(66), '*', 'br-lan' ] ] }).out;
 	/* the router's MAC is listed on lan2 and lan3: both are uplinks then */
 	assert.deepEqual(viaRouter.wired, [ { mac: MAC(64), port: 'lan1' }, { mac: MAC(65), port: 'lan1' } ]);
+});
+
+test('report: a router whose key line is gone gets nothing, on a connection it still holds too', { skip: NO_UCODE }, () => {
+	/* dropbear checks a key when a connection logs in and names the line's comment to every command run on it (SSH_PUBKEYINFO) */
+	const arp = [ [ '192.0.2.1', '0x1', '0x2', MAC(64), '*', 'br-lan' ] ], admin = 'ssh-ed25519 ' + K3 + ' admin@laptop\n';
+	const run = (auth, keyinfo, refused) => reportRun({ ubus: REPORT_UBUS, arp, auth, keyinfo, refused });
+	/* its line is there: the report, as without the variable */
+	const plain = reportRun({ ubus: REPORT_UBUS, arp }).out;
+	for (const auth of [ admin + LINE(K1, 'gw') + '\n', LINE(K2, 'gw2') + '\n' + LINE(K1, 'gw') + '\r\n', LINE(K1, 'gw') ])
+		assert.deepEqual(run(auth, COMMENT(K1, 'gw')).out, plain);
+	/* revoked: the line gone, the file gone, another router's line left, a line for the same name and another key, the comment on a line that is not the add-on's */
+	const gone = [ admin, null, LINE(K2, 'gw2') + '\n', LINE(K2, 'gw') + '\n', 'ssh-ed25519 ' + K1 + ' ' + COMMENT(K1, 'gw') + '\n', '# ' + LINE(K1, 'gw') + '\n', LINE(K1, 'gw').replace(',no-pty', '') + '\n' ];
+	for (const auth of gone) {
+		const r = run(auth, COMMENT(K1, 'gw'), true);
+		assert.deepEqual([ r.status, r.stdout, r.calls ], [ 1, '', [] ], 'nothing printed, nothing asked: ' + JSON.stringify(auth).slice(0, 60));
+	}
+	/* a caller the add-on did not let in is not its to judge: a line of the administrator's own, a login without a key */
+	for (const keyinfo of [ 'admin@laptop', '', 'vantage', 'xvantage-router@gw' ]) assert.deepEqual(run(admin, keyinfo).out, plain, keyinfo);
+	/* named like the add-on's and not one of its lines: refused */
+	for (const keyinfo of [ 'vantage-router@', 'vantage-router@gw', COMMENT(K1, 'gw') + 'x' ]) assert.equal(run(admin + LINE(K1, 'gw') + '\n', keyinfo, true).status, 1, keyinfo);
 });
 
 test('report: without ubus it prints nothing and fails', { skip: NO_UCODE }, () => {
@@ -555,7 +721,9 @@ function runCollector(o, steps) {
 	fs.writeFileSync(p('etc/vantage/aps.json'), JSON.stringify(o.aps ?? [ AP1 ]));
 	fs.writeFileSync(p('etc/vantage/id_ed25519'), keyFile(9), { mode: 0o600 });
 	fs.writeFileSync(p('arp'), o.arp ?? '');
-	fs.writeFileSync(p('leases'), o.leases ?? '');
+	if (o.leasesAs === 'fifo') assert.equal(spawnSync('mkfifo', [ p('leases') ]).status, 0, 'mkfifo');
+	else if (o.leasesAs === 'link') { fs.writeFileSync(p('leases.real'), o.leases ?? ''); fs.symlinkSync(p('leases.real'), p('leases')); }
+	else fs.writeFileSync(p('leases'), o.leases ?? '');
 	for (const [ addr, h ] of Object.entries(o.hosts || {})) {
 		fs.mkdirSync(p('hosts/' + addr));
 		for (const [ f, v ] of Object.entries(h)) fs.writeFileSync(p('hosts/' + addr + '/' + f), String(v));
@@ -574,11 +742,12 @@ function runCollector(o, steps) {
 	/* the double's clock for the kernel's */
 	assert.ok(src.includes('\treturn clock(true)?.[0] ?? 0;\n'), 'now()');
 	src = src.replace('\treturn clock(true)?.[0] ?? 0;\n', '\treturn int(global.LOOP.now / 1000);\n');
-	const script = p('collector.uc'), file = p('steps.json');
+	const script = p('collector.uc'), file = p('steps.json'), stub = p('stub.json');
 	fs.writeFileSync(script, src);
 	fs.writeFileSync(file, JSON.stringify(steps.map(s => s.write ? { write: [ p(s.write[0]), s.write[1] ] } : s)));
-	const r = spawnSync(UCODE, ucodeArgs().concat([ '-D', 'CASES=' + file, '-D', 'SANDBOX=' + dir, script ]), { encoding: 'utf8' });
-	assert.equal(r.status, 0, r.stderr);
+	fs.writeFileSync(stub, JSON.stringify({ ubus: { 'network.interface dump': o.dump ?? DUMP } }));
+	const r = spawnSync(UCODE, ucodeArgs().concat([ '-D', 'CASES=' + file, '-D', 'SANDBOX=' + dir, '-D', 'STUBFILE=' + stub, script ]), { encoding: 'utf8', timeout: 60000 });
+	assert.equal(r.status, 0, r.error ? 'the collector did not end: ' + r.error.message : r.stderr);
 	const log = fs.existsSync(p('dbclient.log')) ? fs.readFileSync(p('dbclient.log'), 'utf8').trim().split('\n') : [];
 	return { results: JSON.parse(r.stdout), log, calls: log.filter(l => l.startsWith('argv: ')), sb: { dir, p } };
 }
@@ -636,9 +805,9 @@ test('collector: why a fetch failed, and what the dashboard is told', { skip: NO
 });
 
 test('collector: an access point that moved is found by its MAC, the pinned host key deciding', { skip: NO_UCODE }, () => {
-	const arp = 'IP address HW type Flags HW address Mask Device\n192.0.2.77 0x1 0x2 ' + AP_MAC + ' * br-lan\n';
-	const leases = '1700000000 ' + AP_MAC + ' 192.0.2.78 ap-hall *\n';
-	/* gone from 192.0.2.10; another device answers at .77 with another host key; it is at .78 */
+	const arp = 'IP address HW type Flags HW address Mask Device\n192.0.2.78 0x1 0x2 ' + AP_MAC + ' * br-lan\n';
+	const leases = '1700000000 ' + AP_MAC + ' 192.0.2.77 ap-hall *\n';
+	/* gone from 192.0.2.10; another device answers at .77, its old lease, with another host key; it is at .78 */
 	const { results, calls, log, sb } = runCollector({ arp, leases, hosts: {
 		'192.0.2.77': { err: 'ssh-ed25519 host key mismatch for 192.0.2.77 !', code: 1 },
 		'192.0.2.78': { out: apReport(1, 1000) }
@@ -654,6 +823,113 @@ test('collector: an access point that moved is found by its MAC, the pinned host
 	/* nothing in the tables: it stays where it was paired */
 	const lost = runCollector({ hosts: {} }, [ ASK, wait(25), ASK ]);
 	assert.ok(lost.calls.every(c => c.includes('root@192.0.2.10 ')), 'no other address tried');
+});
+
+test('collector: an access point is looked for on the network it was paired on only', { skip: NO_UCODE }, () => {
+	const row = (ip, dev) => ip + ' 0x1 0x2 ' + AP_MAC + ' * ' + dev + '\n', head = 'IP address HW type Flags HW address Mask Device\n';
+	const tried = r => [ ...new Set(r.calls.map(c => /root@(\S+)/.exec(c)[1])) ];
+	const steps = [ ASK, wait(1), ASK, wait(30), ASK ];
+	/* rows any device of the guest network or the WAN side can make: this router opens no connection to them */
+	const elsewhere = head + row('198.51.100.9', 'br-guest') + row('203.0.113.5', 'eth1') + row('192.0.2.50', 'br-guest') + row('192.0.3.7', 'br-lan');
+	const hosts = Object.fromEntries([ '198.51.100.9', '203.0.113.5', '192.0.2.50', '192.0.3.7', '198.51.100.20' ].map(a => [ a, { out: apReport(1, 1000) } ]));
+	const none = runCollector({ arp: elsewhere, leases: '1 ' + AP_MAC + ' 198.51.100.20 x *\n', hosts }, steps);
+	assert.deepEqual(tried(none), [ '192.0.2.10' ]);
+	assert.deepEqual([ none.results[4].aps[0].state, none.results[4].aps[0].addr ], [ 'offline', '192.0.2.10' ]);
+	/* four such rows ahead of the real one: it is found all the same */
+	const planted = head + [ 1, 2, 3, 4 ].map(i => row('198.51.100.' + i, 'br-guest')).join('') + row('192.0.2.90', 'br-lan');
+	const found = runCollector({ arp: planted, hosts: { '192.0.2.90': { out: apReport(1, 1000) } } }, steps);
+	assert.deepEqual(tried(found), [ '192.0.2.10', '192.0.2.90' ]);
+	assert.deepEqual([ found.results[4].aps[0].state, found.results[4].aps[0].addr ], [ 'ok', '192.0.2.90' ]);
+	/* paired at an address of no network of this router (behind another router), or with that network down: no search */
+	const far = Object.assign({}, AP1, { addr: '198.51.100.200' });
+	assert.deepEqual(tried(runCollector({ aps: [ far ], arp: head + row('192.0.2.90', 'br-lan') + row('198.51.100.9', 'br-guest'), hosts }, steps)), [ '198.51.100.200' ]);
+	assert.deepEqual(tried(runCollector({ arp: head + row('192.0.2.90', 'br-lan'), dump: { interface: [ Object.assign({}, LAN_IF, { up: false }), GUEST_IF ] }, hosts: { '192.0.2.90': { out: apReport(1, 1000) } } }, steps)), [ '192.0.2.10' ]);
+	assert.deepEqual(tried(runCollector({ arp: head + row('192.0.2.90', 'br-lan'), dump: {}, hosts: { '192.0.2.90': { out: apReport(1, 1000) } } }, steps)), [ '192.0.2.10' ]);
+	/* paired by an IPv6 address of the LAN: found at an IPv4 address there */
+	const v6 = Object.assign({}, AP1, { addr: '2001:db8:1::10' });
+	const six = runCollector({ aps: [ v6 ], arp: head + row('192.0.2.90', 'br-lan') + row('203.0.113.5', 'eth1'), hosts: { '192.0.2.90': { out: apReport(1, 1000) } } }, steps);
+	assert.deepEqual(tried(six), [ '2001:db8:1::10', '192.0.2.90' ]);
+});
+
+test('collector: after a pause, an access point that had already failed is not shown as fine', { skip: NO_UCODE }, () => {
+	const down = [ { write: [ 'hosts/192.0.2.10/out', '' ] }, { write: [ 'hosts/192.0.2.10/code', '1' ] }, { write: [ 'hosts/192.0.2.10/err', '\n' + DBC + 'Connect failed: No route to host\n' ] } ];
+	/* fine, then gone while someone still looks; nobody looks for two minutes; the first reply after that */
+	const { results } = runCollector({ hosts: { '192.0.2.10': { out: apReport(1, 1000) } } }, [ ASK, wait(2), ASK, ...down, wait(20), ASK, wait(120), ASK ]);
+	assert.equal(results[2].aps[0].state, 'ok');
+	assert.deepEqual([ results[7].aps[0].state, results[7].aps[0].error ], [ 'ok', 'unreachable' ], 'a report under a minute old still stands');
+	assert.deepEqual([ results[9].aps[0].state, results[9].aps[0].error, results[9].aps[0].report ], [ 'offline', 'unreachable', null ]);
+	/* fine when the pause began: its last report stands until the first fetch after it has ended, as before */
+	const fine = runCollector({ hosts: { '192.0.2.10': { out: apReport(1, 1000) } } }, [ ASK, wait(2), ASK, wait(180), ASK ]);
+	assert.equal(fine.results[4].aps[0].state, 'ok');
+});
+
+test('collector: nothing is left of an access point that was removed', { skip: NO_UCODE }, () => {
+	const home = sb => sb.p('run/' + AP1.id), gone = { write: [ 'etc/vantage/aps.json', '[]' ] };
+	const a = runCollector({ hosts: { '192.0.2.10': { out: apReport(1, 1000) } } }, [ ASK, wait(2), ASK ]);
+	assert.ok(fs.existsSync(home(a.sb) + '/.ssh/known_hosts'), 'while it is paired: its known_hosts');
+	const b = runCollector({ hosts: { '192.0.2.10': { out: apReport(1, 1000) } } }, [ ASK, wait(2), ASK, gone, ASK ]);
+	assert.deepEqual([ b.results[4].aps, fs.existsSync(home(b.sb)) ], [ [], false ]);
+	/* removed while a fetch for it hangs: cleared once that fetch has been ended */
+	const c = runCollector({ hosts: { '192.0.2.10': { hang: '' } } }, [ ASK, wait(1), gone, ASK, wait(20), ASK ]);
+	assert.equal(fs.existsSync(home(c.sb)), false);
+	/* removed and paired again while it hangs: the new pairing's files stay */
+	const d = runCollector({ hosts: { '192.0.2.10': { hang: '' } } }, [ ASK, wait(1), gone, ASK, { write: [ 'etc/vantage/aps.json', JSON.stringify([ AP1 ]) ] }, ASK, wait(1), ASK ]);
+	assert.equal(d.results[d.results.length - 1].aps.length, 1);
+});
+
+test('collector: a device at the old address that never shows the pinned key does not end the search', { skip: NO_UCODE }, () => {
+	const arp = 'IP address HW type Flags HW address Mask Device\n192.0.2.77 0x1 0x2 ' + AP_MAC + ' * br-lan\n';
+	const there = { '192.0.2.77': { out: apReport(1, 1000) } };
+	/* what real dbclient writes for a version line of the other end's choosing, and for a disconnect sent before any key (it ends with 0) */
+	for (const [ err, code ] of [ [ "Incompatible remote version 'SSH-1.5-Permission denied'", 1 ], [ "Incompatible remote version 'SSH-1.5-ash: /usr/libexec/vantage/report: not found'", 1 ], [ 'Disconnect received', 0 ] ]) {
+		const { results, calls } = runCollector({ arp, hosts: Object.assign({ '192.0.2.10': { err: '\n' + DBC + err + '\n', code } }, there) }, [ ASK, wait(1), ASK, wait(3), ASK ]);
+		assert.deepEqual([ results[2].aps[0].state, results[2].aps[0].error ], [ 'offline', 'unreachable' ], err);
+		assert.deepEqual(calls.slice(0, 2).map(c => /root@(\S+)/.exec(c)[1]), [ '192.0.2.10', '192.0.2.77' ], err);
+		assert.deepEqual([ results[4].aps[0].state, results[4].aps[0].addr ], [ 'ok', '192.0.2.77' ], err);
+	}
+	/* the access point itself, key shown, refusing this router: that is its answer, and it is looked for nowhere else */
+	const refused = runCollector({ arp, hosts: Object.assign({ '192.0.2.10': { err: '\n' + DBC + 'No auth methods could be used.\n', code: 1 } }, there) }, [ ASK, wait(25), ASK ]);
+	assert.deepEqual([ refused.results[2].aps[0].state, refused.results[2].aps[0].error ], [ 'error', 'denied' ]);
+	assert.ok(refused.calls.every(c => c.includes('root@192.0.2.10 ')));
+});
+
+test('collector: the leases are read only as a plain file; a FIFO under their name does not hold the daemon', { skip: NO_UCODE }, () => {
+	const leases = '1700000000 ' + AP_MAC + ' 192.0.2.78 ap-hall *\n', there = { '192.0.2.78': { out: apReport(1, 1000) } };
+	const steps = [ ASK, wait(1), ASK, wait(12), ASK ];
+	assert.equal(runCollector({ leases, hosts: there }, steps).results[4].aps[0].addr, '192.0.2.78', 'a plain file: found by its lease');
+	for (const leasesAs of [ 'fifo', 'link' ]) {
+		/* with the name opened as it comes, the FIFO never returns from open(): this run would end in the harness's timeout */
+		const { results, calls } = runCollector({ leases, leasesAs, hosts: there }, steps);
+		assert.deepEqual([ results[4].aps[0].state, results[4].aps[0].addr ], [ 'offline', '192.0.2.10' ], leasesAs);
+		assert.ok(calls.length >= 2 && calls.every(c => c.includes('root@192.0.2.10 ')), leasesAs + ': no address from it');
+	}
+});
+
+test('collector: a report is counted before it is parsed', { skip: NO_UCODE }, () => {
+	/* 128 KiB of empty objects took 66 MB to parse, for a report normalize() then empties */
+	const head = '{"v":1,"name":"x","ssids":[', objects = n => head + Array(n).fill('{}').join(',') + ']}';
+	const hostile = objects(Math.floor((131072 - head.length - 2 + 1) / 3));
+	assert.ok(hostile.length <= 131072 && hostile.length > 131000 && JSON.parse(hostile).v === 1, 'within the size limit, and JSON');
+	for (const out of [ hostile, objects(1280), '{"v":1,"x":[' + Array(4098).fill('0').join(',') + ']}' ]) {
+		const { results } = runCollector({ hosts: { '192.0.2.10': { out } } }, [ ASK, wait(2), ASK ]);
+		assert.deepEqual([ results[2].aps[0].state, results[2].aps[0].error, results[2].aps[0].report ], [ 'error', 'invalid', null ], out.length + ' bytes');
+	}
+	/* the fullest report an access point can make, every free text of it nothing but braces or commas, still passes */
+	const full = fill => JSON.stringify({ v: 1, name: fill.repeat(63), model: fill.repeat(64), uptime: 1, mac: MAC(99),
+		ssids: Array.from({ length: 16 }, (_, i) => ({ ifname: 'w' + i, bssid: MAC(i), ssid: fill.repeat(32), freq: 5180, channel: 36 })),
+		stations: Array.from({ length: 256 }, (_, i) => ({ mac: '02:00:5e:00:' + (i >> 8).toString(16).padStart(2, '0') + ':' + (i & 255).toString(16).padStart(2, '0'), ifname: 'w' + (i % 16),
+			signal: -50, rx_rate: 866000, tx_rate: 650000, rx_bytes: 1, tx_bytes: 2, connected: 60 })),
+		ports: Object.fromEntries(Array.from({ length: 32 }, (_, i) => [ 'lan' + i, { speed: 1000, rx_bytes: 1, tx_bytes: 1, hosts: 4 } ])),
+		wired: Array.from({ length: 128 }, (_, i) => ({ mac: '02:00:5e:01:00:' + i.toString(16).padStart(2, '0'), port: 'lan' + (i % 32) })) });
+	for (const fill of [ '{', '[', ',' ]) {
+		const { results } = runCollector({ hosts: { '192.0.2.10': { out: full(fill) } } }, [ ASK, wait(2), ASK ]);
+		const r = results[2].aps[0].report;
+		assert.deepEqual([ results[2].aps[0].state, r.ssids.length, r.stations.length, r.wired.length, r.ssids[0].ssid ], [ 'ok', 16, 256, 128, fill.repeat(32) ], 'full of ' + fill);
+	}
+	/* the two counts, to the byte */
+	const P = t => [ 'parseable', t ];
+	assert.deepEqual(runModule([ P('{}'), P('['.repeat(1280)), P('['.repeat(1281)), P('{'.repeat(1281)), P('{'.repeat(640) + 'x' + '['.repeat(641)), P(','.repeat(4096)), P(','.repeat(4097)),
+		P('{}\u0000' + '{'.repeat(2000)), P(null), P(7) ]), [ true, true, false, false, false, true, false, false, false, false ]);
 });
 
 test('collector: the paired list is read again when it changes, even within a second; 1024 stations in a reply', { skip: NO_UCODE }, () => {

@@ -1777,6 +1777,60 @@ test('paired access points: the list and the drawers show the address as text an
 	assert.doesNotMatch(src, /\.(hostname|host|port|protocol|pathname)\s*=[^=]|target': '_blank'/, 'no address put into a link');
 }));
 
+/* the model keeps the other access points that list an entry on it (ap.also,
+   behind.also): named in the entry's details, nowhere else */
+test('paired access points: an entry another one reports too names it in its details only: one line, as text, not in the list or on the path', t => withFakeDom(() => {
+	const savedL = global.L;
+	global.L = { url: (...p) => '/cgi-bin/luci/' + p.join('/') };
+	t.after(() => { global.L = savedL; });
+	const DEN_ID = 'fedcba9876543210', DEN = { id: DEN_ID, name: 'ap-den' };
+	/* ap-den hears ap-hall's station too, weaker, and lists the same wired host */
+	const den = hall({ id: DEN_ID, name: 'ap-den', addr: '192.0.2.11' }, { mac: '02:00:5e:10:00:02',
+		ssids: [ { ifname: 'phy0-ap0', bssid: '00:00:5e:00:53:b0', ssid: 'Den', freq: 2437, channel: 6, band: '2g' } ],
+		stations: [ { mac: '00:00:5e:00:53:21', ifname: 'phy0-ap0', signal: -95 } ], wired: [ { mac: '00:00:5e:00:53:41', port: 'lan9', speed: 10 } ] });
+	const tree = list => { const n = new FNode('x'); append(n, list); return n; };
+	const page = m => Object.assign(Object.create(dview), { m, st: { staRates: {}, devRates: {}, clientHist: {}, gone: [] }, ui: {}, el: {}, quiet: {}, canWrite: false });
+	const parts = m => ({ remote: m.clients.filter(c => c.ap)[0], added: m.wiredHosts.filter(h => h.ap)[0], noted: m.wiredHosts.filter(h => h.behind)[0] });
+	const drawers = (self, e) => [ tree(self.drawerClient(e.remote.mac).body), tree(self.drawerWired(e.added).body), tree(self.drawerWired(e.noted).body) ];
+	const lines = n => n.all().filter(s => s.tag === 'small' && /^Also reported by /.test(s.textContent));
+	const rows = (self, e) => [ tree(self.clientCells(e.remote, 0)).html(), tree(self.wiredCells(e.added, 0)).html(), tree(self.wiredCells(e.noted, 0)).html() ];
+
+	/* one access point: no line anywhere */
+	const one = apModel({ aps: [ hall() ] });
+	for (const d of drawers(page(one), parts(one))) assert.doesNotMatch(d.textContent, /Also reported/);
+
+	const m = apModel({ aps: [ hall(), den ] }), e = parts(m), self = page(m);
+	assert.deepEqual([ e.remote.ap.name, e.remote.ap.also, e.added.ap.name, e.added.ap.also ], [ 'ap-hall', [ DEN ], 'ap-hall', [ DEN ] ], 'placed as with one, the other kept by the model');
+	/* a host of this device noted as behind ap-hall: the model's field for another that lists it there (tests/model.test.js) */
+	e.noted.behind.also = [ DEN ];
+	const [ client, wired, local ] = drawers(self, e);
+	assert.match(client.textContent, /Access pointap-hall192\.0\.2\.10Also reported by ap-denBSSID/, 'under the access point it is on');
+	assert.match(wired.textContent, /Access pointap-hall192\.0\.2\.10Also reported by ap-denPortlan3/);
+	assert.match(local.textContent, /Access pointap-hallits port lan2Also reported by ap-den/);
+	for (const d of [ client, wired, local ]) {
+		assert.deepEqual(lines(d).map(s => s.childNodes), [ [ 'Also reported by ap-den' ] ], 'one line, a text node');
+		assert.equal(d.textContent.split('Also reported').length, 2, 'once');
+	}
+	/* several: their names in the model's order, joined; a name is text whatever it holds */
+	e.remote.ap.also = [ DEN, { id: '1111111111111111', name: 'ap-loft' }, { id: '2222222222222222', name: '<b>attic</b>' } ];
+	const many = tree(self.drawerClient(e.remote.mac).body);
+	assert.deepEqual(lines(many).map(s => s.childNodes), [ [ 'Also reported by ap-den, ap-loft, <b>attic</b>' ] ]);
+	assert.ok(!many.all().some(n => n.tag === 'b'), 'no element made of a name');
+	/* an empty or broken field: no line */
+	for (const junk of [ [], null, 'ap-den', {} ]) {
+		e.remote.ap.also = junk;
+		assert.deepEqual(lines(tree(self.drawerClient(e.remote.mac).body)), [], JSON.stringify(junk));
+	}
+
+	/* the list rows and the path are as without the field */
+	e.remote.ap.also = [ DEN ];
+	const withAlso = rows(self, e), path = hero(m).el.path.html();
+	for (const r of withAlso.concat([ path ])) assert.doesNotMatch(r, /Also reported/);
+	delete e.remote.ap.also; delete e.added.ap.also; delete e.noted.behind.also;
+	assert.deepEqual(rows(self, e), withAlso, 'the rows');
+	assert.equal(hero(m).el.path.html(), path, 'the path');
+}));
+
 test('paired access points: the report rides the slow poll; a failed call is none, never the last answer', async () => {
 	const saved = { L: global.L, document: global.document, now: Date.now };
 	let t = 1e12, reply = { aps: [ { id: AP_ID } ] }, low = false, asked = 0;
@@ -1815,3 +1869,164 @@ test('paired access points: the report rides the slow poll; a failed call is non
 		for (const k of Object.keys(REPLIES)) if (/^(luci\.vantage (wireless|thermal|wired)|vantage\.collector)/.test(k)) delete REPLIES[k];
 	}
 });
+
+/* The add-on's call must not be able to hold up the dashboard. fetch() with
+   the test's timers and clock: nothing here waits for real */
+async function collectorPolls(fn) {
+	const saved = { L: global.L, document: global.document, now: Date.now, setTimeout: global.setTimeout, clearTimeout: global.clearTimeout };
+	const c = { t: 1e12, timers: [], seq: 0, asked: 0, calls: [], assoc: 0, answer: null };
+	Date.now = () => c.t;
+	global.setTimeout = (f, ms) => { const id = ++c.seq; c.timers.push({ id, f, at: c.t + ms }); return id; };
+	global.clearTimeout = id => { c.timers = c.timers.filter(x => x.id !== id); };
+	/* promise callbacks run, then the timers that are due ms later, then promise callbacks again */
+	c.flush = () => new Promise(r => setImmediate(r));
+	c.advance = async ms => {
+		await c.flush();
+		c.t += ms;
+		for (const x of c.timers.filter(x => x.at <= c.t)) { c.timers = c.timers.filter(y => y !== x); x.f(); }
+		await c.flush();
+	};
+	global.document = { hidden: false, documentElement: { getAttribute: () => null } };
+	global.L = { resolveDefault: (p, d) => Promise.resolve(p).then(v => v == null ? d : v, () => d) };
+	REPLIES['luci.vantage wireless'] = () => Promise.resolve({ radio0: { up: true, config: { band: '5g' }, interfaces: [ { ifname: 'phy0-ap0', section: 'a', config: { mode: 'ap', ssid: 'Home' } } ] } });
+	REPLIES['luci.vantage thermal'] = () => Promise.resolve([]);
+	REPLIES['luci.vantage wired'] = () => Promise.resolve({ hosts: [ { mac: '00:00:5e:00:53:31', port: 'lan1', bridge: 'br-lan', seen: 1 } ] });
+	REPLIES['iwinfo assoclist'] = () => { c.assoc++; return Promise.resolve([ { mac: '00:00:5E:00:53:01', signal: -50 } ]); };
+	/* c.answer: a reply for a call that answers at once; null for one that stays out until the test settles it (c.calls) */
+	REPLIES['vantage.collector report'] = () => {
+		c.asked++;
+		return c.answer ? c.answer() : new Promise((resolve, reject) => { c.calls.push({ resolve, reject }); });
+	};
+	c.self = Object.create(view);
+	/* a poll started now: [ its result once it has one, else null ] */
+	c.poll = () => { const box = [ null ]; c.self.fetch().then(r => { box[0] = r; }, e => { box[0] = e; }); return box; };
+	try { await fn(c); }
+	finally {
+		Object.assign(global, { L: saved.L, setTimeout: saved.setTimeout, clearTimeout: saved.clearTimeout });
+		Date.now = saved.now;
+		if (saved.document === undefined) delete global.document; else global.document = saved.document;
+		for (const k of Object.keys(REPLIES)) if (/^(luci\.vantage (wireless|thermal|wired)|vantage\.collector|iwinfo assoclist)/.test(k)) delete REPLIES[k];
+	}
+}
+
+test('paired access points: the collector\'s call is a request of its own, and a poll waits 4 s for it at most', () => collectorPolls(async c => {
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	/* LuCI sends the calls of one moment as one request and answers them together, unless one says nobatch */
+	const alone = [ ...src.matchAll(/rpc\.declare\(\{ object: '([^']+)', method: '([^']+)'[^\n]*\bnobatch: true[^\n]*\}\)/g) ].map(m => m[1] + ' ' + m[2]);
+	assert.deepEqual(alone, [ 'vantage.collector report' ]);
+
+	/* it does not answer: the device's own calls are made and answered as always */
+	const first = c.poll();
+	await c.advance(0);
+	assert.deepEqual([ c.asked, c.assoc, c.timers.length ], [ 1, 1, 1 ], 'asked once; the stations asked for meanwhile; one deadline');
+	assert.equal(first[0], null, 'the poll waits');
+	await c.advance(3999);
+	assert.equal(first[0], null, 'up to the deadline');
+	await c.advance(1);
+	assert.ok(first[0] && !(first[0] instanceof Error), 'and then goes on');
+	assert.deepEqual([ first[0].fdb.map(h => h.mac), first[0].assoc['phy0-ap0'].length, first[0].collector ], [ [ '00:00:5e:00:53:31' ], 1, null ],
+		'with the poll\'s other data, and the access points it had: none');
+	assert.deepEqual([ first[0].started, first[0].at ], [ 1e12, 1e12 ], 'stamped when the device answered, not when the wait ended');
+	assert.equal(c.timers.length, 0);
+}));
+
+test('paired access points: while the collector\'s call is out no second one is made and no later poll waits; its late answer is the next poll\'s', () => collectorPolls(async c => {
+	const reply = { aps: [ { id: AP_ID } ] }, newer = { aps: [ { id: AP_ID, name: 'ap-hall' } ] };
+	/* an answer in time, as before */
+	c.answer = () => Promise.resolve(reply);
+	const ok = c.poll();
+	await c.advance(0);
+	assert.deepEqual([ ok[0].collector, c.asked, c.timers.length ], [ reply, 1, 0 ], 'no waiting, and no deadline left behind');
+	/* the next call does not answer: the poll goes on with the answer it had */
+	c.answer = null;
+	await c.advance(5e3);
+	const late = c.poll();
+	await c.advance(4e3);
+	assert.ok(late[0], 'the poll is over at the deadline');
+	assert.deepEqual([ late[0].collector, c.asked ], [ reply, 2 ]);
+	/* the polls after it: no second call beside the one that is out, and no wait */
+	for (let i = 0; i < 3; i++) {
+		await c.advance(5e3);
+		const p = c.poll();
+		await c.advance(0);
+		assert.deepEqual([ p[0] && p[0].collector, c.asked, c.calls.length, c.timers.length ], [ reply, 2, 1, 0 ], 'poll ' + i);
+	}
+	/* it answers after all: the next poll has that answer, and asks again */
+	c.calls.shift().resolve(newer);
+	await c.advance(5e3);
+	const next = c.poll();
+	await c.advance(0);
+	assert.deepEqual([ next[0], c.asked, c.calls.length ], [ null, 3, 1 ], 'a new call, out again');
+	await c.advance(4e3);
+	assert.deepEqual(next[0] && next[0].collector, newer);
+	/* Low-power router, between two slow polls: the late answer is not kept back for the next slow one */
+	c.answer = () => Promise.resolve(newer);
+	c.calls.shift().resolve(newer);
+	global.document.documentElement.getAttribute = k => k === 'data-vt-power' ? 'low' : null;
+	await c.advance(30e3);
+	const slow = c.poll();
+	await c.advance(0);
+	assert.deepEqual([ slow[0].collector, c.asked ], [ newer, 4 ]);
+	c.answer = null;
+	await c.advance(30e3);
+	const out = c.poll();
+	await c.advance(4e3);
+	assert.deepEqual([ out[0] && out[0].collector, c.asked ], [ newer, 5 ]);
+	c.calls.shift().resolve(reply);
+	await c.advance(5e3);
+	const between = c.poll();
+	await c.advance(0);
+	assert.deepEqual([ between[0].collector, c.asked ], [ reply, 5 ], 'no call of its own, the answer that came in');
+}));
+
+test('paired access points: a failed collector call shows nothing, in time or late: no access points, no error, never the last answer', () => collectorPolls(async c => {
+	const model = load('vantage.model'), reply = { aps: [ { id: AP_ID, name: 'ap-hall', addr: '192.0.2.10', state: 'waiting', error: null, age: null, report: null } ] };
+	/* no such object (the add-on not installed, nothing paired), the login may not read it, no answer in LuCI's time */
+	const failures = [ 'RPC call to vantage.collector/report failed with error -32000: Object not found',
+		'RPC call to vantage.collector/report failed with error -32002: Access denied', 'XHR request timed out' ];
+	const shown = r => model.build({ ifaces: r.ifaces, devs: r.devs, fdb: r.fdb, collector: r.collector }).accessPoints.map(a => a.name);
+	for (const text of failures) {
+		c.answer = () => Promise.resolve(reply);
+		await c.advance(5e3);
+		const had = c.poll();
+		await c.advance(0);
+		assert.deepEqual(shown(had[0]), [ 'ap-hall' ], 'the control');
+		/* refused at once */
+		c.answer = () => Promise.reject(new Error(text));
+		await c.advance(5e3);
+		const p = c.poll();
+		await c.advance(0);
+		assert.ok(p[0] && !(p[0] instanceof Error), text + ': the poll itself does not fail');
+		assert.deepEqual([ p[0].collector, shown(p[0]), c.timers.length ], [ null, [], 0 ], text);
+		assert.deepEqual(model.build({ ifaces: p[0].ifaces, devs: p[0].devs, fdb: p[0].fdb, collector: p[0].collector }),
+			model.build({ ifaces: p[0].ifaces, devs: p[0].devs, fdb: p[0].fdb }), text + ': as without the add-on');
+		/* refused after the deadline: the poll that waited keeps what it had, the next one has none */
+		c.answer = () => Promise.resolve(reply);
+		await c.advance(5e3);
+		c.poll();
+		await c.advance(0);
+		c.answer = null;
+		await c.advance(5e3);
+		const waited = c.poll();
+		await c.advance(4e3);
+		assert.ok(waited[0], text + ': the poll is over at the deadline');
+		assert.deepEqual(shown(waited[0]), [ 'ap-hall' ], text + ': still out');
+		c.calls.shift().reject(new Error(text));
+		c.answer = () => new Promise(() => {});
+		await c.advance(5e3);
+		const after = c.poll();
+		await c.advance(4e3);
+		assert.ok(after[0], text + ': and the one after it');
+		assert.deepEqual([ after[0].collector, shown(after[0]) ], [ null, [] ], text + ': late');
+		/* that last call never settles: the next round starts as if it had */
+		c.self.collectorCall = null;
+	}
+	/* an answer that is no report (LuCI gives {} for a ubus status without data) names none either */
+	for (const junk of [ {}, 'x', [ 1 ], 7 ]) {
+		c.answer = () => Promise.resolve(junk);
+		await c.advance(5e3);
+		const p = c.poll();
+		await c.advance(0);
+		assert.deepEqual(shown(p[0]), [], JSON.stringify(junk));
+	}
+}));

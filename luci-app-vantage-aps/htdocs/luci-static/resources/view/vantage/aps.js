@@ -157,6 +157,7 @@ function sshProblem(state) {
 	case 'unsupported': return _('Dropbear\'s settings on this device (root login off, a forced command or its own host key files) keep a router from reading it, so pairing is off.');
 	case 'no-host-key': return _('Dropbear has no Ed25519 host key yet, so pairing is off. Restarting Dropbear creates one.');
 	case 'not-running': return _('Dropbear, the SSH server, is not running, so pairing is off. Start it under System → Startup.');
+	case 'keys-unreadable': return _('This device\'s SSH key file (/etc/dropbear/authorized_keys) cannot be read, or is larger than 256 KiB. Which routers can read this device is not known, so pairing is off.');
 	case 'no-address': return _('This device has no IPv4 address on its lan interface for a router to reach it at, so pairing is off.');
 	}
 	return _('SSH on this device is not ready for pairing.');
@@ -644,11 +645,13 @@ return view.extend({
 			this.sshShown = problem;
 			dom.content(el.ssh, problem ? [ warnNote(problem) ] : []);
 		}
-		var sig = JSON.stringify(s.routers.map(function(r) { return [ r.key, r.name ]; }));
+		/* the key file unread: an empty list says nothing about who is let in */
+		var unknown = s.ssh === 'keys-unreadable';
+		var sig = JSON.stringify([ unknown ].concat(s.routers.map(function(r) { return [ r.key, r.name ]; })));
 		if (sig !== this.routerSig) {
 			this.routerSig = sig;
 			dom.content(el.routerRows, s.routers.length ? s.routers.map(function(r) { return self.routerRow(r); })
-				: [ E('p', { 'class': 'vt-empty-inline', 'role': 'listitem' }, [ _('No router can read this access point.') ]) ]);
+				: [ E('p', { 'class': 'vt-empty-inline', 'role': 'listitem' }, [ unknown ? _('Not known while the key file cannot be read.') : _('No router can read this access point.') ]) ]);
 		}
 		/* with SSH not ready, letting a router in is refused: no button;
 		   the reply again only while the flow (which shows it) is closed */

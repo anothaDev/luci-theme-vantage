@@ -51,7 +51,7 @@ const MAX_APS = 16;
 const MAX_ROUTERS = 8;
 /* bytes of a pasted code */
 const MAX_CODE = 512;
-const SSH_STATES = [ 'ok', 'no-dropbear', 'no-key-options', 'unsupported', 'no-host-key', 'not-running', 'no-address' ];
+const SSH_STATES = [ 'ok', 'no-dropbear', 'no-key-options', 'unsupported', 'no-host-key', 'not-running', 'keys-unreadable', 'no-address' ];
 
 /* rpcd ubus status codes */
 const INVALID_ARGUMENT = 2;

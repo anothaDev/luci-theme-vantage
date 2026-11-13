@@ -471,9 +471,7 @@ text around it so it looks the same size.
   `network.interface dump`, `network.device status`, `iwinfo
   info/assoclist`, `hostapd.* get_status/get_clients`, `luci-rpc
   getHostHints`, `luci.vantage wireless/thermal/wired/routes/survey`, `umdns hosts`, `file read` of
-  `/proc/stat`, `uci get` for `vantage`, `vantage.collector report` (the
-  access points this device is paired with; the object exists only with
-  `luci-app-vantage-aps` installed and an access point paired), and LuCI's own `luci
+  `/proc/stat`, `uci get` for `vantage`, and LuCI's own `luci
   getSwconfigPortState` (the link state of a swconfig switch's ports: LuCI
   runs `swconfig dev <switch> show`, the switch name quoted; the view asks
   at most every 30 s, and only for a switch with hosts behind it); no
@@ -564,7 +562,10 @@ dashboard package itself stays read-only.
   `/etc/vantage/id_ed25519`). Pasted on the access point, the add-on adds
   that key to `/etc/dropbear/authorized_keys` as
   `command="/usr/libexec/vantage/report",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding
-  ssh-ed25519 <key> vantage-router@<name>` and answers with
+  ssh-ed25519 <key> vantage-router@<name>+<key id>` (the id: the first 8
+  of the key's 32 bytes in hex; the line is made and known again in one
+  place, `aps.uc`, and a blank or carriage return an editor left after
+  it does not hide it) and answers with
   `vantage-ap 1 ssh-ed25519 <host key> <address> <port> <mac> <name>`:
   its Ed25519 host key, LAN address, SSH port and LAN MAC. Pasted back on the router,
   that answer is the access point's record in `/etc/vantage/aps.json`
@@ -574,7 +575,12 @@ dashboard package itself stays read-only.
   string with a NUL byte passes: ucode matches a pattern only up to
   one). `authorized_keys` and the list are replaced whole, through a
   file written beside them and checked to be complete first, so a full
-  flash cannot leave the administrator's own keys cut short.
+  flash cannot leave the administrator's own keys cut short. Neither is
+  written when it is there and cannot be read whole (256 KiB of keys,
+  64 KiB of list), nor grown past that: what it holds would be lost, or
+  could no longer be listed and revoked. An access point whose key file
+  cannot be read says so (`keys-unreadable`) and pairs with no one. The
+  answer to a router is made before its line is written.
 - **Transport.** The collector (`/usr/libexec/vantage/collector`, procd
   service `vantage-collector`, started only while an access point is
   paired) logs in to each one with `dbclient` as root with the router's
@@ -587,15 +593,35 @@ dashboard package itself stays read-only.
   and its output capped by the shell (`ulimit -f`, just above the 128 KiB
   a report may have: the files are in RAM).
   When an access point is not found at its address (or another device
-  answers there), the collector looks its MAC up in the router's
-  neighbour table and DHCP leases and tries the address it has now; the
+  answers there), the collector looks its MAC up in the router's DHCP
+  leases and neighbour table and tries the address it has now; the
   pinned host key decides, so a DHCP address change does not unpair it.
-  The address it answers at is kept in memory, `/etc/vantage` stays as
-  paired. States: `ok` (a report to show), `offline` (`unreachable`,
-  `timeout`), `error` (`hostkey`, `denied`, `invalid`, or `missing`: no
-  report command there, the add-on is not installed) and `waiting`
-  (nothing fetched yet). After a pause in looking, the last report
-  stands until the next fetch has ended.
+  It looks on the network the access point was paired on only (the
+  interface with a subnet that holds the pairing address, that
+  interface's device and IPv4 subnets): any device gets a row under any
+  MAC and address into the neighbour table of a network it is on, and
+  the router would open a connection to wherever such a row says. The
+  lease comes first, then the neighbour table, four addresses at most;
+  the leases are read only as a plain file of root's (a FIFO under that
+  name would hold the daemon). The address it answers at is kept in
+  memory, `/etc/vantage` stays as paired. States: `ok` (a report to
+  show), `offline` (`unreachable`, `timeout`), `error` (`hostkey`,
+  `denied`, `invalid`, or `missing`: no report command there, the add-on
+  is not installed) and `waiting` (nothing fetched yet). `denied`,
+  `missing` and `invalid` end the search, so only an access point that
+  showed its pinned key can cause them: `denied` is `dbclient`'s one
+  reason that comes after the key check, word for word, `missing` a line
+  of the access point's own shell, `invalid` bytes on its standard
+  output. What a device says before any key is checked (its version line
+  is quoted in `dbclient`'s error text; a disconnect ends `dbclient` with
+  0) reads as `unreachable`. A report's text is counted before it is
+  parsed (at most 1280 objects and arrays and 4096 commas): `json()`
+  builds every value before a check can drop one, and 128 KiB of empty
+  objects took 66 MB. After a pause in looking, the last report stands
+  until the next fetch has ended, unless the fetch before the pause had
+  already failed. An upgrade restarts the collector: procd watches its
+  program files (`file` in the init script), since a package upgrade
+  only runs `start`.
 - **What an access point tells.** Dropbear runs the report command
   whatever the router asks for (the key's forced command): the
   hostname, model, uptime and LAN MAC; its access-point interfaces
@@ -612,7 +638,10 @@ dashboard package itself stays read-only.
   MAC it places the access point by is the one from pairing, never the
   one in the report.
 - **Its place on the dashboard.** What an access point reports adds
-  entries, marked as its; it never renames or re-addresses one, and a
+  entries, marked as its; it never renames or re-addresses one (except
+  that the entries it adds count when deciding whether an mDNS name is
+  uncontested: an address the host hints give to one of them and to an
+  entry of this device names neither), and a
   station on this device's own Wi-Fi, the gateway and this device's own
   addresses stay as they are. One case moves an entry: a host this
   device hears on the very port it hears the access point's own MAC on
@@ -620,15 +649,42 @@ dashboard package itself stays read-only.
   one of this device's) and that the access point lists as its station
   is shown as that access point's Wi-Fi client, not as a wired host of
   this device. A host the access point lists as wired behind it gets a
-  note saying so. An access point is named as at pairing; its address is
-  text, never a link to its LuCI. Its stations stay out of this device's
-  health checks and weak-signal warnings. Without the add-on, or with
-  nothing paired, the dashboard is as before.
+  note saying so. Where this device hears the access point's MAC is
+  decided against its own host hints, addresses compared by value (an
+  IPv6 address has many spellings). The gateway is the one host the
+  hints give the next hop's address: a station of one of this device's
+  access point interfaces never (the far end of its own client, mesh or
+  WDS link may be), a host heard only on bridges the line does not leave
+  through neither (any device gets its MAC listed under any address with
+  one ARP request), and when two are left, none: unknown rather than the
+  one listed last. This tells apart a claim made from another of this
+  device's networks, not one made on the uplink's own: a wired host
+  there that replaces the gateway's entry in this device's neighbour
+  table (ARP spoofing) is the one holder, and is shown as the gateway.
+  While it is unknown and the uplink has a next hop, no
+  host the uplink's bridge has learned is moved or noted, since any of
+  them may be the gateway. A client two access points report stays where
+  it was placed (the stronger signal; a station before a wired host);
+  the others are named in its details ("Also reported by"), so no report
+  is dropped unseen, and nothing changes in the list or the path. An
+  access point is named as at pairing; its address is text, never a link
+  to its LuCI. Its stations stay out of this device's health checks and
+  weak-signal warnings. The report is asked for in a request of its own
+  and waited for at most 4 s a poll, so a collector that does not answer
+  holds up nothing else; a login without `luci-app-vantage-aps-view`
+  gets none. Without the add-on, or with nothing paired, the dashboard
+  is as before.
 - **Unpairing.** Removing an access point on the router deletes its
-  record (and stops the collector with the last one); revoking a router
-  on the access point deletes its key line, which takes effect at the
-  next fetch. Removing the add-on leaves the key lines, which can then
-  only run a command that is gone: revoke routers first.
+  record and what the collector kept for it (and stops the collector
+  with the last one); revoking a router on the access point deletes its
+  key line, which takes effect at the next fetch. A router that keeps a
+  connection open from before gets nothing either: Dropbear checks a key
+  when a connection logs in, not for each session on it, but it names
+  the line that let the caller in to the command it runs
+  (`SSH_PUBKEYINFO`, the line's comment), and the report prints nothing
+  for a line of the add-on's that `authorized_keys` no longer holds.
+  Removing the add-on leaves the key lines, which can then only run a
+  command that is gone: revoke routers first.
 - **Requirements and limits.** Dropbear on the access point, running and
   reachable from the router, built with key options (OpenWrt's default;
   the add-on looks for Dropbear's option parser and refuses to pair
@@ -636,7 +692,10 @@ dashboard package itself stays read-only.
   an Ed25519 host key of its own and settings that let root in by key
   with the key's own command (no `RootLogin` off, `ForceCommand` or
   `keyfile` list in the first section that is on, whose first port the
-  reply names); `dbclient` on the router. On OpenWrt 24.10's Dropbear the
+  reply names); `dbclient` on the router. Revoking a connection that is
+  still open needs a Dropbear that sets `SSH_PUBKEYINFO` (2022.82 and
+  later; OpenWrt 24.10 and 25.12 have it): on an older one such a
+  connection reads on until it ends. On OpenWrt 24.10's Dropbear the
   key's `no-port-forwarding` is also what keeps it from forwarding to a
   local socket such as ubus's: it must stay. The collector runs as root
   for now (a user of its own is on the roadmap); what it reads from the
@@ -703,8 +762,13 @@ dashboard package itself stays read-only.
   writes `/etc/vantage/aps.json` and its own lines of
   `/etc/dropbear/authorized_keys`, each limited to the report command;
   its collector runs `dbclient` with the pinned host key and nothing
-  else. Its ACL group (`luci-app-vantage-aps`) is for administrators
-  only. `test_acl_policy.js` holds each of these to that list, and
+  else. Its ACL group for pairing (`luci-app-vantage-aps`) is for
+  administrators only. Seeing the access points is a group of its own,
+  `luci-app-vantage-aps-view` (read `vantage.collector report`): a call
+  makes the router log in to every paired access point and shows their
+  clients, so the dashboard's groups do not grant it, and a login with
+  the dashboard alone sees the dashboard without the access points.
+  `test_acl_policy.js` holds each of these to that list, and
   `tests/aps.test.js` runs them against hostile codes and reports.
 - Built-package verification (`security-tests/verify_built_apk.js`, run by
   `dev/build/sdk-build.sh` before anything reaches `dist/`) and a

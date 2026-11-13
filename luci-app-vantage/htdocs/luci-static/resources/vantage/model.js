@@ -436,9 +436,9 @@ return baseclass.extend({
 	   6to4 IPv6 is part of the line when there is only one; a
 	   default in another table (policy routing) is not ordinary
 	   traffic's. A WAN that is down has no route: it stays a network
-	   until it comes up. On a bridge, `viaOf(next hop)` names the port
-	   the bridge learned that gateway on; without it a bridge with
-	   several wired ports keeps its own counters.
+	   until it comes up. On a bridge, `viaOf(next hop, the line's
+	   device)` names the port the bridge learned that gateway on; without
+	   it a bridge with several wired ports keeps its own counters.
 	   -> [ line, ... ] as resolveUplink's, without main */
 	extraUplinks: function(ifaces, devs, wirelessNames, main, viaOf, kernel) {
 		var self = this;
@@ -448,7 +448,7 @@ return baseclass.extend({
 			return g.l3.indexOf(main.l3dev) < 0 && !g.members.some(function(i) { return i.interface === main.iface; });
 		}).map(function(g) {
 			var r = defRoute(g.r.i), hop = r && r.nexthop;
-			return absorb(self.line(g.r.i, devs, wirelessNames, hop && typeof viaOf === 'function' ? viaOf(hop) : null, true), g);
+			return absorb(self.line(g.r.i, devs, wirelessNames, hop && typeof viaOf === 'function' ? viaOf(hop, g.r.i.l3_device || g.r.i.device) : null, true), g);
 		});
 	},
 
@@ -569,6 +569,24 @@ return baseclass.extend({
 			if (m[i].length > 1 && m[i].charAt(0) === '0') return null;
 			if (+m[i] > 255) return null;
 			out.push(+m[i]);
+		}
+		return out;
+	},
+
+	/* an IPv6 address -> its eight groups, the same for every spelling
+	   of it (::, leading zeros, case), or null; one with an IPv4 tail
+	   or a zone is none here */
+	parseIPv6: function(s) {
+		var parts = typeof s === 'string' ? s.split('::') : [];
+		if (parts.length < 1 || parts.length > 2) return null;
+		var head = parts[0] ? parts[0].split(':') : [], tail = parts[1] ? parts[1].split(':') : [];
+		var gap = 8 - head.length - tail.length, out = [];
+		if (parts.length > 1 ? gap < 1 : gap !== 0) return null;
+		for (; gap > 0; gap--) head.push('0');
+		head = head.concat(tail);
+		for (var i = 0; i < 8; i++) {
+			if (!/^[0-9a-f]{1,4}$/i.test(head[i])) return null;
+			out.push(parseInt(head[i], 16));
 		}
 		return out;
 	},
@@ -835,11 +853,16 @@ return baseclass.extend({
 		function hintOf(mac) { return obj(hints[mac.toUpperCase()] || hints[mac]); }
 
 		/* mDNS names only where they are unambiguous across all stations */
-		var everyone = [];
+		var everyone = [], apSta = Object.create(null);
 		ssids.forEach(function(ss) {
 			if (ss.ifname) arr(assoc[ss.ifname]).forEach(function(s) {
 				var mac = s && names.normMac(s.mac);
-				if (mac) everyone.push({ mac: mac, ips: self.hintAddrs(hintOf(mac), ssidSubnets(ss)) });
+				if (!mac) return;
+				everyone.push({ mac: mac, ips: self.hintAddrs(hintOf(mac), ssidSubnets(ss)) });
+				/* a station of an access point interface: one host using
+				   this device. The far end of a client or mesh interface
+				   is no such station */
+				if (ss.mode !== 'sta' && ss.mode !== 'mesh') apSta[mac] = true;
 			});
 		});
 		/* wired hosts: what the bridges learned on ports that are not
@@ -855,17 +878,43 @@ return baseclass.extend({
 			if (!prev) wiredMacs.push(mac);
 			fdb[mac] = { port: h.port, bridge: typeof h.bridge === 'string' ? h.bridge : null, vlan: finite(h.vlan) ? h.vlan : null, seen: seen };
 		});
-		/* a gateway, by the address the host hints give it; on a bridge
-		   with several ports a line is the port it was learned on */
-		function macOf(addr) {
-			var found = null;
-			if (addr) Object.keys(hints).forEach(function(k) {
-				var mac = names.normMac(k);
-				if (mac && arr(obj(hints[k]).ipaddrs).concat(arr(obj(hints[k]).ip6addrs)).indexOf(addr) >= 0) found = mac;
+		/* the MACs the host hints give an address, each once. An IPv6
+		   address by its value: it has many spellings (a pairing keeps the
+		   one it was given, the hints have their own). Text with a colon
+		   that is no IPv6 address equals nothing */
+		function holders(addr) {
+			function key(x) {
+				var g = self.parseIPv6(x);
+				return g ? g.join(':') : typeof x === 'string' && x.indexOf(':') < 0 ? x.toLowerCase() : null;
+			}
+			var at = [], want = key(addr);
+			if (want) Object.keys(hints).forEach(function(k) {
+				var h = obj(hints[k]), m = names.normMac(k);
+				if (m && at.indexOf(m) < 0 && arr(h.ipaddrs).concat(arr(h.ip6addrs)).some(function(x) { return key(x) === want; })) at.push(m);
 			});
-			return found;
+			return at;
 		}
-		var gwMac = uplink ? macOf(uplink.gateway) : null;
+		/* a gateway, by the address the host hints give it; on a bridge
+		   with several ports a line is the port it was learned on. Any
+		   device can have the hints list an address under its MAC (one ARP
+		   request does it), so a host of this device is not the gateway of a
+		   line that does not leave through its bridge (l3: the line's
+		   device), a station of one of its access point interfaces never,
+		   unless it is heard over a link of its own (wifiLink, below); and
+		   when two are left, none is: unknown rather than the wrong one */
+		function macOf(addr, l3) {
+			var vlan = /^(.+)\.\d{1,4}$/.exec(l3 || ''), on = [ l3, vlan ? vlan[1] : l3 ];
+			var found = holders(addr).filter(function(mac) {
+				/* every row luci.vantage wired gave for it, not the one kept
+				   (fdb): that is the one heard last, and a router's MAC is on
+				   every bridge of a wire that carries its VLANs */
+				var rows = arr(raw.fdb).filter(function(h) { return h && names.normMac(h.mac) === mac && typeof h.port === 'string'; });
+				if (apSta[mac] && !rows.some(function(h) { return wifiLink(h.port); })) return false;
+				return !l3 || !rows.length || rows.some(function(h) { return on.indexOf(h.bridge || h.port) >= 0; });
+			});
+			return found.length === 1 ? found[0] : null;
+		}
+		var gwMac = uplink ? macOf(uplink.gateway, uplink.l3dev) : null;
 		/* a gateway heard on no wired port but over a Wi-Fi link this
 		   device bridges other hosts through: its own client or mesh
 		   interface, or a WDS station's of one of its access point
@@ -890,8 +939,8 @@ return baseclass.extend({
 			var via = this.resolveUplink(raw.ifaces, devs, wlNames, gwPort, kernel);
 			if (via && via.port === gwPort) uplink = via;
 		}
-		var uplinks = uplink ? ownConduits([ uplink ].concat(this.extraUplinks(raw.ifaces, devs, wlNames, uplink, function(hop) {
-			var mac = macOf(hop);
+		var uplinks = uplink ? ownConduits([ uplink ].concat(this.extraUplinks(raw.ifaces, devs, wlNames, uplink, function(hop, l3) {
+			var mac = macOf(hop, l3);
 			return mac && fdb[mac] ? fdb[mac].port : null;
 		}, kernel).slice(0, MAX_LINES))) : [];
 		/* the network on each bridge (or bridge VLAN: br-lan.10), and its
@@ -905,6 +954,38 @@ return baseclass.extend({
 		function lanOf(h) { return h.bridge ? (h.vlan != null && lans[h.bridge + '.' + h.vlan]) || lans[h.bridge] || null : null; }
 		function wiredSubnets(mac) { var l = lanOf(fdb[mac]); return l && l.ipv4.length ? l.ipv4 : subnets; }
 		wiredMacs.forEach(function(mac) { everyone.push({ mac: mac, ips: self.hintAddrs(hintOf(mac), wiredSubnets(mac)) }); });
+		/* The entries the paired access points' reports add (below) are
+		   parties to the mDNS names too: every MAC they list that this
+		   device does not list itself, with the addresses who() gives
+		   it. Left out, an address the hints give one of them and one
+		   entry here would name both. */
+		var aps = this.collectorAps(raw.collector), ownMacs = Object.create(null);
+		Object.keys(devs).forEach(function(n) { var m = names.normMac(obj(devs[n]).macaddr); if (m) ownMacs[m] = true; });
+		ssids.forEach(function(s) { var m = names.normMac(s.bssid); if (m) ownMacs[m] = true; });
+		/* Their addresses are this device's host hints on its own networks:
+		   every one but the lines to the internet; a line's too where its
+		   clients are on it (an access point's uplink: a bridge) or one
+		   of the access points itself is */
+		var lineNames = Object.create(null), localSubnets = [];
+		function local(list) { list.forEach(function(x) { if (localSubnets.indexOf(x) < 0) localSubnets.push(x); }); }
+		uplinks.forEach(function(u) {
+			[ u.iface ].concat(arr(u.ifaces), u.tunnel ? [ u.tunnel.iface ] : []).forEach(function(n) { lineNames[n] = true; });
+		});
+		Object.keys(netSubnets).forEach(function(n) {
+			if (n === 'loopback') return;
+			if (!lineNames[n]) local(netSubnets[n]);
+			else local(netSubnets[n].filter(function(x) {
+				var p = x.split('/');
+				return aps.some(function(a) { return self.ipv4InSubnet(a.addr, p[0], p[1]); });
+			}));
+		});
+		if (uplink && uplink.dev !== uplink.l3dev) local(subnets);
+		if (!localSubnets.length) localSubnets = subnets;
+		aps.forEach(function(a) {
+			a.sta.concat(a.hosts).forEach(function(x) {
+				if (!staMacs[x.mac] && !fdb[x.mac] && !ownMacs[x.mac] && x.mac !== gwMac) everyone.push({ mac: x.mac, ips: self.hintAddrs(hintOf(x.mac), localSubnets) });
+			});
+		});
 		var mdns = names.mdnsForStations(raw.mdns, everyone);
 
 		ssids.forEach(function(ss) {
@@ -1032,10 +1113,7 @@ return baseclass.extend({
 		   gateway's, not one of this device's, learned on a wired port,
 		   and the one this device's host hints give its address, where
 		   they give that address at all. */
-		var aps = this.collectorAps(raw.collector);
-		var ownMacs = Object.create(null), listed = Object.create(null), localHost = Object.create(null);
-		Object.keys(devs).forEach(function(n) { var m = names.normMac(obj(devs[n]).macaddr); if (m) ownMacs[m] = true; });
-		ssids.forEach(function(s) { var m = names.normMac(s.bssid); if (m) ownMacs[m] = true; });
+		var listed = Object.create(null), localHost = Object.create(null);
 		[ clients, wired ].forEach(function(l) { l.forEach(function(c) { listed[c.mac] = true; }); });
 		Object.keys(ownMacs).forEach(function(m) { listed[m] = true; });
 		if (gwMac) listed[gwMac] = true;
@@ -1043,41 +1121,33 @@ return baseclass.extend({
 		aps.forEach(function(a) { if (a.mac) macCount[a.mac] = (macCount[a.mac] || 0) + 1; });
 		/* an address held by another MAC, as far as this device knows */
 		function elsewhere(addr, mac) {
-			var at = [], want = String(addr || '').toLowerCase();
-			if (want) Object.keys(hints).forEach(function(k) {
-				var h = obj(hints[k]), m = names.normMac(k);
-				if (m && arr(h.ipaddrs).concat(arr(h.ip6addrs)).some(function(x) { return typeof x === 'string' && x.toLowerCase() === want; })) at.push(m);
-			});
+			var at = holders(addr);
 			return at.length > 0 && at.indexOf(mac) < 0;
 		}
 		aps.forEach(function(a) {
 			if (a.mac && macCount[a.mac] === 1 && !ownMacs[a.mac] && a.mac !== gwMac && fdb[a.mac] && !elsewhere(a.addr, a.mac)) portOf[a.id] = fdb[a.mac].port;
 		});
-		/* the wired hosts an access point may claim: not the gateway or this device */
+		/* the wired hosts an access point may claim: not the gateway or this
+		   device. While the uplink has a next hop whose MAC is unknown (no
+		   host hint gives it one, or two that may both be it: macOf), any
+		   MAC the bridge the uplink leaves through has learned may be the
+		   gateway's: no host with one is an access point's to claim,
+		   whichever of its entries is the one listed (a router's MAC is on
+		   every bridge of a wire that carries its VLANs, and the entry heard
+		   last is the one kept). That bridge is the uplink's device itself
+		   or, for a VLAN on one (br-lan.10), the name before the suffix, as
+		   line() reads it */
+		var gwL3 = uplink && uplink.gateway && !gwMac ? String(uplink.l3dev || '') : null, gwBridge = gwL3 ? gwL3.replace(/\.\d{1,4}$/, '') : null;
+		var maybeGw = Object.create(null);
+		if (gwL3) arr(raw.fdb).forEach(function(h) {
+			var mac = h && names.normMac(h.mac);
+			if (mac && (h.bridge === gwL3 || h.bridge === gwBridge)) maybeGw[mac] = true;
+		});
 		wired.forEach(function(h) {
 			localHost[h.mac] = h;
-			if (!h.gateway && !ownMacs[h.mac]) heardAt[h.mac] = h.port;
+			if (!h.gateway && !ownMacs[h.mac] && !maybeGw[h.mac]) heardAt[h.mac] = h.port;
 		});
 		function behind(a, mac) { return !!portOf[a.id] && heardAt[mac] === portOf[a.id] && mac !== a.mac; }
-		/* Their addresses are this device's host hints on its own networks:
-		   every one but the lines to the internet; a line's too where its
-		   clients are on it (an access point's uplink: a bridge) or one
-		   of the access points itself is */
-		var lineNames = Object.create(null), localSubnets = [];
-		function local(list) { list.forEach(function(x) { if (localSubnets.indexOf(x) < 0) localSubnets.push(x); }); }
-		uplinks.forEach(function(u) {
-			[ u.iface ].concat(arr(u.ifaces), u.tunnel ? [ u.tunnel.iface ] : []).forEach(function(n) { lineNames[n] = true; });
-		});
-		Object.keys(netSubnets).forEach(function(n) {
-			if (n === 'loopback') return;
-			if (!lineNames[n]) local(netSubnets[n]);
-			else local(netSubnets[n].filter(function(x) {
-				var p = x.split('/');
-				return aps.some(function(a) { return self.ipv4InSubnet(a.addr, p[0], p[1]); });
-			}));
-		});
-		if (uplink && uplink.dev !== uplink.l3dev) local(subnets);
-		if (!localSubnets.length) localSubnets = subnets;
 		/* ips: the addresses a host moved from the wired list had there */
 		function who(mac, ips) {
 			var alias = raw.aliases && raw.aliases[mac], hint = hintOf(mac);
@@ -1094,13 +1164,20 @@ return baseclass.extend({
 		/* bit/s as the access point counts them, rx from the device */
 		function traffic(x) { return x.rx != null && x.tx != null ? { rx: x.rx, tx: x.tx } : null; }
 		/* a station two of them list: the one that hears it best, of those
-		   it may belong to (a wired host here: behind them) */
-		var remote = Object.create(null), remoteMacs = [];
+		   it may belong to (a wired host here: behind them). The others
+		   stay named on the entry (ap.also), so none is taken unseen */
+		var remote = Object.create(null), remoteMacs = [], rivals = Object.create(null);
+		function rival(mac, a) {
+			var l = rivals[mac] || (rivals[mac] = []);
+			if (!l.some(function(x) { return x.id === a.id; })) l.push({ id: a.id, name: a.name });
+			return l;
+		}
 		aps.forEach(function(a) {
 			a.sta.forEach(function(s) {
 				var prev = remote[s.mac];
-				if ((listed[s.mac] && !behind(a, s.mac)) || (prev && !(s.signal != null && (prev.s.signal == null || s.signal > prev.s.signal)))) return;
-				if (!prev) remoteMacs.push(s.mac);
+				if (listed[s.mac] && !behind(a, s.mac)) return;
+				if (prev && !(s.signal != null && (prev.s.signal == null || s.signal > prev.s.signal))) { rival(s.mac, a); return; }
+				if (prev) rival(s.mac, prev.a); else remoteMacs.push(s.mac);
 				remote[s.mac] = { a: a, s: s };
 			});
 		});
@@ -1117,6 +1194,8 @@ return baseclass.extend({
 			var c = who(mac, localHost[mac] ? localHost[mac].ips : null);
 			c.wps = null;
 			c.ap = { id: a.id, name: a.name, addr: a.addr, node: n.id, bssid: n.bssid, freq: n.freq, channel: n.channel, rate: traffic(s) };
+			if (rivals[mac]) c.ap.also = rivals[mac];
+			remote[mac].c = c;
 			c.ifname = null; c.ssid = n.ssid; c.ssidId = null; c.radio = null;
 			c.band = n.band; c.bandLabel = wifi.bandLabel(n.band);
 			c.signal = s.signal; c.signalAvg = null; c.noise = null; c.std = null; c.gen = null;
@@ -1127,27 +1206,34 @@ return baseclass.extend({
 			c.legacyOnRadio = false;
 			clients.push(c);
 		});
-		/* wired hosts: the first access point to list one has it */
+		/* wired hosts: the first access point to list one has it; another
+		   that lists it, or lists a station as its wired host, stays named
+		   too, unless this device hears the MAC elsewhere */
 		var taken = Object.create(null);
 		aps.forEach(function(a) {
 			a.hosts.forEach(function(w) {
-				if (listed[w.mac] || remote[w.mac] || taken[w.mac]) return;
-				taken[w.mac] = true;
+				var won = remote[w.mac] ? remote[w.mac].c : taken[w.mac];
+				if (won) { if (won.ap.id !== a.id && (!listed[w.mac] || behind(a, w.mac))) won.ap.also = rival(w.mac, a); return; }
+				if (listed[w.mac]) return;
 				var h = who(w.mac), speed = w.speed ? { mbps: w.speed, duplex: null } : null;
 				/* on no port of this device */
 				h.port = ''; h.bridge = null; h.network = null; h.vlan = null; h.seen = null; h.peers = 1; h.shared = false;
 				h.speed = speed; h.carrier = null; h.switch = null; h.switchPort = null; h.gateway = false;
 				h.ap = { id: a.id, name: a.name, addr: a.addr, port: w.port, speed: speed, rate: traffic(w) };
+				taken[w.mac] = h;
 				wired.push(h);
 			});
 		});
-		/* a host behind one, as its wired host: a note, nothing else */
+		/* a host behind one, as its wired host: a note, nothing else. Of
+		   those it is heard behind, the first to list it has the note and
+		   the others stay named (behind.also) */
 		wired.forEach(function(h) {
 			if (h.ap) return;
-			aps.some(function(a) {
+			aps.forEach(function(a) {
 				var w = behind(a, h.mac) ? a.hosts.filter(function(x) { return x.mac === h.mac; })[0] : null;
-				if (w) h.behind = { id: a.id, name: a.name, addr: a.addr, port: w.port, speed: w.speed ? { mbps: w.speed, duplex: null } : null, rate: traffic(w) };
-				return !!w;
+				if (!w) return;
+				if (h.behind) { h.behind.also = rival(h.mac, a); return; }
+				h.behind = { id: a.id, name: a.name, addr: a.addr, port: w.port, speed: w.speed ? { mbps: w.speed, duplex: null } : null, rate: traffic(w) };
 			});
 		});
 		/* Each access point's counts and traffic are what it was given

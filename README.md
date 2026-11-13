@@ -173,9 +173,11 @@ the [spec](docs/SPEC.md#6-security-requirements).
   is the one part that does more than read: pairing creates the router's
   own SSH key and, on an access point, adds that key to Dropbear limited
   to one read-only report command. It has its own permission
-  (`luci-app-vantage-aps`), meant for administrators. The dashboard's read
-  permission can ask for the paired access points' reports, which makes
-  the router log in to them with that key.
+  (`luci-app-vantage-aps`), meant for administrators. Seeing the paired
+  access points on the dashboard is a second one
+  (`luci-app-vantage-aps-view`), since asking for their reports makes the
+  router log in to them with that key; the dashboard's own read
+  permission does not include it.
 - **Extras are separate permissions.** Renaming devices
   (`luci-app-vantage-names`) and reverse DNS (`luci-app-vantage-rdns`) are
   their own groups, so you can leave them out. The firewall overview only
