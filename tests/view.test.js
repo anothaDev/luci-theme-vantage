@@ -812,22 +812,28 @@ test('other lines: a deep link opens a line the device has, the main one by its 
 	assert.deepEqual(withLocation('', c => { self.openDrawer('uplink', ''); self.openDrawer('uplink', 'uplink'); return c; }), [ '#uplink', '#uplink=uplink' ]);
 });
 
-test('other lines: each node shows its name, gateway and live rates, wired into the device; the main one is marked', () => {
+/* a node of the path as updateHero writes to it */
+const pathEl = () => ({ textContent: '', attrs: {}, getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }, setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; } });
+const pathHero = lines => new Proxy({ lines: lines || [], radios: [] }, { get: (t, k) => k in t ? t[k] : (t[k] = pathEl()) });
+const LAN = { name: 'lan', proto: 'static', dev: 'br-lan', up: true, ipv4: '192.0.2.1/24' };
+
+test('other lines: each node shows its name, its own address and live rates, wired into the device; the main one is marked', () => {
 	const self = Object.create(view);
-	const el = () => ({ textContent: '', attrs: {}, getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }, setAttribute(k, v) { this.attrs[k] = v; } });
+	const el = pathEl;
 	const ln = id => ({ id, el: el(), kicker: el(), title: el(), dn: el(), up: el() });
-	const wan = LINE('wan', 'eth1', 10), wanb = LINE('wanb', 'eth2', 20), lte = Object.assign(LINE('lte', 'wwan0', 30), { gateway: null, carrier: false, speed: null });
-	const h = new Proxy({ lines: [ ln('wanb'), ln('lte'), ln('gone') ], radios: [] }, { get: (t, k) => k in t ? t[k] : (t[k] = el()) });
+	const wan = LINE('wan', 'eth1', 10), wanb = LINE('wanb', 'eth2', 20), lte = Object.assign(LINE('lte', 'wwan0', 30), { ipv4: [], gateway: null, carrier: false, speed: null });
+	const h = pathHero([ ln('wanb'), ln('lte'), ln('gone') ]);
 	self.hero = h;
-	self.m = { wired: true, networks: [], radios: [], ssids: [], wiredHosts: [], device: { model: 'Router', uptime: 1 }, uplink: wan, uplinks: [ wan, wanb, lte ] };
+	self.m = { wired: true, networks: [ LAN ], radios: [], ssids: [], wiredHosts: [], device: { model: 'Router', uptime: 1 }, uplink: wan, uplinks: [ wan, wanb, lte ] };
 	self.st = { uplinkRate: { rx: 2e6, tx: 1e5 }, devRates: { eth2: { rx: 12345678, tx: 3000 }, wwan0: { rx: 0, tx: 0 } } };
 	self.updateHero();
 	assert.equal(h.gwKicker.textContent, 'wan', 'beside other lines the main one goes by its name');
+	assert.deepEqual([ h.gwTitle.textContent, h.gw.attrs.title ], [ '203.0.113.12', 'Gateway 203.0.113.11' ], 'the main line: its own address, the gateway in the tooltip');
 	const [ b, l ] = h.lines;
-	assert.deepEqual([ b.kicker.textContent, b.title.textContent, b.dn.textContent, b.up.textContent ], [ 'wanb', '203.0.113.21', '↓ 12.3 Mbit/s', '↑ 3 kbit/s' ]);
-	assert.equal(b.el.attrs.title, 'wanb · eth2 · 1 Gbit/s · full duplex');
+	assert.deepEqual([ b.kicker.textContent, b.title.textContent, b.dn.textContent, b.up.textContent ], [ 'wanb', '203.0.113.22', '↓ 12.3 Mbit/s', '↑ 3 kbit/s' ]);
+	assert.equal(b.el.attrs.title, 'wanb · eth2 · 1 Gbit/s · full duplex · Gateway 203.0.113.21');
 	assert.equal(b.el.attrs['class'], 'vt-node vt-node-gw vt-node-line');
-	assert.deepEqual([ l.title.textContent, l.dn.textContent, l.up.textContent ], [ 'wwan0', 'idle', '' ], 'no gateway address: the device; nothing moving: idle');
+	assert.deepEqual([ l.title.textContent, l.el.attrs.title, l.dn.textContent, l.up.textContent ], [ 'wwan0', 'lte · wwan0', 'idle', '' ], 'no address and no gateway: the device; nothing moving: idle');
 	assert.equal(l.el.attrs['class'], 'vt-node vt-node-gw vt-node-line vt-node-off', 'no carrier');
 	assert.deepEqual([ b.active, l.active ], [ true, false ]);
 	/* one wire per line into the device, numbered for nesting */
@@ -838,6 +844,46 @@ test('other lines: each node shows its name, gateway and live rates, wired into 
 	self.m.uplinks = [ wan ];
 	self.updateHero();
 	assert.equal(h.gwKicker.textContent, 'Internet');
+});
+
+test('the path: a line shows its own address and this device its LAN address; an access point shows its gateway as before (#88)', () => {
+	const run = (m, lines) => {
+		const self = Object.create(view), h = pathHero(lines);
+		self.hero = h;
+		self.m = Object.assign({ wired: true, networks: [ LAN ], radios: [], ssids: [], wiredHosts: [], device: { model: 'Router', uptime: 1 } }, m);
+		self.st = { uplinkRate: null, devRates: {} };
+		self.updateHero();
+		return h;
+	};
+	const node = h => [ h.gwKicker.textContent, h.gwTitle.textContent, h.gwSub.textContent, h.gw.getAttribute('title'), h.apAddr.textContent ];
+	const ln = id => ({ id, el: pathEl(), kicker: pathEl(), title: pathEl(), dn: pathEl(), up: pathEl() });
+
+	/* one line: its own address where the gateway was, the gateway in the tooltip, this device at its LAN address */
+	const wan = Object.assign(LINE('wan', 'eth1', 10), { dns: [ '198.51.100.53' ] });
+	assert.deepEqual(node(run({ uplink: wan, uplinks: [ wan ] })), [ 'Internet', '203.0.113.12', 'DNS 198.51.100.53', 'Gateway 203.0.113.11', '192.0.2.1' ]);
+
+	/* two lines of one provider end at one gateway: told apart by their own addresses */
+	const a = Object.assign(LINE('wan', 'pppoe-wan', 10), { proto: 'pppoe', ipv4: [ '198.51.100.7/32' ], gateway: '203.0.113.1' });
+	const b = Object.assign(LINE('wan2', 'pppoe-wan2', 20), { proto: 'pppoe', ipv4: [ '198.51.100.9/32' ], gateway: '203.0.113.1' });
+	const two = run({ uplink: a, uplinks: [ a, b ] }, [ ln('wan2') ]);
+	assert.deepEqual([ two.gwTitle.textContent, two.lines[0].title.textContent ], [ '198.51.100.7', '198.51.100.9' ]);
+	assert.deepEqual([ two.gw.attrs.title, two.lines[0].el.attrs.title ], [ 'Gateway 203.0.113.1', 'wan2 · pppoe-wan2 · 1 Gbit/s · full duplex · Gateway 203.0.113.1' ]);
+	assert.equal(two.apAddr.textContent, '192.0.2.1');
+
+	/* no network called lan: the first one that is up; none with an address: a dash, never the line's again */
+	const nets = [ { name: 'guest', up: false, ipv4: '192.0.2.129/25' }, { name: 'home', up: true, ipv4: '192.0.2.65/26' } ];
+	assert.equal(run({ uplink: wan, uplinks: [ wan ], networks: nets }).apAddr.textContent, '192.0.2.65');
+	assert.equal(run({ uplink: wan, uplinks: [ wan ], networks: [] }).apAddr.textContent, '—');
+
+	/* a line without an IPv4 address of its own: its gateway, as before */
+	const v6 = Object.assign(LINE('wan', 'eth1', 10), { ipv4: [], gateway: 'fe80::1' });
+	assert.deepEqual(node(run({ uplink: v6, uplinks: [ v6 ] })), [ 'Internet', 'fe80::1', 'Reachability not probed', null, '—' ]);
+
+	/* an access point: one line that is no WAN. The gateway by its name and address, its own address on its node, no tooltip */
+	const lan = Object.assign(LINE('lan', 'br-lan', 0), { isWan: false, ipv4: [ '192.0.2.4/24' ], gateway: '192.0.2.1' });
+	const gw = { mac: '00:00:5e:00:53:fe', name: 'home-router', nameSource: 'dhcp', port: 'lan1', gateway: true };
+	assert.deepEqual(node(run({ wired: false, uplink: lan, uplinks: [ lan ], networks: [], wiredHosts: [ gw ] })), [ 'Gateway', 'home-router', '192.0.2.1', null, '192.0.2.4' ]);
+	assert.deepEqual(node(run({ wired: false, uplink: lan, uplinks: [ lan ], networks: [], wiredHosts: [] })), [ 'Gateway', '192.0.2.1', 'Reachability not probed', null, '192.0.2.4' ]);
 });
 
 test('no Wi-Fi: the path has the Wired branch too, even beside a network called wired (#98)', t => {

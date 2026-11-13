@@ -370,6 +370,15 @@ var CHECK_ICONS = { uplink: 'port', cpu: 'cpu', memory: 'memory', radios: 'wifi'
 function txt(el, s) { s = (s == null ? '' : String(s)); if (el.textContent !== s) el.textContent = s; return el; }
 function setClass(el, c) { if (el.getAttribute('class') !== c) el.setAttribute('class', c); }
 function setTitle(el, v) { if (el.getAttribute('title') !== v) el.setAttribute('title', v); }
+/* a line's own IPv4 address, without its prefix length */
+function lineAddr(x) { return x && x.ipv4 && x.ipv4[0] ? String(x.ipv4[0]).split('/')[0] : null; }
+/* the address this device has on its own network: lan's, else that of
+   the first network that is up */
+function lanAddr(nets) {
+	var with4 = (nets || []).filter(function(n) { return n && n.ipv4; });
+	var n = with4.filter(function(n) { return n.name === 'lan'; })[0] || with4.filter(function(n) { return n.up; })[0];
+	return n ? String(n.ipv4).split('/')[0] : null;
+}
 /* the throughput history of a line to the internet, the main one too,
    by its interface: a failover starts the new main line's own history
    instead of continuing the old one's. ':' keeps it apart from a radio's
@@ -2465,9 +2474,19 @@ return view.extend({
 		   name once one is known beyond its vendor */
 		var gwHost = (m.wiredHosts || []).filter(function(c) { return c.gateway; })[0];
 		var gwName = gwHost && /^(alias|dhcp|mdns|dns)$/.test(gwHost.nameSource) ? gwHost.name : null;
+		/* A line to the internet shows its own address, the one its
+		   provider gave it: two lines of one provider end at the same
+		   gateway and would read alike (#88). The gateway is in the
+		   tooltip and the details. A device on its gateway's own network
+		   (an access point: one line, not a WAN) shows the gateway as
+		   before, and its own address stays on its node. */
+		var own = up && (h.lines.length || up.isWan) ? lineAddr(up) : null;
+		var probe = up && up.dns.length ? _('DNS %s').format(up.dns[0]) : _('Reachability not probed');
 		txt(h.gwKicker, h.lines.length && up ? up.iface : up && up.isWan ? _('Internet') : _('Gateway'));
-		txt(h.gwTitle, gwName || (up && up.gateway ? up.gateway : up && up.defaultRoute ? up.l3dev : _('No default route', 'vantage')));
-		txt(h.gwSub, gwName ? up.gateway : up && up.dns.length ? _('DNS %s').format(up.dns[0]) : _('Reachability not probed'));
+		txt(h.gwTitle, own || gwName || (up && up.gateway ? up.gateway : up && up.defaultRoute ? up.l3dev : _('No default route', 'vantage')));
+		txt(h.gwSub, own ? gwName || probe : gwName ? up.gateway : probe);
+		if (own && up.gateway) setTitle(h.gw, _('Gateway %s').format(up.gateway));
+		else if (h.gw.getAttribute('title') != null) h.gw.removeAttribute('title');
 
 		txt(h.dnVal, upR ? fmt.bitsParts(upR.rx).v : fmt.DASH);
 		txt(h.dnUnit, upR ? fmt.bitsParts(upR.rx).u : '');
@@ -2484,7 +2503,9 @@ return view.extend({
 
 		txt(h.apKicker, m.wired ? _('This device') : _('This access point'));
 		txt(h.apTitle, d.model);
-		txt(h.apAddr, up && up.ipv4[0] ? up.ipv4[0].split('/')[0] : fmt.DASH);
+		/* beside a line that shows its own address, this device shows the
+		   one its own network reaches it at; else the uplink's, as before */
+		txt(h.apAddr, (own ? lanAddr(m.networks) : up ? lineAddr(up) : null) || fmt.DASH);
 		txt(h.apUp, d.uptime != null ? _('up %s').format(fmt.duration(d.uptime)) : '');
 		h.upActive = !!(upR && upR.rx + upR.tx > 50e3);
 		h.upRate = upR ? upR.rx + upR.tx : 0;
@@ -2495,10 +2516,11 @@ return view.extend({
 		h.lines.forEach(function(ln) {
 			var x = lines[ln.id], r = x ? st.devRates[x.statsDev] : null;
 			if (!x) return;
-			setTitle(ln.el, [ x.iface, x.dev, x.speed ? model.speedLabel(x.speed) : null ].filter(Boolean).join(' · '));
+			var addr = lineAddr(x);
+			setTitle(ln.el, [ x.iface, x.dev, x.speed ? model.speedLabel(x.speed) : null, addr && x.gateway ? _('Gateway %s').format(x.gateway) : null ].filter(Boolean).join(' · '));
 			setClass(ln.el, 'vt-node vt-node-gw vt-node-line' + (x.carrier === false ? ' vt-node-off' : ''));
 			txt(ln.kicker, x.iface);
-			txt(ln.title, x.gateway || x.l3dev);
+			txt(ln.title, addr || x.gateway || x.l3dev);
 			var p = r && !(r.rx === 0 && r.tx === 0) ? fmt.rateParts(r.rx, r.tx) : null;
 			txt(ln.dn, p ? '↓ ' + p.dn : r ? _('idle') : fmt.DASH);
 			txt(ln.up, p ? '↑ ' + p.up + (p.unit ? ' ' + p.unit : '') : '');
