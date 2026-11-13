@@ -815,6 +815,38 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-node-idle .vt-node-title { color: var(--vt-text-2); font-weight: var(--vt-fw-semibold); }
 .vt-app .vt-node-off { opacity: .6; border-style: dashed; }
 
+/* the devices at a branch's end: name, signal or link, traffic */
+/* one grid for all the rows, so names, signal and rates line up */
+.vt-app .vt-leaf-rows { display: grid; grid-template-columns: minmax(0, 1fr) 13.5ch 8.5ch 6.5ch 6.5ch; column-gap: 10px; row-gap: 1px; margin-top: 4px; min-width: 0; }
+.vt-app .vt-leaf-rows:empty { display: none; }
+.vt-app .vt-leaf-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: baseline; font-size: var(--vt-fs-sm); color: var(--vt-text-2); padding: 1px 4px; margin: 0 -4px; border-radius: 4px; cursor: pointer; }
+.vt-app .vt-leaf-row:hover, .vt-app .vt-leaf-row:focus-visible { background: var(--vt-surface-3); outline: none; }
+.vt-app .vt-leaf-row:hover .vt-leaf-name { text-decoration: underline; }
+.vt-app .vt-leaf-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vt-text); }
+.vt-app .vt-leaf-sig.vt-lvl-ok { color: var(--vt-ok); }
+.vt-app .vt-leaf-sig.vt-lvl-warn { color: var(--vt-warn); }
+.vt-app .vt-leaf-sig.vt-lvl-crit { color: var(--vt-err); }
+.vt-app .vt-leaf-rate { white-space: nowrap; }
+.vt-app .vt-leaf-sig { text-align: right; white-space: nowrap; }
+.vt-app .vt-leaf-ip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--vt-text-3); }
+.vt-app .vt-node-peer { padding: 10px 12px; border-color: color-mix(in oklab, var(--vt-accent-line) 40%, var(--vt-line)); }
+.vt-app .vt-node-peer .vt-node-ico { background: var(--vt-accent-fill); color: var(--vt-accent-fill-ink); }
+.vt-app .vt-node-peer .vt-node-title { font-size: var(--vt-fs-md); }
+.vt-app .vt-node-peer .vt-node-kicker { display: block; overflow: hidden; text-overflow: ellipsis; }
+/* the other access points, after this device's own branches */
+/* the internet and gateway nodes: their column fits the longest
+   address (an IPv6) on one line; on a narrow screen it wraps rather
+   than being cut */
+.vt-app .vt-node-gw .vt-node-sub { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
+/* an access point's way to the internet: a node per step, top down */
+.vt-app .vt-chain { display: flex; flex-direction: column; gap: 28px; min-width: 0; align-self: center; }
+.vt-app .vt-chain > .vt-node { width: 100%; }
+/* an access point wired to another: in under it, the wire curving down
+   from its card (the card keeps its width and moves into the gap) */
+.vt-app .vt-branch-child > .vt-node:first-child, .vt-app .vt-path-mesh .vt-branch-child > .vt-node:first-child { margin-left: 72px; width: 100% !important; }
+.vt-app .vt-branch-d2 > .vt-node:first-child, .vt-app .vt-path-mesh .vt-branch-d2 > .vt-node:first-child { margin-left: 144px; width: 100% !important; }
+.vt-app .vt-branch-d3 > .vt-node:first-child, .vt-app .vt-path-mesh .vt-branch-d3 > .vt-node:first-child { margin-left: 216px; width: 100% !important; }
+.vt-app .vt-branches-label { margin: 6px 0 -8px; font-size: var(--vt-fs-micro); font-weight: var(--vt-fw-semibold); color: var(--vt-text-3); text-transform: uppercase; letter-spacing: .08em; }
 .vt-app .vt-dots { display: inline-flex; gap: 3px; }
 /* no clients, no dots: the count starts where the name does */
 .vt-app .vt-dots:empty { display: none; }
@@ -887,7 +919,8 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-branches { display: flex; flex-direction: column; justify-content: space-between; gap: 18px; padding: 2px 0 2px 34px; min-width: 0; }
 .vt-app .vt-branch { display: grid; grid-template-columns: minmax(136px, 172px) minmax(0, 1fr); column-gap: 34px; align-items: center; min-width: 0; }
 .vt-app .vt-branch-ssids { display: flex; flex-direction: column; gap: var(--vt-sp-2); min-width: 0; }
-.vt-app .vt-branch-ssids .vt-node { max-width: 260px; }
+.vt-app .vt-branch-ssids .vt-node { width: 100%; max-width: 340px; }
+.vt-app .vt-branch-ssids .vt-node-body { flex: 1 1 auto; }
 /* a network has no second column: its rates take that room */
 .vt-app .vt-branch > .vt-node-net { grid-column: 1 / -1; justify-self: start; width: 100%; max-width: 260px; }
 /* with subgrid every branch shares one radio column: 172px, or wider up
@@ -902,6 +935,27 @@ html[data-darkmode="true"] .vt-app {
 	.vt-app .vt-branch > .vt-node:first-child:not(.vt-node-net) { max-width: 240px; }
 }
 
+/* other access points (wide only): the gateway, link and device give up
+   room to the branches; every branch's node column alike, and the nodes
+   at the ends fill what is left, so their rows line up and nothing is cut */
+@container vthero (min-width: 1021px) {
+	.vt-app .vt-path-mesh { grid-template-columns: minmax(150px, max-content) minmax(90px, .4fr) minmax(184px, .85fr) minmax(0, 3.4fr); }
+	.vt-app .vt-path-mesh .vt-branches { padding-left: clamp(40px, 5cqi, 120px); }
+	/* an access point's own page: gateway, link and device at the top, so
+	   the gateway's wires to the other access points pass below them */
+	/* the gateway's clients and address: wrapped, not cut */
+	.vt-app .vt-path-mesh .vt-node-gw .vt-node-sub { white-space: normal; }
+	/* the client cards at the column's far end: the wires take the slack */
+	.vt-app .vt-path-mesh .vt-branch { grid-template-columns: minmax(230px, 280px) minmax(0, 600px); column-gap: clamp(34px, 4cqi, 96px); justify-content: space-between; }
+	.vt-app .vt-path-mesh .vt-branch > .vt-node, .vt-app .vt-path-mesh .vt-branch > .vt-node:first-child:not(.vt-node-net) { width: 100%; max-width: none; justify-self: stretch; }
+	/* as wide as a ~20-character name, the address, signal and rates need */
+	.vt-app .vt-path-mesh .vt-branch-ssids .vt-node { max-width: none; }
+	/* the tree carries more text: a step larger inside its cards */
+	.vt-app .vt-path-mesh .vt-node-sub, .vt-app .vt-path-mesh .vt-leaf-row { font-size: var(--vt-fs-base); }
+	.vt-app .vt-path-mesh .vt-node-title, .vt-app .vt-path-mesh .vt-node-ssid .vt-node-title { font-size: var(--vt-fs-md); }
+	.vt-app .vt-path-mesh .vt-node-ap .vt-node-title, .vt-app .vt-path-mesh .vt-node-peer .vt-node-title { font-size: var(--vt-fs-lg); }
+	.vt-app .vt-path-mesh .vt-node-kicker { font-size: var(--vt-fs-sm); }
+}
 /* medium widths: the rates need their column, and the branches have room
    to give; what a radio or the Wired node leads to goes under it, too
    narrow beside it */
@@ -926,6 +980,9 @@ html[data-darkmode="true"] .vt-app {
 	.vt-app .vt-path-lines > .vt-branches, .vt-app .vt-lines { grid-area: auto; }
 	.vt-app .vt-lines { gap: 8px; padding: 0 0 0 34px; }
 	.vt-app .vt-lines > .vt-node { align-self: flex-start; min-width: 200px; max-width: 100%; }
+	/* phone: the name needs the room more than the IP (still in the title and drawer) */
+	.vt-app .vt-leaf-rows { grid-template-columns: minmax(0, 1fr) auto auto auto; column-gap: 8px; }
+	.vt-app .vt-leaf-ip { display: none; }
 }
 
 /* ------------------------------------------------------------ 6. system */
@@ -1268,6 +1325,7 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-net { display: flex; flex-direction: column; gap: 3px; }
 .vt-app .vt-net-ssid { font-weight: var(--vt-fw-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
 .vt-app .vt-net-badges { display: flex; align-items: center; gap: 6px; }
+.vt-app .vt-net-via { font-size: var(--vt-fs-sm); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
 .vt-app .vt-phy { display: flex; align-items: center; gap: 4px; font-size: var(--vt-fs-sm); white-space: nowrap; }
 .vt-app .vt-phy b { font-weight: var(--vt-fw-semibold); }
 .vt-app .vt-phy .vt-ico { color: var(--vt-text-3); stroke-width: 2; width: 12px; height: 12px; }

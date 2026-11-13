@@ -257,3 +257,10 @@ test('health: a quiet station\'s weak signal is left out of the warning and of t
 	assert.deepEqual([ all.level, all.value ], [ 'ok', '—' ]);
 	assert.match(all.reason, /No warnings asked for/);
 });
+
+test('health: a weak station of another access point (usteer) is no signal warning here', () => {
+	const m = Object.assign(baseModel(), { clients: [ { mac: '00:00:5e:00:53:01', signal: -50 }, { mac: '00:00:5e:00:53:02', signal: -88, ap: { ip: '192.0.2.2', name: 'ap' } } ] });
+	const sig = byId(insight.health(m, {}), 'signal');
+	assert.notEqual(sig.level, 'warn');
+	assert.doesNotMatch(String(sig.value) + sig.reason, /88/);
+});

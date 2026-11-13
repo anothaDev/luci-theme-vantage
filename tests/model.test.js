@@ -963,3 +963,235 @@ test('build: on a router, stations keep their LAN IPv4 address (not only IPv6)',
 	r.ifaces[1]['ipv4-address'] = [ { address: '192.0.2.200', mask: 24 } ];
 	assert.deepEqual(model.build(r).clients.filter(c => c.mac === '00:00:5e:00:53:01')[0].ips[0], '192.0.2.44');
 });
+
+test('build: stations of the other access points from usteer (luci.vantage mesh), one per MAC, never this device\'s own or a wired host', () => {
+	const node = (ap, ifname, ssid, freq, bssid) => ({ ap, ifname, ssid, freq, bssid, clients: 1 });
+	const m = model.build({
+		ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] } ],
+		devs: { lan1: { speed: '1000F', carrier: true }, 'phy2g-ap0': { devtype: 'wlan' } },
+		wifi: { radio0: { up: true, config: { band: '2g', channel: '1', htmode: 'HE20' }, interfaces: [ { ifname: 'phy2g-ap0', config: { ssid: 'Home', mode: 'ap' } } ] } },
+		assoc: { 'phy2g-ap0': [ { mac: '00:00:5E:00:53:20', signal: -50 } ] },
+		hints: {
+			'02:00:5E:00:00:02': { name: 'attic-ap', ipaddrs: [ '192.0.2.2' ] },
+			'00:00:5E:00:53:31': { name: 'phone', ipaddrs: [ '192.0.2.31' ] }
+		},
+		fdb: [
+			{ mac: '02:00:5e:00:00:02', port: 'lan1', bridge: 'br-lan', seen: 1 },
+			{ mac: '00:00:5e:00:53:31', port: 'lan1', bridge: 'br-lan', seen: 1 }
+		],
+		mesh: {
+			available: true,
+			aps: [ '192.0.2.2', '192.0.2.3', 'junk', '192.0.2.2' ],
+			nodes: {
+				'192.0.2.2#hostapd.phy0-ap0': node('192.0.2.2', 'phy0-ap0', 'Home', 2437, '02:00:5e:00:00:20'),
+				'192.0.2.2#hostapd.phy1-ap0': node('192.0.2.2', 'phy1-ap0', 'Home', 5180, '02:00:5e:00:00:21'),
+				'192.0.2.3#hostapd.phy1-ap0': node('192.0.2.3', 'phy1-ap0', 'Home', 5500, '02:00:5e:00:00:31'),
+				'hostapd.phy2g-ap0': node(null, 'phy2g-ap0', 'Home', 2412, '02:00:5e:00:00:10')
+			},
+			stations: [
+				{ mac: '00:00:5E:00:53:31', node: '192.0.2.2#hostapd.phy0-ap0', signal: -70 },
+				{ mac: '00:00:5e:00:53:31', node: '192.0.2.3#hostapd.phy1-ap0', signal: -55 },
+				{ mac: '00:00:5e:00:53:32', node: '192.0.2.2#hostapd.phy1-ap0', signal: -60 },
+				{ mac: '00:00:5e:00:53:20', node: '192.0.2.2#hostapd.phy0-ap0', signal: -80 },
+				{ mac: '00:00:5e:00:53:33', node: 'hostapd.phy2g-ap0', signal: -40 },
+				{ mac: '00:00:5e:00:53:34', node: '198.51.100.9#hostapd.x', signal: -40 },
+				null, { mac: 'junk', node: '192.0.2.2#hostapd.phy0-ap0' }
+			]
+		}
+	});
+	assert.deepEqual(m.accessPoints.map(a => [ a.ip, a.name, a.named, a.clients, a.nodes.map(n => [ n.ifname, n.band, n.clients ]) ]), [
+		[ '192.0.2.2', 'attic-ap', true, 1, [ [ 'phy0-ap0', '2g', 0 ], [ 'phy1-ap0', '5g', 1 ] ] ],
+		[ '192.0.2.3', '192.0.2.3', false, 1, [ [ 'phy1-ap0', '5g', 1 ] ] ]
+	], 'each address once, named by its host hint, else its address; this device\'s own nodes left out');
+	const remote = m.clients.filter(c => c.ap);
+	assert.deepEqual(remote.map(c => [ c.mac, c.name, c.ap.ip, c.ap.bssid, c.band, c.signal, c.rxBytes, c.radio ]), [
+		[ '00:00:5e:00:53:31', 'phone', '192.0.2.3', '02:00:5e:00:00:31', '5g', -55, null, null ],
+		[ '00:00:5e:00:53:32', 'Unknown device 53:32', '192.0.2.2', '02:00:5e:00:00:21', '5g', -60, null, null ]
+	], 'the strongest node per MAC; no counters or radio here');
+	assert.deepEqual(m.clients.filter(c => !c.ap).map(c => c.mac), [ '00:00:5e:00:53:20' ], 'a station of this device stays its own');
+	assert.deepEqual(remote[0].ips, [ '192.0.2.31' ]);
+	assert.deepEqual(m.wiredHosts.map(h => h.mac), [ '02:00:5e:00:00:02' ], 'a remote station heard on the uplink port is no wired host');
+});
+
+test('build: without usteer (no mesh, or available: false) no access points and no remote stations', () => {
+	for (const mesh of [ undefined, null, { available: false }, 'junk' ]) {
+		const m = model.build({ mesh });
+		assert.deepEqual(m.accessPoints, []);
+		assert.equal(m.clients.filter(c => c.ap).length, 0);
+	}
+});
+
+test('build: wired hosts the other access points share (mesh-share.uc) go to the deepest one; an access point on a port goes by its name', () => {
+	const node = (ap, ifname) => ({ ap, ifname, ssid: 'Home', freq: 2437, bssid: null, clients: 0 });
+	const m = model.build({
+		ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] } ],
+		devs: { lan1: { speed: '1000F', carrier: true }, lan2: { speed: '1000F', carrier: true } },
+		fdb: [
+			{ mac: '02:00:5e:00:00:02', port: 'lan1', bridge: 'br-lan', seen: 1 },
+			{ mac: '00:00:5e:00:53:41', port: 'lan1', bridge: 'br-lan', seen: 1 },
+			{ mac: '00:00:5e:00:53:42', port: 'lan1', bridge: 'br-lan', seen: 1 },
+			{ mac: '02:00:5e:00:00:03', port: 'lan1', bridge: 'br-lan', seen: 1 },
+			{ mac: '00:00:5e:00:53:44', port: 'lan2', bridge: 'br-lan', seen: 1 }
+		],
+		mesh: {
+			available: true, aps: [ '192.0.2.2', '192.0.2.3' ],
+			nodes: { '192.0.2.2#hostapd.phy0-ap0': node('192.0.2.2', 'phy0-ap0'), '192.0.2.3#hostapd.phy0-ap0': node('192.0.2.3', 'phy0-ap0') },
+			stations: [],
+			peers: {
+				/* attic-ap has den-ap on its lan2, so what den-ap also has is den-ap's */
+				'192.0.2.2': { name: 'attic-ap', mac: '02:00:5e:00:00:02', up: 'wan', wired: [ [ '00:00:5e:00:53:41', 'lan1', 1000 ], [ '02:00:5e:00:00:03', 'lan2', 1000 ], [ '00:00:5e:00:53:42', 'lan2', 1000 ], [ 'junk', 'x' ] ] },
+				'192.0.2.3': { name: 'den-ap', mac: '02:00:5e:00:00:03', up: 'wan', wired: [ [ '00:00:5e:00:53:42', 'lan1', 100 ], [ '00:00:5e:00:53:43', 'lan3', null ] ] }
+			}
+		}
+	});
+	assert.deepEqual(m.accessPoints.map(a => [ a.name, a.named, a.mac, a.wired ]), [ [ 'attic-ap', true, '02:00:5e:00:00:02', 2 ], [ 'den-ap', true, '02:00:5e:00:00:03', 2 ] ]);
+	const by = Object.fromEntries(m.wiredHosts.map(h => [ h.mac, h ]));
+	assert.equal(by['00:00:5e:00:53:41'].ap.name, 'attic-ap');
+	assert.equal(by['00:00:5e:00:53:41'].port, 'lan1', 'heard here: its own port stays');
+	assert.equal(by['00:00:5e:00:53:42'].ap.name, 'den-ap', 'the deeper access point');
+	assert.deepEqual(by['00:00:5e:00:53:42'].ap.speed, { mbps: 100, duplex: null });
+	assert.equal(by['00:00:5e:00:53:43'].port, '', 'not heard here: added, on no port of this device');
+	assert.equal(by['00:00:5e:00:53:43'].ap.port, 'lan3');
+	assert.equal(by['00:00:5e:00:53:44'].ap, undefined, 'nobody shares it: this device\'s own');
+	assert.deepEqual([ by['02:00:5e:00:00:02'].name, by['02:00:5e:00:00:02'].nameSource, by['02:00:5e:00:00:02'].ap ], [ 'attic-ap', 'ap', undefined ]);
+});
+
+test('build: an access point hangs under the deepest one (or this device) with its MAC on a port; this device and derived MACs are no wired hosts; peers\' hostnames name hosts', () => {
+	const node = (ap, ifname) => ({ ap, ifname, ssid: 'Home', freq: 2437, bssid: null, clients: 0 });
+	const m = model.build({
+		ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.4', mask: 24 } ], route: [] } ],
+		mesh: {
+			available: true, aps: [ '192.0.2.1', '192.0.2.2', '192.0.2.3' ],
+			nodes: { '192.0.2.2#hostapd.phy0-ap0': node('192.0.2.2', 'phy0-ap0'), '192.0.2.3#hostapd.phy0-ap0': node('192.0.2.3', 'phy0-ap0') },
+			stations: [],
+			self: { mac: '02:00:5e:00:00:04', wired: [] },
+			peers: {
+				/* the router has the first access point and, behind it, this one and the third */
+				'192.0.2.1': { name: 'gw', mac: '02:00:5e:00:00:01', wan: [ '203.0.113.7', '2001:db8::7' ], wired: [ [ '02:00:5e:00:00:02', 'lan1', 1000 ], [ '02:00:5e:00:00:03', 'lan1', 1000 ], [ '02:00:5e:00:00:04', 'lan1', 1000 ] ],
+					ips: [ [ '00:00:5e:00:53:41', '192.0.2.41', 'printer' ] ] },
+				'192.0.2.2': { name: 'ap1', mac: '02:00:5e:00:00:02', wired: [ [ '02:00:5e:00:00:03', 'lan4', 1000 ], [ '02:00:5e:00:00:05', 'lan2', 1000 ], [ '02:00:5e:00:00:04', 'lan3', 1000 ], [ '00:00:5e:00:53:41', 'lan2', 1000 ] ] },
+				'192.0.2.3': { name: 'ap3', mac: '02:00:5e:00:00:03', wired: [] }
+			}
+		}
+	});
+	const by = Object.fromEntries(m.accessPoints.map(a => [ a.name, a.parent ]));
+	assert.deepEqual(by.ap1, { ip: '192.0.2.1', name: 'gw', port: 'lan1' });
+	assert.deepEqual(by.ap3, { ip: '192.0.2.2', name: 'ap1', port: 'lan4' });
+	assert.equal(by.gw, null);
+	assert.deepEqual(m.accessPoints.map(a => a.wan), [ { ipv4: '203.0.113.7', ipv6: '2001:db8::7' }, null, null ], 'a router\'s public addresses, as it shares them');
+	assert.deepEqual(m.selfParent, { ip: '192.0.2.2', name: 'ap1', port: 'lan3' }, 'this device is behind ap1, not straight on the router');
+	const wired = Object.fromEntries(m.wiredHosts.map(h => [ h.mac, h ]));
+	assert.equal(wired['02:00:5e:00:00:04'], undefined, 'this device');
+	assert.equal(wired['02:00:5e:00:00:05'], undefined, 'derived from this device');
+	assert.deepEqual([ wired['00:00:5e:00:53:41'].name, wired['00:00:5e:00:53:41'].nameSource ], [ 'printer', 'dhcp' ]);
+});
+
+test('build: an access point whose gateway is heard over a mesh link has that link as its uplink, not a port without carrier', () => {
+	const m = model.build({
+		ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.4', mask: 24 } ],
+			route: [ { target: '0.0.0.0', mask: 0, nexthop: '192.0.2.1' } ] } ],
+		devs: { 'br-lan': { devtype: 'bridge', 'bridge-members': [ 'lan1', 'phy0-mesh0', 'phy0-ap0' ] }, lan1: { devtype: 'ethernet', carrier: false }, 'phy0-mesh0': { devtype: 'wlan', carrier: true }, 'phy0-ap0': { devtype: 'wlan' } },
+		hints: { '02:00:5E:00:00:01': { ipaddrs: [ '192.0.2.1' ] } },
+		fdb: [ { mac: '02:00:5e:00:00:01', port: 'phy0-mesh0', bridge: 'br-lan', seen: 1 } ]
+	});
+	assert.equal(m.uplink.port, 'phy0-mesh0');
+	assert.equal(m.uplink.dev, 'phy0-mesh0');
+});
+
+test('build: a remote station takes signal, link rate and traffic from its access point\'s own report, and an address any access point knows', () => {
+	const m = model.build({
+		ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] } ],
+		mesh: {
+			available: true, aps: [ '192.0.2.2' ],
+			nodes: { '192.0.2.2#hostapd.phy0-ap0': { ap: '192.0.2.2', ifname: 'phy0-ap0', ssid: 'Home', freq: 2437, bssid: null, clients: 1 } },
+			stations: [ { mac: '00:00:5e:00:53:51', node: '192.0.2.2#hostapd.phy0-ap0', signal: -70 } ],
+			peers: { '192.0.2.2': { name: 'attic-ap', model: 'Example AP', uptime: 3600, wired: [],
+				sta: [ [ '00:00:5e:00:53:51', 8000, 64000, -61, 72200 ], [ 'junk' ] ], ips: [ [ '00:00:5e:00:53:51', '192.0.2.51' ], [ '00:00:5e:00:53:51', '198.51.100.7' ] ] } }
+		}
+	});
+	const c = m.clients[0];
+	assert.equal(c.signal, -61);
+	assert.deepEqual(c.peerRate, { rx: 8000, tx: 64000 });
+	assert.equal(c.tx.rate, 72200);
+	assert.equal(c.ap.node, '192.0.2.2#hostapd.phy0-ap0');
+	assert.deepEqual(c.ips, [ '192.0.2.51' ], 'only addresses on this network');
+	assert.deepEqual([ m.accessPoints[0].model, m.accessPoints[0].uptime, m.accessPoints[0].rate ], [ 'Example AP', 3600, { rx: 8000, tx: 64000 } ]);
+});
+
+test('build: a wired host alone on an access point\'s port takes that port\'s rates, and they add up on the access point', () => {
+	const m = model.build({
+		ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] } ],
+		mesh: { available: true, aps: [ '192.0.2.2' ], nodes: { '192.0.2.2#hostapd.phy0-ap0': { ap: '192.0.2.2', ifname: 'phy0-ap0', ssid: 'Home', freq: 2437, clients: 0 } }, stations: [],
+			peers: { '192.0.2.2': { name: 'attic-ap', wired: [ [ '00:00:5e:00:53:61', 'lan1', 1000, 4000, 9000 ], [ '00:00:5e:00:53:62', 'lan2', 1000, null, null ] ] } } }
+	});
+	const by = Object.fromEntries(m.wiredHosts.map(h => [ h.mac, h ]));
+	assert.deepEqual(by['00:00:5e:00:53:61'].ap.rate, { rx: 4000, tx: 9000 });
+	assert.equal(by['00:00:5e:00:53:62'].ap.rate, null);
+	assert.deepEqual(m.accessPoints[0].rate, { rx: 4000, tx: 9000 });
+});
+
+test('build: a station whose MAC is derived from another access point\'s (a mesh backhaul) is named after it', () => {
+	const m = model.build({
+		ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] } ],
+		devs: { 'phy0-mesh0': { devtype: 'wlan' } },
+		wifi: { radio0: { up: true, config: { band: '2g', channel: '6', htmode: 'HE20' }, interfaces: [ { ifname: 'phy0-mesh0', config: { ssid: 'bh', mode: 'ap' } } ] } },
+		assoc: { 'phy0-mesh0': [ { mac: '0A:00:5E:00:53:8F', signal: -50 }, { mac: '0A:00:5E:00:53:20', signal: -50 } ] },
+		mesh: { available: true, aps: [ '192.0.2.4' ], nodes: { '192.0.2.4#hostapd.phy0-ap0': { ap: '192.0.2.4', ifname: 'phy0-ap0', ssid: 'x', freq: 2437, bssid: '02:00:5e:00:53:8f', clients: 0 } },
+			stations: [], peers: { '192.0.2.4': { name: 'loft-ap', mac: '02:00:5e:00:53:90', wired: [] } } }
+	});
+	const by = Object.fromEntries(m.clients.map(c => [ c.mac, c ]));
+	assert.equal(by['0a:00:5e:00:53:8f'].name, 'loft-ap (backhaul)');
+	assert.notEqual(by['0a:00:5e:00:53:20'].name, 'loft-ap (backhaul)');
+});
+
+test('build: a host this device knows only by an IPv6 link-local takes an IPv4 address the access points share', () => {
+	const m = model.build({
+		ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.4', mask: 24 } ], route: [] } ],
+		devs: { lan1: { speed: '1000F', carrier: true } },
+		fdb: [ { mac: '00:00:5e:00:53:41', port: 'lan1', bridge: 'br-lan', seen: 1 } ],
+		hints: { '00:00:5E:00:53:41': { ipaddrs: [], ip6addrs: [ 'fe80::1' ], name: 'printer' } },
+		mesh: { available: true, aps: [ '192.0.2.1' ], nodes: {}, stations: [], self: { mac: '02:00:5e:00:00:04', wired: [] },
+			peers: { '192.0.2.1': { name: 'gw', mac: '02:00:5e:00:00:01', wired: [], ips: [ [ '00:00:5e:00:53:41', '192.0.2.41', 'printer' ] ] } } }
+	});
+	const h = m.wiredHosts.find(x => x.mac === '00:00:5e:00:53:41');
+	assert.equal(h.ips[0], '192.0.2.41');
+	assert.ok(h.ips.includes('fe80::1'), 'its own address kept');
+});
+
+test('build: a Wi-Fi client usteer knows, connected or not, is no wired host while a bridge still remembers it', () => {
+	const m = model.build({
+		ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] } ],
+		devs: { lan1: { speed: '1000F', carrier: true } },
+		fdb: [ { mac: '00:00:5e:00:53:41', port: 'lan1', bridge: 'br-lan', seen: 1 }, { mac: '00:00:5e:00:53:42', port: 'lan1', bridge: 'br-lan', seen: 1 } ],
+		mesh: { available: true, aps: [], nodes: {}, stations: [], wifi: [ '00:00:5e:00:53:41' ], peers: {} }
+	});
+	assert.deepEqual(m.wiredHosts.map(h => h.mac), [ '00:00:5e:00:53:42' ]);
+	/* gone from usteer too, but the view saw it on Wi-Fi lately */
+	const m2 = model.build({
+		ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] } ],
+		devs: { lan1: { speed: '1000F', carrier: true } },
+		fdb: [ { mac: '00:00:5e:00:53:41', port: 'lan1', bridge: 'br-lan', seen: 1 } ],
+		wifiSeen: [ '00:00:5e:00:53:41' ], mesh: { available: true, aps: [], nodes: {}, stations: [], wifi: [], peers: {} }
+	});
+	assert.deepEqual(m2.wiredHosts, []);
+});
+
+test('build: an access point plugged into another is that one\'s wired host, once for its two MACs', () => {
+	const node = (ap, ifname) => ({ ap, ifname, ssid: 'Home', freq: 2437, bssid: null, clients: 0 });
+	const m = model.build({
+		ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] } ],
+		devs: { lan1: { speed: '1000F', carrier: true } },
+		fdb: [ '02:00:5e:00:00:20', '02:00:5e:00:00:30', '02:00:5e:00:00:31' ].map(mac => ({ mac, port: 'lan1', bridge: 'br-lan', seen: 1 })),
+		mesh: { available: true, aps: [ '192.0.2.2', '192.0.2.3' ], nodes: { '192.0.2.2#hostapd.phy0-ap0': node('192.0.2.2', 'phy0-ap0'), '192.0.2.3#hostapd.phy0-ap0': node('192.0.2.3', 'phy0-ap0') },
+			stations: [], self: { mac: '02:00:5e:00:00:01', wired: [ [ '02:00:5e:00:00:20', 'lan1' ], [ '02:00:5e:00:00:30', 'lan1' ] ] },
+			peers: {
+				'192.0.2.2': { name: 'ap1', mac: '02:00:5e:00:00:20', wired: [ [ '02:00:5e:00:00:30', 'lan4', 1000, 10, 20 ], [ '02:00:5e:00:00:31', 'lan4', 1000 ] ] },
+				'192.0.2.3': { name: 'ap3', mac: '02:00:5e:00:00:30', wired: [] }
+			} }
+	});
+	const by = Object.fromEntries(m.wiredHosts.map(h => [ h.mac, h ]));
+	assert.deepEqual([ by['02:00:5e:00:00:30'].ap.name, by['02:00:5e:00:00:30'].ap.port, by['02:00:5e:00:00:30'].ap.dup ], [ 'ap1', 'lan4', undefined ]);
+	assert.equal(by['02:00:5e:00:00:31'], undefined, 'its second MAC: one row is enough');
+	assert.equal(by['02:00:5e:00:00:20'].ap, undefined, 'ap1 itself is plugged into this device');
+	assert.equal(m.accessPoints.find(a => a.name === 'ap1').wired, 1);
+});

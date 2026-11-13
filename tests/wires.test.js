@@ -94,3 +94,20 @@ test('dots and speed: one dot per 16 px, 32 px per 1.6 / 1.05 / 0.6 s', () => {
 	near(32 / (wires.trip(32) / wires.rate(3)), 32 / 600, 1e-12, 'speed 3');
 	assert.deepEqual([ wires.speed(1e6), wires.speed(50e6), wires.speed(500e6) ], [ 1, 2, 3 ]);
 });
+
+test('elbow: down from near a\'s left edge and along into b\'s left edge', () => {
+	const wires = load('vantage.wires');
+	const c = wires.elbow({ l: 0, r: 200, t: 0, b: 60, cy: 30 }, { l: 500, r: 700, t: 300, b: 360, cy: 330 });
+	assert.equal(c.d, 'M24.0 60.0V320.0Q24.0 330.0 34.0 330.0H500.0');
+	assert.deepEqual(c.pts[c.pts.length - 1], [ 500, 330 ]);
+});
+
+test('drop: from a card\'s bottom near its left, curving down and round into a card further in below', () => {
+	const c = wires.drop(box(0, 0, 200, 80), box(72, 200, 200, 80));
+	assert.deepEqual(c.pts[0], [ 24, 80 ]);
+	const end = c.pts[c.pts.length - 1];
+	near(end[0], 72, 1e-9, 'x'); near(end[1], 240, 1e-9, 'y');
+	assert.match(c.d, /^M24\.0 80\.0C/);
+	/* not further in and below: an ordinary curve */
+	assert.deepEqual(wires.drop(box(0, 0, 200, 80), box(300, 0, 200, 80)), wires.curve(box(0, 0, 200, 80), box(300, 0, 200, 80)));
+});

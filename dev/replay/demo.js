@@ -279,7 +279,12 @@ class Pseudonymiser {
 
 	/* walk a recorded reply for names, countries, DUIDs and MACs */
 	learn(x, key, ctx) {
-		if (Array.isArray(x)) { for (const v of x) this.learn(v, key, ctx); return; }
+		if (Array.isArray(x)) {
+			/* the mesh's host hints, [ mac, ip, name ]: a peer's DHCP names */
+			if (ctx === 'luci.vantage mesh' && key === 'ips') for (const w of x) if (Array.isArray(w) && typeof w[2] === 'string') this.name(w[2], 'fqdn');
+			for (const v of x) this.learn(v, key, ctx);
+			return;
+		}
 		if (x && typeof x === 'object') {
 			if (ctx && ctx.startsWith('uci ') && typeof x['.type'] === 'string' && typeof x['.name'] === 'string') {
 				const config = ctx.slice(4);
@@ -303,7 +308,7 @@ class Pseudonymiser {
 		else if (key === 'domain' || key === 'dns_search' || key === 'dns-search') this.name(x, 'domain');
 		else if (key === 'fqdn') this.name(x, 'fqdn');
 		else if (key === 'wps_device_name' || key === 'device_name') this.name(x, 'device');
-		else if (key === 'name' && /^(luci-rpc (getHostHints|getDHCPLeases)|dhcp ipv[46]leases|uci dhcp)$/.test(ctx)) this.name(x, 'host');
+		else if (key === 'name' && /^(luci-rpc (getHostHints|getDHCPLeases)|dhcp ipv[46]leases|uci dhcp|luci\.vantage mesh)$/.test(ctx)) this.name(x, 'host');
 		else if ((key === 'ifname' || key === 'device' || key === 'l3_device') && /^[A-Za-z0-9_.@-]{1,32}$/.test(x)) this.structNames.add(x);
 		else if (ctx === 'network.rrdns lookup') this.name(x, 'fqdn');
 		else if (key === 'signature') {

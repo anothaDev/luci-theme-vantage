@@ -51,6 +51,34 @@ return baseclass.extend({
 		return { d: 'M' + f1(x1) + ' ' + f1(y1) + 'V' + f1(y2 - rad) + 'Q' + f1(x1) + ' ' + f1(y2) + ' ' + f1(x1 + rad) + ' ' + f1(y2) + 'H' + f1(x2), pts: pts };
 	},
 
+	/* from a's bottom edge, near its left, down to b's middle and along
+	   into b's left edge, the corner rounded: the gateway to another
+	   access point, below this device's own node */
+	elbow: function(a, b) {
+		var x1 = a.l + 24, y1 = a.b, x2 = b.l, y2 = b.cy, rad = Math.min(10, Math.max(0, y2 - y1), Math.max(0, x2 - x1)), pts = [ [ x1, y1 ] ], i;
+		if (rad < 1) return { d: 'M' + f1(x1) + ' ' + f1(y1) + 'L' + f1(x2) + ' ' + f1(y2), pts: [ [ x1, y1 ], [ x2, y2 ] ] };
+		for (i = 0; i <= 8; i++) {
+			var s = i / 8, v = 1 - s;
+			pts.push([ v * v * x1 + 2 * v * s * x1 + s * s * (x1 + rad), v * v * (y2 - rad) + 2 * v * s * y2 + s * s * y2 ]);
+		}
+		pts.push([ x2, y2 ]);
+		return { d: 'M' + f1(x1) + ' ' + f1(y1) + 'V' + f1(y2 - rad) + 'Q' + f1(x1) + ' ' + f1(y2) + ' ' + f1(x1 + rad) + ' ' + f1(y2) + 'H' + f1(x2), pts: pts };
+	},
+
+	/* from a's bottom edge, near its left, curving down and round into
+	   b's left edge: an access point wired behind another, below it and
+	   further in. Otherwise as curve(). */
+	drop: function(a, b) {
+		var x1 = a.l + 24, y1 = a.b, x2 = b.l, y2 = b.cy, pts = [], i;
+		if (x2 <= x1 + 8 || y2 <= y1 + 8) return this.curve(a, b);
+		var c1x = x1, c1y = y1 + (y2 - y1) * 0.75, c2x = x1 + (x2 - x1) * 0.25, c2y = y2;
+		for (i = 0; i <= STEPS; i++) {
+			var t = i / STEPS, u = 1 - t;
+			pts.push([ u * u * u * x1 + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * x2, u * u * u * y1 + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * y2 ]);
+		}
+		return { d: 'M' + f1(x1) + ' ' + f1(y1) + 'C' + f1(c1x) + ' ' + f1(c1y) + ' ' + f1(c2x) + ' ' + f1(c2y) + ' ' + f1(x2) + ' ' + f1(y2), pts: pts };
+	},
+
 	/* from another line to the internet (a, the k-th beside the main
 	   one) into the device (b), clear of the main line's rates: side by
 	   side and below the device, along a's middle and up into b's bottom

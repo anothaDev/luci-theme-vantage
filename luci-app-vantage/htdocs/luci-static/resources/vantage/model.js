@@ -453,7 +453,9 @@ return baseclass.extend({
 			var wired = members.filter(function(m) { return !self.isWireless(m, devs[m], wirelessNames); });
 			var eth = wired.filter(function(m) { return devs[m] && devs[m].devtype === 'ethernet'; });
 			var lit = function(m) { return devs[m] && devs[m].carrier === true; };
-			var known = typeof via === 'string' && wired.indexOf(via) >= 0 ? via : null;
+			/* the gateway's port; a wireless one too (a mesh or WDS link
+			   is then the way out) */
+			var known = typeof via === 'string' && members.indexOf(via) >= 0 ? via : null;
 			if (!known && own && wired.length > 1) port = null;
 			else {
 				var next = known || eth.filter(lit)[0] || wired.filter(lit)[0] || eth[0] || wired[0] || members[0];
@@ -718,7 +720,20 @@ return baseclass.extend({
 			return out.length ? out : subnets;
 		}
 
-		function hintOf(mac) { return obj(hints[mac.toUpperCase()] || hints[mac]); }
+		/* hostnames the other access points know (a router's leases), for
+		   hosts without one here */
+		var peerNames = Object.create(null);
+		Object.keys(obj(obj(raw.mesh).peers)).forEach(function(ip) {
+			arr(obj(obj(raw.mesh).peers[ip]).ips).slice(0, 192).forEach(function(w) {
+				var mac = Array.isArray(w) && names.normMac(w[0]);
+				if (mac && typeof w[2] === 'string' && w[2] && !peerNames[mac]) peerNames[mac] = w[2].slice(0, 63);
+			});
+		});
+		function hintOf(mac) {
+			var h = obj(hints[mac.toUpperCase()] || hints[mac]), n = peerNames[names.normMac(mac)];
+			if (h.name || !n) return h;
+			return { name: n, ipaddrs: h.ipaddrs, ip6addrs: h.ip6addrs };
+		}
 
 		/* mDNS names only where they are unambiguous across all stations */
 		var everyone = [];
@@ -728,11 +743,71 @@ return baseclass.extend({
 				if (mac) everyone.push({ mac: mac, ips: self.hintAddrs(hintOf(mac), ssidSubnets(ss)) });
 			});
 		});
+		/* stations of the network's other access points, as usteer here
+		   knows them (raw.mesh, luci.vantage mesh): one per MAC, the
+		   strongest node; stations of this device stay its own. Their
+		   frames reach this device over a wire, so they are left out of
+		   the wired hosts below. */
+		var mesh = obj(raw.mesh), meshNodes = obj(mesh.nodes), meshAps = [], apByIp = Object.create(null), remote = Object.create(null), remoteMacs = [];
+		var localSta = Object.create(null);
+		everyone.forEach(function(e) { localSta[e.mac] = true; });
+		var lanSubnets = arr(netSubnets.lan).length ? netSubnets.lan : subnets;
+		function hintByIp(ip) {
+			var found = null;
+			Object.keys(hints).forEach(function(k) {
+				var h = obj(hints[k]);
+				if (!found && arr(h.ipaddrs).indexOf(ip) >= 0) found = { mac: names.normMac(k), name: typeof h.name === 'string' ? h.name : null };
+			});
+			return found;
+		}
+		arr(mesh.aps).forEach(function(ip) {
+			if (typeof ip !== 'string' || !/^\d{1,3}(\.\d{1,3}){3}$/.test(ip) || apByIp[ip] || meshAps.length >= 32) return;
+			var hh = hintByIp(ip), alias = hh && hh.mac && raw.aliases && raw.aliases[hh.mac];
+			/* what the access point shares of itself (mesh-share.uc): its name, its address */
+			var peer = obj(obj(mesh.peers)[ip]), pname = typeof peer.name === 'string' ? peer.name : '';
+			/* a DNS name that is the shared hostname plus a domain: the hostname */
+			var hname = hh && hh.name && pname && hh.name.indexOf(pname + '.') === 0 ? pname : (hh && hh.name);
+			var ap = { ip: ip, mac: (hh && hh.mac) || names.normMac(peer.mac) || null, name: fmt.safeText((alias && alias.name) || hname || pname, 64) || ip,
+				named: !!(alias || (hh && hh.name) || pname), nodes: [], clients: 0, wired: 0, shares: !!obj(mesh.peers)[ip],
+				model: typeof peer.model === 'string' && peer.model ? fmt.safeText(peer.model, 64) : null,
+				uptime: finite(peer.uptime) && peer.uptime >= 0 ? peer.uptime : null,
+				/* its stations' traffic together, when it shares it (bit/s) */
+				rate: null };
+			/* its stations as it reports them: [ mac, rx, tx, signal, kbit/s to it ] */
+			ap.sta = Object.create(null);
+			arr(peer.sta).slice(0, 128).forEach(function(w) {
+				var mac = Array.isArray(w) && names.normMac(w[0]);
+				if (mac) ap.sta[mac] = { rx: finite(w[1]) && w[1] >= 0 ? w[1] : null, tx: finite(w[2]) && w[2] >= 0 ? w[2] : null,
+					signal: finite(w[3]) && w[3] < 0 ? w[3] : null, kbit: finite(w[4]) && w[4] > 0 ? w[4] : null };
+			});
+			apByIp[ip] = ap;
+			meshAps.push(ap);
+		});
+		Object.keys(meshNodes).sort().forEach(function(key) {
+			var n = obj(meshNodes[key]), ap = n.ap && apByIp[n.ap];
+			if (!ap) return;
+			var band = wifi.bandKey(null, n.freq);
+			ap.nodes.push({ id: key, ifname: n.ifname, ssid: typeof n.ssid === 'string' ? n.ssid : '', band: band, freq: finite(n.freq) ? n.freq : null, bssid: n.bssid || null, clients: 0 });
+		});
+		arr(mesh.stations).forEach(function(s) {
+			var mac = s && names.normMac(s.mac), n = s && obj(meshNodes[s.node]), ap = n && n.ap && apByIp[n.ap];
+			if (!mac || !ap || localSta[mac]) return;
+			var sig = finite(s.signal) && s.signal < 0 ? s.signal : null, prev = remote[mac];
+			if (prev && !(sig != null && (prev.signal == null || sig > prev.signal))) return;
+			if (!prev) remoteMacs.push(mac);
+			remote[mac] = { ap: ap, node: s.node, n: n, signal: sig };
+		});
+		remoteMacs.forEach(function(mac) { everyone.push({ mac: mac, ips: self.hintAddrs(hintOf(mac), lanSubnets) }); });
+
 		/* wired hosts: what the bridges learned on ports that are not
 		   Wi-Fi, once per MAC (the entry heard last, a learned one before
 		   a static one), stations left out */
 		var staMacs = Object.create(null), fdb = Object.create(null), wiredMacs = [];
 		everyone.forEach(function(e) { staMacs[e.mac] = true; });
+		/* Wi-Fi clients usteer knows, connected or not, and those the
+		   view saw lately (a station just gone, still in a bridge's
+		   table), are no wired hosts */
+		arr(mesh.wifi).slice(0, 4096).concat(arr(raw.wifiSeen).slice(0, 256)).forEach(function(v) { var mac = names.normMac(v); if (mac) staMacs[mac] = true; });
 		arr(raw.fdb).forEach(function(h) {
 			var mac = h && names.normMac(h.mac);
 			if (!mac || staMacs[mac] || typeof h.port !== 'string' || self.isWireless(h.port, devs[h.port], wlNames)) return;
@@ -752,9 +827,12 @@ return baseclass.extend({
 			return found;
 		}
 		var gwMac = uplink ? macOf(uplink.gateway) : null;
-		if (uplink && gwMac && fdb[gwMac] && uplink.port !== fdb[gwMac].port) {
-			var via = this.resolveUplink(raw.ifaces, devs, wlNames, fdb[gwMac].port, kernel);
-			if (via && via.port === fdb[gwMac].port) uplink = via;
+		/* a gateway heard only over a Wi-Fi link (mesh, WDS) */
+		var gwPort = gwMac && fdb[gwMac] ? fdb[gwMac].port : null;
+		if (gwMac && !gwPort) arr(raw.fdb).forEach(function(h) { if (h && !gwPort && names.normMac(h.mac) === gwMac && typeof h.port === 'string') gwPort = h.port; });
+		if (uplink && gwPort && uplink.port !== gwPort) {
+			var via = this.resolveUplink(raw.ifaces, devs, wlNames, gwPort, kernel);
+			if (via && via.port === gwPort) uplink = via;
 		}
 		var uplinks = uplink ? ownConduits([ uplink ].concat(this.extraUplinks(raw.ifaces, devs, wlNames, uplink, function(hop) {
 			var mac = macOf(hop);
@@ -839,6 +917,40 @@ return baseclass.extend({
 			});
 		});
 
+		remoteMacs.forEach(function(mac) {
+			var r = remote[mac], ap = r.ap, n = r.n, hint = hintOf(mac), ips = self.hintAddrs(hint, lanSubnets);
+			var alias = raw.aliases && raw.aliases[mac];
+			var vendor = typeof raw.vendor === 'function' ? raw.vendor(names.ouiKey(mac)) : null;
+			var nm = names.resolve({ mac: mac, alias: alias, ips: ips, rdns: raw.rdns, mdns: mdns, hint: hint, wps: null, vendor: vendor });
+			var band = wifi.bandKey(null, n.freq);
+			var node = ap.nodes.filter(function(x) { return x.id === r.node; })[0];
+			if (node) node.clients++;
+			ap.clients++;
+			/* what the access point itself says of it (mesh-share.uc) */
+			var own = ap.sta[mac] || null, live = own && own.rx != null && own.tx != null ? { rx: own.rx, tx: own.tx } : null;
+			if (live) ap.rate = { rx: (ap.rate ? ap.rate.rx : 0) + live.rx, tx: (ap.rate ? ap.rate.tx : 0) + live.tx };
+			var c = {
+				mac: mac, macLabel: fmt.mac(mac),
+				name: nm.name, plainName: nm.plain, nameSource: nm.source, nameSourceLabel: nm.sourceLabel,
+				icon: nm.icon, secondary: nm.secondary, isPrivate: nm.isPrivate,
+				alias: alias ? alias.name : null, aliasSid: alias ? alias.sid : null,
+				vendor: nm.source === 'vendor' ? vendor : null,
+				wps: null, ips: ips, peerRate: live,
+				/* on another access point: no interface, radio or counters here */
+				ap: { ip: ap.ip, name: ap.name, node: r.node, bssid: n.bssid || null, freq: finite(n.freq) ? n.freq : null },
+				ifname: null, radio: null, ssidId: null,
+				ssid: typeof n.ssid === 'string' ? n.ssid : '',
+				band: band, bandLabel: wifi.bandLabel(band),
+				signal: own && own.signal != null ? own.signal : r.signal, signalAvg: null, noise: null,
+				std: null, gen: null, rx: null, tx: own && own.kbit ? { rate: own.kbit, label: fmt.phyRate(own.kbit), detail: null, mhz: null, std: null } : null,
+				rxBytes: null, txBytes: null, rxPackets: 0, txPackets: 0, txRetries: 0, txFailed: 0,
+				connected: null, inactive: null, authorized: true, mfp: false, wmm: false, caps: {}
+			};
+			c.level = wifi.signal(c.signal);
+			c.legacyOnRadio = false;
+			clients.push(c);
+		});
+
 		/* A host alone on its port has the port's link and traffic to
 		   itself; hosts sharing one (behind a switch or another access
 		   point) only share the port's. The gateway is found by the
@@ -883,6 +995,173 @@ return baseclass.extend({
 			};
 		});
 
+		/* wired hosts downstream of the other access points, as each
+		   shares them: a MAC goes to the deepest one that has it (one
+		   that also has, on that port, another access point that has the
+		   MAC passes it on), never a station or an access point itself.
+		   Hosts this device hears get the access point; the others are
+		   added, with what the access point says of their port. */
+		var apOfMac = Object.create(null), lists = Object.create(null), owner = Object.create(null), ownerMacs = [];
+		meshAps.forEach(function(ap) {
+			if (ap.mac) apOfMac[ap.mac] = ap;
+			var l = lists[ap.ip] = Object.create(null);
+			arr(obj(obj(mesh.peers)[ap.ip]).wired).slice(0, 64).forEach(function(w) {
+				var mac = Array.isArray(w) && names.normMac(w[0]);
+				/* rx: from the host, as its port counts it; only for a port of its own */
+				if (mac && typeof w[1] === 'string' && !l[mac]) l[mac] = { port: w[1], mbps: finite(w[2]) && w[2] > 0 ? w[2] : null,
+					rate: finite(w[3]) && w[3] >= 0 && finite(w[4]) && w[4] >= 0 ? { rx: w[3], tx: w[4] } : null };
+			});
+		});
+		/* where each access point hangs: the deepest one, or this device,
+		   that has its MAC on a port of its own (one that has, on that
+		   port, another candidate is above it) */
+		var selfMac = names.normMac(obj(mesh.self).mac), selfList = Object.create(null);
+		arr(obj(mesh.self).wired).slice(0, 64).forEach(function(w) {
+			var mac = Array.isArray(w) && names.normMac(w[0]);
+			if (mac && typeof w[1] === 'string' && !selfList[mac]) selfList[mac] = { port: w[1] };
+		});
+		/* this device itself, or a MAC derived from its own (another port) */
+		function isSelf(mac) {
+			if (!selfMac) return false;
+			var t = mac.split(':'), u = selfMac.split(':');
+			return mac === selfMac || (t[1] === u[1] && t[2] === u[2] && t[3] === u[3] && t[4] === u[4] && Math.abs(parseInt(t[5], 16) - parseInt(u[5], 16)) <= 2);
+		}
+		function parentOf(mac, b) {
+			var cands = meshAps.filter(function(a) { return a !== b && lists[a.ip][mac]; }).map(function(a) { return { ap: a, mac: a.mac, l: lists[a.ip] }; });
+			if (b && selfMac && selfList[mac]) cands.push({ ap: null, mac: selfMac, l: selfList });
+			var pick = cands.filter(function(c) {
+				return !cands.some(function(d) { return d !== c && d.mac && c.l[d.mac] && c.l[d.mac].port === c.l[mac].port; });
+			})[0];
+			return !pick ? null : pick.ap ? { ip: pick.ap.ip, name: pick.ap.name, port: pick.l[mac].port } : { self: true, port: pick.l[mac].port };
+		}
+		meshAps.forEach(function(b) { b.parent = b.mac ? parentOf(b.mac, b) : null; });
+		/* a router's public addresses, as it shares them */
+		meshAps.forEach(function(a) {
+			var w = obj(obj(mesh.peers)[a.ip]).wan;
+			a.wan = Array.isArray(w) && typeof w[0] === 'string' && /^\d{1,3}(\.\d{1,3}){3}$/.test(w[0])
+				? { ipv4: w[0], ipv6: typeof w[1] === 'string' && /^[0-9a-f:]{2,39}$/i.test(w[1]) ? w[1] : null } : null;
+		});
+		/* this device's own: the access point it reaches the network through */
+		var selfParent = selfMac ? parentOf(selfMac, null) : null;
+		meshAps.forEach(function(a) {
+			var l = lists[a.ip];
+			Object.keys(l).sort().forEach(function(mac) {
+				if (staMacs[mac] || apOfMac[mac] || owner[mac] || apOfDerived(mac) || isSelf(mac)) return;
+				var deeper = meshAps.some(function(b) { return b !== a && b.mac && lists[b.ip][mac] && l[b.mac] && l[b.mac].port === l[mac].port; });
+				if (deeper) return;
+				owner[mac] = { ap: a, port: l[mac].port, mbps: l[mac].mbps, rate: l[mac].rate };
+				ownerMacs.push(mac);
+			});
+		});
+		function viaAp(o) {
+			o.ap.wired++;
+			if (o.rate) o.ap.rate = { rx: (o.ap.rate ? o.ap.rate.rx : 0) + o.rate.rx, tx: (o.ap.rate ? o.ap.rate.tx : 0) + o.rate.tx };
+			return { ip: o.ap.ip, name: o.ap.name, port: o.port, speed: o.mbps ? { mbps: o.mbps, duplex: null } : null, rate: o.rate };
+		}
+		/* addresses the access points know (a router's leases) for those
+		   without one here */
+		var peerIps = Object.create(null);
+		/* this device's own share too: a reserved address it knows no
+		   lease for (luci-rpc's hints leave those out) */
+		[ obj(mesh.self) ].concat(meshAps.map(function(a) { return obj(obj(mesh.peers)[a.ip]); })).forEach(function(p) {
+			arr(p.ips).slice(0, 192).forEach(function(w) {
+				var mac = Array.isArray(w) && names.normMac(w[0]);
+				if (mac && typeof w[1] === 'string' && /^\d{1,3}(\.\d{1,3}){3}$/.test(w[1])) (peerIps[mac] = peerIps[mac] || []).push(w[1]);
+			});
+		});
+		/* an IPv4 address from them where this device knows none (an
+		   access point often has only a station's IPv6 link-local) */
+		function fillIps(c) {
+			if (!peerIps[c.mac] || c.ips.some(function(ip) { return /^\d{1,3}(\.\d{1,3}){3}$/.test(ip); })) return;
+			c.ips = self.hintAddrs({ ipaddrs: peerIps[c.mac] }, lanSubnets).concat(c.ips);
+		}
+		clients.forEach(fillIps);
+		wired.forEach(fillIps);
+
+		/* a station that is another access point's own radio (a mesh or
+		   WDS backhaul): its MAC is one derived from the access point's,
+		   the same but for the first octet and a last one at most 2 off.
+		   Named after it unless a better name is known */
+		function apOfDerived(mac) {
+			var t = mac.split(':'), found = null;
+			meshAps.forEach(function(a) {
+				[ a.mac ].concat(a.nodes.map(function(n) { return n.bssid; })).forEach(function(m) {
+					var u = typeof m === 'string' ? m.split(':') : null;
+					if (found || !u || u.length !== 6 || t[1] !== u[1] || t[2] !== u[2] || t[3] !== u[3] || t[4] !== u[4]) return;
+					if (Math.abs(parseInt(t[5], 16) - parseInt(u[5], 16)) <= 2) found = a;
+				});
+			});
+			return found;
+		}
+		clients.forEach(function(c) {
+			if (c.ap || /^(alias|dhcp|mdns|dns|wps)$/.test(c.nameSource)) return;
+			var a = apOfDerived(c.mac);
+			if (!a || !a.named) return;
+			c.name = c.plainName = _('%s (backhaul)').format(a.name);
+			c.nameSource = 'ap';
+			c.nameSourceLabel = _('AP');
+			c.icon = 'router';
+			c.isAp = a.ip;
+		});
+
+		/* an access point heard on a port goes by the name it shares */
+		wired.forEach(function(h) {
+			var a = apOfMac[h.mac] || apOfDerived(h.mac);
+			if (!a) return;
+			/* an access point whatever its name comes from: it has its place in the tree */
+			h.isAp = a.ip;
+			if (!a.named || /^(alias|dhcp|mdns|dns)$/.test(h.nameSource)) return;
+			h.name = h.plainName = a.name;
+			h.nameSource = 'ap';
+			h.nameSourceLabel = _('AP');
+			h.icon = 'router';
+			h.isAp = a.ip;
+		});
+		var heard = Object.create(null);
+		/* a host heard here is the access point's only when that access
+		   point is on the same port of this device, or the host comes in
+		   over the uplink; on a port of its own it is this device's */
+		var upPort = uplink ? uplink.port : null, apDone = Object.create(null);
+		wired.forEach(function(h) {
+			var o = owner[h.mac];
+			heard[h.mac] = true;
+			/* an access point plugged into another: one of that one's
+			   wired hosts (once, whichever of its MACs), with the port it
+			   shares for it */
+			if (h.isAp) {
+				var a = apByIp[h.isAp], pa = a && a.parent && a.parent.ip ? apByIp[a.parent.ip] : null, l = pa ? lists[pa.ip][h.mac] : null;
+				if (!l) return;
+				if (apDone[h.isAp]) h.ap = { ip: pa.ip, name: pa.name, port: l.port, speed: null, rate: null, dup: true };
+				else h.ap = viaAp({ ap: pa, port: l.port, mbps: l.mbps, rate: l.rate });
+				apDone[h.isAp] = true;
+				return;
+			}
+			if (!o || h.gateway) return;
+			var apPort = o.ap.mac && fdb[o.ap.mac] ? fdb[o.ap.mac].port : null;
+			if (apPort === h.port || (upPort && h.port === upPort)) h.ap = viaAp(o);
+		});
+		ownerMacs.forEach(function(mac) {
+			if (heard[mac]) return;
+			var o = owner[mac], hint = hintOf(mac), ips = self.hintAddrs(hint, lanSubnets);
+			if (!ips.length && peerIps[mac]) ips = self.hintAddrs({ ipaddrs: peerIps[mac] }, lanSubnets);
+			var alias = raw.aliases && raw.aliases[mac];
+			var vendor = typeof raw.vendor === 'function' ? raw.vendor(names.ouiKey(mac)) : null;
+			var nm = names.resolve({ mac: mac, alias: alias, ips: ips, rdns: raw.rdns, mdns: mdns, hint: hint, wps: null, vendor: vendor });
+			var via = viaAp(o);
+			wired.push({
+				mac: mac, macLabel: fmt.mac(mac),
+				name: nm.name, plainName: nm.plain, nameSource: nm.source, nameSourceLabel: nm.sourceLabel,
+				icon: nm.icon, secondary: nm.secondary, isPrivate: nm.isPrivate,
+				alias: alias ? alias.name : null, aliasSid: alias ? alias.sid : null,
+				vendor: nm.source === 'vendor' ? vendor : null, ips: ips,
+				/* not on a port of this device */
+				port: '', bridge: null, network: null, vlan: null, seen: null, peers: 1, shared: false,
+				speed: via.speed, carrier: null, switch: null, switchPort: null, gateway: false, ap: via
+			});
+		});
+
+		/* an access point's second MAC behind another: one row is enough */
+		for (var wi = wired.length - 1; wi >= 0; wi--) if (wired[wi].ap && wired[wi].ap.dup) wired.splice(wi, 1);
 		var mem = this.memory(info.memory);
 		var release = obj(board.release);
 		return {
@@ -909,6 +1188,10 @@ return baseclass.extend({
 			radios: radios,
 			ssids: ssids,
 			clients: clients,
+			/* the network's other access points (usteer), [] without it */
+			accessPoints: meshAps,
+			/* the access point this device hangs under, or null */
+			selfParent: selfParent,
 			wiredHosts: wired
 		};
 	},

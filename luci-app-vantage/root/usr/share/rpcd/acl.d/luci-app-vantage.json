@@ -1,6 +1,6 @@
 {
 	"luci-app-vantage": {
-		"description": "Vantage dashboard: read-only status of the device, uplink, radios and stations (wireless configuration without keys, through luci.vantage wireless), its temperature sensors (luci.vantage thermal), the wired hosts its bridges have learned (luci.vantage wired: MAC, port and when last heard, and which switch ports a port's VLAN has), the link state of those switch ports (luci getSwconfigPortState), the default route the kernel takes to the internet (luci.vantage routes: family, device and metric, no gateways) and each radio's noise floor (luci.vantage survey: the channel survey read through nl80211)",
+		"description": "Vantage dashboard: read-only status of the device, uplink, radios and stations (wireless configuration without keys, through luci.vantage wireless), its temperature sensors (luci.vantage thermal), the wired hosts its bridges have learned (luci.vantage wired: MAC, port and when last heard, and which switch ports a port's VLAN has), the link state of those switch ports (luci getSwconfigPortState), the default route the kernel takes to the internet (luci.vantage routes: family, device and metric, no gateways), each radio's noise floor (luci.vantage survey: the channel survey read through nl80211) and the network's other access points and their stations as usteer knows them (luci.vantage mesh: addresses, BSSIDs, SSIDs, frequencies and signal, no config)",
 		"read": {
 			"file": {
 				"/proc/stat": [ "read" ]
@@ -12,7 +12,7 @@
 				"network.device": [ "status" ],
 				"luci-rpc": [ "getHostHints" ],
 				"luci": [ "getSwconfigPortState" ],
-				"luci.vantage": [ "routes", "survey", "thermal", "wired", "wireless" ],
+				"luci.vantage": [ "mesh", "routes", "survey", "thermal", "wired", "wireless" ],
 				"iwinfo": [ "assoclist", "info" ],
 				"hostapd.*": [ "get_clients", "get_status" ],
 				"umdns": [ "hosts" ],

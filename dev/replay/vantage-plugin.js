@@ -57,6 +57,7 @@ const POLICY = {
 	thermal: {},
 	wired: {},
 	routes: {},
+	mesh: {},
 	survey: { device: 'string' },
 	set_alias: { mac: 'string', name: 'string', icon: 'string' },
 	set_quiet: { mac: 'string', quiet: 'boolean' }
@@ -420,7 +421,7 @@ function storeCursor(store) {
 }
 
 /* JSON-RPC reply body for one call on luci.vantage */
-function call(store, method, args) {
+function call(store, method, args, next) {
 	args = (args && typeof args === 'object') ? args : {};
 	if (!Object.prototype.hasOwnProperty.call(POLICY, method)) return { result: [ METHOD_NOT_FOUND ] };
 	if (!argsOk(method, args)) return { result: [ INVALID_ARGUMENT ] };
@@ -431,7 +432,19 @@ function call(store, method, args) {
 	}
 	if (method === 'thermal') return { result: [ 0, { zones: thermal(store.fixtures) } ] };
 	if (method === 'survey') return { result: [ 0, { results: survey(args.device, null, () => false) } ] };
-	if (method === 'wired') return { result: [ 0, { hosts: wired(store.synthetic && store.synthetic.fdb ? store.synthetic.fdb() : null) } ] };
+	if (method === 'wired') {
+		/* the recording's reply first, else hosts made up for its bridge */
+		const rec = typeof next === 'function' ? next() : null;
+		if (rec && Array.isArray(rec.result) && rec.result[0] === 0 && rec.result[1]) return rec;
+		return { result: [ 0, { hosts: wired(store.synthetic && store.synthetic.fdb ? store.synthetic.fdb() : null) } ] };
+	}
+	/* usteer's view as recorded, else none: the dashboard then shows this
+	   device alone */
+	if (method === 'mesh') {
+		if (store.synthetic && store.synthetic.mesh) return { result: [ 0, store.synthetic.mesh() ] };
+		const rec = typeof next === 'function' ? next() : null;
+		return rec && Array.isArray(rec.result) && rec.result[0] === 0 && rec.result[1] ? rec : { result: [ 0, { available: false } ] };
+	}
 	if (method === 'routes') {
 		const dump = typeof store.ifaceDump === 'function' ? store.ifaceDump() : ((store.data('network.interface', 'dump', {}) || {}).interface || null);
 		return { result: [ 0, { routes: routes(kernelLookup(dump)) } ] };

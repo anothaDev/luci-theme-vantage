@@ -41,7 +41,9 @@
  *   bridge forwarding database (luci.vantage wired) and one route lookup
  *   a family, IPv4 and IPv6, of a documentation address (luci.vantage
  *   routes), and nl80211 for one read-only channel survey dump of an
- *   interface (luci.vantage survey); no other file access, no other
+ *   interface (luci.vantage survey), and over ubus network.wireless status
+ *   and usteer's remote_hosts, local_info, remote_info and get_clients
+ *   (luci.vantage mesh); no other file access, no other
  *   netlink request, no process execution, and no module, cursor or
  *   connection passed on under another name; altered copies of the
  *   plugin check that these rules catch each breach;
@@ -95,7 +97,7 @@ const READ_UBUS = {
 	'luci-rpc': [ 'getHostHints' ],
 	/* LuCI's own: swconfig dev <switch> show, the switch name quoted */
 	'luci': [ 'getSwconfigPortState' ],
-	'luci.vantage': [ 'routes', 'survey', 'thermal', 'wired', 'wireless' ],
+	'luci.vantage': [ 'mesh', 'routes', 'survey', 'thermal', 'wired', 'wireless' ],
 	/* not survey (#124): luci.vantage survey reads it through nl80211 */
 	'iwinfo': [ 'assoclist', 'info' ],
 	'hostapd.*': [ 'get_clients', 'get_status' ],
@@ -245,7 +247,7 @@ test('the plugin registers exactly the granted luci.vantage methods, writes conf
 	for (const g of Object.values(acl)) for (const kind of [ 'read', 'write' ])
 		for (const m of ((g[kind] || {}).ubus || {})[PLUGIN_OBJECT] || []) granted.add(m);
 	assert.deepEqual(methods, [ ...granted ].sort());
-	assert.deepEqual(methods, [ 'routes', 'set_alias', 'set_quiet', 'survey', 'thermal', 'wired', 'wireless' ]);
+	assert.deepEqual(methods, [ 'mesh', 'routes', 'set_alias', 'set_quiet', 'survey', 'thermal', 'wired', 'wireless' ]);
 	assert.ok(pairs(acl[READ_GROUP].read.ubus).has(PLUGIN_OBJECT + ' wireless'));
 	assert.ok(pairs(acl[READ_GROUP].read.ubus).has(PLUGIN_OBJECT + ' thermal'));
 	assert.ok(pairs(acl[WRITE_GROUP].write.ubus).has(PLUGIN_OBJECT + ' set_alias'));
@@ -320,10 +322,14 @@ function checkPluginSource(src) {
 	for (const m of sws[0].replace(walk, '').matchAll(/(?<!\\)\bs\b(\.\w+|\[|\))?/g))
 		assert.ok([ '.device', '.vid', '.vlan', '.ports' ].includes(m[1]), `"${m[0]}": a switch_vlan section is read as s.device, s.vid, s.vlan and s.ports only${REWORD}`);
 
-	/* ubus: one connection for the one call, network.wireless status */
-	assert.deepEqual([ ...src.matchAll(/^.*\bconnect\b.*$/gm) ].map(m => m[0].trim()), [ 'import { connect } from \'ubus\';', 'let reply = connect()?.call(\'network.wireless\', \'status\');' ],
-		`"connect" may appear only on its import and the network.wireless status call${REWORD}`);
-	assert.equal([ ...src.matchAll(/\.\s*call\b/g) ].length, 1, 'one .call');
+	/* ubus: network.wireless status, and usteer's four read-only state
+	   dumps (luci.vantage mesh), each on a connection made for it */
+	assert.deepEqual([ ...src.matchAll(/^.*\bconnect\b.*$/gm) ].map(m => m[0].trim()), [ 'import { connect } from \'ubus\';', 'let u = connect();', 'let reply = connect()?.call(\'network.wireless\', \'status\');' ],
+		`"connect" may appear only on its import, the mesh connection and the network.wireless status call${REWORD}`);
+	const ubusCalls = [ ...src.matchAll(/\.\s*call\b(\([^)]*\))?/g) ].map(m => m[0]).sort();
+	assert.deepEqual(ubusCalls, [ ".call('network.wireless', 'status')", ".call('usteer', 'get_clients')", ".call('usteer', 'local_info')", ".call('usteer', 'remote_hosts')", ".call('usteer', 'remote_info')" ],
+		`ubus calls: network.wireless status and usteer remote_hosts, local_info, remote_info and get_clients only${REWORD}`);
+	assert.equal([ ...src.matchAll(/\bu\b/g) ].length, 5, '"u": the mesh connection and its four calls');
 
 	/* rtnl: two requests, the read-only dump of the bridge forwarding
 	   database and a route lookup (RTM_GETROUTE without a dump: the one
