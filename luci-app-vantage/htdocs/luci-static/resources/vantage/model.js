@@ -433,7 +433,7 @@ return baseclass.extend({
 			return g.l3.indexOf(main.l3dev) < 0 && !g.members.some(function(i) { return i.interface === main.iface; });
 		}).map(function(g) {
 			var r = defRoute(g.r.i), hop = r && r.nexthop;
-			return absorb(self.line(g.r.i, devs, wirelessNames, hop && typeof viaOf === 'function' ? viaOf(hop) : null, true), g);
+			return absorb(self.line(g.r.i, devs, wirelessNames, hop && typeof viaOf === 'function' ? viaOf(hop, g.r.i.l3_device || g.r.i.device) : null, true), g);
 		});
 	},
 
@@ -742,22 +742,34 @@ return baseclass.extend({
 			fdb[mac] = { port: h.port, bridge: typeof h.bridge === 'string' ? h.bridge : null, vlan: finite(h.vlan) ? h.vlan : null, seen: seen };
 		});
 		/* a gateway, by the address the host hints give it; on a bridge
-		   with several ports a line is the port it was learned on */
-		function macOf(addr) {
-			var found = null;
+		   with several ports a line is the port it was learned on. Any
+		   device can have the hints list an address under its MAC (one ARP
+		   request does it), so a host this device hears on its bridges, and
+		   on none the line leaves through (l3: the line's device), is not
+		   that line's gateway, a station of its own Wi-Fi never; and when
+		   two are left, none is: unknown rather than the wrong one */
+		function macOf(addr, l3) {
+			var found = [], vlan = /^(.+)\.\d{1,4}$/.exec(l3 || ''), on = [ l3, vlan ? vlan[1] : l3 ];
 			if (addr) Object.keys(hints).forEach(function(k) {
 				var mac = names.normMac(k);
-				if (mac && arr(obj(hints[k]).ipaddrs).concat(arr(obj(hints[k]).ip6addrs)).indexOf(addr) >= 0) found = mac;
+				if (!mac || staMacs[mac] || found.indexOf(mac) >= 0) return;
+				if (arr(obj(hints[k]).ipaddrs).concat(arr(obj(hints[k]).ip6addrs)).indexOf(addr) < 0) return;
+				/* every row the bridges gave for it, not the one kept (fdb):
+				   that is the one heard last, and a router's MAC is on every
+				   bridge of a wire that carries its VLANs */
+				var rows = arr(raw.fdb).filter(function(h) { return h && names.normMac(h.mac) === mac && typeof h.port === 'string'; });
+				if (l3 && rows.length && !rows.some(function(h) { return on.indexOf(h.bridge || h.port) >= 0; })) return;
+				found.push(mac);
 			});
-			return found;
+			return found.length === 1 ? found[0] : null;
 		}
-		var gwMac = uplink ? macOf(uplink.gateway) : null;
+		var gwMac = uplink ? macOf(uplink.gateway, uplink.l3dev) : null;
 		if (uplink && gwMac && fdb[gwMac] && uplink.port !== fdb[gwMac].port) {
 			var via = this.resolveUplink(raw.ifaces, devs, wlNames, fdb[gwMac].port, kernel);
 			if (via && via.port === fdb[gwMac].port) uplink = via;
 		}
-		var uplinks = uplink ? ownConduits([ uplink ].concat(this.extraUplinks(raw.ifaces, devs, wlNames, uplink, function(hop) {
-			var mac = macOf(hop);
+		var uplinks = uplink ? ownConduits([ uplink ].concat(this.extraUplinks(raw.ifaces, devs, wlNames, uplink, function(hop, l3) {
+			var mac = macOf(hop, l3);
 			return mac && fdb[mac] ? fdb[mac].port : null;
 		}, kernel).slice(0, MAX_LINES))) : [];
 		/* the network on each bridge (or bridge VLAN: br-lan.10), and its
