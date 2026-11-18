@@ -80,6 +80,13 @@ present) and results must be built as text nodes like everything else.
   `test_acl_policy.js` for this one call, and the app needs its own copy of
   the model (`vantage-theme/nftmodel.js`), since theme and app stay
   independent. Decide this before building the rpcd method.
+- **Update notice:** an opt-in daily check for a newer release, shown as
+  a small notice on the gear. Off by default: the browser would ask the
+  package feed once a day while LuCI is open, which tells the feed's
+  host the admin's address. The manual "Check for updates" under
+  Appearance stays, and updating stays with the package manager: no
+  update button, the dashboard's backend is read-only
+  ([#133](https://github.com/anothaDev/luci-theme-vantage/issues/133)).
 
 ## Upstream
 
