@@ -352,7 +352,7 @@ test('Appearance: the templates and the login page read the same keys, in the sa
 	const table = /\nconst LOOK = (\{[\s\S]*?\n\});\n/.exec(src);
 	assert.ok(table, 'found LOOK');
 	const LOOK = new Function('THEME_KEY', 'LOGIN_KEY', 'BACKDROP_KEY', 'return ' + table[1])('vantage.theme', 'vantage.login', 'vantage.backdrop.v1');
-	assert.deepEqual(Object.keys(LOOK), [ 'theme', 'login', 'backdrop', 'power', 'brand' ]);
+	assert.deepEqual(Object.keys(LOOK), [ 'theme', 'login', 'backdrop', 'power', 'unfocused', 'brand' ]);
 	assert.ok(header.includes("look('brand', [ 'none', 'hostname', 'model' ])"), 'the template keeps the same brand values');
 	assert.ok(header.includes("look('theme', 'vantage.theme.own', 'vantage.theme', [ 'auto', 'light', 'dark' ])"));
 	assert.ok(header.includes("look('backdrop', 'vantage.backdrop.own', 'vantage.backdrop.v1', [ 'grid', 'stars', 'none' ])"));
@@ -364,6 +364,13 @@ test('Appearance: the templates and the login page read the same keys, in the sa
 	assert.ok(loginJs.includes("localStorage.getItem('vantage.power.own'); p[2] = localStorage.getItem('vantage.power')"));
 	assert.match(loginJs, /if \(pick === 'none' \|\| power === 'low'\) return;/);
 	assert.ok(login.includes("look('power', [ 'normal', 'low' ])") && login.includes('data-vt-look-power="{{ look_power }}"'));
+	/* Motion when not in focus (#131): the dashboard's attribute, the refresh dot and the login page follow the pick */
+	assert.ok(header.includes("look('unfocused', 'vantage.unfocused.own', 'vantage.unfocused', [ 'still', 'moving' ])"));
+	assert.ok(header.includes("look('unfocused', [ 'still', 'moving' ])"), 'the template keeps the same values');
+	assert.ok(login.includes("look('unfocused', [ 'still', 'moving' ])") && login.includes('data-vt-look-unfocused="{{ look_unfocused }}"'));
+	assert.ok(loginJs.includes("localStorage.getItem('vantage.unfocused.own'); u[2] = localStorage.getItem('vantage.unfocused')"));
+	assert.match(loginJs, /if \(unfocused !== 'moving'\) \{\n\t\twindow\.addEventListener\('blur'/, 'the login page pauses on blur unless picked');
+	assert.ok(src.includes("root.toggleAttribute('data-vt-blur', !document.hasFocus() && root.getAttribute('data-vt-unfocused') !== 'moving')"));
 	for (const [ name, k ] of Object.entries(LOOK)) {
 		assert.match(k.own, /^vantage\.[a-z]+\.own$/, name);
 		assert.ok(header.includes(`data-vt-look-${name}="{{ look_${name} }}"`), `header hands over ${name}`);
@@ -372,6 +379,7 @@ test('Appearance: the templates and the login page read the same keys, in the sa
 	assert.deepEqual(LOOK.login.ok, [ 'grid', 'stars', 'none' ]);
 	assert.deepEqual(LOOK.backdrop.ok, [ 'grid', 'stars', 'none' ]);
 	assert.deepEqual(LOOK.power.ok, [ 'normal', 'low' ], 'Low-power router is off unless picked');
+	assert.deepEqual(LOOK.unfocused.ok, [ 'still', 'moving' ], 'nothing moves without the focus unless picked');
 	assert.deepEqual(LOOK.brand.ok, [ 'none', 'hostname', 'model' ], 'nothing next to the logo unless picked');
 	assert.ok(!login.includes('vt-look-brand'), 'the login page shows no device name');
 	/* saved in config vantage_theme, section appearance, and nowhere else */

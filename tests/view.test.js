@@ -1146,8 +1146,8 @@ test('other lines: hosts on a backup line\'s port are the way to its gateway, no
 
 test('nothing moves while another window has the focus or Low-power router is on; the numbers go on', () => {
 	const saved = { L: global.L, document: global.document };
-	let power = 'normal';
-	const root = { attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return k === 'data-vt-power' ? power : null; } };
+	let power = 'normal', unfocused = 'still';
+	const root = { attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return k === 'data-vt-power' ? power : k === 'data-vt-unfocused' ? unfocused : null; } };
 	global.L = { env: { media: '/luci-static/vantage' } };
 	global.document = { hidden: false, documentElement: root };
 	const cls = new Set();
@@ -1164,6 +1164,13 @@ test('nothing moves while another window has the focus or Low-power router is on
 		self.paintLive();
 		assert.ok(cls.has('vt-still'), 'another window has the focus');
 		assert.equal(self.el.live.className, 'vt-livepill vt-live-ok', 'still live');
+		/* Motion when not in focus (#131), the theme's Appearance */
+		unfocused = 'moving';
+		self.paintLive();
+		assert.ok(!cls.has('vt-still'), 'on without the focus when picked');
+		unfocused = 'still';
+		self.paintLive();
+		assert.ok(cls.has('vt-still'));
 		self.focused = true;
 		self.paintLive();
 		assert.ok(!cls.has('vt-still'));
@@ -1171,6 +1178,10 @@ test('nothing moves while another window has the focus or Low-power router is on
 		self.paintLive();
 		assert.ok(cls.has('vt-still'), 'Low-power router');
 		assert.equal(self.backdrop.paused, true);
+		unfocused = 'moving';
+		self.focused = false;
+		self.paintLive();
+		assert.ok(cls.has('vt-still'), 'Low-power router stops it whatever the focus');
 	} finally {
 		global.L = saved.L;
 		if (saved.document === undefined) delete global.document; else global.document = saved.document;

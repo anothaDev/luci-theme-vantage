@@ -737,6 +737,14 @@ function lowPower() {
 	return !!(root && root.getAttribute && root.getAttribute('data-vt-power') === 'low');
 }
 
+/* Motion when not in focus (#131; the Vantage theme's Appearance,
+   data-vt-unfocused): things go on moving while another window has the
+   focus */
+function movesUnfocused() {
+	var root = typeof document !== 'undefined' ? document.documentElement : null;
+	return !!(root && root.getAttribute && root.getAttribute('data-vt-unfocused') === 'moving');
+}
+
 function writeBackdrop(v) {
 	/* the theme takes it (and cancels the event) */
 	var ev = null;
@@ -1444,6 +1452,7 @@ return view.extend({
 		poll.add(L.bind(this.refreshFast, this), FAST_S);
 		poll.add(L.bind(this.refresh, this), POLL_S);
 		window.addEventListener('vantage:power', function() { self.applyPower(); });
+		window.addEventListener('vantage:unfocused', function() { self.paintLive(); });
 		[ 'pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'focus' ].forEach(function(t) {
 			window.addEventListener(t, function() { self.noteInput(); }, { passive: true });
 		});
@@ -2050,11 +2059,12 @@ return view.extend({
 		this.el.live.hidden = (state === 'ok' || stopped) && vantageTheme();
 		this.el.live.setAttribute('title', label);
 		txt(this.el.liveText, label);
-		this.setMotion(state !== 'paused' && this.focused !== false && !lowPower());
+		this.setMotion(state !== 'paused' && (this.focused !== false || movesUnfocused()) && !lowPower());
 	},
 
 	/* Nothing moves while the page is paused or another window has the
-	   focus (the numbers still update): the status circle's ring and the
+	   focus (the numbers still update; with Motion when not in focus on,
+	   the focus stops nothing): the status circle's ring and the
 	   live beat (app.css, .vt-still), the flow dots stay where they are
 	   and the backdrop keeps its last frame. A moving part keeps the
 	   browser drawing every frame. */
@@ -2293,7 +2303,7 @@ return view.extend({
 			el.path
 		]));
 		/* packets or stars behind the path, moved by the uplink's rate */
-		this.backdrop = backdrop.mount(tile, el.path, lowPower() ? 'none' : this.backdropStyle, { external: true });
+		this.backdrop = backdrop.mount(tile, el.path, lowPower() ? 'none' : this.backdropStyle, { external: true, unfocused: movesUnfocused });
 		return tile;
 	},
 
