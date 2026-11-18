@@ -3417,12 +3417,15 @@ return view.extend({
 		}));
 	},
 
-	/* a header's click: its column, or the other way round on a second one */
+	/* a header's click: its column, or the other way round on a second
+	   one. Only this list's pick is written: the other one's may be newer
+	   in the store, from another tab. */
 	setSort: function(key) {
-		var so = this.ui.sorts[this.ui.kind];
+		var so = this.ui.sorts[this.ui.kind], all = readSorts();
 		if (so.key === key) so.dir = -so.dir;
 		else { so.key = key; so.dir = (key === 'name' || key === 'ssid' || key === 'net' || key === 'seen') ? 1 : -1; }
-		writeSorts(this.ui.sorts);
+		all[this.ui.kind] = { key: so.key, dir: so.dir };
+		writeSorts(all);
 		this.paintClients();
 	},
 

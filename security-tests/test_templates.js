@@ -387,6 +387,7 @@ test('Appearance saved for every browser: only values the theme knows reach the 
 	const unfocused = html => attrOf(html, 'html', 'data-vt-look-unfocused');
 	assert.equal(unfocused(renderLogin({ path: ADMIN, look: { unfocused: 'moving' } }).html), 'moving');
 	assert.equal(unfocused(renderPage({ path: ADMIN, authed: true, look: { unfocused: 'moving' } }).html), 'moving');
+	assert.equal(unfocused(renderPage({ path: ADMIN, look: { unfocused: 'moving' } }).html), '', 'not on a page without a login other than the login page');
 	for (const odd of [ HOSTILE, 'Moving', ' moving', 'on', '' ]) {
 		assert.equal(unfocused(renderLogin({ path: ADMIN, look: { unfocused: odd } }).html), '', `login unfocused ${JSON.stringify(odd)}`);
 		assert.equal(unfocused(renderPage({ path: ADMIN, authed: true, look: { unfocused: odd } }).html), '', `header unfocused ${JSON.stringify(odd)}`);

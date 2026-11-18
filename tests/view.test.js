@@ -1514,6 +1514,19 @@ test('client table: by name until a header is clicked, and the pick is kept for 
 		self.ui.kind = 'wired';
 		self.setSort('seen');
 		assert.deepEqual(load().ui.sorts, { wifi: { key: 'live', dir: 1 }, wired: { key: 'seen', dir: 1 } }, 'kept, each list its own');
+		/* another tab, opened before those picks, changes one list: the other's pick stays */
+		const other = load();
+		box.v = JSON.stringify({ wifi: { key: 'signal', dir: -1 }, wired: { key: 'seen', dir: 1 } });
+		other.ui.kind = 'wired';
+		other.setSort('link');
+		assert.deepEqual(load().ui.sorts, { wifi: { key: 'signal', dir: -1 }, wired: { key: 'link', dir: -1 } });
+		/* the header's click goes through setSort, the table is in the pick's order, and the
+		   backdrop and a pick made while the page is open follow Motion when not in focus (#131) */
+		const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+		assert.ok(src.includes("'click': function() { self.setSort(c[0]); }"));
+		assert.ok(src.includes("var so = ui.sorts[ui.kind];") && src.includes("var va = self.sortValue(a, so.key), vb = self.sortValue(b, so.key);"));
+		assert.ok(src.includes("{ external: true, unfocused: movesUnfocused }"));
+		assert.ok(src.includes("window.addEventListener('vantage:unfocused', function() { self.paintLive(); });"));
 		/* a stored pick the list has no column for, or no direction: by name */
 		box.v = JSON.stringify({ wifi: { key: 'seen', dir: 1 }, wired: { key: 'link', dir: 2 } });
 		assert.deepEqual(load().ui.sorts, byName);

@@ -371,6 +371,11 @@ test('Appearance: the templates and the login page read the same keys, in the sa
 	assert.ok(loginJs.includes("localStorage.getItem('vantage.unfocused.own'); u[2] = localStorage.getItem('vantage.unfocused')"));
 	assert.match(loginJs, /if \(unfocused !== 'moving'\) \{\n\t\twindow\.addEventListener\('blur'/, 'the login page pauses on blur unless picked');
 	assert.ok(src.includes("root.toggleAttribute('data-vt-blur', !document.hasFocus() && root.getAttribute('data-vt-unfocused') !== 'moving')"));
+	assert.ok(src.includes("window.addEventListener(UNFOCUSED_EVENT, focus);"), 'the dot follows a pick made while the page is open');
+	assert.equal(src.split('this.applyUnfocused();').length, 3, 'applied when the page opens and when another tab picks');
+	assert.ok(src.includes("else if (name === 'unfocused') root.setAttribute('data-vt-look-unfocused', value);"), 'a saved pick becomes the page\'s');
+	assert.equal(src.split("'vt-unfocused': 'unfocused'").length, 2, 'a failed save can be tried again');
+	assert.ok(src.includes("'vt-unfocused': this.unfocusedPref()"), 'the panel shows the pick in force');
 	for (const [ name, k ] of Object.entries(LOOK)) {
 		assert.match(k.own, /^vantage\.[a-z]+\.own$/, name);
 		assert.ok(header.includes(`data-vt-look-${name}="{{ look_${name} }}"`), `header hands over ${name}`);
