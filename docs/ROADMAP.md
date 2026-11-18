@@ -87,6 +87,14 @@ present) and results must be built as text nodes like everything else.
   Appearance stays, and updating stays with the package manager: no
   update button, the dashboard's backend is read-only
   ([#133](https://github.com/anothaDev/luci-theme-vantage/issues/133)).
+- **WireGuard tile:** each tunnel's peers with their name, the time since
+  the last handshake and their traffic, shown only where a tunnel exists
+  (as the Wi-Fi tiles need a radio). From LuCI's own `luci.wireguard
+  getWgInstances` (`luci-proto-wireguard`), which is read-only and
+  returns no private or preshared keys, so the plugin gets no new
+  method. To decide: show it only to logins that hold LuCI's WireGuard
+  group, or add that one read grant to the dashboard's group
+  ([#129](https://github.com/anothaDev/luci-theme-vantage/issues/129)).
 
 ## Upstream
 
