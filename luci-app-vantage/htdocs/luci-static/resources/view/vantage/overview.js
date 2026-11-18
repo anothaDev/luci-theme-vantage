@@ -611,6 +611,26 @@ function writeFolds(v) {
 	try { window.localStorage.setItem(FOLD_KEY, JSON.stringify(v)); } catch (e) {}
 }
 
+/* The client table's order, Wi-Fi and wired: by name until a header is
+   clicked, and that pick is remembered per browser (#132: by live
+   traffic the rows changed places at every poll). */
+var SORT_KEY = 'vantage.sort.v1';
+var SORT_COLS = { wifi: [ 'name', 'signal', 'ssid', 'rate', 'live', 'exp', 'time' ], wired: [ 'name', 'link', 'net', 'live', 'seen' ] };
+
+function readSorts() {
+	var out = { wifi: { key: 'name', dir: 1 }, wired: { key: 'name', dir: 1 } }, v = null;
+	try { v = JSON.parse(window.localStorage.getItem(SORT_KEY) || 'null'); } catch (e) { v = null; }
+	Object.keys(out).forEach(function(k) {
+		var s = v && typeof v === 'object' ? v[k] : null;
+		if (s && SORT_COLS[k].indexOf(s.key) >= 0 && (s.dir === 1 || s.dir === -1)) out[k] = { key: s.key, dir: s.dir };
+	});
+	return out;
+}
+
+function writeSorts(v) {
+	try { window.localStorage.setItem(SORT_KEY, JSON.stringify(v)); } catch (e) {}
+}
+
 /* What the Vantage theme's template hands over (data-vt-look-*): under it
    the router keeps the layouts and the chart style with the Appearance */
 function lookAttr(name) {
@@ -994,7 +1014,7 @@ return view.extend({
 			wireless: null,
 			lastOk: 0, lastErr: null, paused: false
 		};
-		this.ui = { sorts: { wifi: { key: 'live', dir: -1 }, wired: { key: 'seen', dir: 1 } }, kind: 'wifi', filter: '', chip: 'all', drawer: null, editing: null, hover: null };
+		this.ui = { sorts: readSorts(), kind: 'wifi', filter: '', chip: 'all', drawer: null, editing: null, hover: null };
 		this.folds = readFolds();
 		this.foldEls = {};
 		this.foldBtns = {};
@@ -3387,6 +3407,15 @@ return view.extend({
 		}));
 	},
 
+	/* a header's click: its column, or the other way round on a second one */
+	setSort: function(key) {
+		var so = this.ui.sorts[this.ui.kind];
+		if (so.key === key) so.dir = -so.dir;
+		else { so.key = key; so.dir = (key === 'name' || key === 'ssid' || key === 'net' || key === 'seen') ? 1 : -1; }
+		writeSorts(this.ui.sorts);
+		this.paintClients();
+	},
+
 	paintClients: function() {
 		var self = this, m = this.m, st = this.st, el = this.el, ui = this.ui;
 
@@ -3423,10 +3452,7 @@ return view.extend({
 		var headSig = ui.kind + ' ' + so.key + ' ' + so.dir;
 		if (this.headSig !== headSig) dom.content(el.thead, [ E('tr', {}, cols.map(function(c) {
 			var on = so.key === c[0];
-			var btn = E('button', { 'type': 'button', 'class': 'vt-sort' + (on ? ' vt-sort-on' : ''), 'click': function() {
-				if (so.key === c[0]) so.dir = -so.dir; else { so.key = c[0]; so.dir = (c[0] === 'name' || c[0] === 'ssid' || c[0] === 'net' || c[0] === 'seen') ? 1 : -1; }
-				self.paintClients();
-			} }, [ E('span', {}, [ c[1] ]), E('span', { 'class': 'vt-sort-ind', 'aria-hidden': 'true' }, [ on ? (so.dir > 0 ? '↑' : '↓') : '' ]) ]);
+			var btn = E('button', { 'type': 'button', 'class': 'vt-sort' + (on ? ' vt-sort-on' : ''), 'click': function() { self.setSort(c[0]); } }, [ E('span', {}, [ c[1] ]), E('span', { 'class': 'vt-sort-ind', 'aria-hidden': 'true' }, [ on ? (so.dir > 0 ? '↑' : '↓') : '' ]) ]);
 			if (c[2]) btn.setAttribute('title', c[2]);
 			return E('th', { 'class': 'vt-th-' + c[0], 'scope': 'col', 'aria-sort': on ? (so.dir > 0 ? 'ascending' : 'descending') : 'none' }, [ btn ]);
 		})) ]);

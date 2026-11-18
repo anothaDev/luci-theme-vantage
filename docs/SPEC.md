@@ -250,7 +250,10 @@ text around it so it looks the same size.
   Clients tile lists Wi-Fi stations or wired hosts, switched in its head
   where a device has both, and folds its quick filters (bands, active,
   weak signal, new; per port for wired hosts) into a menu at the end of
-  the search box, the one in force shown as a tag in the box. A wired
+  the search box, the one in force shown as a tag in the box. Both lists
+  are in name order until a column's header is clicked; that pick is
+  kept per browser (`localStorage`), each list its own (#132: in order
+  of live traffic the rows changed places at every poll). A wired
   host alone on its port gets the port's link speed and traffic as its
   own; hosts sharing a port (a switch or another access point behind it)
   show the port as shared, with no speed or traffic of their own; their

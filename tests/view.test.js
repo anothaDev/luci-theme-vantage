@@ -1477,3 +1477,39 @@ test('motion clock: a cancelled pulse is dropped, not stepped', () => {
 		assert.deepEqual(self.clock.anims.map(x => x.a), [ live ]);
 	} finally { global.window = saved; }
 });
+
+/* #132: by live traffic the rows changed places at every poll */
+test('client table: by name until a header is clicked, and the pick is kept for this browser', () => {
+	const savedWindow = global.window, savedL = global.L, box = {};
+	global.L = { env: {} };
+	global.window = {
+		sessionStorage: { getItem: () => null, setItem() {} },
+		localStorage: { getItem: k => k === 'vantage.sort.v1' ? box.v || null : null, setItem(k, v) { if (k === 'vantage.sort.v1') box.v = v; } }
+	};
+	const load = () => {
+		const self = Object.create(view);
+		self.initState({ board: {}, canWrite: false, canRdns: false, mdns: null });
+		self.paintClients = () => {};
+		return self;
+	};
+	const byName = { wifi: { key: 'name', dir: 1 }, wired: { key: 'name', dir: 1 } };
+	try {
+		let self = load();
+		assert.deepEqual(self.ui.sorts, byName);
+		self.setSort('live');
+		assert.deepEqual(self.ui.sorts.wifi, { key: 'live', dir: -1 }, 'the busiest first');
+		self.setSort('live');
+		assert.deepEqual(self.ui.sorts.wifi, { key: 'live', dir: 1 }, 'a second click turns it round');
+		self.ui.kind = 'wired';
+		self.setSort('seen');
+		assert.deepEqual(load().ui.sorts, { wifi: { key: 'live', dir: 1 }, wired: { key: 'seen', dir: 1 } }, 'kept, each list its own');
+		/* a stored pick the list has no column for, or no direction: by name */
+		box.v = JSON.stringify({ wifi: { key: 'seen', dir: 1 }, wired: { key: 'link', dir: 2 } });
+		assert.deepEqual(load().ui.sorts, byName);
+		box.v = '[';
+		assert.deepEqual(load().ui.sorts, byName, 'not JSON');
+	} finally {
+		global.window = savedWindow;
+		global.L = savedL;
+	}
+});
