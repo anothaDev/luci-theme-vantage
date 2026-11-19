@@ -59,9 +59,9 @@ msgstr "%d подключено"
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:129
 msgid "%d day ago"
 msgid_plural "%d days ago"
-msgstr[0] ""
-msgstr[1] ""
-msgstr[2] ""
+msgstr[0] "%d день назад"
+msgstr[1] "%d дня назад"
+msgstr[2] "%d дней назад"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3088
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3092
@@ -96,9 +96,9 @@ msgstr "%d мин назад"
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:130
 msgid "%d month ago"
 msgid_plural "%d months ago"
-msgstr[0] ""
-msgstr[1] ""
-msgstr[2] ""
+msgstr[0] "%d месяц назад"
+msgstr[1] "%d месяца назад"
+msgstr[2] "%d месяцев назад"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4117
 msgid "%d of %d"
@@ -172,9 +172,9 @@ msgstr "Проводных: %d"
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:131
 msgid "%d year ago"
 msgid_plural "%d years ago"
-msgstr[0] ""
-msgstr[1] ""
-msgstr[2] ""
+msgstr[0] "%d год назад"
+msgstr[1] "%d года назад"
+msgstr[2] "%d лет назад"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3741
 msgid "%d–%d MHz of the %d–%d MHz band"
@@ -268,7 +268,7 @@ msgstr "свободно %s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:99
 msgid "%s free on the root filesystem (%s used)"
-msgstr ""
+msgstr "свободно %s в корневой файловой системе (%s занято)"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:48
 msgid "%s has no carrier: cable unplugged or switch port down"
@@ -716,11 +716,11 @@ msgstr "Соединение"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4540
 msgid "Copied"
-msgstr ""
+msgstr "Скопировано"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4540
 msgid "Copy"
-msgstr ""
+msgstr "Копировать"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3414
 msgid "Core %d: %s"
@@ -984,7 +984,7 @@ msgstr "Прошивка"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5148
 msgid "Firmware built"
-msgstr ""
+msgstr "Сборка прошивки"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:392
 msgid "Forwarding %s to %s"
@@ -1134,7 +1134,7 @@ msgstr "IPv6"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5005
 msgid "IPv6 prefix"
-msgstr ""
+msgstr "Префикс IPv6"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4679
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4719
@@ -1660,7 +1660,7 @@ msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4540
 msgid "Not copied"
-msgstr ""
+msgstr "Не скопировано"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4188
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4713
@@ -1985,7 +1985,7 @@ msgstr "Замечен с"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5046
 msgid "Sensor"
-msgstr ""
+msgstr "Датчик"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5013
 msgctxt "vantage"
@@ -2159,7 +2159,7 @@ msgstr "Telnet (порт 23)"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5045
 msgid "Temperature"
-msgstr ""
+msgstr "Температура"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:79
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3408
@@ -2282,6 +2282,9 @@ msgid ""
 "translates addresses in front of this one (double NAT). Port forwards can be "
 "reached from the internet only where that one passes them on."
 msgstr ""
+"У этой линии частный адрес (%s): другой маршрутизатор или провайдер "
+"транслирует адреса перед этим устройством (двойной NAT). Перенаправления "
+"портов доступны из интернета, только если тот их пропускает."
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4978
 msgid ""
@@ -2289,6 +2292,9 @@ msgid ""
 "many customers (carrier-grade NAT). Port forwards cannot be reached from the "
 "internet over IPv4."
 msgstr ""
+"У этой линии общий адрес (%s): провайдер транслирует адреса для многих "
+"клиентов (NAT операторского уровня). Перенаправления портов недоступны из "
+"интернета по IPv4."
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4969
 msgid "This line is down or has no default route now."
@@ -3090,7 +3096,7 @@ msgstr "этот маршрутизатор"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:128
 msgid "today"
-msgstr ""
+msgstr "сегодня"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:398
 msgid "traffic rule"
