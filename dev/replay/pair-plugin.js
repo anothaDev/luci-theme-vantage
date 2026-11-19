@@ -10,11 +10,13 @@
      vantage-ap 1 ssh-ed25519 <host key> <addr> <port> <mac> <name>   (AP -> router)
 
    Same methods, argument policy, checks and replies as the plugin:
-     status         {} -> { router: { code, aps: [ { id, name, addr, port } ] },
+     status         {} -> { router: { code, aps: [ { id, name, addr, port, net? } ] },
                             ap: { ssh, routers: [ { name, key } ], reply } }
      router_code    {} -> { code }  (this device's key, made on first use)
-     add_ap         { code, addr? } -> { id } | { error: invalid|no-key|duplicate|full }
-                    (the entry keeps the reply's MAC too, not in status)
+     add_ap         { code, addr? } -> { id } | { error: invalid|self|no-key|duplicate|full }
+                    (the entry keeps the reply's MAC too, not in status, and
+                    the name of the network its address is on, when it is on
+                    one of this device's: net; self: this device's own reply)
      remove_ap      { id } -> { ok: true } | { error: unknown }
      allow_router   { code } -> { reply } | { error: invalid|<ssh state>|duplicate|full }
      revoke_router  { key } -> { ok: true } | { error: unknown }
@@ -26,14 +28,16 @@
 
    It starts as a router with the three access points of aps.js paired
    (ap-hall, ap-den, ap-loft: the same ids, names, addresses and MACs, so
-   the page lists what the dashboard shows with --aps) and as an access
-   point that one router may read, with documentation addresses and made-up
-   keys (a fixed ssh-ed25519 header and 32 bytes of a SHA-256). Adding or
-   removing an access point here changes this list only: the --aps report
-   is a fixed picture, so one added stays "waiting for its first report"
-   and one removed stays on the dashboard. This device's name comes from
-   the recorded hostname (pseudonymised under --demo), as the plugin makes
-   it from /proc/sys/kernel/hostname.
+   the page lists what the dashboard shows with --aps; the first two on
+   its lan, ap-loft at an address of none of its networks, so with no
+   network kept) and as an access point that one router may read, with
+   documentation addresses and made-up keys (a fixed ssh-ed25519 header
+   and 32 bytes of a SHA-256). Adding or removing an access point here
+   changes this list only: the --aps report is a fixed picture, so one
+   added stays "waiting for its first report" and one removed stays on
+   the dashboard. This device's name comes from the recorded hostname
+   (pseudonymised under --demo), as the plugin makes it from
+   /proc/sys/kernel/hostname.
 
    For previews: VANTAGE_REPLAY_PAIR_SSH sets the SSH state the access
    point side reports (ok, no-dropbear, no-key-options, unsupported,
@@ -75,6 +79,7 @@ const RE_IPV4 = /^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$/;
 const RE_IPV6 = /^[0-9a-f:]{2,39}$/;
 const RE_GROUP = /^[0-9a-f]{1,4}$/;
 const RE_MAC = /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/;
+const RE_NET = /^[A-Za-z0-9_]{1,64}$/;
 /* the 19 bytes in front of every ssh-ed25519 public key blob: the length
    of the type name, the name, the length of the 32-byte key */
 const HEADER = Buffer.concat([ Buffer.from([ 0, 0, 0, 11 ]), Buffer.from('ssh-ed25519'), Buffer.from([ 0, 0, 0, 32 ]) ]);
@@ -147,6 +152,33 @@ function port(v) {
 	return (Number.isInteger(v) && v >= 1 && v <= 65535) ? v : null;
 }
 
+/* one of this device's networks by its name ("lan"), as netifd names an
+   interface: a uci section's name */
+function net(v) { return str(v) && RE_NET.test(v) ? v : null; }
+
+/* The name of the network an address is on (aps.uc net_of; ifaces: the
+   interfaces of ubus network.interface dump): of the interface that is
+   up, has a device and holds the address in a subnet most narrowly; null
+   when none does. IPv4 only: the replay's own networks have no IPv6
+   subnets, so an IPv6 address is on none of them */
+function netOf(a, ifaces) {
+	const m = str(a) ? RE_IPV4.exec(a) : null;
+	if (!m || m.slice(1).some(o => +o > 255) || !Array.isArray(ifaces)) return null;
+	const num = o => ((+o[0] * 256 + +o[1]) * 256 + +o[2]) * 256 + +o[3];
+	const want = num(m.slice(1));
+	let best = null, most = 0;
+	for (const i of ifaces) {
+		if (!i || typeof i !== 'object' || i.up !== true || !str(i.l3_device) || !/^[A-Za-z0-9_.-]{1,15}$/.test(i.l3_device)) continue;
+		for (const n of Array.isArray(i['ipv4-address']) ? i['ipv4-address'] : []) {
+			const f = n && str(n.address) ? RE_IPV4.exec(n.address) : null;
+			if (!f || f.slice(1).some(o => +o > 255) || !Number.isInteger(n.mask) || n.mask < 1 || n.mask > 32) continue;
+			const size = Math.pow(2, 32 - n.mask);
+			if (Math.floor(want / size) === Math.floor(num(f.slice(1)) / size) && n.mask > most) { most = n.mask; best = i; }
+		}
+	}
+	return best ? net(best.interface) : null;
+}
+
 /* a pasted line's fields, apart by runs of blanks */
 function fields(code) {
 	if (!str(code) || Buffer.byteLength(code) > MAX_CODE) return [];
@@ -186,19 +218,31 @@ function hostOf(store) {
 	return board && typeof board.hostname === 'string' ? board.hostname : '';
 }
 
+/* this device's networks, as ubus network.interface dump lists them: its
+   lan, at the address it gives a router as an access point */
+const LAN_ADDR = '192.0.2.1';
+const IFACES = [ { interface: 'lan', up: true, l3_device: 'br-lan', 'ipv4-address': [ { address: LAN_ADDR, mask: 24 } ] } ];
+
+/* an entry of the paired list: with the name of the network its address
+   is on, when it is on one */
+function entry(e) {
+	const n = netOf(e.addr, IFACES);
+	return n ? Object.assign(e, { net: n }) : e;
+}
+
 /* the access points of aps.js (the --aps report), as paired: required
    here, not at the top, so either file may load the other */
 function seeded() {
 	const { APS } = require('./aps');
 	return APS.map(a => ({ id: fakeId(a.name), name: name(a.name), addr: addr(a.addr), port: 22, mac: mac(a.mac), key: fakeKey('host ' + a.name) }))
-		.filter(a => a.name && a.addr && a.mac);
+		.filter(a => a.name && a.addr && a.mac).map(entry);
 }
 
 function initialState(host, ssh, noDbclient) {
 	return {
 		host,
 		/* this device as an access point: its lan address and MAC, dropbear's port */
-		addr: '192.0.2.1',
+		addr: LAN_ADDR,
 		port: 22,
 		mac: '00:00:5e:00:53:01',
 		hostKey: fakeKey('host ' + host),
@@ -232,7 +276,7 @@ function unread(s) { return s.ssh === 'keys-unreadable'; }
 function status(s) {
 	const routers = unread(s) ? [] : s.routers.map(r => ({ name: r.name, key: r.key }));
 	return {
-		router: { code: routerCode(s), aps: s.aps.map(a => ({ id: a.id, name: a.name, addr: a.addr, port: a.port })), unread: false },
+		router: { code: routerCode(s), aps: s.aps.map(a => Object.assign({ id: a.id, name: a.name, addr: a.addr, port: a.port }, a.net ? { net: a.net } : {})), unread: false },
 		ap: { ssh: s.ssh, routers, unread: unread(s), reply: s.ssh === 'ok' && routers.length ? apReply(s) : null }
 	};
 }
@@ -241,12 +285,14 @@ function status(s) {
 function addAp(s, args) {
 	const ap = parseApReply(args.code);
 	if (!ap || (args.addr != null && args.addr !== '' && !addr(args.addr))) return { error: 'invalid' };
+	/* this device's own reply */
+	if (ap.key === s.hostKey) return { error: 'self' };
 	if (!s.routerKey) return { error: 'no-key' };
 	if (s.aps.some(a => a.key === ap.key)) return { error: 'duplicate' };
 	if (s.aps.length >= MAX_APS) return { error: 'full' };
 	let id;
 	do id = crypto.randomBytes(8).toString('hex'); while (s.aps.some(a => a.id === id));
-	s.aps.push({ id, name: ap.name, addr: addr(args.addr) || ap.addr, port: ap.port, mac: ap.mac, key: ap.key });
+	s.aps.push(entry({ id, name: ap.name, addr: addr(args.addr) || ap.addr, port: ap.port, mac: ap.mac, key: ap.key }));
 	return { id };
 }
 
@@ -316,5 +362,5 @@ function call(store, method, args) {
 	return handle(stateOf(store), method, args);
 }
 
-module.exports = { OBJECT, POLICY, MAX_APS, MAX_ROUTERS, MAX_CODE, SSH_STATES, key, name, nameOf, addr, mac, port, parseRouterCode, parseApReply,
+module.exports = { OBJECT, POLICY, MAX_APS, MAX_ROUTERS, MAX_CODE, SSH_STATES, IFACES, key, name, nameOf, addr, mac, net, netOf, port, parseRouterCode, parseApReply,
 	fakeKey, fakeId, seeded, initialState, argsOk, handle, call };

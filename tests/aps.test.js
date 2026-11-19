@@ -170,6 +170,83 @@ test('vantage.aps: an access point is looked for on the network it was paired on
 	assert.equal(runModule([ [ 'find_addrs', AP_MAC, 'h\n' + [ 1, 2, 3, 4, 5, 6 ].map(i => row('192.0.2.' + (100 + i), 'br-lan')).join(''), '', LAN_NET ] ])[0].length, 4);
 });
 
+/* the LAN after its subnet was changed: the same network, by name and device, with another subnet */
+const LAN_MOVED = Object.assign({}, LAN_IF, { 'ipv4-address': [ { address: '198.51.100.1', mask: 24 } ] });
+const MOVED_NET = { dev: 'br-lan', nets: [ [ [ 198, 51, 100, 1 ], 24 ] ] };
+
+test('vantage.aps: a network\'s name is a uci section\'s; the paired list takes an entry with one, without one, and none with a name that is no name', { skip: NO_UCODE }, () => {
+	const names = [ [ 'lan', 'lan' ], [ 'LAN_2', 'LAN_2' ], [ 'a', 'a' ], [ '_', '_' ], [ 'x'.repeat(64), 'x'.repeat(64) ], [ 'x'.repeat(65), null ], [ '', null ], [ 'br-lan', null ], [ 'lan.1', null ],
+		[ 'lan guest', null ], [ 'lan\n', null ], [ ' lan', null ], [ 'lan\u0000x', null ], [ '../x', null ], [ 'län', null ], [ 7, null ], [ null, null ], [ [ 'lan' ], null ], [ { lan: 1 }, null ], [ true, null ] ];
+	assert.deepEqual(runModule(names.map(n => [ 'net', n[0] ])), names.map(n => n[1]));
+	const e = (i, k, extra) => Object.assign({ id: i.toString(16).padStart(16, '0'), name: 'ap' + i, key: k, addr: '192.0.2.' + (i + 1), port: 22, mac: AP_MAC }, extra);
+	const withNet = e(1, K1, { net: 'lan' }), old = e(2, K2), guest = e(3, K3, { net: 'guest_2' });
+	const good = JSON.stringify([ withNet, old, guest ]);
+	const r = runModule([ [ 'aps', good ], [ 'aps', good, true ] ]);
+	/* the name kept where there is one; no net at all on an entry without (written back, such an entry is as it was) */
+	assert.deepEqual(r, [ [ withNet, old, guest ], [ withNet, old, guest ] ]);
+	assert.deepEqual(r[0].map(a => 'net' in a), [ true, false, true ]);
+	/* a net that is no name: no entry, as with any other field. The collector passes it over; the one who writes the list back gets none */
+	for (const bad of [ '', 'br-lan', 'lan.1', 'lan ', 'x'.repeat(65), 'lan\u0000x', 5, null, true, [ 'lan' ], { name: 'lan' } ]) {
+		const text = JSON.stringify([ withNet, e(4, key(4), { net: bad }), old ]);
+		assert.deepEqual(runModule([ [ 'aps', text ], [ 'aps', text, true ] ]), [ [ withNet, old ], null ], JSON.stringify(bad));
+	}
+	/* a field of some later version is passed over, as before; it is not the network */
+	assert.deepEqual(runModule([ [ 'aps', JSON.stringify([ Object.assign({ network: 'guest', Net: 'guest' }, old) ]), true ] ]), [ [ old ] ]);
+});
+
+test('vantage.aps: the network of a pairing by name, the one its address is on then; by that name it is known again whatever its subnet is now', { skip: NO_UCODE }, () => {
+	/* net_of: the name of the very interface network_of() finds */
+	const addrs = [ '192.0.2.10', '192.0.2.255', '198.51.100.10', '198.51.100.200', '203.0.113.6', '203.0.113.9', '2001:db8:1::10', '2001:DB8:1:0::10', '2001:db8:ffff::9', '2001:db8:2::10', null, 'x' ];
+	const got = runModule(addrs.flatMap(a => [ [ 'net_of', a, DUMP.interface ], [ 'network_of', a, DUMP.interface ] ]));
+	assert.deepEqual(addrs.map((a, i) => got[2 * i]), [ 'lan', 'lan', 'guest', null, 'wan', null, 'lan', 'lan', 'wan', null, null, null ]);
+	const dev = { lan: 'br-lan', guest: 'br-guest', wan: 'eth1' };
+	addrs.forEach((a, i) => assert.equal(got[2 * i + 1] ? got[2 * i + 1].dev : null, got[2 * i] ? dev[got[2 * i]] : null, a + ': one rule for both'));
+	const wide = { interface: 'internet', up: true, l3_device: 'eth1', 'ipv4-address': [ { address: '198.51.100.2', mask: 24 } ] };
+	assert.deepEqual(runModule([ [ 'net_of', '198.51.100.10', [ wide, GUEST_IF ] ], [ 'net_of', '198.51.100.10', [ GUEST_IF, wide ] ], [ 'net_of', '198.51.100.200', [ wide, GUEST_IF ] ] ]),
+		[ 'guest', 'guest', 'internet' ], 'the narrowest subnet that holds it');
+	/* no name to keep: the interface down or without a device, netifd silent, or a name that is none (what netifd was handed by another program) */
+	const named = n => [ Object.assign({}, LAN_IF, { interface: n }) ];
+	assert.deepEqual(runModule([ [ 'net_of', '192.0.2.10', [ Object.assign({}, LAN_IF, { up: false }) ] ], [ 'net_of', '192.0.2.10', [ Object.assign({}, LAN_IF, { l3_device: '../x' }) ] ],
+		[ 'net_of', '192.0.2.10', null ], [ 'net_of', '192.0.2.10', named('my-lan') ], [ 'net_of', '192.0.2.10', named('x'.repeat(65)) ], [ 'net_of', '192.0.2.10', named(7) ],
+		[ 'net_of', '192.0.2.10', named(undefined) ], [ 'net_of', '192.0.2.10', named('lan\u0000') ], [ 'network_of', '192.0.2.10', named('my-lan') ] ]),
+		[ null, null, null, null, null, null, null, null, LAN_NET ]);
+
+	/* network_named: that interface now, its device and the subnets it has now */
+	const N = (n, ifaces) => [ 'network_named', n, ifaces ];
+	const moved = [ WAN_IF, LAN_MOVED, { interface: 'guest', up: true, l3_device: 'br-guest', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ] } ];
+	const bare = Object.assign({}, LAN_IF, { 'ipv4-address': [] });
+	const r = runModule([ N('lan', DUMP.interface), N('guest', DUMP.interface), N('lan', moved), N('guest', moved),
+		/* gone (renamed or removed), down, without a device: nowhere */
+		N('lan', [ WAN_IF, GUEST_IF ]), N('lan', [ Object.assign({}, LAN_IF, { interface: 'home' }) ]), N('lan', [ Object.assign({}, LAN_IF, { up: false }) ]),
+		N('lan', [ Object.assign({}, LAN_IF, { up: 1 }) ]), N('lan', [ Object.assign({}, LAN_IF, { l3_device: '../x' }) ]), N('lan', [ Object.assign({}, LAN_IF, { l3_device: null }) ]),
+		N('lan', null), N('lan', {}), N('lan', [ null, 7, 'lan', [ LAN_IF ] ]),
+		/* the name itself, whole: no other spelling, no part of one, nothing that is no name */
+		N('LAN', DUMP.interface), N('lan6', DUMP.interface), N('la', DUMP.interface), N('lan\u0000', DUMP.interface), N('', DUMP.interface), N(null, DUMP.interface), N(7, DUMP.interface),
+		N('br-lan', [ Object.assign({}, LAN_IF, { interface: 'br-lan' }) ]), N([ 'lan' ], DUMP.interface),
+		/* up, and without an IPv4 subnet for now: the network, with nowhere in it to look */
+		N('lan', [ bare ]),
+		/* the first of that name is the one, as it is (netifd lists a name once) */
+		N('lan', [ Object.assign({}, LAN_IF, { up: false }), LAN_MOVED ]) ]);
+	assert.deepEqual(r.slice(0, 4), [ LAN_NET, { dev: 'br-guest', nets: [ [ [ 198, 51, 100, 1 ], 25 ] ] }, MOVED_NET, { dev: 'br-guest', nets: [ [ [ 192, 0, 2, 1 ], 24 ] ] } ]);
+	assert.deepEqual(r.slice(4, 13), Array(9).fill(null), 'gone, down or without a device');
+	assert.deepEqual(r.slice(13, 22), Array(9).fill(null), 'the name whole, and only a name');
+	assert.deepEqual(r.slice(22), [ { dev: 'br-lan', nets: [] }, null ]);
+
+	/* the search there: what its MAC has now inside the network's new subnet, on its device. The subnet it was paired in is another
+	   network's by now (the guests'): rows and leases there are not followed, nor is the address it was paired at */
+	const row = (ip, dev) => ip + ' 0x1 0x2 ' + AP_MAC + ' * ' + dev + '\n';
+	const arp = 'IP address HW type Flags HW address Mask Device\n' + row('192.0.2.60', 'br-guest') + row('192.0.2.61', 'br-lan') + row('198.51.100.60', 'br-guest') + row('198.51.100.61', 'br-lan') + row('203.0.113.5', 'eth1');
+	const leases = '1 ' + AP_MAC + ' 192.0.2.70 x *\n1 ' + AP_MAC + ' 198.51.100.70 x *\n';
+	assert.deepEqual(runModule([ [ 'find_addrs', AP_MAC, arp, leases, MOVED_NET ], [ 'next_addr', AP_MAC, '192.0.2.10', {}, arp, leases, MOVED_NET ],
+		[ 'next_addr', AP_MAC, '192.0.2.10', { '198.51.100.70': true }, arp, leases, MOVED_NET ], [ 'next_addr', AP_MAC, '192.0.2.10', { '198.51.100.70': true, '198.51.100.61': true }, arp, leases, MOVED_NET ],
+		[ 'find_addrs', AP_MAC, arp, leases, { dev: 'br-lan', nets: [] } ], [ 'find_addrs', AP_MAC, arp, leases, null ] ]),
+		[ [ '198.51.100.70', '198.51.100.61' ], '198.51.100.70', '198.51.100.61', null, [], [] ]);
+	/* at most four there too, counted after those already tried */
+	const many = 'h\n' + [ 1, 2, 3, 4, 5, 6 ].map(i => row('198.51.100.' + (100 + i), 'br-lan')).join('');
+	assert.deepEqual(runModule([ [ 'find_addrs', AP_MAC, many, '', MOVED_NET ], [ 'find_addrs', AP_MAC, many, '', MOVED_NET, { '198.51.100.101': true, '198.51.100.102': true, '198.51.100.103': true } ] ]),
+		[ [ 101, 102, 103, 104 ].map(n => '198.51.100.' + n), [ 104, 105, 106 ].map(n => '198.51.100.' + n) ]);
+});
+
 test('vantage.aps: no NUL byte passes a check; loopback, link-local and IPv4-mapped addresses however spelled do not either', { skip: NO_UCODE }, () => {
 	/* ucode matches a regular expression against the bytes before a NUL only */
 	const nul = runModule([ [ 'name', 'ap\u0000evil' ], [ 'mac', AP_MAC + '\u0000x' ], [ 'addr', '192.0.2.1\u0000x' ], [ 'key', K1 + '\u0000' ], [ 'id', '0123456789abcdef\u0000' ], [ 'port', '22\u0000' ],
@@ -612,6 +689,72 @@ test('pair: add_ap stores the access point and starts the collector; remove_ap s
 	assert.equal(read(nokey.sb, 'collector.log'), null);
 });
 
+test('pair: add_ap keeps the network the access point is on, by name; a list of an earlier version is read and stays as it was', { skip: NO_UCODE }, () => {
+	const ubus = Object.assign({}, UBUS_OK, { 'network.interface dump': DUMP }), id = '0123456789abcdef';
+	const add = (args, o) => runPlugin(Object.assign({ haveKey: true, ubus }, o), [ { method: 'add_ap', args }, { method: 'status' } ]);
+	const entry = (r) => JSON.parse(read(r.sb, 'etc/vantage/aps.json'))[0];
+	/* on the LAN: its name, in the list and on the page */
+	const lan = add({ code: apCode(K2, '192.0.2.20', 22, 'ap-hall') });
+	assert.deepEqual(lan.results[0].reply, { id });
+	assert.deepEqual(entry(lan), { id, name: 'ap-hall', key: K2, addr: '192.0.2.20', port: 22, mac: AP_MAC, net: 'lan' });
+	assert.deepEqual(lan.results[1].reply.router.aps, [ { id, name: 'ap-hall', addr: '192.0.2.20', port: 22, net: 'lan' } ]);
+	assert.equal(read(lan.sb, 'collector.log'), 'enable\nstart\n');
+	/* netifd is asked once, for its interfaces, and nothing else is asked for a pairing */
+	assert.deepEqual(runPlugin({ haveKey: true, ubus }, [ { method: 'add_ap', args: { code: apCode(K2, '192.0.2.20', 22, 'ap-hall') } } ]).ubus, [ 'network.interface dump' ]);
+	/* the network of the address it is paired at: the one given, by IPv6 too */
+	assert.equal(entry(add({ code: apCode(K2, '192.0.2.20', 22, 'ap-hall'), addr: '198.51.100.7' })).net, 'guest');
+	assert.equal(entry(add({ code: apCode(K2, '198.51.100.7', 22, 'ap-hall'), addr: '2001:db8:1::10' })).net, 'lan');
+	/* on none of this router's networks (behind another router), netifd silent or the network down, or a name netifd has from
+	   elsewhere that is no section's: paired all the same, as before, and no network kept */
+	const plain = a => ({ id, name: 'ap-hall', key: K2, addr: a, port: 22, mac: AP_MAC });
+	for (const [ what, args, o ] of [ [ 'no network', { code: apCode(K2, '198.51.100.200', 22, 'ap-hall') } ], [ 'no network, IPv6', { code: apCode(K2, '2001:db8:2::10', 22, 'ap-hall') } ],
+		[ 'no dump', { code: apCode(K2, '192.0.2.20', 22, 'ap-hall') }, { ubus: UBUS_OK } ],
+		[ 'no interfaces', { code: apCode(K2, '192.0.2.20', 22, 'ap-hall') }, { ubus: Object.assign({}, UBUS_OK, { 'network.interface dump': { interface: 'lan' } }) } ],
+		[ 'down', { code: apCode(K2, '192.0.2.20', 22, 'ap-hall') }, { ubus: Object.assign({}, UBUS_OK, { 'network.interface dump': { interface: [ Object.assign({}, LAN_IF, { up: false }) ] } }) } ],
+		[ 'no name', { code: apCode(K2, '192.0.2.20', 22, 'ap-hall') }, { ubus: Object.assign({}, UBUS_OK, { 'network.interface dump': { interface: [ Object.assign({}, LAN_IF, { interface: 'my-lan' }) ] } }) } ] ]) {
+		const r = add(args, o);
+		assert.deepEqual([ r.results[0].reply, entry(r) ], [ { id }, plain(args.addr ?? args.code.split(' ')[4]) ], what);
+		assert.deepEqual(r.results[1].reply.router.aps, [ { id, name: 'ap-hall', addr: plain(args.code.split(' ')[4]).addr, port: 22 } ], what + ': none on the page');
+	}
+
+	/* a list as an earlier version wrote it (no network in it): read, listed, and its entries written back as they were */
+	const old = [ { id: '00000000000000a1', name: 'ap-den', key: K3, addr: '192.0.2.11', port: 22, mac: AP_MAC }, { id: '00000000000000a2', name: 'ap-loft', key: K1, addr: '198.51.100.12', port: 2222, mac: MAC(0xa2) } ];
+	const up = runPlugin({ haveKey: true, ubus, aps: old }, [ { method: 'status' }, { method: 'add_ap', args: { code: apCode(K2, '192.0.2.20', 22, 'ap-hall') } }, { method: 'status' },
+		{ method: 'remove_ap', args: { id: old[0].id } } ]);
+	assert.deepEqual([ up.results[0].reply.router.unread, up.results[0].reply.router.aps ], [ false, old.map(a => ({ id: a.id, name: a.name, addr: a.addr, port: a.port })) ]);
+	assert.deepEqual(up.results[1].reply, { id });
+	assert.deepEqual(up.results[2].reply.router.aps.map(a => a.net), [ undefined, undefined, 'lan' ]);
+	assert.deepEqual(up.results[3].reply, { ok: true });
+	assert.deepEqual(JSON.parse(read(up.sb, 'etc/vantage/aps.json')), [ old[1], Object.assign(plain('192.0.2.20'), { net: 'lan' }) ], 'no network made up for the old one');
+	/* a network that is no name (a hand edit): the list is not this add-on's to write, as with any other field gone wrong */
+	for (const bad of [ 'br-lan', '', null, 7 ]) {
+		const text = JSON.stringify([ old[0], Object.assign({}, old[1], { net: bad }) ]);
+		const r = runPlugin({ haveKey: true, ubus, before: sb => { fs.mkdirSync(sb.p('etc/vantage'), { recursive: true }); fs.writeFileSync(sb.p('etc/vantage/aps.json'), text); } },
+			[ { method: 'add_ap', args: { code: apCode(K2, '192.0.2.20', 22, 'ap-hall') } }, { method: 'remove_ap', args: { id: old[0].id } }, { method: 'status' } ]);
+		assert.deepEqual([ r.results[0].reply, r.results[1].reply, r.results[2].reply.router.aps, r.results[2].reply.router.unread ], [ { error: 'failed' }, { error: 'failed' }, [], true ], JSON.stringify(bad));
+		assert.equal(read(r.sb, 'etc/vantage/aps.json'), text, 'left as it was');
+		assert.equal(read(r.sb, 'collector.log'), null);
+	}
+});
+
+test('pair: a device is not paired with itself', { skip: NO_UCODE }, () => {
+	/* the reply this device gives a router, pasted into its own form: its own host key */
+	const self = runPlugin({ haveKey: true }, [ { method: 'allow_router', args: { code: routerCode(K1, 'gw') } }, { method: 'status' } ]).results[0].reply.reply;
+	assert.equal(self, apCode(key(7), '192.0.2.10', 22, 'gw', '00:00:5e:00:53:b1'));
+	for (const args of [ { code: self }, { code: self, addr: '198.51.100.7' }, { code: apCode(key(7), '203.0.113.9', 2222, 'another-name', AP_MAC) } ]) {
+		const r = runPlugin({ haveKey: true, ubus: Object.assign({}, UBUS_OK, { 'network.interface dump': DUMP }) }, [ { method: 'add_ap', args }, { method: 'status' } ]);
+		assert.deepEqual([ r.results[0].reply, r.results[1].reply.router.aps ], [ { error: 'self' }, [] ]);
+		assert.deepEqual([ read(r.sb, 'etc/vantage/aps.json'), read(r.sb, 'collector.log') ], [ null, null ], 'nothing written, nothing started');
+		assert.ok(!r.ubus.includes('network.interface dump'), 'refused before netifd is asked');
+	}
+	/* said of a router without a key of its own too; a reply that is no reply is still that first */
+	assert.deepEqual(runPlugin({}, [ { method: 'add_ap', args: { code: self } } ]).results[0].reply, { error: 'self' });
+	assert.deepEqual(runPlugin({ haveKey: true }, [ { method: 'add_ap', args: { code: self, addr: '127.0.0.1' } } ]).results[0].reply, { error: 'invalid' });
+	/* another device's key at this device's own address, and a device with no host key to compare: paired as before */
+	assert.deepEqual(runPlugin({ haveKey: true }, [ { method: 'add_ap', args: { code: apCode(K2, '192.0.2.10', 22, 'gw', '00:00:5e:00:53:b1') } } ]).results[0].reply, { id: '0123456789abcdef' });
+	assert.deepEqual(runPlugin({ haveKey: true, hostKey: null }, [ { method: 'add_ap', args: { code: self } } ]).results[0].reply, { id: '0123456789abcdef' });
+});
+
 test('pair: at most 16 access points', { skip: NO_UCODE }, () => {
 	const aps = Array.from({ length: 16 }, (_, i) => ({ id: (i + 1).toString(16).padStart(16, '0'), name: 'ap' + i, key: key(40 + i), addr: '192.0.2.' + (i + 1), port: 22, mac: AP_MAC }));
 	const { results, sb } = runPlugin({ haveKey: true, aps }, [ { method: 'add_ap', args: { code: apCode(K2, '192.0.2.100', 22, 'one-more') } } ]);
@@ -932,6 +1075,72 @@ test('collector: an access point is looked for on the network it was paired on o
 	const v6 = Object.assign({}, AP1, { addr: '2001:db8:1::10' });
 	const six = runCollector({ aps: [ v6 ], arp: head + row('192.0.2.90', 'br-lan') + row('203.0.113.5', 'eth1'), hosts: { '192.0.2.90': { out: apReport(1, 1000) } } }, steps);
 	assert.deepEqual(tried(six), [ '2001:db8:1::10', '192.0.2.90' ]);
+});
+
+test('collector: a pairing that names its network is found again after that network\'s subnet was changed, and looked for nowhere once the network is gone', { skip: NO_UCODE }, () => {
+	const row = (ip, dev) => ip + ' 0x1 0x2 ' + AP_MAC + ' * ' + dev + '\n', head = 'IP address HW type Flags HW address Mask Device\n';
+	const tried = r => [ ...new Set(r.calls.map(c => /root@(\S+)/.exec(c)[1])) ];
+	const last = r => { const a = r.results[r.results.length - 1].aps[0]; return [ a.state, a.addr ]; };
+	const steps = [ ASK, wait(1), ASK, wait(30), ASK ], report = { out: apReport(1, 1000) };
+	const NAMED = Object.assign({}, AP1, { net: 'lan' });
+
+	/* the LAN renumbered: the subnet it was paired in is no network of this router's any more, and it has a lease in the new one */
+	const moved = { interface: [ WAN_IF, LAN_MOVED ] }, lease = '1700000000 ' + AP_MAC + ' 198.51.100.40 ap-hall *\n';
+	const found = runCollector({ aps: [ NAMED ], dump: moved, leases: lease, hosts: { '198.51.100.40': report } }, steps);
+	assert.deepEqual(tried(found), [ '192.0.2.10', '198.51.100.40' ]);
+	assert.deepEqual(last(found), [ 'ok', '198.51.100.40' ]);
+	assert.equal(found.log.filter(l => l.startsWith('known_hosts: '))[1], 'known_hosts: 198.51.100.40 ssh-ed25519 ' + K1, 'the same pinned key at the new address');
+	assert.deepEqual(JSON.parse(read(found.sb, 'etc/vantage/aps.json')), [ NAMED ], 'the paired list is not rewritten');
+	/* a pairing of an earlier version names none: its address is on no network now and nothing is searched, as before */
+	const old = runCollector({ dump: moved, leases: lease, hosts: { '198.51.100.40': report } }, steps);
+	assert.deepEqual([ tried(old), last(old) ], [ [ '192.0.2.10' ], [ 'offline', '192.0.2.10' ] ]);
+	/* the pinned key decides in the new subnet too: another device holds its lease's address, it is at the one its neighbour row says */
+	const other = runCollector({ aps: [ NAMED ], dump: moved, leases: lease, arp: head + row('198.51.100.41', 'br-lan'),
+		hosts: { '198.51.100.40': { err: 'ssh-ed25519 host key mismatch for 198.51.100.40 !', code: 1 }, '198.51.100.41': report } }, steps);
+	assert.deepEqual([ tried(other), last(other) ], [ [ '192.0.2.10', '198.51.100.40', '198.51.100.41' ], [ 'ok', '198.51.100.41' ] ]);
+	/* and nothing but the pinned key: every address its MAC has there answers with a report under another key */
+	const none = runCollector({ aps: [ NAMED ], dump: moved, leases: lease, arp: head + row('198.51.100.41', 'br-lan'),
+		hosts: Object.fromEntries([ '192.0.2.10', '198.51.100.40', '198.51.100.41' ].map(a => [ a, { out: apReport(1, 1000), err: 'ssh-ed25519 host key mismatch for ' + a + ' !', code: 1 } ])) }, steps);
+	assert.deepEqual([ tried(none), last(none), none.results[4].aps[0].error, none.results[4].aps[0].report ], [ [ '192.0.2.10', '198.51.100.40', '198.51.100.41' ], [ 'error', '192.0.2.10' ], 'hostkey', null ]);
+
+	/* one network: the named one. The subnet it was paired in is the guests' by now, and a guest made rows under its MAC there, in the
+	   WAN's subnet and in the LAN's new one: none of them is followed, only what the LAN's own device heard inside the LAN's subnet */
+	const swapped = { interface: [ WAN_IF, LAN_MOVED, { interface: 'guest', up: true, l3_device: 'br-guest', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ] } ] };
+	const planted = head + row('192.0.2.50', 'br-guest') + row('198.51.100.50', 'br-guest') + row('203.0.113.5', 'eth1') + row('192.0.2.51', 'br-lan');
+	const everywhere = Object.fromEntries([ '192.0.2.50', '198.51.100.50', '203.0.113.5', '192.0.2.51', '192.0.2.70' ].map(a => [ a, report ]));
+	const kept = runCollector({ aps: [ NAMED ], dump: swapped, arp: planted, leases: '1 ' + AP_MAC + ' 192.0.2.70 x *\n', hosts: everywhere }, steps);
+	assert.deepEqual([ tried(kept), last(kept) ], [ [ '192.0.2.10' ], [ 'offline', '192.0.2.10' ] ]);
+	/* (by its address alone, an earlier version's pairing is looked for among the guests there: as before) */
+	assert.deepEqual(tried(runCollector({ dump: swapped, arp: planted, hosts: everywhere }, steps)).slice(0, 2), [ '192.0.2.10', '192.0.2.50' ]);
+
+	/* the named network gone (renamed here, its subnet and device as they were), down, or netifd silent: nowhere, and not on the
+	   network the address is on now in its place. Offline, as an access point that cannot be found is */
+	const there = { '192.0.2.90': report }, arp = head + row('192.0.2.90', 'br-lan');
+	const renamed = { interface: [ WAN_IF, Object.assign({}, LAN_IF, { interface: 'home' }) ] };
+	for (const [ what, dump ] of [ [ 'renamed', renamed ], [ 'removed', { interface: [ WAN_IF, GUEST_IF ] } ], [ 'down', { interface: [ Object.assign({}, LAN_IF, { up: false }), GUEST_IF ] } ],
+		[ 'no device', { interface: [ Object.assign({}, LAN_IF, { l3_device: null }) ] } ], [ 'no dump', {} ] ]) {
+		const gone = runCollector({ aps: [ NAMED ], dump, arp, hosts: there }, steps);
+		assert.deepEqual([ tried(gone), last(gone), gone.results[4].aps[0].error ], [ [ '192.0.2.10' ], [ 'offline', '192.0.2.10' ], 'unreachable' ], what);
+	}
+	/* (an earlier version's pairing is found on the renamed network by its address: as before) */
+	assert.deepEqual(last(runCollector({ dump: renamed, arp, hosts: there }, steps)), [ 'ok', '192.0.2.90' ]);
+	/* a name that is only like the network's is not it */
+	assert.deepEqual(tried(runCollector({ aps: [ Object.assign({}, AP1, { net: 'LAN' }) ], arp, hosts: there }, steps)), [ '192.0.2.10' ]);
+
+	/* nothing changed on the network: with its name an access point is looked for exactly as without it, the same addresses in the
+	   same order. Four made-up leases ahead of its own are each tried once, then it is found; rows of other networks are passed over */
+	const crowd = [ 201, 202, 203, 204 ].map(n => '1 ' + AP_MAC + ' 192.0.2.' + n + ' x *\n').join('') + '1 ' + AP_MAC + ' 192.0.2.77 x *\n';
+	const elsewhere = head + row('198.51.100.9', 'br-guest') + row('203.0.113.5', 'eth1') + row('192.0.2.50', 'br-guest') + row('203.0.113.77', 'br-lan');
+	const runs = [ AP1, NAMED ].map(ap => runCollector({ aps: [ ap ], leases: crowd, arp: elsewhere,
+		hosts: Object.assign({ '192.0.2.77': report }, Object.fromEntries([ '198.51.100.9', '203.0.113.5', '192.0.2.50', '203.0.113.77' ].map(a => [ a, report ]))) }, [ ASK, wait(30), ASK ]));
+	assert.deepEqual(tried(runs[1]), [ '192.0.2.10', '192.0.2.201', '192.0.2.202', '192.0.2.203', '192.0.2.204', '192.0.2.77' ]);
+	assert.deepEqual(...runs.map(r => r.calls.map(c => /root@(\S+)/.exec(c)[1])), 'call for call');
+	assert.deepEqual(last(runs[1]), [ 'ok', '192.0.2.77' ]);
+	/* and the same in the new subnet after a renumbering: each made-up address once, one fetch at a time */
+	const crowd2 = [ 201, 202, 203, 204, 205 ].map(n => '1 ' + AP_MAC + ' 198.51.100.' + n + ' x *\n').join('') + lease;
+	const late = runCollector({ aps: [ NAMED ], dump: moved, leases: crowd2, hosts: { '198.51.100.40': report } }, [ ASK, wait(30), ASK ]);
+	assert.deepEqual(late.calls.slice(0, 7).map(c => /root@(\S+)/.exec(c)[1]), [ '192.0.2.10', '198.51.100.201', '198.51.100.202', '198.51.100.203', '198.51.100.204', '198.51.100.205', '198.51.100.40' ]);
+	assert.deepEqual(last(late), [ 'ok', '198.51.100.40' ]);
 });
 
 test('collector: after a pause, an access point that had already failed is not shown as fine', { skip: NO_UCODE }, () => {

@@ -578,7 +578,11 @@ dashboard package itself stays read-only.
   `vantage-ap 1 ssh-ed25519 <host key> <address> <port> <mac> <name>`:
   its Ed25519 host key, LAN address, SSH port and LAN MAC. Pasted back on the router,
   that answer is the access point's record in `/etc/vantage/aps.json`
-  (address editable). At most 16 access points per router and 8 routers
+  (address editable), and with it the name of the router's network that
+  address is on (`net`: the netifd interface, `lan`), when it is on one;
+  the page shows the name beside the address, as text. A reply with the
+  device's own host key is refused (`self`): a device does not read
+  itself. At most 16 access points per router and 8 routers
   per access point; codes, keys, names and addresses are checked by
   `/usr/share/ucode/vantage/aps.uc`, the same code on both ends (no
   string with a NUL byte passes: ucode matches a pattern only up to
@@ -609,18 +613,33 @@ dashboard package itself stays read-only.
   answers there), the collector looks its MAC up in the router's DHCP
   leases and neighbour table and tries the address it has now; the
   pinned host key decides, so a DHCP address change does not unpair it.
-  It looks on the network the access point was paired on only (the
-  interface whose subnet holds the pairing address most narrowly, that
-  interface's device and IPv4 subnets): any device gets a row under any
+  It looks on the network the access point was paired on only (one
+  interface, its device and IPv4 subnets): any device gets a row under any
   MAC and address into the neighbour table of a network it is on, and
   the router would open a connection to wherever such a row says. The
   lease comes first, then the neighbour table, four addresses at most,
   counted after those already tried are left out, so made-up leases
   and rows can delay the search and not end it; the leases are read
   only as a plain file of root's (a FIFO under that name would hold the
-  daemon). After the router's own subnet was changed the pairing
-  address is on no network of its any more, and nothing is searched:
-  the access point has to be paired again. The address it answers at
+  daemon). Which network that is, the record says by name: at pairing
+  the plugin asks netifd (`network.interface dump`) for the interface
+  whose subnet holds the pairing address most narrowly, among those
+  that are up, and keeps its name when it is one a uci section can have
+  (letters, digits and `_`, 64 at most; a record whose `net` is
+  anything else is no record, like one with a bad address). The
+  collector looks on the interface of that name as it is by then, with
+  the subnets it has by then. So after the router's own subnet was
+  changed (`192.0.2.0/24` to `198.51.100.0/24`) the access point is
+  found again, at its new lease on the same network. When no interface
+  has that name any more (the network was renamed or removed), or it
+  is down, nothing is searched, and never the network the pairing
+  address would be on in its place: the access point is read where it
+  answered last or shows as offline, and has to be paired again. A
+  record without a name (the pairing address was on none of the
+  router's networks, netifd did not answer, or an earlier version made
+  it) is looked for as before there were names, on the interface whose
+  subnet holds its pairing address now: after that subnet was changed,
+  nowhere, until it is paired again. The address it answers at
   is kept in memory, `/etc/vantage` stays as paired; an answer of its
   own from a new address that is no report (`denied`, `missing`,
   `invalid`) moves it there too, with that error. States: `ok` (a report to

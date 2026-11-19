@@ -14,6 +14,7 @@
 const MAX_APS = 16;        // per router
 const MAX_ROUTERS = 8;     // per access point
 const MAX_CODE = 512;      // bytes of a pasted code
+const MAX_NET = 64;        // bytes of a network's name
 
 const ED25519 = 'ssh-ed25519';
 const BLOB_HEAD = '\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20';
@@ -29,6 +30,7 @@ const RE_PORT = /^[0-9]{1,5}$/;
 const RE_SPACE = /[ \t\r\n]+/;
 const RE_MAC = /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/;
 const RE_NETDEV = /^[A-Za-z0-9_.-]{1,15}$/;
+const RE_NET = /^[A-Za-z0-9_]+$/;
 
 const MAX_SSIDS = 16;
 const MAX_STATIONS = 256;
@@ -152,6 +154,15 @@ function netdev(v) {
 	return (str(v) && match(v, RE_NETDEV)) ? v : null;
 }
 
+// one of this device's networks by its name ("lan"): netifd names an
+// interface after its section in /etc/config/network, and uci takes
+// letters, digits and '_' in a section's name. The length is counted
+// here: the report loads this file on every run, and a counted repeat
+// costs musl milliseconds to compile
+function net(v) {
+	return (str(v) && length(v) <= MAX_NET && match(v, RE_NET)) ? v : null;
+}
+
 function port(v) {
 	if (str(v) && match(v, RE_PORT))
 		v = +v;
@@ -240,10 +251,14 @@ function parse_auth_line(line) {
 /* ------------------------------------------------- the paired list */
 
 // /etc/vantage/aps.json -> [ { id, name, key, addr, port, mac } ], the valid
-// entries only, at most MAX_APS, each id and key once. whole: for the one
-// who writes the list back. Then null unless the text is blank or a list
-// of which every entry is taken: written back, a list that was edited by
-// hand would lose whatever did not pass.
+// entries only, at most MAX_APS, each id and key once. An entry may name
+// the network it was paired on (net: net_of() its address then). One
+// without is an entry all the same (made by an earlier version, or
+// paired at an address of none of this router's networks); one whose
+// net is no such name is no entry. whole: for the one who writes the
+// list back. Then null unless the text is blank or a list of which
+// every entry is taken: written back, a list that was edited by hand
+// would lose whatever did not pass.
 function aps(text, whole) {
 	let list = null, out = [], ids = {}, keys = {}, all = true;
 
@@ -260,8 +275,12 @@ function aps(text, whole) {
 	for (let a in list) {
 		let e = (type(a) == 'object' && length(out) < MAX_APS)
 			? { id: id(a.id), name: name(a.name), key: key(a.key), addr: addr(a.addr), port: port(a.port), mac: mac(a.mac) } : null;
+		let named = e != null && exists(a, 'net');
 
-		if (!e || !e.id || !e.name || !e.key || !e.addr || !e.port || !e.mac || ids[e.id] || keys[e.key]) {
+		if (named)
+			e.net = net(a.net);
+
+		if (!e || !e.id || !e.name || !e.key || !e.addr || !e.port || !e.mac || (named && !e.net) || ids[e.id] || keys[e.key]) {
 			all = false;
 			continue;
 		}
@@ -278,6 +297,8 @@ function aps(text, whole) {
 // of the one interface with a subnet that holds the address, and that
 // interface's IPv4 subnets as [ address, mask ] pairs. null when no
 // interface holds it (an access point behind another router).
+// net_of(): that interface's name, which a pairing keeps;
+// network_named(): the network of that name as it is now.
 function v4(a) {
 	let m = str(a) ? match(a, RE_IPV4) : null;
 
@@ -310,7 +331,15 @@ function subnets(list, parse, most) {
 	return out;
 }
 
-function network_of(a, ifaces) {
+// an interface of the dump as a network to look on; null while it is
+// down or names no device
+function place(i) {
+	return (type(i) == 'object' && i.up === true && netdev(i.l3_device))
+		? { dev: i.l3_device, nets: subnets(i['ipv4-address'], v4, 32) } : null;
+}
+
+// the interface of the dump an address is on, null when none holds it
+function iface_of(a, ifaces) {
 	let want4 = v4(a), want6 = want4 ? null : (str(a) ? groups6(lc(a)) : null);
 
 	if (!want4 && !want6)
@@ -321,19 +350,20 @@ function network_of(a, ifaces) {
 	// the interface whose subnet holds it most narrowly, as the kernel
 	// routes: an uplink's wide subnet around the LAN's is not the LAN
 	for (let i in ((type(ifaces) == 'array') ? ifaces : [])) {
-		if (type(i) != 'object' || i.up !== true || !netdev(i.l3_device))
+		let p = place(i);
+
+		if (!p)
 			continue;
 
-		let nets = subnets(i['ipv4-address'], v4, 32);
 		let held = want4
-			? filter(nets, (n) => same_net(want4, n[0], n[1], 8))
+			? filter(p.nets, (n) => same_net(want4, n[0], n[1], 8))
 			: filter([ ...subnets(i['ipv6-address'], groups6, 128), ...subnets(i['ipv6-prefix-assignment'], groups6, 128) ],
 				(n) => same_net(want6, n[0], n[1], 16));
 
 		for (let n in held) {
 			if (n[1] > most) {
 				most = n[1];
-				best = { dev: i.l3_device, nets };
+				best = i;
 			}
 		}
 	}
@@ -341,8 +371,34 @@ function network_of(a, ifaces) {
 	return best;
 }
 
+function network_of(a, ifaces) {
+	return place(iface_of(a, ifaces));
+}
+
+// The name of the network an address is on ("lan"), for its pairing to
+// keep: by it the network is known again after its subnet was changed.
+// null when the address is on none, or on one whose name is no net().
+function net_of(a, ifaces) {
+	return net(iface_of(a, ifaces)?.interface);
+}
+
+// The network a pairing names (n: its net), as it is now: { dev, nets }
+// of the interface of that name, whatever subnets it has by now. null
+// when no interface has the name any more, or the one that has is down:
+// nowhere is looked then, not on another network in its place.
+function network_named(n, ifaces) {
+	n = net(n);
+
+	for (let i in ((type(ifaces) == 'array') ? ifaces : []))
+		if (n && type(i) == 'object' && i.interface === n)
+			return place(i);
+
+	return null;
+}
+
 // The IPv4 addresses a MAC has now on the network it was paired on (net:
-// network_of() its pairing address), where to look for an access point
+// network_named() its pairing's net, or network_of() its pairing address
+// for a pairing that names none), where to look for an access point
 // whose address changed: first what dnsmasq leased it ("<expiry> <mac>
 // <ip> ...", one lease a MAC), then the neighbour table's complete
 // entries (/proc/net/arp) on that network's device, each inside one of
@@ -669,4 +725,4 @@ function view(r, prev, dt) {
 	};
 }
 
-export { MAX_APS, MAX_ROUTERS, MAX_CODE, COMMENT, key, name, name_of, id, addr, mac, port, router_code, ap_code, parse_router, parse_ap, auth_line, parse_auth_line, aps, network_of, find_addrs, next_addr, own_file, fetch_error, state, moved, band, parseable, normalize, view };
+export { MAX_APS, MAX_ROUTERS, MAX_CODE, COMMENT, key, name, name_of, id, addr, mac, net, port, router_code, ap_code, parse_router, parse_ap, auth_line, parse_auth_line, aps, network_of, net_of, network_named, find_addrs, next_addr, own_file, fetch_error, state, moved, band, parseable, normalize, view };

@@ -264,7 +264,9 @@ their port, and `ap-hall` lists both: the first as its wired host, which
 gets the note "behind ap-hall", the second as its station, which moves
 from the wired list to the Wi-Fi list as on a router with wired access
 points. The pairing stand-in (`pair-plugin.js`) starts with the same
-three paired: their names, addresses and MACs are `aps.js`'s.
+three paired: their names, addresses and MACs are `aps.js`'s, the first
+two with the network they are on (`lan`), `ap-loft` at an address of
+none of the stand-in's networks and so without one.
 Without `--aps` the object is absent (uhttpd's "Object not found"), as on
 a device with none paired. Addresses and MACs are documentation values,
 names and SSIDs invented. Combine it with the other modes.

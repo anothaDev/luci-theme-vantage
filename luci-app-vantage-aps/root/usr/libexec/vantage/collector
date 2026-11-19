@@ -30,8 +30,13 @@
 // An access point whose address changed (DHCP) is looked for by the MAC it
 // gave at pairing, in this router's DHCP leases and neighbour table, on
 // the network it was paired on only; the pinned host key decides whether
-// it is the one. The address it answers at is kept in memory only:
-// /etc/vantage stays as paired.
+// it is the one. That network is the one its pairing names, with the
+// subnets it has now (so it is found again after the network's subnet
+// was changed; with no network of that name, or that one down, nowhere);
+// a pairing that names none (an earlier version's, or one at an address
+// on no network of this router's) is looked for on the network its
+// pairing address is on now. The address it answers at is kept in memory
+// only: /etc/vantage stays as paired.
 
 'use strict';
 
@@ -215,8 +220,11 @@ function done(a, s, home, code) {
 	// address its MAC has now on the network it was paired on, in this
 	// router's DHCP leases or neighbour table, each once while someone
 	// looks. The pinned host key turns away any other device there.
+	// The network its pairing names, and that one only: never the one
+	// its address would be on now when the named one is gone.
 	if (tried || vaps.moved(e)) {
-		let net = vaps.network_of(a.addr, ubus.call('network.interface', 'dump')?.interface);
+		let ifaces = ubus.call('network.interface', 'dump')?.interface;
+		let net = a.net ? vaps.network_named(a.net, ifaces) : vaps.network_of(a.addr, ifaces);
 		let to = net ? vaps.next_addr(a.mac, s.addr, s.tried, readfile(ARP, MAX_TABLE), leases(), net) : null;
 
 		if (to) {

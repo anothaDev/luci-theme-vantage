@@ -86,8 +86,9 @@
  *   only the line vantage.aps auth_line makes (the report command, no
  *   pty, no forwarding);
  *   it reads only its own files, dropbear's binary, host key and config,
- *   the hostname and 8 random bytes, and asks ubus for dropbear's state
- *   and the LAN address only;
+ *   the hostname and 8 random bytes, and asks ubus for dropbear's state,
+ *   the LAN address and, when it pairs an access point, this router's
+ *   interfaces (the network that access point is on, kept by name) only;
  * - the report (the forced command) writes nothing, runs nothing, reads
  *   only sysfs, the neighbour table, the hostname and authorized_keys
  *   (for the line it was let in by), takes SSH_CLIENT and SSH_PUBKEYINFO
@@ -816,6 +817,7 @@ const PAIR_PINS = [
 	] ],
 	[ '\\b(?:connect|call|ubus)\\b', [
 		'import { connect } from \'ubus\';',
+		'let net = vaps.net_of(entry.addr, connect(null, 3)?.call(\'network.interface\', \'dump\')?.interface);',
 		'function lan(ubus) {',
 		'let st = (ubus ?? connect(null, 3))?.call(\'network.interface.lan\', \'status\');',
 		'let ubus = connect(null, 3);',
@@ -841,6 +843,7 @@ const PAIR_PINS = [
 		'function public_key(file) {',
 		'function save_aps(list) {',
 		'let k = public_key(KEY);',
+		'if (a.key === public_key(HOST_KEY))',
 		'if (!public_key(KEY))',
 		'if (!save_aps(list))',
 		'if (!save_aps(left))',
@@ -951,6 +954,9 @@ test('add-on: the pairing plugin rules catch each breach', () => {
 		'redefined path': pairPlugin.replace('const AUTH = \'/etc/dropbear/authorized_keys\';', 'const AUTH = \'/root/.ssh/authorized_keys\';'),
 		'read elsewhere': add('let x = readfile(\'/etc/shadow\');'),
 		'another ubus call': add('connect()?.call(\'file\', \'exec\', {});'),
+		'a network named by the caller': pairPlugin.replace('let net = vaps.net_of(entry.addr, ', 'let net = args.net ?? vaps.net_of(entry.addr, '),
+		'a network from another ubus object': pairPlugin.replace('?.call(\'network.interface\', \'dump\')?.interface);', '?.call(\'luci-rpc\', \'getNetworkDevices\')?.interface);'),
+		'its own reply paired': pairPlugin.replace('\tif (a.key === public_key(HOST_KEY))\n\t\treturn { error: \'self\' };\n', ''),
 		'a ubus call by computed member': add('let u = connect(null, 3); u[\'call\'](\'file\', \'exec\', {});'),
 		'uci write': add('uci.set(\'dropbear\', \'x\', \'PasswordAuth\', \'on\');'),
 		'another ubus method': pairPlugin.replace('\tlet ubus = connect(null, 3);\n', '\tlet ubus = connect(null, 3);\n\tubus.publish(\'x\', {});\n'),
@@ -1107,7 +1113,7 @@ const COLLECTOR_PINS = [
 	[ '\\b(?:connect|publish|call|ubus)\\b', [
 		'import { connect } from \'ubus\';',
 		'let aps = [], aps_text = null, st = {}, viewed = null, ticker = null, ubus = null;',
-		'let net = vaps.network_of(a.addr, ubus.call(\'network.interface\', \'dump\')?.interface);',
+		'let ifaces = ubus.call(\'network.interface\', \'dump\')?.interface;',
 		'ubus = connect();',
 		'if (!ubus || !ubus.publish(\'vantage.collector\', {',
 		'call: function(req) {'
@@ -1139,7 +1145,7 @@ const COLLECTOR_PINS = [
 		'if (tried)',
 		's.tried[tried] = true;',
 		'if (tried || vaps.moved(e)) {',
-		'let net = vaps.network_of(a.addr, ubus.call(\'network.interface\', \'dump\')?.interface);',
+		'let net = a.net ? vaps.network_named(a.net, ifaces) : vaps.network_of(a.addr, ifaces);',
 		'let to = net ? vaps.next_addr(a.mac, s.addr, s.tried, readfile(ARP, MAX_TABLE), leases(), net) : null;',
 		'if (to) {',
 		's.trying = to;',
@@ -1204,6 +1210,9 @@ test('add-on: the collector pins the host key and runs nothing but dbclient', ()
 		'the leases opened as they come': collectorSrc.replace('return vaps.own_file(lstat(LEASES), lstat(RUN)?.uid) ? readfile(LEASES, MAX_TABLE) : null;', 'return readfile(LEASES, MAX_TABLE);'),
 		'the leases judged by another file': collectorSrc.replace('vaps.own_file(lstat(LEASES), lstat(RUN)?.uid)', 'vaps.own_file(lstat(RUN), lstat(RUN)?.uid)'),
 		'the search on every network': collectorSrc.replace('let to = net ? vaps.next_addr(', 'let to = true ? vaps.next_addr('),
+		'a named network passed over for the address\'s': collectorSrc.replace('let net = a.net ? vaps.network_named(a.net, ifaces) : vaps.network_of(a.addr, ifaces);', 'let net = vaps.network_of(a.addr, ifaces);'),
+		'the address\'s network where the named one is gone': collectorSrc.replace('let net = a.net ? vaps.network_named(a.net, ifaces) : vaps.network_of(a.addr, ifaces);', 'let net = (a.net ? vaps.network_named(a.net, ifaces) : null) ?? vaps.network_of(a.addr, ifaces);'),
+		'interfaces from another ubus object': collectorSrc.replace('let ifaces = ubus.call(\'network.interface\', \'dump\')?.interface;', 'let ifaces = ubus.call(\'luci-rpc\', \'getNetworkDevices\')?.interface;'),
 		'a report parsed uncounted': collectorSrc.replace('r = vaps.parseable(out) ? vaps.normalize(json(out)) : null;', 'r = vaps.normalize(json(out));'),
 		'an address from the report': collectorSrc.replace('s.report.mac = a.mac;', 's.report.mac = a.mac;\n\ts.addr = r.name;'),
 		'an address not checked': collectorSrc.replace('s.trying = to;', 's.trying = err;'),
@@ -1221,7 +1230,7 @@ const MODULE_PINS = [
 	[ '\\b(?:own_file|st)\\b', [
 		'function own_file(st, uid) {',
 		'return type(st) == \'object\' && st.type == \'file\' && (st.uid === 0 || (type(uid) == \'int\' && st.uid === uid));',
-		'export { MAX_APS, MAX_ROUTERS, MAX_CODE, COMMENT, key, name, name_of, id, addr, mac, port, router_code, ap_code, parse_router, parse_ap, auth_line, parse_auth_line, aps, network_of, find_addrs, next_addr, own_file, fetch_error, state, moved, band, parseable, normalize, view };'
+		'export { MAX_APS, MAX_ROUTERS, MAX_CODE, COMMENT, key, name, name_of, id, addr, mac, net, port, router_code, ap_code, parse_router, parse_ap, auth_line, parse_auth_line, aps, network_of, net_of, network_named, find_addrs, next_addr, own_file, fetch_error, state, moved, band, parseable, normalize, view };'
 	] ],
 	[ '\\b(?:KEY_OPTIONS|COMMENT|RE_TAIL|ED25519|key_id|auth_line|parse_auth_line)\\b', [
 		'const ED25519 = \'ssh-ed25519\';',
@@ -1240,7 +1249,7 @@ const MODULE_PINS = [
 		'if (length(f) != 4 || f[0] != KEY_OPTIONS || f[1] != ED25519 || !key(f[2]) || substr(f[3], 0, length(COMMENT)) != COMMENT)',
 		'let rest = split(substr(f[3], length(COMMENT)), \'+\');',
 		'return (length(rest) == 2 && name(rest[0]) && rest[1] === key_id(f[2])) ? { key: f[2], name: rest[0], comment: f[3] } : null;',
-		'export { MAX_APS, MAX_ROUTERS, MAX_CODE, COMMENT, key, name, name_of, id, addr, mac, port, router_code, ap_code, parse_router, parse_ap, auth_line, parse_auth_line, aps, network_of, find_addrs, next_addr, own_file, fetch_error, state, moved, band, parseable, normalize, view };'
+		'export { MAX_APS, MAX_ROUTERS, MAX_CODE, COMMENT, key, name, name_of, id, addr, mac, net, port, router_code, ap_code, parse_router, parse_ap, auth_line, parse_auth_line, aps, network_of, net_of, network_named, find_addrs, next_addr, own_file, fetch_error, state, moved, band, parseable, normalize, view };'
 	] ]
 ];
 function checkModuleSource(src) {

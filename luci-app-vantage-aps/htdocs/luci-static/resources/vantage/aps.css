@@ -21,7 +21,7 @@
 .vt-app .vt-pair-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .vt-app .vt-pair-name { font-size: var(--vt-fs-md); font-weight: var(--vt-fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vt-app .vt-pair-sub { color: var(--vt-text-3); font-size: var(--vt-fs-sm); overflow-wrap: anywhere; }
-.vt-app .vt-pair-model { font-family: var(--vt-font); }
+.vt-app .vt-pair-net, .vt-app .vt-pair-model { font-family: var(--vt-font); }
 /* a row's button keeps to its own column (the theme's button rules are reset by app.css) */
 .vt-app .vt-pair-act { grid-column: 3; grid-row: 1; }
 .vt-app .vt-pair-why { grid-column: 1 / -1; margin: 4px 0 0; color: var(--vt-text-2); font-size: var(--vt-fs-sm); }

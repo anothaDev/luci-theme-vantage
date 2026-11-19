@@ -169,6 +169,7 @@ function addError(res, overridden) {
 	if (e === 'invalid') return overridden
 		? _('Check the reply and the address: the address must be an IPv4 or IPv6 address, without a port.')
 		: _('That is not an access point\'s reply. Copy the whole line from the access point, starting with vantage-ap.');
+	if (e === 'self') return _('That is this device\'s own reply. Paste the reply of the access point you want to add.');
 	if (e === 'duplicate') return _('This access point is already on this dashboard.');
 	if (e === 'full') return _('This dashboard already reads %d access points. Remove one first.').format(MAX_APS);
 	if (e === 'no-key') return _('This router has no key yet. Close this form and open it again to make one.');
@@ -217,7 +218,10 @@ function normStatus(s) {
 	return {
 		code: typeof r.code === 'string' ? r.code : null,
 		aps: (Array.isArray(r.aps) ? r.aps : []).filter(function(x) { return isObject(x) && typeof x.id === 'string'; }).map(function(x) {
-			return { id: x.id, name: String(x.name == null ? '' : x.name), addr: String(x.addr == null ? '' : x.addr), port: typeof x.port === 'number' ? x.port : 22 };
+			var a = { id: x.id, name: String(x.name == null ? '' : x.name), addr: String(x.addr == null ? '' : x.addr), port: typeof x.port === 'number' ? x.port : 22 };
+			/* the network it was paired on, where the router kept one */
+			if (typeof x.net === 'string' && x.net) a.net = x.net;
+			return a;
 		}),
 		ssh: typeof a.ssh === 'string' ? a.ssh : null,
 		routers: (Array.isArray(a.routers) ? a.routers : []).filter(function(x) { return isObject(x) && typeof x.key === 'string'; }).map(function(x) {
@@ -430,7 +434,7 @@ return view.extend({
 			this.blindShown = blind;
 			dom.content(el.client, blind ? [ warnNote(noClient()) ] : []);
 		}
-		var sig = JSON.stringify([ this.status.apsUnread ].concat(aps.map(function(a) { return [ a.id, a.name, a.addr, a.port ]; })));
+		var sig = JSON.stringify([ this.status.apsUnread ].concat(aps.map(function(a) { return [ a.id, a.name, a.addr, a.port, a.net ]; })));
 		/* rebuilt only when the list changes, so a poll never takes the
 		   focus off a button */
 		if (sig !== this.apSig) {
@@ -464,13 +468,16 @@ return view.extend({
 			addr: E('span', { 'class': 'vt-mono' }, [ where(ap.addr, ap.port) ]),
 			why: E('p', { 'class': 'vt-pair-why', 'hidden': 'hidden' })
 		};
+		/* the network it was paired on, as this router names it: text */
+		var net = ap.net ? [ E('span', { 'class': 'vt-pair-net', 'title': _('The network it was paired on: this router looks for it there when its address changes') },
+			[ ' · ', _('network %s').format(ap.net) ]) ] : [];
 		r.remove = E('button', { 'type': 'button', 'class': 'vt-btn vt-btn-ghost vt-pair-act', 'aria-label': _('Remove %s').format(ap.name),
 			'click': function() { self.confirmRemove(ap, r.remove); } }, [ _('Remove') ]);
 		this.apEls[ap.id] = r;
 		return E('div', { 'class': 'vt-pair-row', 'role': 'listitem' }, [
 			E('div', { 'class': 'vt-pair-main' }, [
 				E('span', { 'class': 'vt-pair-name' }, [ ap.name ]),
-				E('span', { 'class': 'vt-pair-sub' }, [ r.addr, r.model ])
+				E('span', { 'class': 'vt-pair-sub' }, [ r.addr ].concat(net, [ r.model ]))
 			]),
 			r.state,
 			r.remove,

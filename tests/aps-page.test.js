@@ -340,6 +340,16 @@ const MAC_CASES = [ MAC, '00:00:5E:00:53:0A', '02:00:5e:00:53:01', '01:00:5e:00:
 	'00-00-5e-00-53-10', MAC + '\0', '', 5 ];
 const NAME_OF_CASES = [ [ 'gw-office', 'router' ], [ 'my host!', 'router' ], [ '--x y', 'router' ], [ 'ünï', 'router' ], [ '', 'access-point' ],
 	[ 'a'.repeat(80), 'router' ], [ '...', 'access-point' ], [ 'a\0b', 'router' ], [ 'gw\0', 'access-point' ] ];
+/* a network's name, as netifd has it from a uci section */
+const NET_CASES = [ 'lan', 'LAN_2', '_', 'a'.repeat(64), 'a'.repeat(65), '', 'br-lan', 'lan.1', 'lan guest', ' lan', 'lan\n', 'lan\0', 'lan\0x', 'län', '../x', 7, null ];
+/* this device's interfaces as ubus network.interface dump lists them (IPv4 subnets: the stand-in's networks have no others), and addresses to place */
+const iface = (name, dev, address, mask, extra) => Object.assign({ interface: name, up: true, l3_device: dev, 'ipv4-address': [ { address, mask } ] }, extra);
+const NET_OF_IFACES = [ pair.IFACES, null, [],
+	[ iface('wan', 'eth1', '198.51.100.2', 24), iface('lan', 'br-lan', '192.0.2.1', 24), iface('guest', 'br-guest', '198.51.100.129', 25), null, 7, [ 'lan' ] ],
+	[ iface('lan', 'br-lan', '192.0.2.1', 24, { up: false }), iface('lan2', '../x', '192.0.2.1', 24), iface('my-lan', 'br-lan', '192.0.2.1', 25), iface('wide', 'eth1', '192.0.2.1', 16) ],
+	[ iface('lan', 'br-lan', '192.0.2.1', 0), iface('lan', 'br-lan', '192.0.2.1', 33), iface('lan', 'br-lan', '192.0.2.256', 24), iface('lan', 'br-lan', 'x', 24), iface('lan', 'br-lan', '192.0.2.1', '24') ],
+	[ iface('a', 'br-a', '192.0.2.1', 24), iface('b', 'br-b', '192.0.2.129', 24) ] ];
+const NET_OF_ADDRS = [ '192.0.2.10', '192.0.2.255', '192.0.2.200', '198.51.100.7', '198.51.100.200', '203.0.113.9', '192.0.3.1', '192.0.2.256', '2001:db8::10', '', null, 7 ];
 
 test('aps: the view parses what the stand-in accepts, the same way, and prefills nothing from a router code', () => {
 	for (const [ code, ok ] of AP_CASES) {
@@ -879,6 +889,50 @@ test('aps: an access point shows the address it last answered at, else the paire
 	assert.equal(rows(far.el.apRows)[0].sub, '2001:db8::77, SSH port 2222');
 });
 
+test('aps: the network an access point was paired on is said in its row, as text; nothing where none is kept', async () => {
+	const aps = [ { id: 'a1', name: 'ap-hall', addr: '192.0.2.10', port: 22, net: 'lan' }, { id: 'a2', name: 'ap-den', addr: '192.0.2.11', port: 2222, net: 'guest_2' },
+		{ id: 'a3', name: 'ap-loft', addr: '198.51.100.12', port: 22 } ];
+	/* the first found again at an address of the network's new subnet: the name is the network's, whatever its addresses */
+	const report = { aps: [ { id: 'a1', state: 'ok', age: 2, addr: '198.51.100.40', report: { model: 'Example AX3000' } } ] };
+	const self = mount(statusOf(aps), report);
+	const list = rows(self.el.apRows);
+	assert.deepEqual(list.map(r => r.sub), [ '198.51.100.40 · network lan · Example AX3000', '192.0.2.11, SSH port 2222 · network guest_2', '198.51.100.12' ]);
+	const nets = list.map(r => r.node.all('vt-pair-net'));
+	assert.deepEqual(nets.map(n => n.length), [ 1, 1, 0 ], 'no element where there is no network');
+	for (const [ n ] of nets.slice(0, 2)) {
+		assert.equal(n.tag, 'span');
+		assert.equal(n.attrs.title, 'The network it was paired on: this router looks for it there when its address changes');
+		assert.deepEqual([ Object.keys(n.on), n.all(() => true) ], [ [], [] ], 'text, and nothing to click or type in');
+		assert.equal(n.parent, n.parent.parent.all('vt-pair-sub')[0], 'in the row\'s line of details');
+	}
+	assert.deepEqual(MOUNT.page.all(n => n.tag === 'a' || n.tag === 'select'), []);
+	assert.equal(MOUNT.page.all(n => n.tag === 'input').length, 1, 'the add form\'s address field, as before');
+	/* a poll keeps the rows; a list in which a network changed is another list */
+	REPLIES['luci.vantage.pair status'] = () => Promise.resolve(statusOf(aps));
+	REPLIES['vantage.collector report'] = () => Promise.resolve(report);
+	await self.refresh();
+	assert.ok(rows(self.el.apRows).every((r, i) => r.node === list[i].node), 'the same rows');
+	REPLIES['luci.vantage.pair status'] = () => Promise.resolve(statusOf([ aps[0], Object.assign({}, aps[1], { net: 'lan' }), Object.assign({}, aps[2], { net: 'guest_2' }) ]));
+	await self.refresh();
+	assert.deepEqual(rows(self.el.apRows).map(r => r.sub), [ '198.51.100.40 · network lan · Example AX3000', '192.0.2.11, SSH port 2222 · network lan', '198.51.100.12 · network guest_2' ]);
+	delete REPLIES['luci.vantage.pair status'];
+	delete REPLIES['vantage.collector report'];
+	/* only a name counts as one */
+	const read = net => view.normStatus({ router: { aps: [ { id: 'a', name: 'n', addr: '192.0.2.10', port: 22, net } ] } }).aps[0];
+	assert.deepEqual(read('lan'), { id: 'a', name: 'n', addr: '192.0.2.10', port: 22, net: 'lan' });
+	for (const none of [ undefined, null, '', 7, true, [ 'lan' ], { name: 'lan' } ]) assert.deepEqual(read(none), { id: 'a', name: 'n', addr: '192.0.2.10', port: 22 }, JSON.stringify(none));
+	/* this device's own reply pasted into its own form: said in the form's own words */
+	assert.equal(view.addError({ error: 'self' }, false), 'That is this device\'s own reply. Paste the reply of the access point you want to add.');
+	assert.equal(view.addError({ error: 'self' }, true), view.addError({ error: 'self' }, false));
+	const form = addForm();
+	form.add.reply.value = ap(K, '192.0.2.1', 22, 'this-ap');
+	form.onReply();
+	REPLIES['luci.vantage.pair add_ap'] = () => Promise.resolve({ error: 'self' });
+	await form.submitAdd();
+	assert.deepEqual([ form.add.err.hidden, form.add.err.text, form.el.addFlow.hidden, form.add.go.disabled ], [ false, view.addError({ error: 'self' }, false), false, false ], 'in the form\'s error line, the form still open');
+	delete REPLIES['luci.vantage.pair add_ap'];
+});
+
 test('aps: status read defensively; a poll keeps the last status when it fails and drops the report', async () => {
 	assert.equal(view.normStatus(null), null);
 	assert.equal(view.normStatus([]), null);
@@ -971,7 +1025,10 @@ test('pair stand-in: starts with the access points of --aps paired, documentatio
 	/* what the dashboard shows with --aps (dev/replay/aps.js) is what the page lists */
 	const aps = require('../dev/replay/aps');
 	assert.deepEqual(aps.APS.map(a => a.name), [ 'ap-hall', 'ap-den', 'ap-loft' ]);
-	assert.deepEqual(st.router.aps, aps.APS.map(a => ({ id: aps.id(a.name), name: a.name, addr: a.addr, port: 22 })));
+	/* the two on the stand-in's own lan with its name, as the plugin keeps it at pairing; ap-loft's address is on none of its networks */
+	const onLan = a => a.addr.startsWith('192.0.2.') ? { net: 'lan' } : {};
+	assert.deepEqual(st.router.aps, aps.APS.map(a => Object.assign({ id: aps.id(a.name), name: a.name, addr: a.addr, port: 22 }, onLan(a))));
+	assert.deepEqual(st.router.aps.map(a => a.net), [ 'lan', 'lan', undefined ]);
 	assert.deepEqual(s.aps.map(a => a.mac), aps.APS.map(a => a.mac), 'the MACs they were paired with');
 	const report = aps.transform('vantage.collector', 'report', {}, null).result[1];
 	assert.deepEqual(report.aps.map(a => [ a.id, a.name, a.addr ]), st.router.aps.map(a => [ a.id, a.name, a.addr ]));
@@ -1050,6 +1107,32 @@ test('pair stand-in: add_ap and remove_ap', () => {
 	assert.ok(data(blind, 'add_ap', { code: ap(k2, '192.0.2.20', 22, 'two') }).id);
 });
 
+test('pair stand-in: add_ap keeps the network the address is on, by name, and refuses this device\'s own reply', () => {
+	const s = pair.initialState('gw', 'ok');
+	const listed = id => data(s, 'status', {}).router.aps.find(a => a.id === id);
+	const lan = data(s, 'add_ap', { code: ap(K, '192.0.2.40', 2222, 'ap-x') }).id;
+	assert.deepEqual(listed(lan), { id: lan, name: 'ap-x', addr: '192.0.2.40', port: 2222, net: 'lan' });
+	assert.equal(s.aps.find(a => a.id === lan).net, 'lan', 'kept with the pairing');
+	/* the address it is paired at decides: the one given, when one is */
+	const moved = data(s, 'add_ap', { code: ap(pair.fakeKey('host two'), '192.0.2.41', 22, 'two'), addr: '198.51.100.20' }).id;
+	assert.deepEqual(listed(moved), { id: moved, name: 'two', addr: '198.51.100.20', port: 22 }, 'on none of its networks: no network');
+	const back = data(s, 'add_ap', { code: ap(pair.fakeKey('host three'), '198.51.100.30', 22, 'three'), addr: '192.0.2.42' }).id;
+	assert.equal(listed(back).net, 'lan');
+	const six = data(s, 'add_ap', { code: ap(pair.fakeKey('host six'), '2001:db8::10', 22, 'six') }).id;
+	assert.equal('net' in listed(six), false);
+	assert.equal('net' in s.aps.find(a => a.id === six), false);
+	/* its own reply, as status gives it and however it is addressed or named */
+	const own = data(s, 'status', {}).ap.reply, n = s.aps.length;
+	assert.equal(own.split(' ')[3], s.hostKey);
+	for (const args of [ { code: own }, { code: own, addr: '198.51.100.7' }, { code: ap(s.hostKey, '203.0.113.9', 2222, 'another-name') } ])
+		assert.deepEqual(data(s, 'add_ap', args), { error: 'self' }, JSON.stringify(args));
+	assert.equal(s.aps.length, n);
+	/* before the key is looked for, after the code is checked: as the plugin orders them */
+	s.routerKey = null;
+	assert.deepEqual(data(s, 'add_ap', { code: own }), { error: 'self' });
+	assert.deepEqual(data(s, 'add_ap', { code: own, addr: '127.0.0.1' }), { error: 'invalid' });
+});
+
 test('pair stand-in: allow_router and revoke_router', () => {
 	const s = pair.initialState('ap-x', 'ok');
 	for (const [ code, ok ] of ROUTER_CASES)
@@ -1106,7 +1189,9 @@ test('pair stand-in: codes, keys, addresses, MACs, ports and names checked as va
 		PORT_CASES.map(p => [ 'port', p ]),
 		MAC_CASES.map(m => [ 'mac', m ]),
 		[ K, RK, RSA, K.slice(1), K + '=', K + '\0', 'x' ].map(k => [ 'key', k ]),
-		NAME_OF_CASES.map(([ h, f ]) => [ 'name_of', h, f ]));
+		NAME_OF_CASES.map(([ h, f ]) => [ 'name_of', h, f ]),
+		NET_CASES.map(n => [ 'net', n ]),
+		NET_OF_IFACES.flatMap(ifaces => NET_OF_ADDRS.map(a => [ 'net_of', a, ifaces ])));
 	const file = path.join(mkTmp('vantage-aps-page-'), 'cases.json');
 	fs.writeFileSync(file, JSON.stringify(cases));
 	const r = spawnSync(UCODE, [ '-L', path.join(__dirname, 'ucode/aps-stubs/*.uc'), '-L', path.join(PKG, 'root/usr/share/ucode/*.uc'),
@@ -1114,7 +1199,8 @@ test('pair stand-in: codes, keys, addresses, MACs, ports and names checked as va
 	fs.unlinkSync(file);
 	assert.equal(r.status, 0, r.stderr);
 	const got = JSON.parse(r.stdout);
-	const js = { parse_ap: pair.parseApReply, parse_router: pair.parseRouterCode, addr: pair.addr, port: pair.port, mac: pair.mac, key: pair.key, name_of: pair.nameOf };
+	const js = { parse_ap: pair.parseApReply, parse_router: pair.parseRouterCode, addr: pair.addr, port: pair.port, mac: pair.mac, key: pair.key, name_of: pair.nameOf,
+		net: pair.net, net_of: pair.netOf };
 	cases.forEach((c, i) => assert.deepEqual(js[c[0]](...c.slice(1)), got[i], `${c[0]}(${JSON.stringify(c.slice(1))})`));
 	assert.equal(got[0].addr, '192.0.2.10', 'the cases ran');
 	/* and they say what the review asked for */
@@ -1122,4 +1208,8 @@ test('pair stand-in: codes, keys, addresses, MACs, ports and names checked as va
 	for (const a of [ '0::1', '0:0:0:0:0:0:0:1', '::0', '::2', '1::', ip(169, 254, 0, 1), '192.0.2.1\0' ]) assert.equal(said('addr', a), null, JSON.stringify(a));
 	assert.equal(said('addr', '2001:DB8::A'), '2001:db8::a');
 	assert.equal(said('mac', '00:00:5E:00:53:0A'), '00:00:5e:00:53:0a');
+	/* the network of an address: both named some, and both none, on these cases */
+	const placed = cases.map((c, i) => c[0] === 'net_of' ? got[i] : undefined).filter(v => v !== undefined);
+	assert.deepEqual([ ...new Set(placed) ].sort(), [ 'a', 'guest', 'lan', 'wan', 'wide', null ].sort());
+	assert.deepEqual(NET_OF_ADDRS.map(a => pair.netOf(a, pair.IFACES)), [ 'lan', 'lan', 'lan', null, null, null, null, null, null, null, null, null ]);
 });

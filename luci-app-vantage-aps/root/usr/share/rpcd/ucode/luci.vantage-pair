@@ -6,11 +6,13 @@
 // another device log in here over SSH (to the report command only).
 //
 // As a router (this device's dashboard shows the access points):
-//   status        { router: { code, aps: [ { id, name, addr, port } ] },
+//   status        { router: { code, aps: [ { id, name, addr, port, net } ] },
 //                   ap: { ssh, routers: [ { name, key } ], reply } }
 //                 code: this router's pairing code (null before the
-//                 first router_code); ssh: 'ok', or why this device cannot
-//                 be read or paired ('no-dropbear', 'no-key-options',
+//                 first router_code); net: the network of this router's
+//                 the access point was paired on, by name ("lan"), only
+//                 when one is kept with it; ssh: 'ok', or why this device
+//                 cannot be read or paired ('no-dropbear', 'no-key-options',
 //                 'unsupported', 'no-host-key', 'not-running',
 //                 'keys-unreadable': authorized_keys is there and cannot be
 //                 read whole, so who may log in is not known; 'no-address');
@@ -18,13 +20,16 @@
 //                 allowed, or ssh not ok)
 //   router_code   {}: { code }, this router's key made on first use
 //   add_ap        { code, addr }: pair with the access point whose reply
-//                 code this is, at addr when given (else the reply's); { id }
+//                 code this is, at addr when given (else the reply's); { id }.
+//                 The network that address is on (ubus network.interface
+//                 dump, vantage.aps net_of) is kept with it by name, when
+//                 it is on one: there the collector looks for it later
 //   remove_ap     { id }
 // As an access point:
 //   allow_router  { code }: let the router whose code this is read the
 //                 report; { reply }
 //   revoke_router { key }
-// Failures: { error: 'invalid' | 'duplicate' | 'full' | 'unknown' |
+// Failures: { error: 'invalid' | 'self' | 'duplicate' | 'full' | 'unknown' |
 // 'no-dbclient' | 'no-key' | 'failed' | <an ssh state> }.
 //
 // The only Vantage code that runs a program or writes files beyond its config; all of
@@ -160,6 +165,10 @@ function add_ap(args) {
 	if (!a || (args.addr != null && args.addr !== '' && !vaps.addr(args.addr)))
 		return { error: 'invalid' };
 
+	// this device's own reply: it would read itself
+	if (a.key === public_key(HOST_KEY))
+		return { error: 'self' };
+
 	if (!public_key(KEY))
 		return { error: 'no-key' };
 
@@ -184,7 +193,18 @@ function add_ap(args) {
 	if (!id)
 		return { error: 'failed' };
 
-	push(list, { id, name: a.name, key: a.key, addr: vaps.addr(args.addr) ?? a.addr, port: a.port, mac: a.mac });
+	let entry = { id, name: a.name, key: a.key, addr: vaps.addr(args.addr) ?? a.addr, port: a.port, mac: a.mac };
+	// The network that address is on now, by name, when it is on one of
+	// this router's: the collector looks for the access point there once
+	// it has left the address, whatever subnet the network has by then.
+	// On none (behind another router), or netifd not answering: no name,
+	// and it is looked for by its address, as before there were names.
+	let net = vaps.net_of(entry.addr, connect(null, 3)?.call('network.interface', 'dump')?.interface);
+
+	if (net)
+		entry.net = net;
+
+	push(list, entry);
 
 	if (!save_aps(list))
 		return { error: 'failed' };
@@ -417,7 +437,7 @@ function status() {
 	return {
 		router: {
 			code: k ? vaps.router_code(k, hostname('router')) : null,
-			aps: map(list ?? [], (e) => ({ id: e.id, name: e.name, addr: e.addr, port: e.port })),
+			aps: map(list ?? [], (e) => ({ id: e.id, name: e.name, addr: e.addr, port: e.port, ...(e.net ? { net: e.net } : {}) })),
 			unread: !list
 		},
 		ap: { ssh, routers, unread: !auth, reply: (ssh == 'ok' && length(routers)) ? reply() : null }

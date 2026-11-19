@@ -598,10 +598,15 @@ What it needs:
 - **An address that stays, or DHCP from this router.** If the access
   point's IPv4 address changes, the router finds it again by its MAC
   address in its own DHCP leases and neighbour table, on the network it
-  was paired on. A DHCP reservation avoids the question. An access point
+  was paired on; the page names that network beside the address
+  (`network lan`). A DHCP reservation avoids the question. Changing the
+  router's own subnet is such a change too: the network keeps its name,
+  and the access point is found at its new address. An access point
   moved to another of the router's networks has to be paired again, and
-  so has every access point after the router's own subnet was changed:
-  the router looks only inside the subnet the pairing address is in.
+  so has one whose network you renamed or removed: the router looks on
+  the network of that name and on no other. A row that names no network
+  (its address was on none of the router's networks when it was paired)
+  is looked for only inside the subnet the pairing address is in.
   Pairing again means **Remove** on the router, then adding the access
   point with a new reply.
 - **After a firmware upgrade,** install the add-on again on the upgraded
