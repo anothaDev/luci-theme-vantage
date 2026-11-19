@@ -49,8 +49,9 @@ add-on to it) plus offline tooling. No npm, no
    `entityencode(v, true)`, and `striptags()` for titles. Never output
    `fuser`. On pages for visitors who are not logged in (login, 404,
    CSRF) the theme adds nothing about the device, only the login page's
-   hostname heading (encoded), colour mode, background and whether
-   Low-power router is on (which stills that background) (LuCI's core header
+   hostname heading (encoded), colour mode, background, whether
+   Low-power router is on (which stills that background) and Motion when
+   not in focus (which lets it move without the focus) (LuCI's core header
    still prints its `L.env` script; that is upstream, see
    `docs/luci-contract.md` section 2). Inline scripts carry no data. Stay within
    the ucode subset that `dev/replay/ut.js` compiles. `test_templates.js`
