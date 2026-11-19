@@ -345,10 +345,12 @@ text around it so it looks the same size.
   path adds a Wired branch, a node per port with the port's traffic, for
   hosts downstream of the device (not those on the uplink's port), with
   or without Wi-Fi.
-- **Inspectors** (drawer or page, deep-linkable):
+- **Inspectors** (drawers, deep-linkable):
   client (MAC, host hint, IP, radio/SSID, signal history for the session,
   rates, inactive time), radio (channel, width, noise when real, clients),
-  interface (proto, addresses, counters, rates).
+  a line to the internet (link, proto, addresses, counters, rates) and
+  the device (model, firmware, uptime, load). The device's other
+  interfaces (its own networks, a VPN) have no inspector.
 - **Client names**: every client gets a human label, resolved in order:
   user alias (rename in the inspector, stored in `/etc/config/vantage`),
   reverse DNS (`network.rrdns`, optional grant), DHCP host name from host
@@ -1040,5 +1042,6 @@ dashboard package itself stays read-only.
 ## 8. Decisions needed
 
 1. ~~Visual direction~~ — decided: Graphite.
-2. Mobile nav: bottom bar vs drawer (prototypes may show both).
+2. ~~Mobile nav: bottom bar vs drawer~~ — decided: bottom bar (section 3,
+   Mobile).
 3. Anything to add or cut from theme v1 / app v1 above.
