@@ -1188,6 +1188,43 @@ test('CPU: 0 % until the first reading, its second sample a second after the fir
 	}
 });
 
+test('uplink drawer: a router\'s line with a private or a shared address says so in one plain note; no health check does', () => {
+	const ip = (...o) => o.join('.');
+	const self = Object.create(view);
+	const wan = LINE('wan', 'eth1', 10);
+	self.m = { uplink: wan, uplinks: [ wan ] };
+	self.st = { uplinkRate: null, devRates: {}, hist: { net: {} } };
+	withDom(() => {
+		const notes = () => {
+			const body = self.drawerUplink('').body, found = [];
+			(function walk(n) {
+				if (!n || typeof n !== 'object') return;
+				if (n.attrs && /(^| )vt-note( |$)/.test(n.attrs['class'] || '')) found.push([ n.attrs['class'], texts(n).join('') ]);
+				(n.children || []).forEach(walk);
+			})({ children: body });
+			return found;
+		};
+		assert.deepEqual(notes(), [], 'a documentation address, as in the demo');
+		wan.ipv4 = [ ip(192, 168, 1, 2) + '/24' ];
+		assert.deepEqual(notes(), [ [ 'vt-note vt-note-info', 'This line has a private address (' + ip(192, 168, 1, 2) + '): another router, or the provider, translates addresses in front of this one (double NAT). ' +
+			'Port forwards can be reached from the internet only where that one passes them on.' ] ]);
+		wan.ipv4 = [ ip(100, 64, 12, 34) + '/24' ];
+		assert.deepEqual(notes(), [ [ 'vt-note vt-note-info', 'This line has a shared address (' + ip(100, 64, 12, 34) + '): the provider translates addresses for many customers (carrier-grade NAT). ' +
+			'Port forwards cannot be reached from the internet over IPv4.' ] ]);
+		/* an access point's uplink: nothing */
+		wan.ipv4 = [ ip(192, 168, 1, 2) + '/24' ];
+		wan.isWan = false;
+		assert.deepEqual(notes(), []);
+	});
+	/* information only: the same line raises no check and no count */
+	const insight = load('vantage.insight'), m = { device: { load: [ 0 ], storage: [] }, wired: true,
+		uplink: Object.assign(LINE('wan', 'eth1', 10), { ipv4: [ ip(100, 64, 12, 34) + '/24' ] }) };
+	const checks = insight.health(m, { cpu: { pct: 5, cores: [ 5 ] } });
+	assert.deepEqual(checks.map(c => [ c.id, c.level ]), [ [ 'uplink', 'ok' ], [ 'cpu', 'ok' ] ]);
+	assert.deepEqual([ insight.summary(checks).count, insight.summary(checks).level ], [ 0, 'ok' ]);
+	assert.doesNotMatch(JSON.stringify(checks), /NAT|private|shared/);
+});
+
 test('other lines: a failover starts the new main line on its own history; a restored "uplink" of nobody is dropped', () => {
 	const saved = global.window, savedL = global.L;
 	const box = {};

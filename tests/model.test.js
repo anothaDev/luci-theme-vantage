@@ -444,6 +444,37 @@ test('extraUplinks: two lines on DSA ports of one switch keep their own counters
 	assert.deepEqual(model.build({ ifaces: [ LAN, wanIf('wan', 'wan', 10), wanIf('wanb', 'lan4', 20) ], devs: apart }).uplinks.map(x => x.statsDev), [ 'eth0', 'eth1' ]);
 });
 
+/* private and shared addresses are built from numbers: the tree holds
+   documentation addresses only (check_private_addresses.js) */
+test('lineNat: a router\'s line with a private or a shared address, and nothing else', () => {
+	const ip = (...o) => o.join('.');
+	const line = (ipv4, isWan) => ({ iface: 'wan', isWan: isWan !== false, ipv4 });
+	const kind = (...o) => model.lineNat(line([ ip(...o) + '/24' ]));
+	/* RFC 1918, to the edges of each block */
+	for (const o of [ [ 10, 0, 0, 1 ], [ 10, 255, 255, 254 ], [ 172, 16, 0, 1 ], [ 172, 31, 255, 254 ], [ 192, 168, 0, 1 ], [ 192, 168, 255, 254 ] ])
+		assert.equal(kind(...o), 'private', ip(...o));
+	/* RFC 6598 */
+	for (const o of [ [ 100, 64, 0, 1 ], [ 100, 100, 1, 2 ], [ 100, 127, 255, 254 ] ]) assert.equal(kind(...o), 'shared', ip(...o));
+	/* their neighbours, public addresses, the documentation blocks the demo uses, other special ones */
+	for (const o of [ [ 9, 255, 255, 254 ], [ 11, 0, 0, 1 ], [ 172, 15, 255, 254 ], [ 172, 32, 0, 1 ], [ 192, 167, 0, 1 ], [ 192, 169, 0, 1 ], [ 100, 63, 255, 254 ], [ 100, 128, 0, 1 ],
+		[ 203, 0, 113, 5 ], [ 198, 51, 100, 5 ], [ 192, 0, 2, 5 ], [ 192, 0, 0, 2 ], [ 169, 254, 1, 1 ], [ 127, 0, 0, 1 ] ])
+		assert.equal(kind(...o), null, ip(...o));
+	/* an access point's uplink is its LAN: private by design, no note */
+	assert.equal(model.lineNat(line([ ip(192, 168, 1, 2) + '/24' ], false)), null);
+	assert.equal(model.resolveUplink(IFACES.map(i => i.interface === 'lan' ? { ...i, 'ipv4-address': [ { address: ip(192, 168, 1, 2), mask: 24 } ] } : i), DEVS, []).isWan, false);
+	/* through the model: a router's wan, with or without the prefix length */
+	const wan = model.resolveUplink([ wanIf('wan', 'eth1', 0, { 'ipv4-address': [ { address: ip(10, 0, 0, 2), mask: 24 } ] }), LAN ], {});
+	assert.deepEqual([ wan.isWan, model.lineNat(wan) ], [ true, 'private' ]);
+	assert.equal(model.lineNat(line([ ip(100, 64, 0, 2) ])), 'shared');
+	/* every address of the line must be one: a modem's management address beside a public one is no NAT */
+	assert.equal(model.lineNat(line([ '203.0.113.5/24', ip(192, 168, 100, 2) + '/24' ])), null);
+	assert.equal(model.lineNat(line([ ip(192, 168, 100, 2) + '/24', '203.0.113.5/24' ])), null);
+	assert.equal(model.lineNat(line([ ip(10, 0, 0, 2) + '/24', ip(100, 64, 0, 2) + '/24' ])), 'private', 'the first one names it');
+	/* no IPv4 address (an IPv6-only line), junk, no line */
+	for (const x of [ line([]), line(undefined), line([ 'x' ]), line([ null ]), line([ ip(10, 0, 0, 256) ]), line([ '2001:db8::1/64' ]), null, undefined, {} ])
+		assert.equal(model.lineNat(x), null, JSON.stringify(x));
+});
+
 test('resolveUplink: DS-Lite at metric 0 is the IPv4 way out before an LTE backup, shown as its IPv6 line', () => {
 	const wan6 = { interface: 'wan6', up: true, proto: 'dhcpv6', device: 'eth1', l3_device: 'eth1', route: [ { target: '::', mask: 0, nexthop: 'fe80::1' } ] };
 	const ds = metric => ({ interface: 'wan6_4', up: true, proto: 'dslite', l3_device: 'ds-wan6_4', metric, route: [ { target: '0.0.0.0', mask: 0, nexthop: '0.0.0.0' } ] });

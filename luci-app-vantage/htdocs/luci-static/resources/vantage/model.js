@@ -566,6 +566,26 @@ return baseclass.extend({
 		};
 	},
 
+	/* A router's line to the internet whose address is not its own on
+	   the internet: 'private' (RFC 1918: a router in front of this one,
+	   or the provider, translates too: double NAT) or 'shared' (RFC
+	   6598, 100.64/10: the provider's own NAT), else null. Only a line
+	   through a WAN interface: an access point's uplink is its LAN,
+	   private as it should be. And only when every IPv4 address of the
+	   line is one of the two: a modem's management address beside a
+	   public one is no NAT. Any other block (documentation addresses
+	   too) is none. */
+	lineNat: function(x) {
+		var self = this;
+		var kinds = x && x.isWan ? arr(x.ipv4).map(function(a) {
+			var o = self.parseIPv4(String(a).split('/')[0]);
+			if (!o) return null;
+			if (o[0] === 10 || (o[0] === 172 && o[1] >= 16 && o[1] <= 31) || (o[0] === 192 && o[1] === 168)) return 'private';
+			return o[0] === 100 && o[1] >= 64 && o[1] <= 127 ? 'shared' : null;
+		}) : [];
+		return kinds.length && kinds.every(Boolean) ? kinds[0] : null;
+	},
+
 	/* The device's other networks (lan, guest, a VPN, ...): every
 	   interface except loopback and the uplinks shown (a line or a list
 	   of them, with the interfaces each is made of; wan6 shares wan's

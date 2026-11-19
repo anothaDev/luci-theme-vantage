@@ -4906,6 +4906,11 @@ return view.extend({
 		};
 		if (!up) return { title: [ E('span', { 'class': 'vt-drawer-name' }, [ _('Uplink', 'vantage') ]) ], body: [ E('p', { 'class': 'vt-empty-inline' }, [ _('No interface with a route is up.') ]) ] };
 		var s = up.stats || {};
+		/* a router behind another NAT (model.lineNat): said here, plain,
+		   and in no health check: it is how the line is, not a fault */
+		var nat = model.lineNat(up);
+		var natText = nat === 'private' ? _('This line has a private address (%s): another router, or the provider, translates addresses in front of this one (double NAT). Port forwards can be reached from the internet only where that one passes them on.').format(lineAddr(up))
+			: nat === 'shared' ? _('This line has a shared address (%s): the provider translates addresses for many customers (carrier-grade NAT). Port forwards cannot be reached from the internet over IPv4.').format(lineAddr(up)) : null;
 		return {
 			title: [ E('span', { 'class': 'vt-drawer-ico' }, [ icon('globe') ]), E('div', { 'class': 'vt-drawer-titles' }, [
 				E('div', { 'class': 'vt-drawer-name' }, [ _('Uplink · %s').format(up.iface) ]),
@@ -4918,6 +4923,7 @@ return view.extend({
 					E('div', { 'class': 'vt-dcard' }, [ E('div', { 'class': 'vt-dcard-label' }, [ _('To network') ]), E('div', { 'class': 'vt-dcard-value' }, [ r ? fmt.bits(r.tx) : fmt.DASH ]), E('div', { 'class': 'vt-dcard-sub' }, [ _('sent on %s').format(up.dev) ]) ])
 				]),
 				E('div', { 'class': 'vt-dspark' }, [ sparkline(hist || [], [ 1, 2 ], 0, 'vt-spark-up', { min: 1000, scale: bitsLabel }) ]),
+				natText ? E('ul', { 'class': 'vt-notes' }, [ E('li', { 'class': 'vt-note vt-note-info' }, [ icon('info', 'vt-ico-sm'), E('span', {}, [ natText ]) ]) ]) : '',
 				this.section(_('Link', 'vantage'), [ E('dl', { 'class': 'vt-kvs' }, [
 					kv(_('Carrier'), up.carrier === false ? _('No link') : _('Up', 'vantage')),
 					kv(_('Speed', 'vantage'), model.speedLabel(up.speed)),
