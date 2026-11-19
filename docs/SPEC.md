@@ -422,6 +422,25 @@ text around it so it looks the same size.
   tile whose content shrinks keeps its height for 30 s,
   then the layout settles on its own; while arranging, each tile's
   content starts below its handle bar.
+- **What's new**: once after an upgrade, one line above the dashboard's
+  head, "Vantage 1.1.0: what's new", in the look of the details' notes,
+  with a close button. The browser keeps the dashboard's version as it
+  last saw it (`localStorage`, `vantage.seen.v1`; a version number is
+  nothing private). A first visit keeps it and shows nothing; a later
+  one that finds another version kept shows the line at every load until
+  it is closed or its link is followed (a click or a middle click),
+  either of which keeps this version. A version is two to four dotted
+  numbers, the running one and the kept one alike: anything else kept
+  counts as nothing kept, and a browser without storage never shows the
+  line. Nothing is requested for it. The link is a constant and opens in
+  a new tab without a referrer: the changelog as tagged for this version
+  (`blob/v<version>/CHANGELOG.md`, where its section is the first; the
+  heading's own anchor has the release date in it). It is written out
+  in `overview.js` (`NEWS_URL`), since no URL is put together from parts
+  (`check_dom_sinks.js`), and bumped with `VERSION` at a release;
+  `tests/view.test.js` holds the two together. The line is outside the
+  grid, which is all the layout measures, so showing or closing it moves
+  the page as a whole and no tile.
 - **Lines to the internet**: every up interface with a default route in
   the main table is a line, the main one first and at most four beside it.
   Lines rank by lowest metric; on a tie the kernel's own answer

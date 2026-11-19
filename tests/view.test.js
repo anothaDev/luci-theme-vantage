@@ -1966,7 +1966,10 @@ test('paired access points: the list and the drawers show the address as text an
 	const cells = tree(self.wiredCells(noted, 0));
 	assert.ok(cells.find('vt-pill').some(p => p.textContent === 'behind ap-hall' && p.getAttribute('title') === 'Behind ap-hall, its port lan2'));
 	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
-	assert.doesNotMatch(src, /\.(hostname|host|port|protocol|pathname)\s*=[^=]|target': '_blank'/, 'no address put into a link');
+	assert.doesNotMatch(src, /\.(hostname|host|port|protocol|pathname)\s*=[^=]/, 'no address put into a link');
+	/* one link leaves the router, and it is a constant: the changelog ("What's new", below) */
+	assert.deepEqual(src.match(/'href': [^,}]+, 'target': '_blank'/g), [ "'href': NEWS_URL, 'target': '_blank'" ]);
+	assert.equal(src.split('_blank').length - 1, 1, 'no other link opens a new tab');
 }));
 
 /* the model keeps the other access points that list an entry on it (ap.also,
@@ -3223,3 +3226,132 @@ test('offline: its details show what is known, in the drawer\'s style, and renam
 		assert.equal([ ...src.matchAll(/self\.startRename\(c\)/g) ].length, 3, 'a station\'s, a wired host\'s and an offline device\'s button');
 	} finally { global.L = savedL; }
 }));
+
+/* ---------------------------------- "What's new", once after an upgrade */
+
+const NEWS_SRC = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+/* the version this dashboard has, whatever a release makes it, one from before and one from after */
+const NEWS_NOW = /^var VERSION = '([^']+)';/m.exec(NEWS_SRC)[1], NEWS_OLD = '0.9.9', NEWS_LATER = '9999.0.0';
+const NEWS_KEY = 'vantage.seen.v1';
+const NEWS_LINK = 'https://github.com/anothaDev/luci-theme-vantage/blob/v' + NEWS_NOW + '/CHANGELOG.md';
+/* this browser's localStorage, over what it keeps */
+const kept = store => ({
+	getItem: k => (Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null),
+	setItem: (k, v) => { store[k] = String(v); }
+});
+/* one load of the dashboard (inside withFakeDom): the line as render() gets it, '' for none */
+function newsLoad(storage) {
+	const self = Object.create(dview);
+	self.el = { layoutBtn: { focused: 0, focus() { this.focused++; } } };
+	global.window.localStorage = storage;
+	const line = self.buildNews();
+	return { self, line, link: line && line.all().find(n => n.tag === 'a'), close: line && line.all().find(n => n.tag === 'button') };
+}
+
+test('what\'s new: nothing on a first visit; once another version was kept, one line at every load until it is closed', () => withFakeDom(() => {
+	const store = {};
+	/* a first visit only notes the version */
+	assert.equal(newsLoad(kept(store)).line, '');
+	assert.deepEqual(store, { [NEWS_KEY]: NEWS_NOW });
+	assert.equal(newsLoad(kept(store)).line, '', 'the same version at the next load: nothing');
+	/* after an upgrade */
+	store[NEWS_KEY] = NEWS_OLD;
+	let p = newsLoad(kept(store));
+	assert.equal(p.line.getAttribute('class'), 'vt-banner vt-banner-muted vt-news', 'in the look of the details\' notes');
+	assert.equal(p.line.textContent, 'Vantage ' + NEWS_NOW + ': what\'s new', 'one line');
+	assert.equal(p.link.textContent, p.line.textContent, 'all of it the link');
+	assert.deepEqual(p.link.attrs, { 'class': 'vt-link', 'href': NEWS_LINK, 'target': '_blank', 'rel': 'noopener noreferrer' });
+	assert.deepEqual(Object.keys(p.link.on).sort(), [ 'auxclick', 'click' ]);
+	assert.equal(p.close.getAttribute('type'), 'button');
+	assert.equal(p.close.getAttribute('aria-label'), 'Close');
+	/* an info sign and a cross; no check mark */
+	const drawn = p.line.all().filter(n => n.tag === 'path').map(n => n.getAttribute('d'));
+	assert.equal(drawn.length, 4, 'the info sign\'s three strokes and the cross');
+	assert.ok(!drawn.includes('M5 12.5l4.5 4.5L19 7.5'));
+	assert.equal(store[NEWS_KEY], NEWS_OLD, 'showing it keeps nothing');
+	/* left alone: there again at the next load */
+	p = newsLoad(kept(store));
+	assert.ok(p.line && !p.line.hidden);
+	/* closed: gone at once, and for good */
+	p.close.on.click();
+	assert.equal(p.line.hidden, true);
+	assert.equal(store[NEWS_KEY], NEWS_NOW);
+	assert.equal(p.self.el.layoutBtn.focused, 1, 'the focus moves on to Customize, not to nowhere');
+	assert.equal(newsLoad(kept(store)).line, '', 'never again');
+	/* until the version changes again; a later one kept (a downgrade) differs too */
+	store[NEWS_KEY] = NEWS_LATER;
+	assert.ok(newsLoad(kept(store)).line);
+}));
+
+test('what\'s new: following the link is reading it, by a click or a middle click; the context menu\'s button is not', () => withFakeDom(() => {
+	for (const [ on, button, read ] of [ [ 'click', 0, true ], [ 'auxclick', 1, true ], [ 'auxclick', 2, false ] ]) {
+		const store = { [NEWS_KEY]: NEWS_OLD }, p = newsLoad(kept(store)), what = on + ' ' + button;
+		let stopped = 0;
+		p.link.on[on]({ type: on, button, preventDefault() { stopped++; } });
+		assert.equal(stopped, 0, what + ': the browser opens the link itself');
+		assert.equal(p.line.hidden === true, read, what);
+		assert.equal(store[NEWS_KEY], read ? NEWS_NOW : NEWS_OLD, what);
+		assert.equal(p.self.el.layoutBtn.focused, 0, what);
+		assert.equal(newsLoad(kept(store)).line === '', read, what + ': at the next load');
+	}
+}));
+
+test('what\'s new: what is kept is a version or counts as nothing kept; a browser that keeps nothing never shows the line', () => withFakeDom(() => {
+	for (const junk of [ '', '1', 'v1.0.20', '1.0.20-r1', '1.0.20 ', ' 1.0.20', '1.0.20\n', '1..20', '1.2.3.4.5', '12345.0', 'null', '{"v":"1.0.20"}', '<b>1.0.20</b>', 'javascript:1.0' ]) {
+		const store = { [NEWS_KEY]: junk };
+		assert.equal(newsLoad(kept(store)).line, '', JSON.stringify(junk));
+		assert.equal(store[NEWS_KEY], NEWS_NOW, JSON.stringify(junk) + ': this version is kept in its place');
+	}
+	/* no storage, or one that refuses: no line and no error, at any load */
+	const refuse = () => { throw new Error('SecurityError'); };
+	for (const storage of [ undefined, null, {}, { getItem: refuse, setItem: refuse }, { getItem: () => null, setItem: refuse } ])
+		for (let load = 0; load < 2; load++) assert.equal(newsLoad(storage).line, '');
+	Object.defineProperty(global.window, 'localStorage', { get: refuse, set() {}, configurable: true });
+	assert.equal(Object.assign(Object.create(dview), { el: {} }).buildNews(), '', 'storage switched off in the browser');
+	delete global.window.localStorage;
+	/* it reads but cannot write: the line closes for this page and comes back with the next */
+	const store = { [NEWS_KEY]: NEWS_OLD }, readOnly = { getItem: kept(store).getItem, setItem: refuse };
+	const p = newsLoad(readOnly);
+	assert.doesNotThrow(() => p.close.on.click());
+	assert.equal(p.line.hidden, true);
+	assert.ok(newsLoad(readOnly).line);
+}));
+
+test('what\'s new: the link is a constant, the changelog as tagged for this version; nothing is asked for it', () => {
+	const src = NEWS_SRC;
+	/* written out, as check_dom_sinks.js takes no URL put together from parts: a release bumps it with VERSION */
+	assert.equal(/^var NEWS_URL = '([^']+)';$/m.exec(src)[1], NEWS_LINK, 'NEWS_URL is not this VERSION\'s: bump the two together');
+	/* a version is plain digits and dots, this one and a kept one alike, or there is no line */
+	const form = new RegExp(/^var VERSION_FORM = \/(.+)\/;$/m.exec(src)[1]);
+	assert.ok(form.test(NEWS_NOW), 'VERSION is two to four dotted numbers');
+	for (const odd of [ '1', '1.', '.1', '1.0.21-r1', '1.0.21rc1', '1.0.21/../..', '1.0.21#x', '1.0.21?x', '1.0 .21', '1.0.21.0.0', '12345.1', '１.０' ])
+		assert.ok(!form.test(odd), odd);
+	assert.match(src, /function newsDue\(\) \{\n\tif \(!VERSION_FORM\.test\(VERSION\)\) return false;/);
+	assert.match(src, /return typeof v === 'string' && VERSION_FORM\.test\(v\) \? v : null;/);
+	/* the constant is used once, as it is, and what is kept never reaches the page: it is only compared */
+	assert.equal(src.split('NEWS_URL').length - 1, 2, 'defined, and the link\'s href');
+	assert.equal(src.split('readSeen()').length - 1, 2, 'defined, and read by newsDue');
+	assert.match(src, /var seen = readSeen\(\);\n\tif \(seen === null\) writeSeen\(VERSION\);\n\treturn seen !== null && seen !== VERSION;/);
+	/* nothing is asked of anyone: the dashboard fetches its own package's files, as before */
+	assert.deepEqual([ ...src.matchAll(/(?<![.\w])fetch\(([^,)]+)/g) ].map(m => m[1]), [ "L.resource('vantage/app.css'", "L.resource('menu-vantage.js'" ]);
+	assert.doesNotMatch(src, /XMLHttpRequest|sendBeacon|new Image\b|EventSource|WebSocket|'ping'/);
+});
+
+test('what\'s new: above the head and outside the grid, which is all the layout measures', () => {
+	const src = NEWS_SRC;
+	/* the first thing in the page's body, before the head, the health cards, Customize's bar and the grid */
+	assert.match(src, /E\('div', \{ 'class': 'vt-body' \}, \[\n\t\t\t\tthis\.buildNews\(\),\n\t\t\t\tthis\.buildHead\(\),\n\t\t\t\tthis\.el\.health = [^\n]+\n\t\t\t\tthis\.buildEditBar\(\),\n\t\t\t\tthis\.el\.grid = E\('div', \{ 'class': 'vt-grid vt-grid-wait' \}, this\.buildTiles\(\)\)\n/);
+	assert.equal(src.split('this.buildNews()').length - 1, 1);
+	/* the layout, the drag and the resize watch read the grid and its tiles, never the line */
+	const part = (from, to) => { const a = src.indexOf(from), b = src.indexOf(to, a); assert.ok(a > 0 && b > a, from.trim()); return src.slice(a, b); };
+	const layoutCode = part('\tdoLayout: function() {', '\tsetLayout: function(list) {') + part('\tdragStart: function(id, ev) {', '\tdragEnd: function(cancel) {');
+	assert.doesNotMatch(layoutCode, /news|vt-body|\.el\.root\.(getBoundingClientRect|client|offset)/);
+	assert.match(layoutCode, /var width = grid\.clientWidth;/);
+	assert.match(layoutCode, /var nat = tiles\[e\.id\]\.getBoundingClientRect\(\)\.height;/);
+	assert.match(src, /var ro = new ResizeObserver\(function\(\) \{ self\.scheduleLayout\(\); \}\);\n\t\t\tro\.observe\(this\.el\.grid\);/);
+	/* the banner as it is, at the height of its close button: no colour of its own */
+	const css = fs.readFileSync(path.join(RES, 'vantage/app.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+	const own = [ ...css.matchAll(/([^{}]+)\{([^{}]*)\}/g) ].map(m => ({ sel: m[1].trim(), body: m[2] })).filter(r => /\.vt-news\b/.test(r.sel));
+	assert.deepEqual(own.map(r => r.sel), [ '.vt-app .vt-banner.vt-news', '.vt-app .vt-news .vt-link', '.vt-app .vt-news .vt-icon-action' ]);
+	for (const r of own) assert.doesNotMatch(r.body, /(^|[;\s])(color|background(-color)?|border(-color)?|box-shadow|fill|stroke|height)\s*:/, r.sel);
+});

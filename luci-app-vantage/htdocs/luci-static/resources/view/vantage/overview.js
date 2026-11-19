@@ -638,6 +638,43 @@ function writeStore(v) {
 	try { window.sessionStorage.setItem(STORE_KEY, JSON.stringify(v)); } catch (e) {}
 }
 
+/* "What's new", once after an upgrade: this browser keeps the dashboard's
+   version as it last saw it (localStorage; a version number is nothing
+   private). A first visit keeps it and shows nothing. A later one that
+   finds another version kept shows one line above the head, "Vantage
+   1.1.0: what's new", at every load until it is closed or its link is
+   followed; either keeps this version. Nothing is asked of anyone for
+   it: the link is a constant, to the changelog as tagged for this
+   version, where its section is the first (the heading's own anchor has
+   the release date in it). It is written out, as no URL is put together
+   from parts here (check_dom_sinks.js), and so is bumped with VERSION:
+   tests/view.test.js holds the two together. A version is two to four
+   dotted numbers, this one and the kept one alike: anything else kept
+   counts as nothing kept, and with a VERSION of another form there is
+   no line. */
+var NEWS_URL = 'https://github.com/anothaDev/luci-theme-vantage/blob/v1.0.21/CHANGELOG.md';
+var SEEN_KEY = 'vantage.seen.v1';
+var VERSION_FORM = /^\d{1,4}(\.\d{1,4}){1,3}$/;
+
+function readSeen() {
+	var v = null;
+	try { v = window.localStorage.getItem(SEEN_KEY); } catch (e) { v = null; }
+	return typeof v === 'string' && VERSION_FORM.test(v) ? v : null;
+}
+
+function writeSeen(v) {
+	try { window.localStorage.setItem(SEEN_KEY, v); } catch (e) {}
+}
+
+/* is the line due? A first visit, or a browser that keeps nothing (no
+   storage: it would be a first visit every time), only notes the version */
+function newsDue() {
+	if (!VERSION_FORM.test(VERSION)) return false;
+	var seen = readSeen();
+	if (seen === null) writeSeen(VERSION);
+	return seen !== null && seen !== VERSION;
+}
+
 /* Sections that fold on narrow screens; the choice is remembered per
    browser. The radios start condensed; the network path starts open
    (since 1.0.15: v1 kept it folded, so its other
@@ -1643,6 +1680,7 @@ return view.extend({
 		   outside it (a size container would trap position: fixed) */
 		var root = E('div', { 'class': 'vt-app', 'id': 'vt-app' }, [
 			E('div', { 'class': 'vt-body' }, [
+				this.buildNews(),
 				this.buildHead(),
 				this.el.health = E('div', { 'class': 'vt-health', 'role': 'list', 'aria-label': _('Health checks', 'vantage') }),
 				this.buildEditBar(),
@@ -2234,6 +2272,25 @@ return view.extend({
 	},
 
 	/* ------------------------------------------------------------- head */
+
+	/* "Vantage 1.1.0: what's new" (newsDue), in the look of the details'
+	   notes. Above the head, so outside the grid: the layout measures the
+	   grid's width and its tiles, and closing the line moves the page up
+	   as a whole. Followed counts a middle click too (a new tab). */
+	buildNews: function() {
+		var el = this.el;
+		if (!newsDue()) return '';
+		function seen() { writeSeen(VERSION); el.news.hidden = true; }
+		function followed(ev) { if (ev.type === 'click' || ev.button === 1) seen(); }
+		el.news = E('div', { 'class': 'vt-banner vt-banner-muted vt-news' }, [
+			icon('info'),
+			E('a', { 'class': 'vt-link', 'href': NEWS_URL, 'target': '_blank', 'rel': 'noopener noreferrer', 'click': followed, 'auxclick': followed }, [
+				_('Vantage %s: what\'s new').format(VERSION) ]),
+			E('button', { 'type': 'button', 'class': 'vt-icon-action', 'aria-label': _('Close'), 'title': _('Close'),
+				'click': function() { seen(); el.layoutBtn.focus(); } }, [ icon('close') ])
+		]);
+		return el.news;
+	},
 
 	buildHead: function() {
 		var el = this.el;
