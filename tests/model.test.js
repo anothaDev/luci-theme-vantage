@@ -408,6 +408,29 @@ test('extraUplinks: IPv6 on the device a PPPoE line runs over is part of that li
 	assert.deepEqual(lines([ ifaces[1], wanIf('wanb', 'eth0.7', 20) ]).map(x => x.iface), [ 'wan', 'wanb' ]);
 });
 
+test('a line\'s delegated IPv6 prefix: its own and wan6\'s, each once, only what reads as a prefix', () => {
+	const wan6 = (prefix, extra) => ({ interface: 'wan6', up: true, proto: 'dhcpv6', device: 'eth1', l3_device: 'eth1', route: [ { target: '::', mask: 0, nexthop: 'fe80::1' } ], 'ipv6-prefix': prefix, ...extra });
+	const pd = { address: '2001:db8:1200::', mask: 56, preferred: 3600, valid: 7200, class: 'wan6', assigned: { lan: { address: '2001:db8:1200::', mask: 60 } } };
+	/* wan6 is part of wan's line: the prefix is the line's */
+	const u = model.resolveUplink([ wanIf('wan', 'eth1', 0), wan6([ pd ]), LAN ], {});
+	assert.deepEqual([ u.iface, u.ifaces, u.prefix6 ], [ 'wan', [ 'wan', 'wan6' ], [ '2001:db8:1200::/56' ] ]);
+	/* an IPv6-only line has its own; two prefixes, one of them twice */
+	const only = model.resolveUplink([ wan6([ pd, { address: '2001:db8:3400::', mask: 48 }, pd ]) ], {});
+	assert.deepEqual(only.prefix6, [ '2001:db8:1200::/56', '2001:db8:3400::/48' ]);
+	/* a backup line keeps its own apart from the main one's */
+	const [ main, backup ] = lines([ wanIf('wan', 'eth1', 0), wan6([ pd ]), wanIf('wanb', 'eth2', 20, { 'ipv6-prefix': [ { address: '2001:db8:5600::', mask: 60 } ] }) ]);
+	assert.deepEqual([ main.prefix6, backup.prefix6 ], [ [ '2001:db8:1200::/56' ], [ '2001:db8:5600::/60' ] ]);
+	/* none: an empty list, as netifd sends it, or no list at all */
+	assert.deepEqual(model.resolveUplink([ wanIf('wan', 'eth1', 0), wan6([]) ], {}).prefix6, []);
+	assert.deepEqual(model.resolveUplink([ wanIf('wan', 'eth1', 0) ], {}).prefix6, []);
+	/* not a prefix: no entry, never text made of it */
+	const junk = [ null, 'x', {}, { address: '2001:db8::', mask: '56' }, { address: '2001:db8::', mask: 0 }, { address: '2001:db8::', mask: 129 }, { address: '2001:db8::', mask: 56.5 },
+		{ address: '<b>2001:db8::</b>', mask: 56 }, { address: '203.0.113.0', mask: 24 }, { address: '2001:db8::%eth0', mask: 56 }, { address: 'abcd', mask: 16 },
+		{ address: '2001:db8:' + '0:'.repeat(20), mask: 56 }, { address: [ '2001:db8::' ], mask: 56 }, { mask: 56 } ];
+	assert.deepEqual(model.resolveUplink([ wanIf('wan', 'eth1', 0), wan6(junk) ], {}).prefix6, []);
+	assert.deepEqual(model.resolveUplink([ wanIf('wan', 'eth1', 0), wan6('2001:db8::/56') ], {}).prefix6, []);
+});
+
 test('extraUplinks: two lines on DSA ports of one switch keep their own counters; one line keeps the conduit\'s', () => {
 	const dsa = { devtype: 'dsa', 'hw-tc-offload': true, conduit: 'eth0' };
 	const devs = { wan: dsa, lan4: dsa, eth0: {}, eth1: {} };

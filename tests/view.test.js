@@ -1018,6 +1018,33 @@ test('other lines: the uplink drawer shows the line asked for, its rates and rou
 	});
 });
 
+test('uplink drawer: the delegated IPv6 prefix among the addresses, as text; no row where there is none', () => {
+	const self = Object.create(view);
+	const wan = LINE('wan', 'eth1', 10);
+	self.m = { uplink: wan, uplinks: [ wan ] };
+	self.st = { uplinkRate: null, devRates: {}, hist: { net: {} } };
+	withDom(() => {
+		/* the rows of the details: [ label, the text of its value ] */
+		const rows = () => {
+			const out = [];
+			(function walk(n) {
+				if (!n || typeof n !== 'object') return;
+				if (n.attrs && n.attrs['class'] === 'vt-kv') out.push([ texts(n.children[0]).join(''), texts(n.children[1]).join('') ]);
+				else (n.children || []).forEach(walk);
+			})({ children: self.drawerUplink('').body });
+			return out;
+		};
+		const labels = () => rows().map(r => r[0]);
+		assert.ok(!labels().includes('IPv6 prefix'), 'a line the model gave no list');
+		wan.prefix6 = [];
+		assert.ok(!labels().includes('IPv6 prefix'));
+		wan.prefix6 = [ '2001:db8:1200::/56', '2001:db8:3400::/48' ];
+		assert.deepEqual(rows().filter(r => r[0] === 'IPv6 prefix'), [ [ 'IPv6 prefix', '2001:db8:1200::/56\n2001:db8:3400::/48' ] ]);
+		const at = labels().indexOf('IPv6 prefix');
+		assert.deepEqual(labels().slice(at - 1, at + 2), [ 'IPv6', 'IPv6 prefix', 'Gateway' ]);
+	});
+});
+
 test('stored history: it belongs to one login', () => {
 	const savedWindow = global.window, savedL = global.L, box = {};
 	const hist = sid => JSON.stringify({ sid, cpu: [ [ 1, 2 ], [ 3, 4 ] ], clients: { '00:00:5E:00:53:01': [ [ 1, 2 ] ] } });

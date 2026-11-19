@@ -4930,6 +4930,8 @@ return view.extend({
 				this.section(_('Addresses'), [ E('dl', { 'class': 'vt-kvs' }, [
 					kv(_('IPv4'), up.ipv4.join('\n') || fmt.DASH, true),
 					kv(_('IPv6'), up.ipv6.join('\n') || fmt.DASH, true),
+					/* the prefix the provider delegated, where there is one */
+					up.prefix6 && up.prefix6.length ? kv(_('IPv6 prefix'), up.prefix6.join('\n'), true) : '',
 					kv(_('Gateway'), up.gateway || fmt.DASH, true),
 					/* beside other lines, the metric says which one the kernel takes */
 					several ? kv(_('Route metric'), up.metric != null ? String(up.metric) : fmt.DASH, true) : '',

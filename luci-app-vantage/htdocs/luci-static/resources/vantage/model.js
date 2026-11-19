@@ -219,11 +219,26 @@ function absorb(x, g) {
 	g.members.slice(1).forEach(function(i) {
 		more(x.ipv4, cidrs(i['ipv4-address']));
 		more(x.ipv6, cidrs(i['ipv6-address']));
+		more(x.prefix6, prefixes(i['ipv6-prefix']));
 		more(x.dns, arr(i['dns-server']).filter(function(v) { return typeof v === 'string'; }));
 	});
 	x.metric = g.metric;
 	x.ifaces = g.members.map(function(i) { return i.interface; });
 	return x;
+}
+/* the IPv6 prefixes delegated to an interface (netifd's ipv6-prefix), as
+   text, each once; only what reads as one: hex groups and colons, a
+   whole prefix length. A line has its own and its other interfaces'
+   (wan6's on wan's line: absorb) */
+function prefixes(list) {
+	var out = [];
+	arr(list).forEach(function(p) {
+		p = obj(p);
+		if (typeof p.address !== 'string' || p.address.length > 39 || p.address.indexOf(':') < 0 || !/^[0-9a-f:]+$/i.test(p.address)) return;
+		if (!finite(p.mask) || p.mask % 1 || p.mask < 1 || p.mask > 128) return;
+		if (out.indexOf(p.address + '/' + p.mask) < 0) out.push(p.address + '/' + p.mask);
+	});
+	return out;
 }
 /* Two lines on DSA ports of one switch: the conduit carries both (and
    the other ports), so each keeps its own port's counters. */
@@ -538,6 +553,7 @@ return baseclass.extend({
 			linkMax: bestLink(d),
 			ipv4: cidrs(pick['ipv4-address']),
 			ipv6: cidrs(pick['ipv6-address']),
+			prefix6: prefixes(pick['ipv6-prefix']),
 			gateway: hop && hop !== '0.0.0.0' && hop !== '::' ? hop : null,
 			/* a tunnel's default route has no next hop: routed, without a gateway address */
 			defaultRoute: !!route,
