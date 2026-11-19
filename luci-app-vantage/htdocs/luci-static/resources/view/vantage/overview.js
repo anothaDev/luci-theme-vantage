@@ -784,6 +784,41 @@ function writeBackdrop(v) {
 	} catch (e) {}
 }
 
+/* Search: under the Vantage theme its command palette (Ctrl+K or "/")
+   also finds what the dashboard knows, while this page is open. The
+   palette sends SEARCH_EVENT on window when it opens and each time its
+   query changes, detail { query, add }; the dashboard hands add(), there
+   and then, what fits the query (searchEntries), at most SEARCH_MAX a
+   kind:
+     kind    'client', 'radio', 'ssid' or 'interface': the header it goes under
+     title   its name, matched as a page's title is
+     detail  the row's second text (an address, a channel)
+     words   what else finds it and is never shown (a MAC)
+     run     a function: what a click on it does here
+   The palette ranks and draws them, as text, and drops what is not of
+   this form (menu-vantage.js, PALETTE_EVENT). Under another theme no one
+   asks. */
+var SEARCH_EVENT = 'vantage:palette';
+var SEARCH_MAX = 8;
+
+/* May the palette find it? Its own two rules, loosely, so that it has
+   the last word: the query's letters in this order in the title, or each
+   of its words somewhere in the rest. 2 where the title holds the query
+   as typed (those first, when a kind has more than SEARCH_MAX), else 1,
+   and 0 for no. q: the query's words, lower case */
+function searchHit(q, title, rest) {
+	var t = title.toLowerCase(), letters = q.join(''), at = 0, i;
+	if (!q.length) return 1;
+	if (t.indexOf(q.join(' ')) >= 0) return 2;
+	for (i = 0; i < letters.length; i++) {
+		at = t.indexOf(letters[i], at) + 1;
+		if (!at) break;
+	}
+	if (i === letters.length) return 1;
+	rest = rest.toLowerCase();
+	return q.every(function(w) { return rest.indexOf(w) >= 0; }) ? 1 : 0;
+}
+
 /* ================================================================= view */
 
 return view.extend({
@@ -1532,6 +1567,11 @@ return view.extend({
 		poll.add(L.bind(this.refreshFast, this), FAST_S);
 		poll.add(L.bind(this.refresh, this), POLL_S);
 		window.addEventListener('vantage:power', function() { self.applyPower(); });
+		/* the theme's palette asks what fits its query */
+		window.addEventListener(SEARCH_EVENT, function(ev) {
+			var d = ev.detail;
+			if (d && typeof d.add === 'function') d.add(self.searchEntries(d.query));
+		});
 		window.addEventListener('vantage:unfocused', function() { self.paintLive(); });
 		[ 'pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'focus' ].forEach(function(t) {
 			window.addEventListener(t, function() { self.noteInput(); }, { passive: true });
@@ -4599,6 +4639,95 @@ return view.extend({
 				]) ])
 			]
 		};
+	},
+
+	/* ------------------------------------------------------------ search */
+
+	/* What the theme's palette may list for a query (see SEARCH_EVENT):
+	   the clients (stations and wired hosts, a paired access point's with
+	   its name), the radios, the Wi-Fi networks by name and the
+	   interfaces. Each does what a click on it does on this page: a
+	   client's or a radio's details, the Clients list on a network, the
+	   Interfaces page. A kind's entries are those the query may find, in
+	   name order, cut to SEARCH_MAX: a network of hundreds of clients hands
+	   over eight. */
+	searchEntries: function(query) {
+		var self = this, m = this.m, out = [];
+		var q = String(query == null ? '' : query).slice(0, 128).toLowerCase().split(/\s+/).filter(Boolean);
+		if (!m) return out;
+		function give(kind, list) {
+			list.forEach(function(e) { e.hit = searchHit(q, e.title, e.detail + ' ' + e.words); e.key = e.title.toLowerCase(); });
+			list.filter(function(e) { return e.hit; }).sort(function(a, b) {
+				return (b.hit - a.hit) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+			}).slice(0, SEARCH_MAX).forEach(function(e) {
+				out.push({ kind: kind, title: e.title, detail: e.detail, words: e.words, run: e.run });
+			});
+		}
+		function cut(parts, sep, max) { return fmt.safeText(parts.filter(Boolean).join(sep), max); }
+
+		give('client', m.clients.concat(m.wiredHosts || []).map(function(c) {
+			return {
+				title: cut([ c.name ], '', 64),
+				detail: cut([ c.secondary, typeof c.port === 'string' ? c.network || c.bridge : c.ssid, c.ap ? _('via %s').format(c.ap.name) : null ], ' · ', 64),
+				words: cut([ c.mac ].concat(c.ips || []), ' ', 256),
+				run: function() { self.openDrawer('client', c.mac); }
+			};
+		}));
+
+		give('radio', m.radios.map(function(r) {
+			return {
+				title: cut([ r.bandLabel, r.gen || r.id ], ' · ', 64),
+				detail: r.channel ? _('Ch %d · %d MHz').format(r.channel, r.width || 20) : '',
+				words: cut([ r.id, r.htmode, r.channel ? _('Channel') + ' ' + r.channel : null ], ' ', 256),
+				run: function() { self.openDrawer('radio', r.id); }
+			};
+		}));
+
+		/* a network by its name, once: this device's and the paired access
+		   points', as the Clients list filters by the name. Not where the
+		   layout hides that list, and not one without a name */
+		var nets = [], named = Object.create(null);
+		function net(ssid, band, clients) {
+			if (!ssid) return;
+			var n = named[ssid];
+			if (!n) nets.push(n = named[ssid] = { ssid: ssid, bands: [], clients: 0 });
+			if (band && n.bands.indexOf(band) < 0) n.bands.push(band);
+			n.clients += clients;
+		}
+		if (this.el.clients.getClientRects().length) {
+			m.ssids.forEach(function(s) { net(s.ssid, s.band, s.clients); });
+			this.aps().forEach(function(a) { a.nodes.forEach(function(n) { net(n.ssid, n.band, n.clients); }); });
+		}
+		give('ssid', nets.map(function(n) {
+			return {
+				title: cut([ n.ssid ], '', 64),
+				detail: cut(n.bands.sort().map(wifi.bandLabel).concat(n.clients === 1 ? _('1 client') : _('%d clients').format(n.clients)), ' · ', 64),
+				words: '',
+				/* open details would cover the list */
+				run: function() { self.closeDrawer(); self.filterSsid(n.ssid); }
+			};
+		}));
+
+		/* the lines to the internet and the other networks, where LuCI
+		   has the page the dashboard's own links to them go to */
+		var page = insight.PAGES.network;
+		function go() { window.location.href = L.url.apply(L, page); }
+		give('interface', !hasPage(page) ? [] : (m.uplinks || []).map(function(x) {
+			return {
+				title: cut([ x.iface ], '', 64),
+				detail: cut([ lineAddr(x), x.proto ], ' · ', 64),
+				words: cut((x.ifaces || []).concat(x.l3dev, x.dev), ' ', 256),
+				run: go
+			};
+		}).concat((m.networks || []).map(function(n) {
+			return {
+				title: cut([ n.name ], '', 64),
+				detail: cut([ n.ipv4 ? String(n.ipv4).split('/')[0] : null, n.proto ], ' · ', 64),
+				words: cut([ n.dev ], '', 256),
+				run: go
+			};
+		})));
+		return out;
 	},
 
 	/* ---------------------------------------------------------- keyboard */

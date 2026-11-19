@@ -3555,6 +3555,11 @@ body[data-page="admin-system-filemanager"] .sort-button { border-color: var(--li
 	.vt-pal-overlay { padding: var(--sp-3); align-items: flex-start; }
 	.vt-pal { max-height: 80vh; }
 	.vt-pal-foot > span:not(.vt-pal-count) { display: none; }
+	/* a client, radio or network from the dashboard: its second text
+	   (address, network, access point) under its name, whole */
+	.vt-pal-two { flex-wrap: wrap; row-gap: 0; }
+	.vt-pal-two .vt-pal-title { flex-basis: 0; }
+	.vt-pal-two .vt-pal-path { order: 1; flex: 0 0 100%; max-width: none; white-space: normal; overflow-wrap: anywhere; }
 }
 
 /* touch, at any width: 16px text in fields (iOS zooms below that),

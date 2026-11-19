@@ -192,6 +192,167 @@ test('palette layout without a query: headers only over categories of several ro
 	]);
 });
 
+/* the palette's functions for what a provider hands over (PALETTE_EVENT),
+   with the constants they read */
+function provided(name, ...deps) {
+	const consts = [ 'PROVIDED_KINDS', 'PROVIDED_MAX', 'PROVIDED_SCAN', 'PROVIDED_TEXT' ].map(c => {
+		const m = new RegExp('^const ' + c + ' = .*$', 'm').exec(src);
+		assert.ok(m, 'found ' + c);
+		return m[0];
+	}).join('\n');
+	const body = [ name ].concat(deps).map(n => {
+		const start = src.indexOf('function ' + n + '(');
+		assert.ok(start >= 0, 'found ' + n);
+		return src.slice(start, src.indexOf('\n}\n', start) + 3);
+	}).join('\n');
+	return new Function('window', consts + '\n' + body + '\nreturn ' + name + ';')({});
+}
+
+test('palette provider: only entries of the form are taken, eight a kind, and their text as it came', () => {
+	require('./luci-stub');
+	const check = provided('providedEntries', 'kindTitle');
+	let ran = 0;
+	const run = () => { ran++; };
+	const e = more => Object.assign({ kind: 'client', title: 'den-phone', detail: '192.0.2.22 · Harbor', words: '00:00:5e:00:53:22', run }, more);
+	const got = check([ e(), e({ kind: 'radio', title: '5 GHz · Wi-Fi 6', detail: 'Ch 36 · 80 MHz', words: undefined }),
+		e({ kind: 'ssid', title: 'Harbor', detail: undefined }), e({ kind: 'interface', title: 'lan' }) ]);
+	assert.deepEqual(got.map(x => [ x.kind, x.group, x.title, x.path, x.find ]), [
+		[ 'client', 'Clients', 'den-phone', '192.0.2.22 · Harbor', '192.0.2.22 · Harbor 00:00:5e:00:53:22' ],
+		[ 'radio', 'Radios', '5 GHz · Wi-Fi 6', 'Ch 36 · 80 MHz', 'Ch 36 · 80 MHz ' ],
+		[ 'ssid', 'Wireless networks', 'Harbor', '', ' 00:00:5e:00:53:22' ],
+		[ 'interface', 'Interfaces', 'lan', '192.0.2.22 · Harbor', '192.0.2.22 · Harbor 00:00:5e:00:53:22' ]
+	]);
+	/* nothing but these fields comes along: no page, no icon, no markup flag */
+	assert.deepEqual(Object.keys(check([ e({ segs: [ 'admin', 'x' ], icon: 'logout', href: 'https://example.net/', html: true }) ])[0]).sort(),
+		[ 'find', 'group', 'kind', 'path', 'run', 'title' ]);
+	got[0].run();
+	assert.equal(ran, 1);
+	/* markup is text to it: kept as it came, for a text node */
+	assert.equal(check([ e({ title: '<img src=x onerror=alert(1)>' }) ])[0].title, '<img src=x onerror=alert(1)>');
+
+	/* not of the form: dropped, one by one */
+	for (const bad of [ null, 'den-phone', 7, [ 'client' ], e({ kind: 'page' }), e({ kind: 'constructor' }), e({ kind: [ 'client' ] }), e({ kind: undefined }),
+		e({ title: '' }), e({ title: '   ' }), e({ title: 7 }), e({ title: null }), e({ title: [ 'den' ] }), e({ title: 'x'.repeat(129) }),
+		e({ detail: 7 }), e({ detail: {} }), e({ detail: 'x'.repeat(129) }), e({ words: [ 'a' ] }), e({ words: 'x'.repeat(513) }),
+		e({ run: 'alert(1)' }), e({ run: null }), e({ run: undefined }) ])
+		assert.deepEqual(check([ bad ]), [], JSON.stringify(bad));
+	assert.equal(check([ e({ title: 'x'.repeat(128), detail: 'y'.repeat(128), words: 'z'.repeat(512) }) ]).length, 1, 'at the bounds');
+	for (const bad of [ null, undefined, 'clients', { length: 3 }, e() ]) assert.deepEqual(check(bad), [], 'not a list');
+
+	/* eight of a kind, of the first 64 looked at */
+	const many = [];
+	for (let i = 0; i < 20; i++) many.push(e({ title: 'c' + i }), e({ kind: 'radio', title: 'r' + i }));
+	const cut = check(many);
+	assert.deepEqual(cut.filter(x => x.kind === 'client').map(x => x.title), [ 'c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7' ]);
+	assert.equal(cut.filter(x => x.kind === 'radio').length, 8);
+	assert.equal(check(new Array(64).fill({}).concat(e())).length, 0, 'past the first 64: not looked at');
+	assert.equal(check(new Array(63).fill({}).concat(e())).length, 1);
+
+	/* what an entry's function throws stays with it */
+	const noisy = check([ e({ run: () => { throw new Error('gone'); } }) ])[0];
+	assert.doesNotThrow(() => noisy.run());
+});
+
+test('palette provider: entries rank as pages do, by their name first, else by their second text and words', () => {
+	require('./luci-stub');
+	const rank = provided('rankPalette', 'fuzzy', 'pathScore');
+	const check = provided('providedEntries', 'kindTitle');
+	const run = () => {};
+	const pool = check([
+		{ kind: 'client', title: 'den-phone', detail: '192.0.2.22 · Harbor-5G · via ap-den', words: '02:00:5e:20:00:12 2001:db8::22', run },
+		{ kind: 'client', title: 'living-tv', detail: '192.0.2.31 · Harbor-5G', words: '00:00:5e:00:53:31', run },
+		{ kind: 'client', title: 'Private device 53:0F', detail: '00:00:5E:00:53:0F · Harbor', words: '00:00:5e:00:53:0f', run }
+	]);
+	const titles = q => rank(q, pool).map(x => x.e.title);
+	/* the fuzzy match of titles: "tv" as a word before its letters scattered */
+	assert.deepEqual(titles('tv'), [ 'living-tv', 'Private device 53:0F' ]);
+	assert.deepEqual(titles('living'), [ 'living-tv' ]);
+	assert.ok(rank('tv', pool)[0].idx.length, 'a name match carries its highlight');
+	assert.deepEqual(titles('53:31'), [ 'living-tv' ], 'a MAC fragment, from the words');
+	assert.deepEqual(rank('53:31', pool)[0].idx, [], 'nothing of the name to highlight');
+	assert.deepEqual(titles('192.0.2.22'), [ 'den-phone' ], 'an address, from the second text');
+	assert.deepEqual(titles('2001:db8::22'), [ 'den-phone' ]);
+	assert.deepEqual(titles('ap-den'), [ 'den-phone' ], 'its access point');
+	assert.deepEqual(titles('53:0f'), [ 'Private device 53:0F' ], 'the name first, whatever case');
+	assert.deepEqual(titles('harbor-5g'), [ 'den-phone', 'living-tv' ]);
+	assert.deepEqual(titles('zzz'), []);
+	/* several words: the query as typed, or each starting a word; "6" does not start 36 */
+	const radios = check([
+		{ kind: 'radio', title: '2.4 GHz · Wi-Fi 6', detail: 'Ch 6 · 20 MHz', words: 'radio0 HE20 Channel 6', run },
+		{ kind: 'radio', title: '5 GHz · Wi-Fi 6', detail: 'Ch 36 · 80 MHz', words: 'radio1 HE80 Channel 36', run }
+	]);
+	assert.deepEqual(rank('ch 6', radios).map(x => x.e.path), [ 'Ch 6 · 20 MHz' ]);
+	assert.deepEqual(rank('channel 36', radios).map(x => x.e.path), [ 'Ch 36 · 80 MHz' ]);
+	assert.deepEqual(rank('5 GHz', radios).map(x => x.e.path), [ 'Ch 36 · 80 MHz' ]);
+	assert.deepEqual(rank('radio0', radios).map(x => x.e.path), [ 'Ch 6 · 20 MHz' ]);
+	assert.equal(rank('6', radios).length, 2, 'both are Wi-Fi 6 by name: the names decide, as for pages');
+	/* a page beside them is ranked as ever: its path, not a `find` */
+	assert.deepEqual(rank('net', pool.concat({ title: 'Wireless', path: 'Network', segs: [ 'admin', 'network', 'wireless' ] })).map(x => x.e.title), [ 'Wireless' ]);
+});
+
+test('palette with a query: each kind under its header, the part with the best match first, the pages on a tie', () => {
+	require('./luci-stub');
+	const sections = provided('paletteSections', 'rankPalette', 'fuzzy', 'pathScore');
+	const rank = provided('rankPalette', 'fuzzy', 'pathScore');
+	const check = provided('providedEntries', 'kindTitle');
+	const run = () => {};
+	const pages = [
+		{ title: 'Wireless', path: 'Network', segs: [ 'admin', 'network', 'wireless' ] },
+		{ title: 'Channel Analysis', path: 'Status', segs: [ 'admin', 'status', 'channel_analysis' ] },
+		{ title: 'Interfaces', path: 'Network', segs: [ 'admin', 'network', 'network' ] }
+	];
+	const got = check([
+		{ kind: 'client', title: 'ap-den', detail: '192.0.2.11 · lan', run },
+		{ kind: 'client', title: 'living-tv', detail: '192.0.2.31 · Wireless-Guest', run },
+		{ kind: 'ssid', title: 'Wireless-Guest', detail: '5 GHz · 1 client', run },
+		{ kind: 'ssid', title: 'Wireless', detail: '5 GHz · 3 clients', run },
+		{ kind: 'interface', title: 'lan', detail: '192.0.2.1 · static', run }
+	]);
+	const rows = q => sections(q, rank(q, pages), got, 'Pages and actions').map(x => (x.head ? '# ' + x.head + ' | ' : '') + x.r.e.title + ' | ' + x.path);
+	/* the interface named so, before the page it only scatters over; the
+	   pages then say what they are; clients on that network last */
+	assert.deepEqual(rows('lan'), [
+		'# Interfaces | lan | 192.0.2.1 · static',
+		'# Pages and actions | Channel Analysis | Status',
+		'# Clients | ap-den | 192.0.2.11 · lan'
+	]);
+	/* a page and a network of one name: the page leads, without a header, as it does alone */
+	assert.deepEqual(rows('wireless'), [
+		'Wireless | Network',
+		'# Wireless networks | Wireless | 5 GHz · 3 clients',
+		'Wireless-Guest | 5 GHz · 1 client',
+		'# Clients | living-tv | 192.0.2.31 · Wireless-Guest'
+	]);
+	/* nothing from a provider: as before */
+	assert.deepEqual(sections('wire', rank('wire', pages), [], 'Pages and actions').map(x => [ x.head, x.r.e.title, x.path ]), [ [ null, 'Wireless', 'Network' ] ]);
+	/* no page: the kinds alone */
+	assert.deepEqual(rows('192.0.2.31'), [ '# Clients | living-tv | 192.0.2.31 · Wireless-Guest' ]);
+	assert.deepEqual(rows('zzz'), []);
+});
+
+test('palette layout without a query: a provider\'s kind always has its header, and its second text stays whole', () => {
+	require('./luci-stub');
+	const layout = fn('paletteLayout');
+	const check = provided('providedEntries', 'kindTitle');
+	const run = () => {};
+	const r = e => ({ e, idx: [] });
+	const rows = layout([
+		r({ title: 'Dashboard', path: '', group: 'Dashboard' }),
+		r({ title: 'Log out', path: 'Session', group: 'Actions' })
+	].concat(check([
+		{ kind: 'client', title: 'den-phone', detail: 'Clients › 192.0.2.22', run },
+		{ kind: 'client', title: 'living-tv', detail: 'Clients', run },
+		{ kind: 'radio', title: '5 GHz · Wi-Fi 6', detail: 'Ch 36 · 80 MHz', run }
+	]).map(r)));
+	assert.deepEqual(rows.map(x => [ x.head, x.r.e.title, x.path ]), [
+		[ null, 'Dashboard', '' ],
+		[ null, 'Log out', 'Session' ],
+		[ 'Clients', 'den-phone', 'Clients › 192.0.2.22' ],
+		[ null, 'living-tv', 'Clients' ],
+		[ 'Radios', '5 GHz · Wi-Fi 6', 'Ch 36 · 80 MHz' ]       /* one row, and still headed */
+	]);
+});
+
 test('channel analysis: a row or hump is ours by BSSID only', () => {
 	assert.doesNotMatch(src, /Local Interface'/, 'no SSID-text match (a neighbour can broadcast that SSID)');
 	assert.match(src, /const mine = own\.has\(bssid\);/);

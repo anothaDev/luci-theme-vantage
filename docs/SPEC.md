@@ -57,8 +57,25 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
 - **Top bar**: breadcrumb (Category › Page › Tab; a crumb that only
   repeats the one before it, "System › System", is shown once, with the
   deeper link), **command palette**
-  (Ctrl+K or `/`): fuzzy search over every menu page, recent pages first;
-  later the app registers entities (clients, interfaces, radios) into it.
+  (Ctrl+K or `/`): fuzzy search over every menu page, recent pages first.
+  It also lists what a provider has. When it opens and each time the
+  query changes it sends `vantage:palette` on `window`, detail
+  `{ query, add }`, and a listener (the dashboard, while its page is
+  open) hands `add()`, there and then, a list of entries
+  `{ kind, title, detail, words, run }`: `kind` is `client`, `radio`,
+  `ssid` or `interface` and picks the header; `title` is matched as a
+  page's title is, `detail` (the row's second text) and `words` (never
+  shown) as a page's path is; `run` is a function, called on Enter or a
+  click. The palette looks at the first 64 entries, takes the first
+  eight of a kind and drops any that is not of this form (a known kind,
+  a function, strings of at most 128 characters, 512 for `words`); their
+  text reaches the page as text nodes only, and nothing of them goes
+  into a URL. Without a query they follow the pages and actions; with
+  one, each kind is ranked on its own under its header and the part that
+  holds the best match comes first (the pages on a tie, which then need
+  no header). On a phone such a row has its second text under its name.
+  With no listener (any other page, the theme without the dashboard) it
+  lists pages only.
 - **Indicators** as pills; the unsaved-changes count is prominent and
   opens the changes dialog. When the bar runs short of room the host
   chip gives way first, and at 900 px and below the pills shrink (the
@@ -288,8 +305,22 @@ text around it so it looks the same size.
   Wi-Fi generation badges and legacy-client flags, top talkers by live
   throughput, new/recently-gone clients, busiest radio; each insight links
   to the LuCI page that fixes it.
-- **Entity search**: clients, interfaces, radios, SSIDs injected into the
-  command palette.
+- **Entity search**: under the Vantage theme the command palette (Ctrl+K
+  or `/`) also finds, while the dashboard is open: the clients (Wi-Fi
+  stations and wired hosts, a paired access point's with its name) by
+  name, MAC or address; the radios by band, channel or name; the Wi-Fi
+  networks by name (this device's and the paired access points', one
+  entry a name; not while the layout hides the Clients tile); the
+  interfaces (the lines to the internet and the other networks). Enter
+  does what a click on the dashboard does: the client's or the radio's
+  details, the Clients list filtered to the network (open details
+  close), LuCI's Interfaces page (where this login has it). The
+  dashboard answers the palette's `vantage:palette` event (see the
+  theme's Shell) with at most eight entries a kind, those whose name
+  holds the query first, then in name order, so a network of hundreds of
+  clients costs the palette no more than a small one. Nothing is asked
+  of the device for it. Under another theme no one asks, and the
+  dashboard is as before.
 - **Health**: simple, explainable scores (e.g. signal < −75 dBm, uplink
   down, memory > 90 %, a radio enabled but not up) each with a one-line
   reason and a link to the page that fixes it. A radio switched off in

@@ -10,8 +10,8 @@
  * Renders the icon rail + flyouts (bottom bar + sheet on phones), the
  * breadcrumb, level-3 page tabs, the Ctrl+K / "/" command palette, the host
  * chip, the theme switch and decorates LuCI's #indicators. Everything here is
- * built from ui.menu (ACL filtered server side) and rpc; the templates stay
- * data-free.
+ * built from ui.menu (ACL filtered server side) and rpc, but for what a page
+ * hands the palette (PALETTE_EVENT); the templates stay data-free.
  *
  * DOM rule: LuCI's E()/dom.append() assign a plain string argument to
  * innerHTML, so every piece of text (menu titles, breadcrumbs, palette
@@ -90,6 +90,27 @@ const LOOK_SET_EVENT = 'vantage:backdrop-set';   /* the dashboard's own picker h
 const VIEW_SAVE_EVENT = 'vantage:view-save';
 const VIEW_CHARTS = [ 'overlay', 'log', 'mirror', 'mirror-split', 'lanes' ];
 const VIEW_LAYOUT = /^(default|[a-z]{1,8}:[0-3]:[1-4](:h)?( [a-z]{1,8}:[0-3]:[1-4](:h)?){0,7})$/;
+/* The palette finds more than pages where someone answers PALETTE_EVENT:
+   the dashboard, while its page is open, with its clients, radios, Wi-Fi
+   networks and interfaces (luci-app-vantage view/vantage/overview.js,
+   searchEntries). The palette sends the event on window when it opens and
+   each time the query changes, detail { query, add }; a listener hands
+   add(), there and then, a list narrowed to the query, of at most
+   PROVIDED_MAX entries a kind:
+     kind    'client', 'radio', 'ssid' or 'interface': the header it goes under
+     title   its name, matched as a page's title is
+     detail  the row's second text (an address, a channel); optional
+     words   what else finds it and is never shown (a MAC); optional
+     run     a function: what Enter or a click does
+   With no one listening (any other page, no dashboard) it lists pages
+   only. What comes back is someone else's data: an entry not of this form
+   is dropped (providedEntries), its texts only ever become text nodes and
+   nothing of it goes into a URL. */
+const PALETTE_EVENT = 'vantage:palette';
+const PROVIDED_KINDS = [ 'client', 'radio', 'ssid', 'interface' ];
+const PROVIDED_MAX = 8;
+const PROVIDED_SCAN = 64;                 /* entries looked at, of however many came */
+const PROVIDED_TEXT = 128, PROVIDED_WORDS = 512;
 const callLookSet = rpc.declare({ object: 'uci', method: 'set', params: [ 'config', 'section', 'values' ], reject: true });
 const callLookCommit = rpc.declare({ object: 'uci', method: 'commit', params: [ 'config' ], reject: true });
 /* While an apply awaits its rollback, rpcd refuses commit and revert alike, but not set: a pick set
@@ -302,33 +323,89 @@ function pathScore(query, path) {
 }
 
 /* Palette results for a query, best first: entries whose title matches,
-   or only when no title does, those whose path does. Equal scores go to
-   the shallower entry (Network › Wireless before a Wireless tab). */
+   or only when no title does, those whose path does (a provider's entry:
+   its second text and its words, `find`). Equal scores go to the
+   shallower entry (Network › Wireless before a Wireless tab). */
 function rankPalette(query, pool) {
 	const onTitle = [], onPath = [];
 	for (const e of pool) {
 		const t = fuzzy(query, e.title);
 		if (t) { onTitle.push({ e, score: t.score, idx: t.idx }); continue; }
-		const p = pathScore(query, e.path);
+		const p = pathScore(query, e.find || e.path);
 		if (p != null) onPath.push({ e, score: p, idx: [] });
 	}
 	const depth = r => (r.e.segs || []).length;
 	return (onTitle.length ? onTitle : onPath).sort((a, b) => (b.score - a.score) || (depth(a) - depth(b)));
 }
 
+/* the header of a provider's kind (PROVIDED_KINDS); null for any other */
+function kindTitle(kind) {
+	switch (kind) {
+	case 'client': return _('Clients');
+	case 'radio': return _('Radios');
+	case 'ssid': return _('Wireless networks', 'vantage-theme');
+	case 'interface': return _('Interfaces');
+	}
+	return null;
+}
+
+/* What a provider handed over (see PALETTE_EVENT), as palette entries:
+   those of the form only, the first PROVIDED_MAX of a kind, of the first
+   PROVIDED_SCAN looked at. An entry's function is kept as it came and
+   called with nothing; what it throws stays with it. */
+function providedEntries(list) {
+	const out = [], n = new Map();
+	const within = (v, max) => typeof v === 'string' && v.length <= max;
+	for (const p of Array.isArray(list) ? list.slice(0, PROVIDED_SCAN) : []) {
+		if (!p || typeof p !== 'object') continue;
+		const kind = p.kind, title = p.title, run = p.run;
+		const detail = p.detail == null ? '' : p.detail, words = p.words == null ? '' : p.words;
+		const group = kindTitle(kind);
+		if (!group || typeof run !== 'function' || !within(title, PROVIDED_TEXT) || !title.trim() ||
+		    !within(detail, PROVIDED_TEXT) || !within(words, PROVIDED_WORDS)) continue;
+		n.set(kind, (n.get(kind) || 0) + 1);
+		if (n.get(kind) > PROVIDED_MAX) continue;
+		out.push({ kind, group, title, path: detail, find: detail + ' ' + words, run: () => {
+			try { run(); }
+			catch (e) { if (window.console) console.warn('vantage: palette entry', e); }
+		} });
+	}
+	return out;
+}
+
+/* The palette with a query: the pages as rankPalette left them and, where
+   a provider answered, its entries ranked the same way a kind at a time,
+   each kind under its header. The part that holds the best match comes
+   first, the pages on a tie; while they lead they go without a header,
+   as they do alone. pages: [ { e, score, idx } ]; provided:
+   providedEntries'; pagesHead: the pages' header -> [ { r, head, path } ] */
+function paletteSections(query, pages, provided, pagesHead) {
+	const parts = [ { rows: pages, head: pagesHead, pages: true } ];
+	for (const kind of PROVIDED_KINDS) {
+		const mine = provided.filter(e => e.kind === kind);
+		if (mine.length) parts.push({ rows: rankPalette(query, mine), head: mine[0].group });
+	}
+	/* sort() keeps the order of equals: the pages, then the kinds as listed */
+	const order = parts.filter(p => p.rows.length).sort((a, b) => b.rows[0].score - a.rows[0].score);
+	return order.flatMap((p, n) => p.rows.map((r, i) => ({ r, head: (i || (p.pages && !n)) ? null : p.head, path: r.e.path })));
+}
+
 /* The palette without a query: rows under their category's header, which
    a category of one row goes without. Under a header a row's path leaves
    the category out (a tab shows its page only); a row without one keeps
-   its whole path. results: [ { e } ] in index order -> [ { r, head, path } ] */
+   its whole path. A provider's entries (e.kind) always have their header,
+   as their second text is no path and says nothing of the kind.
+   results: [ { e } ] in index order -> [ { r, head, path } ] */
 function paletteLayout(results) {
 	const size = new Map();
 	for (const r of results) size.set(r.e.group, (size.get(r.e.group) || 0) + 1);
 	let prev = null;
 	return results.map(r => {
-		const g = r.e.group, headed = size.get(g) > 1;
+		const g = r.e.group, headed = size.get(g) > 1 || !!r.e.kind;
 		const head = (headed && g !== prev) ? g : null;
 		prev = g;
 		let path = r.e.path || '';
+		if (r.e.kind) return { r, head, path };
 		if (headed && path === g) path = '';
 		else if (headed && path.startsWith(g + ' › ')) path = path.slice(g.length + 3);
 		return { r, head, path };
@@ -1476,19 +1553,43 @@ return baseclass.extend({
 		if (this.palReturn && this.palReturn.focus) this.palReturn.focus();
 	},
 
+	/* what whoever answers PALETTE_EVENT has for the query: its entries as
+	   providedEntries leaves them, and whether anyone answered at all. Only
+	   what is handed over while the event is out counts. */
+	provided(query) {
+		const raw = [];
+		let asking = true, answered = false;
+		window.dispatchEvent(new CustomEvent(PALETTE_EVENT, { detail: { query, add: list => {
+			if (!asking || !Array.isArray(list)) return;
+			answered = true;
+			for (const p of list.slice(0, PROVIDED_SCAN - raw.length)) raw.push(p);
+		} } }));
+		asking = false;
+		let entries = [];
+		try { entries = providedEntries(raw); }
+		catch (e) { if (window.console) console.warn('vantage: palette entries', e); }
+		return { entries, answered };
+	},
+
 	filterPalette() {
 		const pal = this.pal;
 		const q = pal.input.value.trim();
 		const pool = this.entries.concat(this.actions());
+		const got = this.provided(q);
 		const found = q ? rankPalette(q, pool) : null;
 		const results = q ? found.slice(0, 40) : pool.map(e => ({ e, idx: [] }));
-		const rows = q ? results.map(r => ({ r, head: null, path: r.e.path })) : paletteLayout(results);
+		/* without a query a provider's entries come after the pages and
+		   actions, which stay where they are on every page */
+		const rows = q ? paletteSections(q, results, got.entries, _('Pages and actions'))
+			: paletteLayout(results.concat(got.entries.map(e => ({ e, idx: [] }))));
 
 		pal.list.textContent = '';
 		pal.items = [];
 		rows.forEach(({ r, head, path }, n) => {
 			if (head) pal.list.appendChild(E('li', { 'class': 'vt-pal-group', 'role': 'presentation' }, [ head ]));
-			const li = E('li', { 'class': 'vt-pal-item', 'role': 'option', 'id': 'vt-pal-opt-' + n, 'aria-selected': 'false' }, [
+			/* a provider's row has more to say beside its name than a page's:
+			   on a phone it goes under the name (vantage.css) */
+			const li = E('li', { 'class': r.e.kind ? 'vt-pal-item vt-pal-two' : 'vt-pal-item', 'role': 'option', 'id': 'vt-pal-opt-' + n, 'aria-selected': 'false' }, [
 				r.e.icon ? svg(r.e.icon, 18) : '',
 				highlight(r.e.title, r.idx),
 				path ? E('span', { 'class': 'vt-pal-path' }, [ path ]) : '',
@@ -1500,10 +1601,12 @@ return baseclass.extend({
 			pal.items.push({ li, e: r.e });
 		});
 
-		if (!results.length)
-			pal.list.appendChild(E('li', { 'class': 'vt-pal-empty', 'role': 'presentation' }, [ _('No matching pages') ]));
+		if (!rows.length)
+			pal.list.appendChild(E('li', { 'class': 'vt-pal-empty', 'role': 'presentation' }, [ got.answered ? _('Nothing found') : _('No matching pages') ]));
 
-		pal.count.textContent = q ? N_(found.length, '%d result', '%d results', 'vantage-theme').format(found.length) : '';
+		/* every page that matched, shown or not, and the provider's rows */
+		const total = q ? found.length + rows.length - results.length : 0;
+		pal.count.textContent = q ? N_(total, '%d result', '%d results', 'vantage-theme').format(total) : '';
 		this.setPaletteActive(0, true);
 	},
 

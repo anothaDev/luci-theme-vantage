@@ -2252,3 +2252,172 @@ test('paired access points: a failed collector call shows nothing, in time or la
 		assert.deepEqual(shown(p[0]), [], JSON.stringify(junk));
 	}
 }));
+
+/* ------------------------------------------------------------ search */
+
+/* the dashboard as the theme's palette asks it (vantage:palette): a model
+   of its own, the Clients tile shown or hidden, and what its entries'
+   functions call. A view of its own: the one above has kept the menu of
+   an earlier test, and the Interfaces page with it */
+const searchView = loadView();
+function searching(m, shown) {
+	const self = Object.create(searchView);
+	self.m = Object.assign({ clients: [], wiredHosts: [], radios: [], ssids: [], accessPoints: [], uplinks: [], networks: [] }, m);
+	self.el = { clients: { scrollIntoView() {}, getClientRects: () => shown === false ? [] : [ {} ] }, filter: {} };
+	self.did = [];
+	self.openDrawer = function(kind, id) { this.did.push([ 'drawer', kind, id ]); };
+	self.closeDrawer = function() { this.did.push([ 'close' ]); };
+	self.filterSsid = function(ssid) { this.did.push([ 'ssid', ssid ]); };
+	return self;
+}
+const sta = (mac, name, extra) => Object.assign({ mac, name, secondary: mac.toUpperCase(), ssid: 'Harbor', ips: [] }, extra);
+const says = list => list.map(e => [ e.kind, e.title, e.detail ]);
+
+test('search: clients by name, MAC or address, a paired access point\'s with its name; Enter opens their details', () => {
+	const self = searching({
+		clients: [
+			sta('00:00:5e:00:53:21', 'Living room TV', { secondary: '192.0.2.21', ips: [ '192.0.2.21', '2001:db8::21' ], ssid: 'Harbor-5G' }),
+			sta('02:00:5e:00:53:0f', 'Private device 53:0F'),
+			sta('00:00:5e:00:53:31', 'den-phone', { secondary: '192.0.2.31', ips: [ '192.0.2.31' ], ssid: 'Harbor-5G', ap: { id: 'a1', name: 'ap-den', node: 'phy1-ap0' } })
+		],
+		wiredHosts: [
+			{ mac: '00:00:5e:00:53:41', name: 'office-printer', secondary: '192.0.2.41', ips: [ '192.0.2.41' ], port: 'lan2', network: 'lan', bridge: 'br-lan' },
+			{ mac: '00:00:5e:00:53:42', name: 'den-nas', secondary: '192.0.2.42', ips: [ '192.0.2.42' ], port: '', network: null, bridge: null, ap: { id: 'a1', name: 'ap-den', port: 'lan1' } }
+		]
+	});
+	const find = q => says(self.searchEntries(q));
+	/* the name (an alias is the name), whatever its case */
+	assert.deepEqual(find('living'), [ [ 'client', 'Living room TV', '192.0.2.21 · Harbor-5G' ] ]);
+	assert.deepEqual(find('ROOM tv'), [ [ 'client', 'Living room TV', '192.0.2.21 · Harbor-5G' ] ]);
+	/* a MAC fragment: of the made-up name, and of the words */
+	assert.deepEqual(find('53:0f'), [ [ 'client', 'Private device 53:0F', '02:00:5E:00:53:0F · Harbor' ] ]);
+	assert.deepEqual(find('5e:00:53:21'), [ [ 'client', 'Living room TV', '192.0.2.21 · Harbor-5G' ] ]);
+	assert.equal(self.searchEntries('5e:00:53:21')[0].words, '00:00:5e:00:53:21 192.0.2.21 2001:db8::21');
+	/* an address, IPv4 or IPv6 */
+	assert.deepEqual(find('192.0.2.41'), [ [ 'client', 'office-printer', '192.0.2.41 · lan' ] ]);
+	assert.deepEqual(find('2001:db8::21'), [ [ 'client', 'Living room TV', '192.0.2.21 · Harbor-5G' ] ]);
+	/* a paired access point's station and wired host say whose they are, and are found by it */
+	assert.deepEqual(find('den'), [ [ 'client', 'den-nas', '192.0.2.42 · via ap-den' ], [ 'client', 'den-phone', '192.0.2.31 · Harbor-5G · via ap-den' ] ]);
+	assert.deepEqual(find('ap-den'), find('den'));
+	assert.deepEqual(find('zzz'), []);
+	/* what a click on the row does: the client's details, by its MAC */
+	self.searchEntries('living')[0].run();
+	self.searchEntries('nas')[0].run();
+	assert.deepEqual(self.did, [ [ 'drawer', 'client', '00:00:5e:00:53:21' ], [ 'drawer', 'client', '00:00:5e:00:53:42' ] ]);
+	/* no query: every one, in name order; a query that is no text counts as none */
+	assert.deepEqual(find('').map(e => e[1]), [ 'den-nas', 'den-phone', 'Living room TV', 'office-printer', 'Private device 53:0F' ]);
+	for (const q of [ undefined, null, '   ' ]) assert.deepEqual(find(q), find(''), String(q));
+	assert.deepEqual(says(Object.assign(Object.create(searchView), { m: null }).searchEntries('den')), [], 'before the first model');
+});
+
+test('search: radios by band, channel or name; Wi-Fi networks once a name; interfaces', () => {
+	const savedL = global.L, savedW = global.window;
+	const self = searching({
+		radios: [
+			{ id: 'radio0', bandLabel: '2.4 GHz', gen: 'Wi-Fi 6', channel: 6, width: 20, htmode: 'HE20' },
+			{ id: 'radio1', bandLabel: '5 GHz', gen: 'Wi-Fi 6', channel: 36, width: 80, htmode: 'HE80' },
+			{ id: 'radio2', bandLabel: '6 GHz', gen: null, channel: null, width: null, htmode: null }
+		],
+		ssids: [
+			{ ssid: 'Harbor', band: '2g', clients: 1 }, { ssid: 'Harbor', band: '5g', clients: 2 },
+			{ ssid: 'Harbor-IoT', band: '2g', clients: 0 }, { ssid: '', band: '5g', clients: 4 }
+		],
+		accessPoints: [ { id: 'a1', name: 'ap-den', nodes: [ { ssid: 'Harbor', band: '5g', clients: 3 }, { ssid: 'Harbor-Den', band: '6g', clients: 1 } ] }, { id: 'a2', name: 'ap-loft', nodes: [] } ],
+		uplinks: [ { iface: 'wan', ipv4: [ '203.0.113.7/24' ], proto: 'pppoe', ifaces: [ 'wan', 'wan6' ], l3dev: 'pppoe-wan', dev: 'eth1' } ],
+		networks: [ { name: 'guest', ipv4: '198.51.100.1/24', proto: 'static', dev: 'br-guest', up: true }, { name: 'lan', ipv4: '192.0.2.1/24', proto: 'static', dev: 'br-lan', up: true },
+			{ name: 'vpn', ipv4: null, proto: 'wireguard', dev: 'vpn', up: false } ]
+	});
+	const find = q => says(self.searchEntries(q));
+	const of = (kind, q) => says(self.searchEntries(q).filter(e => e.kind === kind));
+	try {
+		assert.deepEqual(of('radio', ''), [ [ 'radio', '2.4 GHz · Wi-Fi 6', 'Ch 6 · 20 MHz' ], [ 'radio', '5 GHz · Wi-Fi 6', 'Ch 36 · 80 MHz' ], [ 'radio', '6 GHz · radio2', '' ] ]);
+		assert.deepEqual(of('radio', '5 GHz'), [ [ 'radio', '5 GHz · Wi-Fi 6', 'Ch 36 · 80 MHz' ] ]);
+		assert.deepEqual(of('radio', '5ghz'), of('radio', '5 GHz'), 'as the palette matches a title: its letters in order');
+		assert.deepEqual(of('radio', '36'), of('radio', '5 GHz'));
+		assert.deepEqual(of('radio', 'channel 36'), of('radio', '5 GHz'));
+		assert.deepEqual(of('radio', 'ch 20'), [ [ 'radio', '2.4 GHz · Wi-Fi 6', 'Ch 6 · 20 MHz' ] ]);
+		/* loosely: each word somewhere ("6" in 36 too); the palette's own rule decides (tests/theme.test.js) */
+		assert.deepEqual(of('radio', 'ch 6').map(e => e[1]), [ '2.4 GHz · Wi-Fi 6', '5 GHz · Wi-Fi 6' ]);
+		assert.deepEqual(of('radio', 'radio1'), of('radio', '5 GHz'));
+		assert.deepEqual(of('radio', 'he80'), of('radio', '5 GHz'));
+		self.searchEntries('radio1')[0].run();
+		assert.deepEqual(self.did.pop(), [ 'drawer', 'radio', 'radio1' ]);
+
+		/* one entry a name: every band it is on, here and on the paired
+		   access points, and their stations; a hidden one has no name */
+		assert.deepEqual(of('ssid', ''), [ [ 'ssid', 'Harbor', '2.4 GHz · 5 GHz · 6 clients' ], [ 'ssid', 'Harbor-Den', '6 GHz · 1 client' ], [ 'ssid', 'Harbor-IoT', '2.4 GHz · 0 clients' ] ]);
+		assert.deepEqual(of('ssid', 'iot'), [ [ 'ssid', 'Harbor-IoT', '2.4 GHz · 0 clients' ] ]);
+		self.searchEntries('harbor-den')[0].run();
+		assert.deepEqual(self.did.splice(0), [ [ 'close' ], [ 'ssid', 'Harbor-Den' ] ], 'the Clients list on that network, with no details open over it');
+		/* the layout hides the Clients tile: nothing to show a network on */
+		assert.deepEqual(says(searching(self.m, false).searchEntries('harbor')), []);
+		assert.equal(searching(self.m, false).searchEntries('').filter(e => e.kind !== 'ssid').length, 7);
+
+		/* lines to the internet and the other networks, by name, address,
+		   the interfaces a line is made of and the device */
+		assert.deepEqual(of('interface', ''), [ [ 'interface', 'guest', '198.51.100.1 · static' ], [ 'interface', 'lan', '192.0.2.1 · static' ],
+			[ 'interface', 'vpn', 'wireguard' ], [ 'interface', 'wan', '203.0.113.7 · pppoe' ] ]);
+		assert.deepEqual(find('wan6'), [ [ 'interface', 'wan', '203.0.113.7 · pppoe' ] ]);
+		assert.deepEqual(find('br-guest'), [ [ 'interface', 'guest', '198.51.100.1 · static' ] ]);
+		assert.deepEqual(find('203.0.113'), [ [ 'interface', 'wan', '203.0.113.7 · pppoe' ] ]);
+		/* Enter: the page the dashboard's own links to interfaces go to */
+		global.L = { url: (...a) => '/cgi-bin/luci/' + a.join('/') };
+		global.window = { location: {} };
+		self.searchEntries('guest')[0].run();
+		assert.equal(global.window.location.href, '/cgi-bin/luci/admin/network/network');
+	} finally {
+		global.L = savedL;
+		global.window = savedW;
+	}
+	/* ... and only where LuCI has that page */
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.match(src, /var page = insight\.PAGES\.network;\n\t\tfunction go\(\) \{ window\.location\.href = L\.url\.apply\(L, page\); \}\n\t\tgive\('interface', !hasPage\(page\) \? \[\] : /);
+});
+
+test('search: a network of hundreds of clients hands over eight, those the query names first', () => {
+	const clients = [];
+	for (let i = 0; i < 300; i++) {
+		const mac = '02:00:5e:00:' + (i >> 8).toString(16).padStart(2, '0') + ':' + (i & 255).toString(16).padStart(2, '0');
+		clients.push(sta(mac, 'host-' + i, { secondary: '192.0.2.' + (i % 250 + 1), ips: [ '192.0.2.' + (i % 250 + 1) ] }));
+	}
+	clients.push(sta('02:00:5e:00:53:99', 'zz-printer 192', { secondary: '198.51.100.9', ips: [ '198.51.100.9' ] }));
+	const self = searching({ clients });
+	const titles = q => self.searchEntries(q).map(e => e.title);
+	assert.deepEqual(titles(''), [ 'host-0', 'host-1', 'host-10', 'host-100', 'host-101', 'host-102', 'host-103', 'host-104' ]);
+	assert.deepEqual(titles('host-2'), [ 'host-2', 'host-20', 'host-200', 'host-201', 'host-202', 'host-203', 'host-204', 'host-205' ]);
+	/* every address holds "192": the two named so are not cut off behind the others */
+	assert.deepEqual(titles('192'), [ 'host-192', 'zz-printer 192', 'host-0', 'host-1', 'host-10', 'host-100', 'host-101', 'host-102' ]);
+	assert.deepEqual(titles('host-299'), [ 'host-299' ]);
+	assert.deepEqual(titles('192.0.2.77'), [ 'host-76' ]);
+	/* a query of any length is cut before it is used */
+	assert.deepEqual(titles('host-299' + ' '.repeat(5000) + 'x'), [ 'host-299' ]);
+});
+
+test('search: what the dashboard hands over is what the theme\'s palette takes, on the same event', () => {
+	const theme = fs.readFileSync(path.join(RES, '..', '..', '..', '..', 'luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js'), 'utf8');
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	/* one event name, one limit a kind */
+	assert.equal(/^var SEARCH_EVENT = '([^']+)';$/m.exec(src)[1], /^const PALETTE_EVENT = '([^']+)';$/m.exec(theme)[1]);
+	assert.equal(/^var SEARCH_MAX = (\d+);$/m.exec(src)[1], /^const PROVIDED_MAX = (\d+);$/m.exec(theme)[1]);
+	/* answered while the dashboard is open (render), with nothing but the query read from the event */
+	assert.match(src, /window\.addEventListener\(SEARCH_EVENT, function\(ev\) \{\n\t\t\tvar d = ev\.detail;\n\t\t\tif \(d && typeof d\.add === 'function'\) d\.add\(self\.searchEntries\(d\.query\)\);\n\t\t\}\);/);
+
+	/* the theme's check (providedEntries) drops none of them, long names and all */
+	const part = name => { const at = theme.indexOf('function ' + name + '('); return theme.slice(at, theme.indexOf('\n}\n', at) + 3); };
+	const consts = [ 'PROVIDED_KINDS', 'PROVIDED_MAX', 'PROVIDED_SCAN', 'PROVIDED_TEXT' ].map(c => new RegExp('^const ' + c + ' = .*$', 'm').exec(theme)[0]).join('\n');
+	const taken = new Function('window', consts + '\n' + part('kindTitle') + part('providedEntries') + '\nreturn providedEntries;')({});
+	const long = '\u{1F4F1}'.repeat(48);                      /* a name of 48 characters, two code units each */
+	const self = searching({
+		clients: [ sta('00:00:5e:00:53:21', long, { secondary: '2001:db8:1234:5678:9abc:def0:1234:5678', ssid: '\u{1F4F6}'.repeat(32), ips: new Array(40).fill('2001:db8:1234:5678:9abc:def0:1234:5678'),
+			ap: { id: 'a1', name: 'a'.repeat(63) } }) ],
+		radios: [ { id: 'radio0', bandLabel: '5 GHz', gen: 'Wi-Fi 6', channel: 36, width: 80, htmode: 'HE80' } ],
+		ssids: [ { ssid: '\u{1F4F6}'.repeat(32), band: '5g', clients: 1 } ],
+		networks: [ { name: 'lan', ipv4: '192.0.2.1/24', proto: 'static', dev: 'br-lan', up: true } ]
+	});
+	const list = self.searchEntries('');
+	assert.deepEqual(list.map(e => e.kind), [ 'client', 'radio', 'ssid', 'interface' ]);
+	for (const e of list) assert.deepEqual(Object.keys(e), [ 'kind', 'title', 'detail', 'words', 'run' ]);
+	assert.deepEqual(taken(list).map(e => [ e.kind, e.title ]), list.map(e => [ e.kind, e.title ]));
+	assert.ok(list[0].detail.endsWith('…') && Array.from(list[0].detail).length === 64, 'a long second text is cut');
+	assert.ok(list[0].words.length <= 512);
+});
