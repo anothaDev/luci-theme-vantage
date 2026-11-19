@@ -1088,19 +1088,20 @@ test('collector: an access point is looked for on the network it was paired on o
 	assert.deepEqual(tried(six), [ '2001:db8:1::10', '192.0.2.90' ]);
 });
 
-test('collector: a pairing that names its network is found again after that network\'s subnet was changed, and looked for nowhere once the network is gone', { skip: NO_UCODE }, () => {
+test('collector: a pairing that names its network is found again after that network\'s subnet was changed, its old address not asked; looked for nowhere once the network is gone', { skip: NO_UCODE }, () => {
 	const row = (ip, dev) => ip + ' 0x1 0x2 ' + AP_MAC + ' * ' + dev + '\n', head = 'IP address HW type Flags HW address Mask Device\n';
 	const tried = r => [ ...new Set(r.calls.map(c => /root@(\S+)/.exec(c)[1])) ];
 	const last = r => { const a = r.results[r.results.length - 1].aps[0]; return [ a.state, a.addr ]; };
 	const steps = [ ASK, wait(1), ASK, wait(30), ASK ], report = { out: apReport(1, 1000) };
 	const NAMED = Object.assign({}, AP1, { net: 'lan' });
 
-	/* the LAN renumbered: the subnet it was paired in is no network of this router's any more, and it has a lease in the new one */
+	/* the LAN renumbered: the subnet it was paired in is no network of this router's any more, and it has a lease in the new one.
+	   The address it was paired at is not asked: whoever holds it now is no device of that network (here it would answer, and is not reached) */
 	const moved = { interface: [ WAN_IF, LAN_MOVED ] }, lease = '1700000000 ' + AP_MAC + ' 198.51.100.40 ap-hall *\n';
-	const found = runCollector({ aps: [ NAMED ], dump: moved, leases: lease, hosts: { '198.51.100.40': report } }, steps);
-	assert.deepEqual(tried(found), [ '192.0.2.10', '198.51.100.40' ]);
+	const found = runCollector({ aps: [ NAMED ], dump: moved, leases: lease, hosts: { '198.51.100.40': report, '192.0.2.10': report } }, steps);
+	assert.deepEqual(tried(found), [ '198.51.100.40' ]);
 	assert.deepEqual(last(found), [ 'ok', '198.51.100.40' ]);
-	assert.equal(found.log.filter(l => l.startsWith('known_hosts: '))[1], 'known_hosts: 198.51.100.40 ssh-ed25519 ' + K1, 'the same pinned key at the new address');
+	assert.equal(found.log.filter(l => l.startsWith('known_hosts: '))[0], 'known_hosts: 198.51.100.40 ssh-ed25519 ' + K1, 'the same pinned key at the new address');
 	assert.deepEqual(JSON.parse(read(found.sb, 'etc/vantage/aps.json')), [ NAMED ], 'the paired list is not rewritten');
 	/* a pairing of an earlier version names none: its address is on no network now and nothing is searched, as before */
 	const old = runCollector({ dump: moved, leases: lease, hosts: { '198.51.100.40': report } }, steps);
@@ -1108,11 +1109,12 @@ test('collector: a pairing that names its network is found again after that netw
 	/* the pinned key decides in the new subnet too: another device holds its lease's address, it is at the one its neighbour row says */
 	const other = runCollector({ aps: [ NAMED ], dump: moved, leases: lease, arp: head + row('198.51.100.41', 'br-lan'),
 		hosts: { '198.51.100.40': { err: 'ssh-ed25519 host key mismatch for 198.51.100.40 !', code: 1 }, '198.51.100.41': report } }, steps);
-	assert.deepEqual([ tried(other), last(other) ], [ [ '192.0.2.10', '198.51.100.40', '198.51.100.41' ], [ 'ok', '198.51.100.41' ] ]);
-	/* and nothing but the pinned key: every address its MAC has there answers with a report under another key */
+	assert.deepEqual([ tried(other), last(other) ], [ [ '198.51.100.40', '198.51.100.41' ], [ 'ok', '198.51.100.41' ] ]);
+	/* and nothing but the pinned key: every address its MAC has there answers with a report under another key. Not found, so
+	   offline: no device was asked at the address it was paired at, and what the others showed is not its error */
 	const none = runCollector({ aps: [ NAMED ], dump: moved, leases: lease, arp: head + row('198.51.100.41', 'br-lan'),
 		hosts: Object.fromEntries([ '192.0.2.10', '198.51.100.40', '198.51.100.41' ].map(a => [ a, { out: apReport(1, 1000), err: 'ssh-ed25519 host key mismatch for ' + a + ' !', code: 1 } ])) }, steps);
-	assert.deepEqual([ tried(none), last(none), none.results[4].aps[0].error, none.results[4].aps[0].report ], [ [ '192.0.2.10', '198.51.100.40', '198.51.100.41' ], [ 'error', '192.0.2.10' ], 'hostkey', null ]);
+	assert.deepEqual([ tried(none), last(none), none.results[4].aps[0].error, none.results[4].aps[0].report ], [ [ '198.51.100.40', '198.51.100.41' ], [ 'offline', '192.0.2.10' ], 'unreachable', null ]);
 
 	/* one network: the named one. The subnet it was paired in is the guests' by now, and a guest made rows under its MAC there, in the
 	   WAN's subnet and in the LAN's new one: none of them is followed, only what the LAN's own device heard inside the LAN's subnet */
@@ -1120,12 +1122,13 @@ test('collector: a pairing that names its network is found again after that netw
 	const planted = head + row('192.0.2.50', 'br-guest') + row('198.51.100.50', 'br-guest') + row('203.0.113.5', 'eth1') + row('192.0.2.51', 'br-lan');
 	const everywhere = Object.fromEntries([ '192.0.2.50', '198.51.100.50', '203.0.113.5', '192.0.2.51', '192.0.2.70' ].map(a => [ a, report ]));
 	const kept = runCollector({ aps: [ NAMED ], dump: swapped, arp: planted, leases: '1 ' + AP_MAC + ' 192.0.2.70 x *\n', hosts: everywhere }, steps);
-	assert.deepEqual([ tried(kept), last(kept) ], [ [ '192.0.2.10' ], [ 'offline', '192.0.2.10' ] ]);
+	assert.deepEqual([ tried(kept), last(kept), kept.results[4].aps[0].error ], [ [], [ 'offline', '192.0.2.10' ], 'unreachable' ], 'no connection at all: its old address is a guest\'s now');
 	/* (by its address alone, an earlier version's pairing is looked for among the guests there: as before) */
 	assert.deepEqual(tried(runCollector({ dump: swapped, arp: planted, hosts: everywhere }, steps)).slice(0, 2), [ '192.0.2.10', '192.0.2.50' ]);
 
-	/* the named network gone (renamed here, its subnet and device as they were), down, or netifd silent: nowhere, and not on the
-	   network the address is on now in its place. Offline, as an access point that cannot be found is */
+	/* the named network gone (renamed here, its subnet and device as they were), down, or netifd silent: asked where it was
+	   paired, as a pairing that names none is, then looked for nowhere, and not on the network the address is on now in its
+	   place. Offline, as an access point that cannot be found is */
 	const there = { '192.0.2.90': report }, arp = head + row('192.0.2.90', 'br-lan');
 	const renamed = { interface: [ WAN_IF, Object.assign({}, LAN_IF, { interface: 'home' }) ] };
 	for (const [ what, dump ] of [ [ 'renamed', renamed ], [ 'removed', { interface: [ WAN_IF, GUEST_IF ] } ], [ 'down', { interface: [ Object.assign({}, LAN_IF, { up: false }), GUEST_IF ] } ],
@@ -1150,7 +1153,7 @@ test('collector: a pairing that names its network is found again after that netw
 	/* and the same in the new subnet after a renumbering: each made-up address once, one fetch at a time */
 	const crowd2 = [ 201, 202, 203, 204, 205 ].map(n => '1 ' + AP_MAC + ' 198.51.100.' + n + ' x *\n').join('') + lease;
 	const late = runCollector({ aps: [ NAMED ], dump: moved, leases: crowd2, hosts: { '198.51.100.40': report } }, [ ASK, wait(30), ASK ]);
-	assert.deepEqual(late.calls.slice(0, 7).map(c => /root@(\S+)/.exec(c)[1]), [ '192.0.2.10', '198.51.100.201', '198.51.100.202', '198.51.100.203', '198.51.100.204', '198.51.100.205', '198.51.100.40' ]);
+	assert.deepEqual(late.calls.slice(0, 6).map(c => /root@(\S+)/.exec(c)[1]), [ '198.51.100.201', '198.51.100.202', '198.51.100.203', '198.51.100.204', '198.51.100.205', '198.51.100.40' ]);
 	assert.deepEqual(last(late), [ 'ok', '198.51.100.40' ]);
 });
 

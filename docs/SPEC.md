@@ -807,7 +807,11 @@ dashboard package itself stays read-only.
   collector looks on the interface of that name as it is by then, with
   the subnets it has by then. So after the router's own subnet was
   changed (`192.0.2.0/24` to `198.51.100.0/24`) the access point is
-  found again, at its new lease on the same network. When no interface
+  found again, at its new lease on the same network. Its pairing
+  address is then not asked at all: while the named network exists and
+  that address is on none of its subnets, whoever holds the address
+  today (another network's device, a host beyond the WAN) gets no
+  connection, and the search starts at once. When no interface
   has that name any more (the network was renamed or removed), or it
   is down, nothing is searched, and never the network the pairing
   address would be on in its place: the access point is read where it

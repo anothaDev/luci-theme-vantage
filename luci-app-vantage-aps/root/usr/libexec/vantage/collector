@@ -237,6 +237,30 @@ function done(a, s, home, code) {
 function fetch(a) {
 	let s = st[a.id], home = RUN + '/' + a.id, to = s.trying ?? s.addr;
 
+	// The address this pairing was made at is no address of the network
+	// it names any more (that network has another subnet now): whoever
+	// holds it today is not asked. Its MAC is looked for on the named
+	// network at once, as after a fetch that found it gone. A pairing
+	// whose network is gone or down is asked at its own address, like
+	// one that names none.
+	if (!s.trying && a.net && s.addr === a.addr) {
+		let ifaces = ubus.call('network.interface', 'dump')?.interface;
+		let net = vaps.network_named(a.net, ifaces);
+
+		if (net && vaps.net_of(a.addr, ifaces) !== a.net) {
+			to = vaps.next_addr(a.mac, s.addr, s.tried, readfile(ARP, MAX_TABLE), leases(), net);
+
+			if (!to) {
+				s.error = 'unreachable';
+				s.hold = s.wait = false;
+				s.started = now();
+				return;
+			}
+
+			s.trying = to;
+		}
+	}
+
 	mkdir(home, 0700);
 	mkdir(home + '/.ssh', 0700);
 

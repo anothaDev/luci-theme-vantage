@@ -72,8 +72,9 @@
  *   app file requires a LuCI module that loads other configs on its own
  *   (`network` loads `wireless`, `firewall` and `tools.*` load more), or
  *   loads modules by a computed name;
- * - the view probes exactly the names group (write) and the rdns group
- *   (read);
+ * - the view probes exactly four groups: its names group (write), its
+ *   rdns group (read), the add-on's view group (read) and LuCI's
+ *   luci-proto-wireguard (read);
  * - the dashboard's menu entry is gated by the read group; the firewall
  *   overview's (Network -> Firewall -> Overview) by luci-app-firewall,
  *   LuCI's own group for the firewall pages, which already lets its holder
@@ -894,6 +895,23 @@ const PAIR_PATHS = {
 /* files and programs; ubus; uci; its own writers; what reaches
    authorized_keys; a parsed router code; computed members */
 const PAIR_PINS = [
+	/* the network kept with a pairing: netifd's word for where the address is, never the caller's */
+	[ '\\b(?:net|entry)\\b', [
+		'const NET = \'/sys/class/net\';',
+		'let entry = { id, name: a.name, key: a.key, addr: vaps.addr(args.addr) ?? a.addr, port: a.port, mac: a.mac };',
+		'let net = vaps.net_of(entry.addr, connect(null, 3)?.call(\'network.interface\', \'dump\')?.interface);',
+		'if (net)',
+		'entry.net = net;',
+		'push(list, entry);',
+		'aps: map(list ?? [], (e) => ({ id: e.id, name: e.name, addr: e.addr, port: e.port, ...(e.net ? { net: e.net } : {}) })),'
+	] ],
+	/* what each method takes from its caller */
+	[ '\\bargs:', [
+		'args: { code: \'code\', addr: \'addr\' },',
+		'args: { id: \'id\' },',
+		'args: { code: \'code\' },',
+		'args: { key: \'key\' },'
+	] ],
 	[ '\\b(?:access|chmod|lstat|mkdir|readfile|rename|stat|writefile|put|whole|max)\\b', [
 		'import { access, chmod, lstat, mkdir, readfile, rename, stat, writefile } from \'fs\';',
 		'let b = readfile(file, 84);',
@@ -1067,6 +1085,8 @@ test('add-on: the pairing plugin rules catch each breach', () => {
 		'redefined path': pairPlugin.replace('const AUTH = \'/etc/dropbear/authorized_keys\';', 'const AUTH = \'/root/.ssh/authorized_keys\';'),
 		'read elsewhere': add('let x = readfile(\'/etc/shadow\');'),
 		'another ubus call': add('connect()?.call(\'file\', \'exec\', {});'),
+		'a network named by the caller, on a later line': pairPlugin.replace('\tif (net)\n\t\tentry.net = net;', '\tif (net)\n\t\tentry.net = net;\n\n\tif (args.net)\n\t\tentry.net = args.net;'),
+		'a method that takes a network': pairPlugin.replace('args: { code: \'code\', addr: \'addr\' },', 'args: { code: \'code\', addr: \'addr\', net: \'net\' },'),
 		'a network named by the caller': pairPlugin.replace('let net = vaps.net_of(entry.addr, ', 'let net = args.net ?? vaps.net_of(entry.addr, '),
 		'a network from another ubus object': pairPlugin.replace('?.call(\'network.interface\', \'dump\')?.interface);', '?.call(\'luci-rpc\', \'getNetworkDevices\')?.interface);'),
 		'its own reply paired': pairPlugin.replace('\tif (a.key === public_key(HOST_KEY))\n\t\treturn { error: \'self\' };\n', ''),
@@ -1218,6 +1238,7 @@ const COLLECTOR_PINS = [
 		'unlink(home + \'/err\');',
 		'forget(a.id);',
 		'let to = net ? vaps.next_addr(a.mac, s.addr, s.tried, readfile(ARP, MAX_TABLE), leases(), net) : null;',
+		'to = vaps.next_addr(a.mac, s.addr, s.tried, readfile(ARP, MAX_TABLE), leases(), net);',
 		'mkdir(home, 0700);',
 		'mkdir(home + \'/.ssh\', 0700);',
 		'if (!writefile(home + \'/.ssh/known_hosts\', to + \' ssh-ed25519 \' + a.key + \'\\n\')) {',
@@ -1227,9 +1248,22 @@ const COLLECTOR_PINS = [
 		'import { connect } from \'ubus\';',
 		'let aps = [], aps_text = null, st = {}, viewed = null, ticker = null, ubus = null;',
 		'let ifaces = ubus.call(\'network.interface\', \'dump\')?.interface;',
+		'let ifaces = ubus.call(\'network.interface\', \'dump\')?.interface;',
 		'ubus = connect();',
 		'if (!ubus || !ubus.publish(\'vantage.collector\', {',
 		'call: function(req) {'
+	] ],
+	/* the network an access point is looked for on, and asked at: the one its pairing names */
+	[ '\\b(?:net|ifaces)\\b', [
+		'const ARP = \'/proc/net/arp\';',
+		'let ifaces = ubus.call(\'network.interface\', \'dump\')?.interface;',
+		'let net = a.net ? vaps.network_named(a.net, ifaces) : vaps.network_of(a.addr, ifaces);',
+		'let to = net ? vaps.next_addr(a.mac, s.addr, s.tried, readfile(ARP, MAX_TABLE), leases(), net) : null;',
+		'if (!s.trying && a.net && s.addr === a.addr) {',
+		'let ifaces = ubus.call(\'network.interface\', \'dump\')?.interface;',
+		'let net = vaps.network_named(a.net, ifaces);',
+		'if (net && vaps.net_of(a.addr, ifaces) !== a.net) {',
+		'to = vaps.next_addr(a.mac, s.addr, s.tried, readfile(ARP, MAX_TABLE), leases(), net);'
 	] ],
 	/* what a caller can hand it: the session rpcd adds, named and never read */
 	[ '\\b(?:args|req)\\b', [
@@ -1268,6 +1302,11 @@ const COLLECTOR_PINS = [
 		'if (to) {',
 		's.trying = to;',
 		'let s = st[a.id], home = RUN + \'/\' + a.id, to = s.trying ?? s.addr;',
+		'if (!s.trying && a.net && s.addr === a.addr) {',
+		'if (net && vaps.net_of(a.addr, ifaces) !== a.net) {',
+		'to = vaps.next_addr(a.mac, s.addr, s.tried, readfile(ARP, MAX_TABLE), leases(), net);',
+		'if (!to) {',
+		's.trying = to;',
 		'mkdir(home, 0700);',
 		'mkdir(home + \'/.ssh\', 0700);',
 		'if (!writefile(home + \'/.ssh/known_hosts\', to + \' ssh-ed25519 \' + a.key + \'\\n\')) {',
@@ -1332,6 +1371,10 @@ test('add-on: the collector pins the host key and runs nothing but dbclient', ()
 		'the search on every network': collectorSrc.replace('let to = net ? vaps.next_addr(', 'let to = true ? vaps.next_addr('),
 		'a named network passed over for the address\'s': collectorSrc.replace('let net = a.net ? vaps.network_named(a.net, ifaces) : vaps.network_of(a.addr, ifaces);', 'let net = vaps.network_of(a.addr, ifaces);'),
 		'the address\'s network where the named one is gone': collectorSrc.replace('let net = a.net ? vaps.network_named(a.net, ifaces) : vaps.network_of(a.addr, ifaces);', 'let net = (a.net ? vaps.network_named(a.net, ifaces) : null) ?? vaps.network_of(a.addr, ifaces);'),
+		'the old address asked after a renumbering': collectorSrc.replace('if (net && vaps.net_of(a.addr, ifaces) !== a.net) {', 'if (net && false) {'),
+		'the old address asked whatever network it is on': collectorSrc.replace('if (!s.trying && a.net && s.addr === a.addr) {', 'if (!s.trying && a.net && s.addr !== a.addr) {'),
+		'looked for at once on the address\'s network': collectorSrc.replace('let net = vaps.network_named(a.net, ifaces);\n\n\t\tif (net && vaps.net_of(', 'let net = vaps.network_of(a.addr, ifaces);\n\n\t\tif (net && vaps.net_of('),
+		'the network changed after it was chosen': collectorSrc.replace('let to = net ? vaps.next_addr(', 'net = vaps.network_of(a.addr, ifaces) ?? net;\n\t\tlet to = net ? vaps.next_addr('),
 		'interfaces from another ubus object': collectorSrc.replace('let ifaces = ubus.call(\'network.interface\', \'dump\')?.interface;', 'let ifaces = ubus.call(\'luci-rpc\', \'getNetworkDevices\')?.interface;'),
 		'a report parsed uncounted': collectorSrc.replace('r = vaps.parseable(out) ? vaps.normalize(json(out)) : null;', 'r = vaps.normalize(json(out));'),
 		'an address from the report': collectorSrc.replace('s.report.mac = a.mac;', 's.report.mac = a.mac;\n\ts.addr = r.name;'),
