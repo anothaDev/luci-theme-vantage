@@ -43,6 +43,12 @@ test('fmt: bits, bytes, PHY rates, durations, placeholders for junk', () => {
 	assert.equal(fmt.macTail('nonsense'), '');
 });
 
+test('fmt.daysAgo: days for two months, months for two years, then full years', () => {
+	assert.deepEqual([ 0, 0.9, 1, 1.5, 2, 59, 60, 91, 365, 700, 730, 731, 1095, 1096, 4000 ].map(d => fmt.daysAgo(d)),
+		[ 'today', 'today', '1 day ago', '1 day ago', '2 days ago', '59 days ago', '2 months ago', '3 months ago', '12 months ago', '23 months ago', '24 months ago', '2 years ago', '2 years ago', '3 years ago', '10 years ago' ]);
+	for (const junk of [ -1, null, undefined, 'x', NaN ]) assert.equal(fmt.daysAgo(junk), '—', String(junk));
+});
+
 test('fmt.safeText: neutralises reordering characters, cuts by code point', () => {
 	assert.equal(fmt.safeText('abc\u202egnp', 64), 'abc�gnp');
 	assert.equal(fmt.safeText('\u200b', 64), '�');

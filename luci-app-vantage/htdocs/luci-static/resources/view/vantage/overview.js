@@ -5030,6 +5030,7 @@ return view.extend({
 					kv(_('Model'), d.model),
 					kv(_('Platform', 'vantage'), [ d.target || fmt.DASH, d.system ? E('small', {}, [ d.system ]) : '' ]),
 					kv(_('Firmware', 'vantage'), d.firmware || fmt.DASH),
+					this.builtRow(d.built),
 					kv(_('Kernel'), d.kernel || fmt.DASH),
 					kv(_('Uptime'), d.uptime != null ? fmt.duration(d.uptime) : fmt.DASH),
 					kv(_('Local time'), d.localtime != null ? new Date(d.localtime * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '') : fmt.DASH, true)
@@ -5135,6 +5136,16 @@ return view.extend({
 			};
 		})));
 		return out;
+	},
+
+	/* The firmware's build date (model.buildDate: seconds, or null where
+	   system board gives no date) as a row: the day, in UTC as the build
+	   stamped it, and how long ago that is; no age for a date ahead of
+	   this browser's clock. Nothing without a date. */
+	builtRow: function(built) {
+		if (built == null) return '';
+		var days = Math.floor((Date.now() - built * 1000) / 864e5);
+		return kv(_('Firmware built'), [ new Date(built * 1000).toISOString().slice(0, 10), days >= 0 ? E('small', {}, [ fmt.daysAgo(days) ]) : '' ]);
 	},
 
 	/* ---------------------------------------------------------- keyboard */

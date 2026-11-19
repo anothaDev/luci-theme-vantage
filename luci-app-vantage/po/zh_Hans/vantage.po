@@ -41,13 +41,18 @@ msgstr[0] "%d 个 SSID · %d 个空闲"
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3058
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3141
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3730
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5111
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5112
 msgid "%d clients"
 msgstr "%d 个客户端"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4119
 msgid "%d connected"
 msgstr "已连接 %d 个"
+
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:129
+msgid "%d day ago"
+msgid_plural "%d days ago"
+msgstr[0] "%d 天前"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3088
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3092
@@ -76,6 +81,11 @@ msgstr "%d 分钟"
 msgctxt "vantage"
 msgid "%d min ago"
 msgstr "%d 分钟前"
+
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:130
+msgid "%d month ago"
+msgid_plural "%d months ago"
+msgstr[0] "%d 个月前"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4117
 msgid "%d of %d"
@@ -140,6 +150,11 @@ msgstr "%d 个信号弱"
 msgid "%d wired"
 msgstr "%d 个有线"
 
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:131
+msgid "%d year ago"
+msgid_plural "%d years ago"
+msgstr[0] "%d 年前"
+
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3741
 msgid "%d–%d MHz of the %d–%d MHz band"
 msgstr "%d–%d MHz 属于 %d–%d MHz 频段"
@@ -167,7 +182,7 @@ msgstr "%s（本次新增）"
 msgid "%s Gbit/s"
 msgstr "%s Gbit/s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:166
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:178
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:103
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3748
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3762
@@ -320,7 +335,7 @@ msgstr "%s 仅协商到 %d Mbit/s；网线线对或端口可能有故障"
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:87
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3423
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3452
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5040
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5041
 msgid "%s of %s"
 msgstr "%s / %s"
 
@@ -341,7 +356,7 @@ msgstr "发往设备的帧失败率：%s"
 msgid "%s of frames to the device fail; interference likely"
 msgstr "发往设备的帧失败率：%s，可能存在干扰"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5038
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5039
 msgid "%s over %d core"
 msgid_plural "%s over %d cores"
 msgstr[0] "%s / %d 核"
@@ -418,7 +433,7 @@ msgstr "还有 %d 个"
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3058
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3141
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3730
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5111
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5112
 msgid "1 client"
 msgstr "1 个客户端"
 
@@ -568,7 +583,7 @@ msgstr[0] "繁忙；负载 %s（%d 核）；查看最繁忙进程"
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:74
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:75
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3380
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5038
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5039
 msgctxt "vantage"
 msgid "CPU"
 msgstr "CPU"
@@ -604,12 +619,12 @@ msgstr "信道 %d"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3038
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3729
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5087
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5088
 msgid "Ch %d · %d MHz"
 msgstr "信道 %d · %d MHz"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4928
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5088
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5089
 msgid "Channel"
 msgstr "信道"
 
@@ -917,6 +932,10 @@ msgctxt "vantage"
 msgid "Firmware"
 msgstr "固件"
 
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5148
+msgid "Firmware built"
+msgstr "固件构建日期"
+
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:392
 msgid "Forwarding %s to %s"
 msgstr "从 %s 转发到 %s"
@@ -1137,7 +1156,7 @@ msgstr ""
 msgid "Its weak signal is left out of the warnings."
 msgstr "其弱信号不计入警告。"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5033
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5034
 msgid "Kernel"
 msgstr "内核"
 
@@ -1220,7 +1239,7 @@ msgstr "链路速率"
 msgid "Live"
 msgstr "实时"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5037
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5038
 msgid "Load"
 msgstr "负载"
 
@@ -1234,7 +1253,7 @@ msgid "Load %s · %d core"
 msgid_plural "Load %s · %d cores"
 msgstr[0] "负载 %s · %d 核"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5039
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5040
 msgctxt "vantage"
 msgid "Load average"
 msgstr "平均负载"
@@ -1247,7 +1266,7 @@ msgstr "1、5、15 分钟平均负载"
 msgid "Load avg %s"
 msgstr "平均负载 %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5035
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5036
 msgid "Local time"
 msgstr "本地时间"
 
@@ -1302,7 +1321,7 @@ msgstr "测量中…"
 msgid "Memory"
 msgstr "内存"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5040
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5041
 msgid "Memory in use"
 msgstr "已用内存"
 
@@ -1670,7 +1689,7 @@ msgstr "对互联网开放：%d"
 msgid "Open network"
 msgstr "开放网络"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1517
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1528
 msgid "OpenWrt device"
 msgstr "OpenWrt 设备"
 
@@ -1869,7 +1888,7 @@ msgstr "重置"
 msgid "Reverse DNS of its address"
 msgstr "其地址的反向 DNS"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1529
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1541
 msgid "Root (overlay)"
 msgstr "Root（overlay）"
 
@@ -1893,7 +1912,7 @@ msgstr "保存"
 msgid "Seen since"
 msgstr "首次出现"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5045
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5046
 msgid "Sensor"
 msgstr "传感器"
 
@@ -2065,7 +2084,7 @@ msgstr "Tbit/s"
 msgid "Telnet (port 23)"
 msgstr "Telnet（端口 23）"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5044
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5045
 msgid "Temperature"
 msgstr "温度"
 
@@ -2074,7 +2093,7 @@ msgstr "温度"
 msgid "Temperature %s"
 msgstr "温度 %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1529
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1541
 msgid "Temporary (RAM)"
 msgstr "临时（RAM）"
 
@@ -2390,7 +2409,7 @@ msgstr "已上传"
 msgid "Upstream"
 msgstr "上游"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5034
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5035
 msgid "Uptime"
 msgstr "运行时间"
 
@@ -2724,7 +2743,7 @@ msgstr "采集中…"
 msgid "custom rule file"
 msgstr "自定义规则文件"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:125
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:137
 msgid "dBm"
 msgstr "dBm"
 
@@ -2980,6 +2999,10 @@ msgstr "%s 中的地址集合"
 msgid "this router"
 msgstr "此路由器"
 
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:128
+msgid "today"
+msgstr "今天"
+
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:398
 msgid "traffic rule"
 msgstr "通信规则"
@@ -2991,7 +3014,7 @@ msgstr "已运行 %s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4167
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4238
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5078
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5079
 msgid "via %s"
 msgstr "经由 %s"
 

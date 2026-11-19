@@ -618,6 +618,24 @@ test('temps: hottest first, millidegrees to degrees, implausible readings left o
 	assert.deepEqual(model.temps(null), []);
 });
 
+test('buildDate: a plausible number of seconds since 1970, as text or number; anything else is no date', () => {
+	/* procd hands over OPENWRT_BUILD_DATE as text */
+	assert.equal(model.buildDate('1790000000'), 1790000000);
+	assert.equal(model.buildDate(1790000000), 1790000000);
+	assert.equal(model.buildDate('1577836800'), 1577836800, '2020-01-01, the earliest taken');
+	assert.equal(model.buildDate('4102444799'), 4102444799);
+	/* a custom build's other text, a date in another form, and what is no time a firmware was built */
+	for (const v of [ 'r31337-abcdef0123', 'v5.1.0', '2026-09-21', '2026-09-21 14:13:20', 'Mon Sep 21 2026', '20260921', '1790000000 ', ' 1790000000', '1790000000.5', '1.79e9', '0x6ab1f600',
+		'1790000000000', '1577836799', '4102444800', '0', '', '-1790000000', 1790000000.5, 0, -1, NaN, Infinity, 1790000000000, null, undefined, true, {}, [ '1790000000' ] ])
+		assert.equal(model.buildDate(v), null, JSON.stringify(v));
+	/* through the model */
+	const board = builddate => ({ release: { description: 'OpenWrt 25.12.3 r1', version: '25.12.3', builddate } });
+	assert.equal(model.build({ board: board('1790000000') }).device.built, 1790000000);
+	assert.equal(model.build({ board: board('r31337-abcdef0123') }).device.built, null);
+	assert.equal(model.build({ board: { release: {} } }).device.built, null);
+	assert.equal(model.build({}).device.built, null);
+});
+
 test('deviceModel: board_name beats a reference-design model string', () => {
 	assert.equal(model.deviceModel({ model: 'Qualcomm Technologies, Inc. IPQ5332/RDP442/AP-MI01.3', board_name: 'zyxel,nwa50be' }), 'Zyxel NWA50BE');
 	assert.equal(model.deviceModel({ model: 'Example Router X1', board_name: 'example,x1' }), 'Example Router X1');

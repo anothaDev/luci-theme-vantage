@@ -633,6 +633,17 @@ return baseclass.extend({
 		return model || board.board_name || null;
 	},
 
+	/* system board's release.builddate -> seconds since 1970, or null.
+	   procd passes on the image's OPENWRT_BUILD_DATE, the build's
+	   SOURCE_DATE_EPOCH as text; a custom build may put anything there
+	   (a revision, a date in words), which is no date here. Plausible:
+	   whole seconds from 2020 (no firmware this runs on is older) to
+	   2100 */
+	buildDate: function(v) {
+		var n = typeof v === 'number' ? v : typeof v === 'string' && /^\d{9,10}$/.test(v) ? +v : NaN;
+		return n >= 1577836800 && n < 4102444800 && n % 1 === 0 ? n : null;
+	},
+
 	/* ------------------------------------------------ address filtering */
 
 	parseIPv4: function(s) {
@@ -1517,6 +1528,7 @@ return baseclass.extend({
 				model: this.deviceModel(board) || _('OpenWrt device'),
 				hostname: fmt.safeText(board.hostname || '', 64) || null,
 				firmware: release.description || [ release.distribution, release.version ].filter(Boolean).join(' ') || null,
+				built: this.buildDate(release.builddate),
 				version: release.version || null,
 				target: release.target || null,
 				kernel: board.kernel || null,

@@ -1634,6 +1634,38 @@ test('host hints: every 30 s, and again for three polls when a station or host i
 /* a pulse CSS cancelled since the last step (the dot's state changed) is
    dropped, not stepped: a time written to it would bring it back, paused,
    with nothing left to stop it (review of 1.0.19) */
+test('device details: the firmware\'s build date with its age, where system board has a date; else no row', t => {
+	const savedL = global.L, realNow = Date.now;
+	global.L = { url: (...p) => '/cgi-bin/luci/' + p.join('/') };
+	/* 2026-11-19 12:00 UTC */
+	Date.now = () => Date.UTC(2026, 10, 19, 12);
+	t.after(() => { global.L = savedL; Date.now = realNow; });
+	const self = Object.create(view);
+	self.st = {};
+	self.cpuShown = () => null;
+	const rows = built => {
+		self.m = { device: { model: 'Example AP', hostname: 'ap-hall', firmware: 'OpenWrt 25.12.3 r1', load: [ 0, 0, 0 ], memory: null, built } };
+		return withDom(() => texts({ children: self.drawerDevice().body }));
+	};
+	/* built 2026-09-21 14:13:20 UTC: 58 days and some hours before */
+	const all = rows(1790000000), at = all.indexOf('Firmware built');
+	assert.deepEqual(all.slice(at - 2, at + 4), [ 'Firmware', 'OpenWrt 25.12.3 r1', 'Firmware built', '2026-09-21', '58 days ago', 'Kernel' ]);
+	assert.deepEqual(rows(Date.UTC(2024, 2, 11) / 1000).filter((x, i, l) => l[i - 1] === 'Firmware built' || l[i - 2] === 'Firmware built'), [ '2024-03-11', '2 years ago' ]);
+	assert.deepEqual(rows(Date.UTC(2026, 10, 19, 3) / 1000).filter((x, i, l) => l[i - 1] === 'Firmware built' || l[i - 2] === 'Firmware built'), [ '2026-11-19', 'today' ]);
+	/* a build stamped ahead of this browser's clock: the date, no age */
+	const ahead = rows(Date.UTC(2026, 11, 24) / 1000), i = ahead.indexOf('Firmware built');
+	assert.deepEqual(ahead.slice(i, i + 3), [ 'Firmware built', '2026-12-24', 'Kernel' ]);
+	/* no date (a custom build's other text is null in the model): no row, and nothing else moves */
+	for (const none of [ null, undefined ]) {
+		const bare = rows(none);
+		assert.ok(!bare.includes('Firmware built'));
+		assert.deepEqual(bare.slice(bare.indexOf('Firmware'), bare.indexOf('Firmware') + 3), [ 'Firmware', 'OpenWrt 25.12.3 r1', 'Kernel' ]);
+	}
+	/* the page asks nobody about it */
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.doesNotMatch(src.slice(src.indexOf('builtRow: function'), src.indexOf('handleKey: function')), /fetch|XMLHttpRequest|rpc\.|call[A-Z]\w*\(/);
+});
+
 test('motion clock: a cancelled pulse is dropped, not stepped', () => {
 	const live = { playState: 'paused', currentTime: 0 }, gone = { playState: 'idle', currentTime: null };
 	const self = Object.create(view);
