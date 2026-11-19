@@ -47,6 +47,9 @@ third, optional one adds your other access points to the dashboard.
 - **Live charts.** Five minutes of throughput for the uplink and every
   radio, in the chart style you choose, plus radio cards, top talkers and
   a system tile.
+- **WireGuard peers.** Where a tunnel is up, a tile lists its peers by
+  name, with the time since their last handshake and their live traffic.
+  For logins that may open LuCI's own WireGuard status.
 - **Firewall overview.** What's open from the internet, which zones reach
   which, and warnings for risky setups. Every item links to the LuCI page
   that changes it.
@@ -183,7 +186,8 @@ the [spec](docs/SPEC.md#6-security-requirements).
 - **Extras are separate permissions.** Renaming devices
   (`luci-app-vantage-names`) and reverse DNS (`luci-app-vantage-rdns`) are
   their own groups, so you can leave them out. The firewall overview only
-  appears for users who already hold LuCI's firewall permission.
+  appears for users who already hold LuCI's firewall permission, and the
+  WireGuard tile for those who hold LuCI's WireGuard one.
 - **Checked by tests.** They reject HTML built from data, render the
   theme's templates with hostile input, confirm the permissions match what
   the code calls, and keep real addresses, MACs and SSIDs out of the

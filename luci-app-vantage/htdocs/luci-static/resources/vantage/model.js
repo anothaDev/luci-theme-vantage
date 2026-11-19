@@ -44,6 +44,20 @@ var AP_BANDS = [ '2g', '5g', '6g', '60g' ];
 /* an interface or port name, as the collector takes one (a netdev's) */
 var AP_IFNAME = /^[A-Za-z0-9_.-]{1,15}$/;
 
+/* WireGuard (luci.wireguard getWgInstances, LuCI's own), cut to what a
+   tile can hold: the page never trusts a reply to be smaller */
+var MAX_WG_IFACES = 8, MAX_WG_PEERS = 128, MAX_WG_ALLOWED = 8;
+/* a public key: 32 bytes in base64 */
+var WG_KEY = /^[A-Za-z0-9+/]{43}=$/;
+/* a peer's endpoint as wg prints it, 192.0.2.1:51820 or [2001:db8::1]:51820 */
+var WG_ENDPOINT = /^[0-9A-Za-z.:%\[\]_-]{3,80}$/;
+var WG_CIDR = /^[0-9A-Fa-f.:]{2,45}[/]\d{1,3}$/;
+/* WireGuard makes a new handshake two minutes after the last while
+   traffic flows (Rekey-After-Time, 120 s) and uses no session key older
+   than three (Reject-After-Time, 180 s): up to that age a peer is there
+   now, past it nothing has passed since */
+var WG_RECENT_S = 180;
+
 /* netifd protocols, and kernel device types, of tunnels that ride over
    another line: a full-tunnel VPN is not a second way out. PPTP and L2TP
    are left out: some ISPs give their access through them. */
@@ -730,6 +744,69 @@ return baseclass.extend({
 				});
 			}
 			out.push(a);
+		});
+		return out;
+	},
+
+	/* -------------------------------------------------------- WireGuard */
+
+	/* luci.wireguard getWgInstances ({ wg0: { name, listen_port, peers:
+	   [ { name, public_key, endpoint, allowed_ips, latest_handshake,
+	   transfer_rx, transfer_tx, persistent_keepalive } ] } }, as `wg show
+	   all dump` prints them: numbers as text, "(none)" and "off" for
+	   nothing; no private or preshared key) -> the tunnels by name, at
+	   most 8 with 128 peers each, checked here (types, ranges, caps)
+	   whatever the plugin did: [ { name, port, peers: [ { id, key, name,
+	   label, endpoint, allowed: [ cidr ], handshake, age, state, rx, tx,
+	   keepalive } ] } ]. id is the peer's public key, to tell peers apart
+	   and never to show; key is the one to show, shortened as LuCI
+	   shortens it; name is its description in the configuration ('' for
+	   none) and label that or the key. handshake is the time of the last
+	   one (epoch seconds, 0 for none) and age the whole seconds since, by
+	   `now` (epoch seconds; a handshake ahead of it is 0 old): state is
+	   'never', 'recent' up to WG_RECENT_S and 'stale' past it. rx and tx
+	   are the bytes received from the peer and sent to it (null when not
+	   a count). The peers of a tunnel: those with a recent handshake
+	   first, by label (not by its second: each makes a new one every two
+	   minutes, and the rows would change places as they do), then the
+	   others by their last one, the latest first, then those without, by
+	   label. No reply: [] */
+	WG_RECENT_S: WG_RECENT_S,
+	wireguard: function(reply, now) {
+		var out = [];
+		function count(v, max) {
+			if (typeof v === 'string' && /^\d{1,16}$/.test(v)) v = +v;
+			return finite(v) && v >= 0 && v <= max && v % 1 === 0 ? v : null;
+		}
+		reply = obj(reply);
+		Object.keys(reply).sort().forEach(function(ifname) {
+			var x = obj(reply[ifname]), seen = Object.create(null), peers = [];
+			/* a tunnel is an interface's name with its list of peers */
+			if (!AP_IFNAME.test(ifname) || !Array.isArray(x.peers) || out.length >= MAX_WG_IFACES) return;
+			x.peers.slice(0, MAX_WG_PEERS).forEach(function(p) {
+				p = obj(p);
+				var id = typeof p.public_key === 'string' && WG_KEY.test(p.public_key) ? p.public_key : null;
+				if (!id || seen[id]) return;
+				seen[id] = true;
+				var key = id.slice(0, 5) + '…' + id.slice(-6);
+				var name = fmt.safeText(typeof p.name === 'string' ? p.name.trim() : '', 48);
+				var hs = count(p.latest_handshake, 0xffffffff) || 0;
+				var age = hs && finite(now) ? Math.max(0, Math.floor(now - hs)) : null;
+				peers.push({
+					id: id, key: key, name: name, label: name || key,
+					endpoint: typeof p.endpoint === 'string' && WG_ENDPOINT.test(p.endpoint) ? p.endpoint : null,
+					allowed: arr(p.allowed_ips).filter(function(a) { return typeof a === 'string' && WG_CIDR.test(a); }).slice(0, MAX_WG_ALLOWED),
+					handshake: hs, age: age,
+					state: !hs ? 'never' : age != null && age <= WG_RECENT_S ? 'recent' : 'stale',
+					rx: count(p.transfer_rx, Number.MAX_SAFE_INTEGER), tx: count(p.transfer_tx, Number.MAX_SAFE_INTEGER),
+					keepalive: count(p.persistent_keepalive, 65535) || null
+				});
+			});
+			peers.sort(function(a, b) {
+				var ra = a.state === 'recent', rb = b.state === 'recent', la = a.label.toLowerCase(), lb = b.label.toLowerCase();
+				return rb - ra || (ra ? 0 : b.handshake - a.handshake) || (la < lb ? -1 : la > lb ? 1 : 0) || (a.id < b.id ? -1 : 1);
+			});
+			out.push({ name: ifname, port: count(x.listen_port, 65535) || null, peers: peers });
 		});
 		return out;
 	},

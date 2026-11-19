@@ -216,3 +216,52 @@ test('--big: four radios, ten networks, 74 stations and six ports, one a switch 
 	assert.ok(macs.every(m => /^(00:00:5e:00:53|02:00:5e:[0-9a-f]{2}:[0-9a-f]{2}):[0-9a-f]{2}$/i.test(m)), 'documentation MACs');
 	assert.ok(Object.values(hints).every(h => h.ipaddrs.every(a => /^192\.0\.2\.\d+$/.test(a))), 'the recorded LAN\'s prefix');
 });
+
+test('--wg: two WireGuard tunnels in the form LuCI\'s plugin gives; sessions and counters that move; documentation values only', () => {
+	const wg = require('../dev/replay/wg');
+	const model = require('./luci-stub').load('vantage.model');
+	const now = Math.floor(Date.now() / 1000);
+	const r = wg.transform('luci.wireguard', 'getWgInstances', {}, null);
+	assert.equal(r.result[0], 0);
+	const data = r.result[1];
+	assert.deepEqual(Object.keys(data), [ 'wg0', 'wg1' ]);
+	/* as `wg show all dump` split by tabs: every field text, "(none)" and "off" for nothing, no key but the public ones */
+	for (const [ name, t ] of Object.entries(data)) {
+		assert.deepEqual(Object.keys(t), [ 'name', 'public_key', 'listen_port', 'fwmark', 'peers' ]);
+		assert.deepEqual([ t.name, typeof t.listen_port, t.fwmark ], [ name, 'string', 'off' ]);
+		for (const p of t.peers) {
+			assert.deepEqual(Object.keys(p), [ 'name', 'public_key', 'endpoint', 'allowed_ips', 'latest_handshake', 'transfer_rx', 'transfer_tx', 'persistent_keepalive' ]);
+			for (const k of [ 'public_key', 'endpoint', 'latest_handshake', 'transfer_rx', 'transfer_tx', 'persistent_keepalive' ]) assert.equal(typeof p[k], 'string', k);
+			assert.match(p.public_key, /^[A-Za-z0-9+/]{43}=$/);
+			/* the plugin lists allowed IPs only beside an endpoint */
+			assert.equal(p.endpoint === '(none)', p.allowed_ips.length === 0);
+		}
+	}
+	assert.doesNotMatch(JSON.stringify(data), /private|preshared|psk/i);
+	/* what the dashboard makes of it: both tunnels, every state, a peer that goes by its key */
+	const t = model.wireguard(data, now);
+	assert.deepEqual(t.map(x => [ x.name, x.port, x.peers.length ]), [ [ 'wg0', 51820, 7 ], [ 'wg1', 51821, 1 ] ]);
+	assert.deepEqual(t[0].peers.map(p => p.state), [ 'recent', 'recent', 'recent', 'stale', 'stale', 'never', 'never' ]);
+	assert.deepEqual(t[0].peers.map(p => p.name), [ 'kitchen tablet', 'Mira phone', 'workshop laptop', 'Jonas phone', 'backup NAS at the cabin', 'guest laptop', '' ]);
+	assert.ok(t[0].peers.length > 5, 'more than a tunnel lists before "+n more"');
+	assert.equal(t[0].peers[6].label, t[0].peers[6].key);
+	assert.deepEqual([ t[1].peers[0].state, t[1].peers[0].keepalive, t[1].peers[0].endpoint ], [ 'recent', 25, '[2001:db8:51::1]:51820' ]);
+	/* a session makes a handshake every two minutes: never older than that, at any time */
+	for (const dt of [ 0, 59, 119, 120, 3601, 86400 ])
+		for (const x of model.wireguard(wg.instances(now + dt), now + dt)) for (const p of x.peers) if (p.state === 'recent') assert.ok(p.age < 120, p.label + ' +' + dt);
+	/* counters only grow, and where traffic flows they do */
+	const a = wg.instances(now), b = wg.instances(now + 10);
+	const num = (d, i, k) => +d.wg0.peers[i][k];
+	for (let i = 0; i < 7; i++) for (const k of [ 'transfer_rx', 'transfer_tx' ]) assert.ok(num(b, i, k) >= num(a, i, k) && Number.isSafeInteger(num(b, i, k)), i + ' ' + k);
+	assert.ok(num(b, 0, 'transfer_tx') > num(a, 0, 'transfer_tx') && num(b, 1, 'transfer_rx') > num(a, 1, 'transfer_rx'));
+	assert.deepEqual([ num(b, 2, 'transfer_rx') - num(a, 2, 'transfer_rx'), num(a, 5, 'transfer_rx'), num(a, 6, 'transfer_tx') ], [ 0, 0, 0 ], 'an idle session; peers that never came');
+	/* documentation addresses, keys that are a hash of a label */
+	const addrs = Object.values(data).flatMap(x => x.peers.flatMap(p => [ p.endpoint ].concat(p.allowed_ips))).filter(x => x !== '(none)');
+	assert.ok(addrs.length > 10 && addrs.every(x => /^\[?(192\.0\.2\.|198\.51\.100\.|203\.0\.113\.|2001:db8:)/.test(x)), addrs.join(' '));
+	assert.equal(data.wg0.peers[0].public_key, wg.key('wg0 peer 0'));
+	/* the plugin's other methods and every other object are left as they are */
+	const ok = { result: [ 0, { x: 1 } ] }, nf = { result: [ 4 ] };
+	assert.equal(wg.transform('luci.wireguard', 'generateKeyPair', {}, nf), nf);
+	assert.equal(wg.transform('network.interface', 'dump', {}, ok), ok);
+	assert.equal(wg.transform('luci.vantage', 'getWgInstances', {}, ok), ok);
+});

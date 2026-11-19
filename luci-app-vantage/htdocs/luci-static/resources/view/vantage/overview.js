@@ -77,6 +77,20 @@ var COLLECTOR_WAIT_MS = 4 * 1000;
 /* where no collector answers at all (the add-on installed and nothing
    paired: no such object), it is asked again only this often */
 var COLLECTOR_RETRY_MS = 60 * 1000;
+/* LuCI's WireGuard status (luci.wireguard getWgInstances) has the router
+   run `wg show all dump` and, for each peer whose endpoint is configured
+   by name, look that name up: inside rpcd, which answers nothing else
+   meanwhile. So after an answer that took longer than WG_SLOW_MS (or no
+   answer after as long) it is asked again only after ten times that,
+   WG_RETRY_MS at most: a resolver that does not answer cannot keep the
+   router busy for this tile. WG_RETRY_MS also when the object went away
+   under an open page */
+var WG_SLOW_MS = 1000;
+var WG_RETRY_MS = 60 * 1000;
+/* the answers that say the call is not there for this login: no such
+   object (the package is not installed) or method, or access denied */
+var WG_ABSENT = /ubus code [346]\b|error -3200[02]\b/;
+var WG_PEERS = 5;                     /* peers a tunnel lists before "+n more" */
 var STORE_KEY = 'vantage.hist.v1';
 var VERSION = '1.0.21';               /* this package's, as its Makefile has it (tests/version.test.js) */
 var SVGNS = 'http://www.w3.org/2000/svg';
@@ -104,6 +118,13 @@ var callRoutes = rpc.declare({ object: 'luci.vantage', method: 'routes', expect:
    and answers them together, so a collector that does not answer would
    hold back every other reply of the poll */
 var callCollector = rpc.declare({ object: 'vantage.collector', method: 'report', expect: { '': {} }, nobatch: true });
+/* LuCI's own (luci-proto-wireguard's rpcd plugin, its status page's
+   call): every WireGuard interface with its peers, without private or
+   preshared keys; it takes no argument and writes nothing. No group of
+   the dashboard grants it: LuCI's group for it does, so only a login
+   that holds that one is answered (askWireguard). A failed call is
+   rejected: {} would read as no tunnels */
+var callWireguard = rpc.declare({ object: 'luci.wireguard', method: 'getWgInstances', expect: { '': {} }, reject: true });
 /* LuCI's own (its switch page's): link and speed of a switch's ports, in
    result. The whole reply, and a failed call rejected: a default [] would
    read as every port down */
@@ -543,6 +564,8 @@ function pageLink(page, label) {
    file moves it, and Status -> Overview */
 var LUCI_DASHBOARD = [ 'admin', 'status', 'dashboard' ];
 var LUCI_OVERVIEW = [ 'admin', 'status', 'overview' ];
+/* luci-proto-wireguard's status page */
+var LUCI_WIREGUARD = [ 'admin', 'status', 'wireguard' ];
 
 /* Is luci-theme-vantage installed? A HEAD for its menu script, a static
    file from the server this view came from: no ACL, nothing new on the
@@ -932,6 +955,40 @@ return view.extend({
 		return this.collector && !(Date.now() - this.collectorAt > limit) ? this.collector : null;
 	},
 
+	/* LuCI's WireGuard status for a slow poll: { reply, at } (at: when it
+	   came in) or null, kept in this.wgLast. Asked only by a login that
+	   holds LuCI's own group for it, looked up once (wgMay): without
+	   luci-proto-wireguard there is no such group, and the dashboard
+	   makes no request for it at all. Where the first answer says the
+	   call is not there (WG_ABSENT) it is not asked again on this page
+	   (wgOff); once it has answered, an object that went away is asked
+	   for again after WG_RETRY_MS. Any other failed call is none, and
+	   the next slow poll asks again, unless it took long (WG_SLOW_MS):
+	   until the wait is over a poll gets the last answer */
+	askWireguard: function() {
+		var self = this, now = Date.now(), w = this.wgWait;
+		if (this.wgOff) return Promise.resolve(null);
+		if (w && now >= w.from && now < w.until) return Promise.resolve(this.wgLast || null);
+		if (!this.wgMay) this.wgMay = L.resolveDefault(callAccess('access-group', 'luci-proto-wireguard', 'read'), false);
+		return this.wgMay.then(function(may) {
+			if (may !== true) { self.wgOff = true; return null; }
+			var asked = Date.now();
+			return callWireguard().then(function(v) {
+				return { reply: v && typeof v === 'object' && !Array.isArray(v) ? v : null };
+			}, function(e) {
+				return { absent: WG_ABSENT.test(String(e && e.message)) };
+			}).then(function(a) {
+				var at = Date.now(), took = at - asked;
+				if (a.absent && !self.wgAnswered) { self.wgOff = true; return null; }
+				if (a.reply) self.wgAnswered = true;
+				self.wgLast = a.reply ? { reply: a.reply, at: at } : null;
+				var wait = a.absent ? WG_RETRY_MS : took > WG_SLOW_MS ? Math.min(WG_RETRY_MS, 10 * took) : 0;
+				self.wgWait = wait ? { from: at, until: at + wait } : null;
+				return self.wgLast;
+			});
+		});
+	},
+
 	/* one poll's worth of raw replies; missing pieces degrade to {} */
 	fetch: function() {
 		var started = Date.now(), self = this;
@@ -946,6 +1003,9 @@ return view.extend({
 		   own calls: these are made and stamped as always, and the poll's
 		   end waits for that answer or its deadline (askCollector) */
 		var collected = slow ? this.askCollector() : Promise.resolve();
+		/* and so does LuCI's WireGuard status, for a login that may ask
+		   (askWireguard): its last answer between slow polls */
+		var tunnels = slow ? this.askWireguard() : Promise.resolve(this.wgLast || null);
 		return Promise.all([
 			L.resolveDefault(callInfo(), {}),
 			L.resolveDefault(callRead('/proc/stat'), ''),
@@ -1094,9 +1154,9 @@ return view.extend({
 					/* no answer (an older plugin, a lookup not sent, a failed call)
 					   keeps the last one: no tunnel blinking off */
 					routes: r[8] && Array.isArray(r[8].routes) ? (self.kernelRoutes = r[8].routes) : (self.kernelRoutes || null),
-					collector: null,
+					collector: null, wg: null,
 					assoc: assoc, hapd: hapd, hapdStatus: hapdStatus, iwinfo: iwinfo, survey: survey, at: Date.now(), started: started };
-				return collected.then(function() { raw.collector = self.collectorAnswer(); return raw; });
+				return Promise.all([ collected, tunnels ]).then(function(x) { raw.collector = self.collectorAnswer(); raw.wg = x[1]; return raw; });
 			});
 		});
 	},
@@ -1131,9 +1191,10 @@ return view.extend({
 			mdns: Object.create(null), mdnsOff: true, mdnsAt: 0,
 			oui: null, ouiLoading: false,
 			wireless: null,
+			wg: [], wgSeen: false, wgPrev: null, wgRates: Object.create(null),
 			lastOk: 0, lastErr: null, paused: false
 		};
-		this.ui = { sorts: readSorts(), kind: 'wifi', filter: '', chip: 'all', drawer: null, editing: null, hover: null };
+		this.ui = { sorts: readSorts(), kind: 'wifi', filter: '', chip: 'all', drawer: null, editing: null, hover: null, wgOpen: Object.create(null) };
 		this.folds = readFolds();
 		this.foldEls = {};
 		this.foldBtns = {};
@@ -1192,6 +1253,7 @@ return view.extend({
 			vendor: st.oui ? function(k) { return k ? st.oui.lookup(k) : null; } : null
 		});
 		this.markWired(m, raw);
+		this.noteTunnels(m, raw.wg, now);
 		if (m.device.memory) series.push(st.hist.mem, [ at, m.device.memory.usedPct ], WINDOW_MS, HIST_MAX);
 
 		/* interface counters */
@@ -1290,6 +1352,26 @@ return view.extend({
 			else if (st.wireless !== true) st.wireless = false;
 		}
 		m.wired = st.wireless === false;
+	},
+
+	/* WireGuard: the tunnels of the poll's answer (wg: { reply, at } or
+	   null), each handshake's age as of now by this browser's clock (as
+	   LuCI's own page counts it), and each peer's rates between two
+	   answers: the same answer again, between slow polls, is no sample.
+	   A tunnel seen once keeps the tile for the session (m.wg), as radios
+	   keep the Wi-Fi layout: an interface restarted is gone for a poll,
+	   and the page is not rearranged for that */
+	noteTunnels: function(m, wg, now) {
+		var st = this.st, counters = Object.create(null);
+		st.wg = model.wireguard(wg ? wg.reply : null, now / 1000);
+		if (st.wg.length) st.wgSeen = true;
+		m.wg = st.wgSeen === true;
+		st.wg.forEach(function(t) {
+			t.peers.forEach(function(p) { if (p.rx != null && p.tx != null) counters[t.name + ' ' + p.id] = { rx: p.rx, tx: p.tx }; });
+		});
+		var r = model.rates(st.wgPrev, counters, wg ? wg.at : now);
+		st.wgPrev = r.next;
+		if (Object.keys(r.rates).length || !Object.keys(counters).length) st.wgRates = r.rates;
 	},
 
 	/* The generation shown is the best standard a station used this
@@ -1457,6 +1539,7 @@ return view.extend({
 			vendor: st.oui ? function(k) { return k ? st.oui.lookup(k) : null; } : null
 		});
 		this.markWired(m, null);
+		m.wg = st.wgSeen === true;
 		this.stickyGen(m);
 		m.clients.forEach(function(c) { c.exp = insight.experience(c); c.firstSeen = st.presence && st.presence.firstSeen[c.mac]; c.isNew = !!st.isNew[c.mac]; });
 		st.talkers = insight.topTalkers(m.clients, st.staRates, TALKERS);
@@ -1622,13 +1705,15 @@ return view.extend({
 		this.paintClients();
 		this.paintTalkers();
 		this.paintSsids();
+		this.paintWireguard();
 		this.paintDrawer();
 		this.paintLive();
 		if (!this.wireRo) this.scheduleWires();
 		/* the tiles' ResizeObserver lays out again when a tile changes
 		   size, so a poll lays out only when the tile set may change (the
-		   first one, wired or not); one that changes nothing measures nothing */
-		if (this.laidWired !== !!this.m.wired) { this.laidWired = !!this.m.wired; this.scheduleLayout(); }
+		   first one, wired or not, a WireGuard tunnel or none); one that
+		   changes nothing measures nothing */
+		if (this.laidWired !== !!this.m.wired || this.laidWg !== !!this.m.wg) { this.laidWired = !!this.m.wired; this.laidWg = !!this.m.wg; this.scheduleLayout(); }
 	},
 
 	/* ------------------------------------------------------------ folds */
@@ -1670,11 +1755,11 @@ return view.extend({
 		var self = this;
 		this.tiles = {
 			hero: this.buildHero(), chart: this.buildChart(), radios: this.buildRadios(), clients: this.buildClients(),
-			sys: this.buildSystem(), talk: this.buildTalkers(), ssids: this.buildSsids()
+			sys: this.buildSystem(), talk: this.buildTalkers(), ssids: this.buildSsids(), wg: this.buildWireguard()
 		};
 		this.tileNames = {
 			hero: _('Network path'), chart: _('Throughput', 'vantage'), radios: _('Radios'), clients: _('Clients'),
-			sys: _('System'), talk: _('Top talkers', 'vantage'), ssids: _('Wireless networks', 'vantage')
+			sys: _('System'), talk: _('Top talkers', 'vantage'), ssids: _('Wireless networks', 'vantage'), wg: _('WireGuard')
 		};
 		this.ov = {};
 		this.el.ghost = E('div', { 'class': 'vt-drop-ghost', 'aria-hidden': 'true' });
@@ -1686,10 +1771,11 @@ return view.extend({
 		}));
 	},
 
-	/* the stored layout for this screen class, or the default */
-	layoutFor: function(tier, wired) {
+	/* the stored layout for this screen class, or the default; wg: with
+	   the WireGuard tile (a tunnel was seen) */
+	layoutFor: function(tier, wired, wg) {
 		var k = layout.key(tier, wired);
-		return layout.normalize(this.layouts[k] || null, tier, wired);
+		return layout.normalize(this.layouts[k] || null, tier, wired, wg);
 	},
 
 	scheduleLayout: function() {
@@ -1705,8 +1791,8 @@ return view.extend({
 		var self = this, grid = this.el.grid, tiles = this.tiles;
 		var width = grid.clientWidth;
 		if (!width || !this.m) return;
-		var tier = layout.tier(width), cols = layout.cols(tier), wired = !!this.m.wired;
-		var list = this.drag ? this.drag.list : this.layoutFor(tier, wired);
+		var tier = layout.tier(width), cols = layout.cols(tier), wired = !!this.m.wired, wg = !!this.m.wg;
+		var list = this.drag ? this.drag.list : this.layoutFor(tier, wired, wg);
 		var gap = parseFloat(window.getComputedStyle(grid).getPropertyValue('--vt-gap')) || 14;
 		var shown = list.filter(function(e) { return !e.hide; });
 		var on = Object.create(null);
@@ -1762,7 +1848,7 @@ return view.extend({
 			ghost.style.setProperty('--y', g.top.toFixed(1) + 'px');
 			ghost.style.height = g.h.toFixed(1) + 'px';
 		}
-		this.lay = { tier: tier, cols: cols, wired: wired, list: list, rects: p.rects, gap: gap, width: width };
+		this.lay = { tier: tier, cols: cols, wired: wired, wg: wg, list: list, rects: p.rects, gap: gap, width: width };
 
 		/* reading and tab order follow the layout; not while dragging,
 		   moving the dragged tile would end the drag */
@@ -1787,7 +1873,7 @@ return view.extend({
 		var l = this.lay;
 		if (!l) return;
 		var k = layout.key(l.tier, l.wired);
-		if (layout.same(list, layout.defaults(l.tier, l.wired))) this.clearLayout(k);
+		if (layout.same(list, layout.defaults(l.tier, l.wired, l.wg))) this.clearLayout(k);
 		else this.layouts[k] = layout.compact(list);
 		writeLayouts(this.layouts);
 		this.viewChanged(layout.option(k));
@@ -4112,6 +4198,79 @@ return view.extend({
 				])
 			]);
 		}));
+	},
+
+	/* -------------------------------------------------------- WireGuard */
+
+	/* a tile only with a tunnel (vantage.layout); its link is LuCI's own
+	   status page, for a login that has it in its menu */
+	buildWireguard: function() {
+		this.el.wg = E('div', { 'class': 'vt-wg' });
+		return E('section', { 'class': 'vt-tile vt-wg-tile', 'aria-label': _('WireGuard') }, [
+			tileHead('lock', _('WireGuard'), [ pageLink(LUCI_WIREGUARD, _('Status')) ]),
+			this.el.wg
+		]);
+	},
+
+	/* each tunnel with its peers, those with a session first (the
+	   model's order), WG_PEERS of them until its "+n more" is opened. The
+	   dot is a session now, by the handshake's age, and never a warning:
+	   a peer that is away is no fault. ↓ is what this device received
+	   from the peer and ↑ what it sent to it, as the tunnel's own
+	   counters run and the path shows a tunnel. The peer's key only as
+	   the model shortened it */
+	paintWireguard: function() {
+		var self = this, st = this.st, rates = st.wgRates || {};
+		if (!this.m.wg) return;
+		if (!st.wg.length) {
+			patch(this.el.wg, [ E('p', { 'class': 'vt-empty-inline' }, [ _('No WireGuard tunnel is reported right now.') ]) ]);
+			return;
+		}
+		function when(p) {
+			if (p.state === 'never' || p.age == null) return _('No handshake yet');
+			return _('Handshake %s').format(p.age < 86400 ? fmt.ago(p.age * 1000) : _('%s ago').format(fmt.duration(p.age)));
+		}
+		patch(this.el.wg, st.wg.map(function(t) {
+			var all = self.ui.wgOpen[t.name] === true, shown = all ? t.peers : t.peers.slice(0, WG_PEERS);
+			return E('div', { 'class': 'vt-wg-tun' }, [
+				E('div', { 'class': 'vt-wg-head' }, [
+					E('span', { 'class': 'vt-wg-name' }, [ t.name ]),
+					E('span', { 'class': 'vt-hint vt-tn' }, [ (t.port ? [ _('UDP port %d').format(t.port) ] : []).concat(
+						[ t.peers.length === 1 ? _('1 peer') : _('%d peers').format(t.peers.length) ]).join(' · ') ])
+				]),
+				E('div', { 'class': 'vt-wg-peers' }, shown.map(function(p) {
+					var r = rates[t.name + ' ' + p.id], here = p.state === 'recent';
+					return E('div', { 'class': 'vt-wg-peer' + (here ? '' : ' vt-wg-away'),
+						'title': [ p.label, p.name ? _('Public key %s').format(p.key) : null, p.endpoint,
+							p.allowed.length ? _('Allowed IPs: %s').format(p.allowed.join(', ')) : null ].filter(Boolean).join('\n') }, [
+						E('span', { 'class': 'vt-status vt-status-' + (here ? 'ok' : 'off'), 'aria-hidden': 'true' }),
+						E('span', { 'class': 'vt-wg-main' }, [
+							E('span', { 'class': 'vt-wg-peer-name' }, [ p.label ]),
+							E('span', { 'class': 'vt-wg-ep vt-mono' }, [ p.endpoint || fmt.DASH ])
+						]),
+						E('span', { 'class': 'vt-wg-side' }, [
+							E('span', { 'class': 'vt-wg-rate vt-tn', 'title': r ? _('Received %s, sent %s').format(fmt.bits(r.rx), fmt.bits(r.tx)) : '' }, [ r ? fmt.rates(r.rx, r.tx) : fmt.DASH ]),
+							E('span', { 'class': 'vt-hint vt-tn' }, [ when(p) ])
+						])
+					]);
+				}).concat(t.peers.length ? [] : [ E('p', { 'class': 'vt-empty-inline' }, [ _('No peers configured.') ]) ])),
+				/* which tunnel: read from the button, which a poll keeps (patch) */
+				t.peers.length > WG_PEERS ? E('button', { 'type': 'button', 'class': 'vt-wg-more', 'data-tunnel': t.name, 'aria-expanded': String(all),
+					'click': function(ev) { self.toggleTunnel(ev.currentTarget.getAttribute('data-tunnel')); } },
+					[ all ? _('Show fewer') : _('+%d more').format(t.peers.length - shown.length) ]) : ''
+			]);
+		}));
+	},
+
+	/* all of a tunnel's peers, or the first WG_PEERS again; the new
+	   height at once, as a fold's. The button says which it is in an
+	   attribute, so it was built anew: the keyboard stays on it */
+	toggleTunnel: function(name) {
+		this.ui.wgOpen[name] = this.ui.wgOpen[name] !== true;
+		if (this.held) delete this.held.wg;
+		this.paintWireguard();
+		var btn = Array.prototype.filter.call(this.el.wg.querySelectorAll('.vt-wg-more'), function(b) { return b.getAttribute('data-tunnel') === name; })[0];
+		if (btn) btn.focus();
 	},
 
 	/* ----------------------------------------------------------- drawer */

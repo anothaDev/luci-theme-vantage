@@ -11,10 +11,18 @@
    whatever their heights, and a short tile never stretches a tall
    neighbour. */
 
-var TILES = [ 'hero', 'chart', 'radios', 'clients', 'sys', 'talk', 'ssids' ];
+var TILES = [ 'hero', 'chart', 'radios', 'clients', 'sys', 'talk', 'ssids', 'wg' ];
 
 /* tiles that only exist with Wi-Fi (Clients lists wired hosts too) */
 var WIFI = { radios: true, talk: true, ssids: true };
+
+/* the tile that only exists with a WireGuard tunnel, with Wi-Fi or
+   without. A tunnel makes no layouts of its own, as having no Wi-Fi
+   does (key): a layout is stored under the same key with a tunnel and
+   without, and one that does not mention the tile (any stored before
+   there was one, or arranged without a tunnel) gets it where the
+   default has it */
+var TUNNEL = { wg: true };
 
 var COLS = { wide: 4, mid: 2, narrow: 1 };
 
@@ -30,16 +38,17 @@ var FLEX = { chart: true, radios: true };
 /* how far a tile stretches to line up with the tile below it */
 var SNAP = 48;
 
-/* [ id, column, width ] */
+/* [ id, column, width ]; the WireGuard tile last: under Clients on a
+   wide screen, beside the right-hand column */
 var DEFAULTS = {
-	wide: [ [ 'hero', 0, 4 ], [ 'chart', 0, 2 ], [ 'radios', 2, 2 ], [ 'clients', 0, 3 ], [ 'sys', 3, 1 ], [ 'talk', 3, 1 ], [ 'ssids', 3, 1 ] ],
-	mid: [ [ 'hero', 0, 2 ], [ 'radios', 0, 2 ], [ 'clients', 0, 2 ], [ 'chart', 0, 2 ], [ 'sys', 0, 1 ], [ 'talk', 1, 1 ], [ 'ssids', 1, 1 ] ],
-	narrow: [ [ 'clients', 0, 1 ], [ 'talk', 0, 1 ], [ 'radios', 0, 1 ], [ 'hero', 0, 1 ], [ 'ssids', 0, 1 ], [ 'chart', 0, 1 ], [ 'sys', 0, 1 ] ]
+	wide: [ [ 'hero', 0, 4 ], [ 'chart', 0, 2 ], [ 'radios', 2, 2 ], [ 'clients', 0, 3 ], [ 'sys', 3, 1 ], [ 'talk', 3, 1 ], [ 'ssids', 3, 1 ], [ 'wg', 0, 2 ] ],
+	mid: [ [ 'hero', 0, 2 ], [ 'radios', 0, 2 ], [ 'clients', 0, 2 ], [ 'chart', 0, 2 ], [ 'sys', 0, 1 ], [ 'talk', 1, 1 ], [ 'ssids', 1, 1 ], [ 'wg', 0, 1 ] ],
+	narrow: [ [ 'clients', 0, 1 ], [ 'talk', 0, 1 ], [ 'radios', 0, 1 ], [ 'hero', 0, 1 ], [ 'ssids', 0, 1 ], [ 'chart', 0, 1 ], [ 'sys', 0, 1 ], [ 'wg', 0, 1 ] ]
 };
 var DEFAULTS_WIRED = {
-	wide: [ [ 'hero', 0, 4 ], [ 'chart', 0, 3 ], [ 'sys', 3, 1 ], [ 'clients', 0, 4 ] ],
-	mid: [ [ 'hero', 0, 2 ], [ 'chart', 0, 2 ], [ 'sys', 0, 2 ], [ 'clients', 0, 2 ] ],
-	narrow: [ [ 'hero', 0, 1 ], [ 'clients', 0, 1 ], [ 'chart', 0, 1 ], [ 'sys', 0, 1 ] ]
+	wide: [ [ 'hero', 0, 4 ], [ 'chart', 0, 3 ], [ 'sys', 3, 1 ], [ 'clients', 0, 4 ], [ 'wg', 0, 2 ] ],
+	mid: [ [ 'hero', 0, 2 ], [ 'chart', 0, 2 ], [ 'sys', 0, 2 ], [ 'clients', 0, 2 ], [ 'wg', 0, 2 ] ],
+	narrow: [ [ 'hero', 0, 1 ], [ 'clients', 0, 1 ], [ 'chart', 0, 1 ], [ 'sys', 0, 1 ], [ 'wg', 0, 1 ] ]
 };
 
 function own(o, k) { return o != null && Object.prototype.hasOwnProperty.call(o, k); }
@@ -59,7 +68,8 @@ return baseclass.extend({
 	/* the storage key of a layout: Wi-Fi and wired devices differ */
 	key: function(tier, wired) { return tier + (wired ? '-wired' : ''); },
 
-	available: function(id, wired) { return TILES.indexOf(id) >= 0 && !(wired && WIFI[id]); },
+	/* wg: a WireGuard tunnel exists (the view says: one seen this session) */
+	available: function(id, wired, wg) { return TILES.indexOf(id) >= 0 && !(wired && WIFI[id]) && !(TUNNEL[id] && !wg); },
 
 	minW: function(id, tier) {
 		var m = own(MIN, tier) && own(MIN[tier], id) ? MIN[tier][id] : 1;
@@ -74,21 +84,22 @@ return baseclass.extend({
 		return { id: e.id, c: c, w: w, hide: e.hide === true };
 	},
 
-	defaults: function(tier, wired) {
+	defaults: function(tier, wired, wg) {
 		var src = own(DEFAULTS, tier) ? (wired ? DEFAULTS_WIRED : DEFAULTS)[tier] : DEFAULTS.narrow;
 		var self = this;
-		return src.map(function(d) { return self.fit({ id: d[0], c: d[1], w: d[2] }, tier); });
+		return src.filter(function(d) { return self.available(d[0], wired, wg); })
+			.map(function(d) { return self.fit({ id: d[0], c: d[1], w: d[2] }, tier); });
 	},
 
 	/* a stored layout made safe: known tiles only, each once, sizes in
 	   range, tiles it does not mention added after the tile that
 	   precedes them by default */
-	normalize: function(saved, tier, wired) {
+	normalize: function(saved, tier, wired, wg) {
 		var self = this, seen = Object.create(null), out = [];
-		var def = this.defaults(tier, wired);
+		var def = this.defaults(tier, wired, wg);
 		if (!Array.isArray(saved)) return def;
 		saved.slice(0, 32).forEach(function(e) {
-			if (!e || typeof e !== 'object' || typeof e.id !== 'string' || seen[e.id] || !self.available(e.id, wired)) return;
+			if (!e || typeof e !== 'object' || typeof e.id !== 'string' || seen[e.id] || !self.available(e.id, wired, wg)) return;
 			seen[e.id] = true;
 			out.push(self.fit(e, tier));
 		});

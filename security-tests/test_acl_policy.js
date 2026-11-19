@@ -49,6 +49,17 @@
  *   granted, and every grant is used by a declare (no stale privilege);
  *   `session access` is the only call left to the platform (rpcd grants it
  *   to every session through its `unauthenticated` group);
+ * - two declared calls are granted by no group of the dashboard, each by
+ *   another package's own group, and by name: the add-on's
+ *   `vantage.collector report` (below), and LuCI's `luci.wireguard
+ *   getWgInstances` (luci-proto-wireguard's rpcd plugin, the call of its
+ *   status page: the WireGuard interfaces and their peers, without
+ *   private or preshared keys; it takes no argument and writes nothing).
+ *   LuCI's group luci-proto-wireguard grants that one to read, so only a
+ *   login that holds that group is answered; the dashboard's ACL says
+ *   nothing of the object. It is declared once, in the dashboard, in one
+ *   exact form without parameters, and called without arguments; the
+ *   object's other methods, which make keys, are declared nowhere;
  * - calls on uci objects name the `vantage` config literally, except the
  *   firewall overview (view/vantage/firewall.js), which reads `firewall`
  *   with uci get, finds the uplink with network.interface dump and
@@ -142,6 +153,19 @@ const READ_UBUS = {
    or for a login without that group, the call fails and the dashboard
    shows no access points. */
 const COLLECTOR_CALL = 'vantage.collector report';
+/* And LuCI's own WireGuard status (luci-proto-wireguard's rpcd plugin):
+   `wg show all dump` by interface, each with its peers (name, public key,
+   endpoint, allowed IPs, last handshake, byte counters, keepalive); the
+   plugin leaves the private and the preshared keys out, takes no argument
+   and writes nothing. No group of the dashboard grants it either: LuCI's
+   group for it does (WIREGUARD_GROUP, read), so the call fails for a
+   login without that group, and where the package is not installed. This
+   one method only, declared in this one form: the object's others
+   (generateKeyPair, generatePsk, getPublicAndPrivateKeyFromPrivate) make
+   or take private keys. */
+const WIREGUARD_CALL = 'luci.wireguard getWgInstances';
+const WIREGUARD_GROUP = 'luci-proto-wireguard';
+const WIREGUARD_DECLARE = "var callWireguard = rpc.declare({ object: 'luci.wireguard', method: 'getWgInstances', expect: { '': {} }, reject: true });";
 const READ_FILES = { '/proc/stat': [ 'read' ] };
 const RDNS_UBUS = { 'network.rrdns': [ 'lookup' ] };
 const WRITE_UBUS = { 'luci.vantage': [ 'set_alias', 'set_quiet' ] };
@@ -180,12 +204,12 @@ function pairs(ubus) {
    object: 'o', method: 'm', ... })`. The one dynamic declare is the
    hostapd helper (object 'hostapd.' + ifname), whose methods are the
    literal second arguments of hostapd(ifname, 'method') calls. */
-function analyse() {
+function analyse(srcs) {
 	const declared = new Map();          /* 'obj method' -> [file] */
 	const vars = new Map();              /* callVar -> { obj, method } */
 	const problems = [];
 	const DECL = /(?:var|let|const)\s+(\w+)\s*=\s*rpc\.declare\(\{\s*object:\s*'([^']+)',\s*method:\s*'([^']+)'/g;
-	for (const { file, text } of sources) {
+	for (const { file, text } of srcs) {
 		/* also `rpc.declare (`, `var d = rpc.declare` and `rpc['declare']` */
 		const total = (text.match(/\brpc\s*(?:\.\s*declare\b|\[)/g) || []).length;
 		let literal = 0, dynamic = 0;
@@ -210,7 +234,37 @@ function analyse() {
 	return { declared, vars, problems };
 }
 
-const { declared, vars, problems } = analyse();
+const { declared, vars, problems } = analyse(sources);
+
+/* what the dashboard's groups grant, read and write together */
+function grantedCalls() {
+	return new Set([ ...pairs(acl[READ_GROUP].read.ubus), ...pairs(acl[RDNS_GROUP].read.ubus),
+		...pairs(acl[WRITE_GROUP].read.ubus), ...pairs(acl[WRITE_GROUP].write.ubus) ]);
+}
+/* The calls `srcs` (the real sources, or a mutated copy) declare that
+   none of those groups grants, the platform's aside: each must be one of
+   the two named above, a read another package's own group grants. */
+function foreignCalls(srcs) {
+	const granted = grantedCalls();
+	return [ ...analyse(srcs).declared.keys() ].filter(k => !PLATFORM.has(k) && !granted.has(k)).sort();
+}
+/* LuCI's WireGuard status in `srcs`: one declare of the object, in the
+   dashboard, exactly WIREGUARD_DECLARE (this method, no parameters, so no
+   argument can be sent), and no call that passes one. */
+function wireguardProblems(srcs) {
+	const out = [];
+	let declares = 0;
+	for (const { file, text } of srcs) {
+		for (const m of text.matchAll(/^.*\bobject\s*:\s*['"]luci\.wireguard\b.*$/gm)) {
+			declares++;
+			if (!file.endsWith('view/vantage/overview.js') || m[0] !== WIREGUARD_DECLARE) out.push(`${file}: ${m[0].trim()}`);
+		}
+		for (const m of text.matchAll(/\bcallWireguard\b\s*\(([^)]*)\)/g))
+			if (m[1].trim() !== '') out.push(`${file}: callWireguard(${m[1]})`);
+	}
+	if (declares !== 1) out.push(`${declares} declares of luci.wireguard`);
+	return out;
+}
 
 test('exactly the three groups', () => {
 	assert.deepEqual(Object.keys(acl).sort(), [ READ_GROUP, RDNS_GROUP, WRITE_GROUP ].sort());
@@ -485,11 +539,10 @@ test('the JavaScript is analysable', () => {
 });
 
 test('every declared call is granted and every grant is used', () => {
-	const granted = new Set([ ...pairs(acl[READ_GROUP].read.ubus), ...pairs(acl[RDNS_GROUP].read.ubus),
-		...pairs(acl[WRITE_GROUP].read.ubus), ...pairs(acl[WRITE_GROUP].write.ubus) ]);
-	const need = [ ...declared.keys() ].filter(k => !PLATFORM.has(k));
-	/* the one call another package's group grants: the add-on's view group, and that group grants nothing else */
-	assert.deepEqual(need.filter(k => !granted.has(k)).sort(), [ COLLECTOR_CALL ], 'declared but not granted by the dashboard');
+	const granted = grantedCalls();
+	/* the two calls another package's group grants, and no third: LuCI's WireGuard status (its own test below),
+	   and the collector's report, which the add-on's view group grants, and that group grants nothing else */
+	assert.deepEqual(foreignCalls(sources), [ WIREGUARD_CALL, COLLECTOR_CALL ], 'declared but not granted by the dashboard');
 	assert.deepEqual([ ...pairs(apsAcl[APS_VIEW_GROUP].read.ubus) ], [ COLLECTOR_CALL ]);
 	assert.deepEqual([ ...granted ].filter(k => !declared.has(k)).sort(), [], 'granted but never declared');
 	/* read grants are not write methods */
@@ -670,16 +723,76 @@ test('negative controls: a declare spelled to dodge the count is not analysable'
 	}
 });
 
-test('the view probes the names and rdns groups, and the add-on\'s for the access points; the menu is gated by the read group', () => {
+test('the view probes the names and rdns groups, the add-on\'s for the access points and LuCI\'s for WireGuard; the menu is gated by the read group', () => {
 	const view = sources.find(s => s.file.endsWith('view/vantage/overview.js')).text;
 	const probes = [ ...view.matchAll(/callAccess\('access-group', '([^']+)', '(\w+)'\)/g) ].map(m => m[1] + ' ' + m[2]);
-	/* the last: asked once, so that a login without the add-on's read group (or without the add-on) never calls its collector */
-	assert.deepEqual(probes, [ WRITE_GROUP + ' write', RDNS_GROUP + ' read', APS_VIEW_GROUP + ' read' ]);
+	/* the third: asked once, so that a login without the add-on's read group (or without the add-on) never calls its collector;
+	   the last, likewise, LuCI's own group for its WireGuard status: without it (or without luci-proto-wireguard) no call */
+	assert.deepEqual(probes, [ WRITE_GROUP + ' write', RDNS_GROUP + ' read', APS_VIEW_GROUP + ' read', WIREGUARD_GROUP + ' read' ]);
 	assert.deepEqual(Object.keys(menu), [ 'admin/dashboard', 'admin/status/dashboard', 'admin/network/firewall/overview' ]);
 	/* luci-mod-dashboard's page, behind that package's own group: Vantage grants nothing for it */
 	assert.deepEqual(menu['admin/status/dashboard'].depends.acl, [ 'luci-mod-dashboard-index' ]);
 	assert.ok(!('luci-mod-dashboard-index' in acl));
 	assert.deepEqual(menu['admin/dashboard'].depends.acl, [ READ_GROUP ]);
+});
+
+test('LuCI\'s WireGuard status: this one read, declared once without parameters, asked for only by a login that holds LuCI\'s group; the dashboard grants nothing of it', () => {
+	assert.deepEqual(wireguardProblems(sources), []);
+	const view = sources.find(s => s.file.endsWith('view/vantage/overview.js')).text;
+	assert.ok(view.includes('\n' + WIREGUARD_DECLARE + '\n'), 'the declare, a line of its own');
+	assert.doesNotMatch(WIREGUARD_DECLARE, /\b(params|filter|nobatch)\b/);
+	/* one call, behind the answer about LuCI's group: any other login, and a router without the package, asks for nothing */
+	assert.equal([ ...view.matchAll(/\bcallWireguard\s*\(/g) ].length, 1, 'called in one place');
+	assert.ok(view.includes("\t\tif (!this.wgMay) this.wgMay = L.resolveDefault(callAccess('access-group', '" + WIREGUARD_GROUP + "', 'read'), false);\n" +
+		"\t\treturn this.wgMay.then(function(may) {\n\t\t\tif (may !== true) { self.wgOff = true; return null; }\n\t\t\tvar asked = Date.now();\n\t\t\treturn callWireguard().then("),
+		'the call follows a yes about the group, and nothing else');
+	assert.equal([ ...view.matchAll(/\b\w+\.wgMay\b/g) ].length, 3, 'the answer about the group is set in one place and read in one');
+	/* no group of the dashboard, and none of the add-on, mentions the object or LuCI's group: the ACL files stay as they were */
+	for (const [ name, g ] of Object.entries(acl).concat(Object.entries(apsAcl))) {
+		assert.notEqual(name, WIREGUARD_GROUP);
+		for (const kind of [ 'read', 'write' ])
+			for (const k of pairs((g[kind] || {}).ubus)) assert.ok(!/^luci\.wireguard\b/.test(k), `${name}.${kind}: ${k}`);
+	}
+	assert.doesNotMatch(JSON.stringify(acl) + JSON.stringify(apsAcl), /wireguard/i);
+});
+
+test('negative controls: any other call no group grants, another method or form of LuCI\'s WireGuard call, or an argument to it, fails', () => {
+	const DASH = 'view/vantage/overview.js';
+	const swap = to => mutate(DASH, t => { assert.ok(t.includes(WIREGUARD_DECLARE)); return t.replace(WIREGUARD_DECLARE, to); });
+	const add = (file, code) => mutate(file, t => t + '\n' + code + '\n');
+	/* the allowance is for that one call: nothing else rides on it */
+	for (const [ what, mutant, extra ] of [
+		[ 'a method that makes keys', add(DASH, "var callWgKeys = rpc.declare({ object: 'luci.wireguard', method: 'generateKeyPair' });"), 'luci.wireguard generateKeyPair' ],
+		[ 'the method that takes a private key', add(DASH, "var callWgPub = rpc.declare({ object: 'luci.wireguard', method: 'getPublicAndPrivateKeyFromPrivate', params: [ 'privkey' ] });"), 'luci.wireguard getPublicAndPrivateKeyFromPrivate' ],
+		[ 'another object nobody grants', add(DASH, "var callExec = rpc.declare({ object: 'file', method: 'exec', params: [ 'command' ] });"), 'file exec' ],
+		[ 'a LuCI call the dashboard has no grant for', add(DASH, "var callWl = rpc.declare({ object: 'luci-rpc', method: 'getWirelessDevices' });"), 'luci-rpc getWirelessDevices' ],
+		[ 'the same in the firewall overview', add(FIREWALL_VIEW, "var callWgKeys = rpc.declare({ object: 'luci.wireguard', method: 'generatePsk' });"), 'luci.wireguard generatePsk' ]
+	]) {
+		assert.notDeepEqual(mutant, sources, what + ': the mutation applies');
+		assert.deepEqual(foreignCalls(mutant), [ WIREGUARD_CALL, COLLECTOR_CALL, extra ].sort(), what);
+		assert.notDeepEqual(foreignCalls(mutant), [ WIREGUARD_CALL, COLLECTOR_CALL ], what);
+	}
+	/* its one form: this method, no parameters, in the dashboard, once */
+	for (const [ what, mutant, why ] of [
+		[ 'a parameter', swap(WIREGUARD_DECLARE.replace("method: 'getWgInstances',", "method: 'getWgInstances', params: [ 'privkey' ],")), /overview\.js: var callWireguard = .*params/ ],
+		[ 'another method under the name', swap(WIREGUARD_DECLARE.replace('getWgInstances', 'generateKeyPair')), /overview\.js: var callWireguard = .*generateKeyPair/ ],
+		[ 'a filter on the reply', swap(WIREGUARD_DECLARE.replace('reject: true', 'reject: true, filter: function(r) { return r; }')), /overview\.js: var callWireguard = .*filter/ ],
+		[ 'double quotes', swap(WIREGUARD_DECLARE.replace("'luci.wireguard'", '"luci.wireguard"')), /overview\.js: var callWireguard = / ],
+		[ 'a second declare', add(DASH, "var callWg2 = rpc.declare({ object: 'luci.wireguard', method: 'getWgInstances', params: [ 'x' ] });"), /2 declares of luci\.wireguard/ ],
+		[ 'a declare in a module', add('vantage/model.js', WIREGUARD_DECLARE), /model\.js: var callWireguard = / ],
+		[ 'the declare moved to the firewall overview', add(FIREWALL_VIEW, WIREGUARD_DECLARE).map(s => s.file.endsWith(DASH) ? { file: s.file, text: s.text.replace(WIREGUARD_DECLARE, '') } : s), /firewall\.js: var callWireguard = / ],
+		[ 'no declare at all', swap(''), /0 declares of luci\.wireguard/ ],
+		[ 'an argument', add(DASH, "callWireguard('privkey');"), /overview\.js: callWireguard\('privkey'\)/ ],
+		[ 'an argument, spaced', add(DASH, 'callWireguard ( { privkey: k } );'), /overview\.js: callWireguard\( \{ privkey: k \} \)/ ]
+	]) {
+		assert.notDeepEqual(mutant, sources, what + ': the mutation applies');
+		assert.match(wireguardProblems(mutant).join('\n'), why, what);
+	}
+	/* and it is only ever called directly, like every declared call */
+	assert.match(callProblems(add(DASH, 'var w = callWireguard; w();')).join('\n'), /overview\.js: callWireguard used other than in a direct call/);
+	assert.match(callProblems(add(DASH, "callWireguard.call(null, 'x');")).join('\n'), /overview\.js: callWireguard used other than in a direct call/);
+	/* a declare spelled so that its object is not a literal is no declare the analysis can read */
+	assert.match(analyse(add(DASH, "var callW = rpc.declare({ object: 'luci.' + 'wireguard', method: 'generatePsk' });")).problems.join('\n'), /overview\.js: 1 rpc\.declare\(\) call\(s\) with a non-literal object or method/);
 });
 
 test('the firewall overview: behind LuCI\'s firewall group, uci get on firewall and the interface dump, nothing else declared', () => {

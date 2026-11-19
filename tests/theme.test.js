@@ -568,10 +568,11 @@ test('Customize: the theme, the template and the dashboard keep the same chart s
 	const form = /const VIEW_LAYOUT = (\/.*\/);/.exec(src)[1];
 	assert.ok(header.includes(`const form = ${form};`) && header.includes('match(v, form)'), 'the template reads what the theme writes');
 	const re = new Function('return ' + form)();
-	/* every tile of every default layout, shown and hidden, fits the form and comes back */
+	/* every tile of every default layout, shown and hidden, fits the form and comes back:
+	   without and with the WireGuard tile (all eight tiles is as many as the form takes) */
 	for (const tier of [ 'wide', 'mid', 'narrow' ]) for (const wired of [ false, true ]) {
-		for (const hide of [ false, true ]) {
-			const list = layout.compact(layout.defaults(tier, wired).map(e => Object.assign({}, e, { hide })));
+		for (const hide of [ false, true ]) for (const wg of [ false, true ]) {
+			const list = layout.compact(layout.defaults(tier, wired, wg).map(e => Object.assign({}, e, { hide })));
 			const text = layout.encode(list);
 			assert.match(text, re, text);
 			const k = layout.key(tier, wired), opt = layout.option(k);
@@ -582,6 +583,8 @@ test('Customize: the theme, the template and the dashboard keep the same chart s
 	}
 	/* the longest tile name still fits */
 	for (const id of layout.TILES) assert.match(`${id}:0:1`, re, id);
+	assert.equal(layout.defaults('wide', false, true).length, layout.TILES.length);
+	assert.doesNotMatch(layout.encode(layout.defaults('wide', false, true)) + ' hero:0:1', re, 'a ninth entry is no layout');
 	/* a failed save can be done again: only one under way stops a repeat */
 	assert.match(src, /pending\[name\] === value && !failed\[name\]/);
 	assert.match(src, /'click', \(\) => \{ if \(input\.checked && \(this\.lookFailed \|\| \{\}\)\[look\]\) set\(o\[0\]\)/);

@@ -1403,6 +1403,32 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-ssid-n { font-size: var(--vt-fs-lg); font-weight: var(--vt-fw-bold); line-height: 1.1; }
 .vt-app .vt-ssid-idle .vt-ssid-n { color: var(--vt-text-3); }
 
+/* WireGuard: a block per tunnel; its peers a row each, side by side
+   where the tile is wide enough for two */
+.vt-app .vt-wg { display: flex; flex-direction: column; gap: var(--vt-sp-3); }
+.vt-app .vt-wg-tun { display: flex; flex-direction: column; gap: var(--vt-sp-1); min-width: 0; }
+.vt-app .vt-wg-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
+.vt-app .vt-wg-name { font-weight: var(--vt-fw-semibold); }
+.vt-app .vt-wg-peers { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 0 var(--vt-sp-5); }
+.vt-app .vt-wg-peer { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px 0; }
+.vt-app .vt-wg-peer .vt-status { margin: 0; flex: none; }
+.vt-app .vt-wg-main, .vt-app .vt-wg-side { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vt-app .vt-wg-main { flex: 1; }
+.vt-app .vt-wg-side { flex: none; align-items: flex-end; }
+.vt-app .vt-wg-peer-name, .vt-app .vt-wg-ep { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vt-app .vt-wg-peer-name { font-weight: var(--vt-fw-semibold); line-height: 1.3; }
+.vt-app .vt-wg-ep { font-size: var(--vt-fs-sm); color: var(--vt-text-3); }
+.vt-app .vt-wg-rate { font-size: var(--vt-fs-sm); font-weight: var(--vt-fw-semibold); white-space: nowrap; }
+/* a peer without a session now: there, but quieter */
+.vt-app .vt-wg-away .vt-wg-peer-name { color: var(--vt-text-2); }
+.vt-app .vt-wg-away .vt-wg-rate { color: var(--vt-text-3); font-weight: var(--vt-fw-medium); }
+.vt-app .vt-wg-more {
+	align-self: flex-start; display: inline-flex; align-items: center; margin: 0 0 0 -8px; padding: 4px 8px;
+	border: 0; border-radius: var(--vt-r-sm); background: transparent; box-shadow: none; min-width: 0;
+	color: var(--vt-accent-text); font-size: var(--vt-fs-sm); font-weight: var(--vt-fw-semibold); cursor: pointer;
+}
+.vt-app .vt-wg-more:hover { background: var(--vt-hover); color: var(--vt-text); }
+
 /* ------------------------------------------------------------ 11. drawer */
 
 .vt-app .vt-drawer-back {
@@ -1666,6 +1692,7 @@ html[data-darkmode="true"] .vt-app {
 	.vt-app .vt-filter .vt-filter-input, .vt-app .vt-rename .vt-rename-input { font-size: 16px; }
 	/* menu items are touch targets, as the theme's dropdown choices */
 	.vt-app .vt-fmenu-item, .vt-app .vt-select option { min-height: var(--vt-ctl); }
+	.vt-app .vt-wg-more { min-height: var(--vt-ctl); }
 }
 
 @media (prefers-reduced-motion: reduce) {

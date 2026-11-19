@@ -385,6 +385,45 @@ text around it so it looks the same size.
   pipe on the line it leaves by, and is not a line of its own. PPPoE counts
   on the port under the session, since flow offloading takes downloads past
   the session's own counters; lines sharing a port keep their own.
+- **WireGuard tile** (#129): where the device has a WireGuard tunnel, a
+  tile lists each tunnel (interface, UDP listen port, number of peers)
+  with its peers: the peer's description from the configuration, else
+  its public key shortened as LuCI shortens it (a key is never on the
+  page whole), its endpoint, the time since its last handshake, and its
+  traffic between two answers, ↓ what this device received from the peer
+  and ↑ what it sent to it, as the tunnel's own counters run and the
+  network path shows a tunnel. A handshake at most 180 s old is a
+  session now, marked with a dot: WireGuard makes a new one two minutes
+  after the last while traffic flows (Rekey-After-Time, 120 s) and uses
+  no session key older than three (Reject-After-Time, 180 s). A peer
+  past that, or without a handshake, is shown quieter and never as a
+  warning: a peer that is away is no fault. Peers with a session come
+  first, in name order (not by the second of their handshake: each
+  makes a new one every two minutes, and the rows would change places
+  as they do, see #132), then the others, the latest handshake first,
+  then those without one; a tunnel lists five and folds the rest behind
+  "+n more". The age is counted by the browser's clock, as LuCI's own
+  page counts it. The data is LuCI's own `luci.wireguard getWgInstances`
+  (`luci-proto-wireguard`: `wg show all dump` by interface, without
+  private or preshared keys), checked again by the view: types and
+  ranges, at most 8 tunnels with 128 peers and 8 allowed IPs each, text
+  made safe. The dashboard's ACL grants nothing for it. The view asks
+  rpcd once a page whether the login holds LuCI's group
+  `luci-proto-wireguard`, and only then calls, with the slow part of the
+  poll (every poll; every 30 s on a Low-power router). Any other login
+  (one limited to the dashboard's read group), and a device without the
+  package, makes no call and has no tile. Where the first answer says
+  the call is not there (no such object, access denied) it is not asked
+  again on that page; an object that goes away later is asked for once
+  a minute. LuCI's plugin runs `wg`, and looks up the host name of each
+  peer configured by name, on every call and inside rpcd: after an
+  answer that took over a second the next call waits ten times as long,
+  a minute at most, with the last answer shown until then. The tile
+  exists once a tunnel was seen and then stays for the session (an
+  interface restarted is gone for a poll), saying so when none is
+  reported. Its layout is the others': the same stored layouts as
+  before, and one that does not mention the tile gets it where the
+  default has it (two columns wide under Clients on a wide screen).
 - **Throughput chart**: one row per line, then each radio, each
   with its own scale. Under "Customize", the viewer picks how download and
   upload share a row: overlaid on one scale (the default), overlaid on a
@@ -554,7 +593,10 @@ text around it so it looks the same size.
   changes `firewall`; it reads that config with `uci get` (and the
   interfaces with `network.interface dump`, which LuCI's
   luci-base-network-status group grants) and the app's groups grant
-  nothing for it.
+  nothing for it. Likewise the WireGuard tile's `luci.wireguard
+  getWgInstances`: LuCI's `luci-proto-wireguard` group grants it, the
+  app's groups do not, and the view declares that one method of the
+  object, without parameters.
 - rpcd ucode plugin `luci.vantage` (`/usr/share/rpcd/ucode/luci.vantage`):
   `wireless` returns `network.wireless status` reduced to the fields the
   view reads (no `key`, `sae_password`, RADIUS or 802.11r secrets, no EAP

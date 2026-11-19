@@ -2051,8 +2051,9 @@ async function collectorPolls(fn) {
 		c.asked++;
 		return c.answer ? c.answer() : new Promise((resolve, reject) => { c.calls.push({ resolve, reject }); });
 	};
-	/* c.may: whether the login has the add-on's read group (rpcd answers false for a group that is not there) */
-	REPLIES['session access'] = (scope, object, fn) => { c.probed++; return Promise.resolve(scope === 'access-group' && object === 'luci-app-vantage-aps-view' && fn === 'read' && c.may); };
+	/* c.may: whether the login has the add-on's read group (rpcd answers false for a group that is not there);
+	   c.probed: the questions about that group (LuCI's WireGuard group is asked about too, once: its own tests) */
+	REPLIES['session access'] = (scope, object, fn) => { if (object === 'luci-app-vantage-aps-view') c.probed++; return Promise.resolve(scope === 'access-group' && object === 'luci-app-vantage-aps-view' && fn === 'read' && c.may); };
 	c.self = Object.create(view);
 	/* a poll started now: [ its result once it has one, else null ] */
 	c.poll = () => { const box = [ null ]; c.self.fetch().then(r => { box[0] = r; }, e => { box[0] = e; }); return box; };
@@ -2421,3 +2422,362 @@ test('search: what the dashboard hands over is what the theme\'s palette takes, 
 	assert.ok(list[0].detail.endsWith('…') && Array.from(list[0].detail).length === 64, 'a long second text is cut');
 	assert.ok(list[0].words.length <= 512);
 });
+
+/* ---------------------------------------------------- WireGuard tile (#129) */
+
+/* keys in a WireGuard key's form; a peer as LuCI's plugin lists one (numbers as text) */
+const wgKey = c => c.repeat(43) + '=';
+const wgPeer = (c, name, extra) => Object.assign({ name, public_key: wgKey(c), endpoint: '198.51.100.20:40321', allowed_ips: [ '192.0.2.200/32' ],
+	latest_handshake: '0', transfer_rx: '0', transfer_tx: '0', persistent_keepalive: 'off' }, extra);
+const wgReply = peers => ({ wg0: { name: 'wg0', public_key: wgKey('Z'), listen_port: '51820', fwmark: 'off', peers } });
+const WG_GONE = 'RPC call to luci.wireguard/getWgInstances failed with error -32000: Object not found';
+const WG_DENIED = 'RPC call to luci.wireguard/getWgInstances failed with error -32002: Access denied';
+
+/* fetch() with LuCI's WireGuard call stubbed. c.may: the login holds LuCI's group for it; c.answer: what the call
+   answers; c.took: how long the next answer takes; c.poll(ms): a poll ms later, its raw.wg */
+async function wgPolls(fn) {
+	const saved = { L: global.L, document: global.document, now: Date.now };
+	const c = { t: 1e12, low: false, may: true, probed: 0, access: 0, asked: 0, args: null, took: 0, answer: () => Promise.resolve({}) };
+	Date.now = () => c.t;
+	global.document = { hidden: false, documentElement: { getAttribute: k => k === 'data-vt-power' ? (c.low ? 'low' : null) : null } };
+	global.L = { resolveDefault: (p, d) => Promise.resolve(p).then(v => v == null ? d : v, () => d) };
+	REPLIES['luci.vantage wireless'] = () => Promise.resolve({});
+	REPLIES['luci.vantage thermal'] = () => Promise.resolve([]);
+	REPLIES['luci.vantage wired'] = () => Promise.resolve({ hosts: [] });
+	REPLIES['session access'] = (scope, object, f) => {
+		c.access++;
+		if (object === 'luci-proto-wireguard') c.probed++;
+		return Promise.resolve(scope === 'access-group' && object === 'luci-proto-wireguard' && f === 'read' && c.may);
+	};
+	REPLIES['luci.wireguard getWgInstances'] = (...args) => { c.asked++; c.args = args; c.t += c.took; c.took = 0; return c.answer(); };
+	c.fresh = () => { c.self = Object.create(view); };
+	c.fresh();
+	c.poll = async ms => { c.t += ms || 0; return (await c.self.fetch()).wg; };
+	try { await fn(c); }
+	finally {
+		global.L = saved.L; Date.now = saved.now;
+		if (saved.document === undefined) delete global.document; else global.document = saved.document;
+		for (const k of Object.keys(REPLIES)) if (/^(luci\.vantage (wireless|thermal|wired)|luci\.wireguard|session access)/.test(k)) delete REPLIES[k];
+	}
+}
+
+/* every user of 1.0.x without luci-proto-wireguard, and a login that has the dashboard alone: rpcd says once that
+   the group is not theirs, and nothing else is ever asked */
+test('WireGuard: a login without LuCI\'s group for it never makes the call, and is asked about the group once', () => wgPolls(async c => {
+	c.may = false;
+	c.answer = () => Promise.resolve(wgReply([ wgPeer('A', 'phone') ]));
+	for (let i = 0; i < 30; i++) assert.equal(await c.poll(5e3), null, 'poll ' + i);
+	assert.deepEqual([ c.asked, c.probed ], [ 0, 1 ]);
+	/* the question itself: that group's read side, as the dashboard asks about its own */
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.match(src, /callAccess\('access-group', 'luci-proto-wireguard', 'read'\)/);
+	/* and a session that cannot be asked (the call fails) is a no */
+	c.fresh();
+	REPLIES['session access'] = () => Promise.reject(new Error('XHR request timed out'));
+	for (let i = 0; i < 3; i++) assert.equal(await c.poll(5e3), null);
+	assert.equal(c.asked, 0);
+}));
+
+test('WireGuard: asked with the slow poll, without arguments; the answer and when it came in; between slow polls the last one', () => wgPolls(async c => {
+	const reply = wgReply([ wgPeer('A', 'phone') ]), next = wgReply([]);
+	c.answer = () => Promise.resolve(reply);
+	const a = await c.poll(0);
+	assert.deepEqual(a, { reply, at: 1e12 });
+	assert.deepEqual([ c.asked, c.args, c.probed ], [ 1, [], 1 ]);
+	c.answer = () => Promise.resolve(next);
+	assert.deepEqual(await c.poll(5e3), { reply: next, at: 1e12 + 5e3 }, 'every poll is a slow one');
+	assert.deepEqual([ c.asked, c.probed ], [ 2, 1 ], 'the group is asked about once a page');
+	/* Low-power router: with the Wi-Fi state and the wired hosts, once every 30 s */
+	c.low = true;
+	const first = await c.poll(30e3);
+	c.answer = () => Promise.resolve(reply);
+	for (let i = 0; i < 5; i++) assert.equal(await c.poll(5e3), first, 'the same answer, with the time it came in');
+	assert.equal(c.asked, 3);
+	assert.deepEqual(await c.poll(5e3), { reply, at: c.t });
+	assert.equal(c.asked, 4);
+	/* its declaration: LuCI's own object and method, no parameters, a failed call rejected */
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.ok(src.includes("var callWireguard = rpc.declare({ object: 'luci.wireguard', method: 'getWgInstances', expect: { '': {} }, reject: true });"));
+}));
+
+test('WireGuard: where the first answer says the call is not there, it is never asked again on this page', () => wgPolls(async c => {
+	for (const text of [ WG_GONE, WG_DENIED, 'RPC call to luci.wireguard/getWgInstances failed with ubus code 3: Method not found',
+		'RPC call to luci.wireguard/getWgInstances failed with ubus code 4: Resource not found', 'RPC call to luci.wireguard/getWgInstances failed with ubus code 6: Permission denied' ]) {
+		c.fresh();
+		const asked = c.asked;
+		c.answer = () => Promise.reject(new Error(text));
+		for (let i = 0; i < 12; i++) assert.equal(await c.poll(5e3), null, text);
+		/* not after a minute, not after an hour, and not when it would answer */
+		c.answer = () => Promise.resolve(wgReply([ wgPeer('A', 'phone') ]));
+		assert.equal(await c.poll(3600e3), null);
+		assert.equal(c.asked, asked + 1, text);
+	}
+	/* a failure that says nothing about the call (no answer, a broken one) is asked again at the next poll */
+	for (const fail of [ () => Promise.reject(new Error('XHR request timed out')), () => Promise.reject(new Error('RPC call to luci.wireguard/getWgInstances failed with ubus code 7: Request timeout')),
+		() => Promise.reject(new Error('RPC call to luci.wireguard/getWgInstances failed with error -32003: ubus request timed out')), () => Promise.reject(null),
+		() => Promise.resolve('x'), () => Promise.resolve([ 1 ]), () => Promise.resolve(null) ]) {
+		c.fresh();
+		const asked = c.asked, reply = wgReply([]);
+		c.answer = fail;
+		assert.equal(await c.poll(5e3), null);
+		assert.equal(await c.poll(5e3), null);
+		c.answer = () => Promise.resolve(reply);
+		assert.deepEqual(await c.poll(5e3), { reply, at: c.t });
+		assert.equal(c.asked, asked + 3);
+	}
+}));
+
+test('WireGuard: an object that went away under an open page is asked for again after a minute; an answer that took long, after ten times as long', () => wgPolls(async c => {
+	const reply = wgReply([ wgPeer('A', 'phone') ]);
+	c.answer = () => Promise.resolve(reply);
+	assert.deepEqual(await c.poll(0), { reply, at: c.t });
+	/* rpcd restarted, the package removed: none now, and one question a minute */
+	c.answer = () => Promise.reject(new Error(WG_GONE));
+	assert.equal(await c.poll(5e3), null);
+	for (let i = 0; i < 11; i++) assert.equal(await c.poll(5e3), null, 'poll ' + i);
+	assert.equal(c.asked, 2, 'not asked again within the minute');
+	c.answer = () => Promise.resolve(reply);
+	assert.deepEqual(await c.poll(5e3), { reply, at: c.t }, 'and back when it is');
+	assert.equal(c.asked, 3);
+
+	/* an answer after 3 s (the router looked a peer's name up): the next question 30 s on, that answer until then */
+	c.took = 3000;
+	const slow = await c.poll(5e3);
+	assert.deepEqual(slow, { reply, at: c.t });
+	for (let i = 0; i < 5; i++) assert.equal(await c.poll(5e3), slow, 'poll ' + i + ': the same answer, no new question');
+	assert.equal(c.asked, 4);
+	assert.deepEqual(await c.poll(5e3), { reply, at: c.t });
+	assert.equal(c.asked, 5, 'a quick answer: every poll again');
+	await c.poll(5e3);
+	assert.equal(c.asked, 6);
+
+	/* no answer after 20 s (LuCI gives the call up): none, and the next question a minute on at most */
+	c.took = 20000;
+	c.answer = () => Promise.reject(new Error('XHR request timed out'));
+	assert.equal(await c.poll(5e3), null);
+	c.answer = () => Promise.resolve(reply);
+	for (let i = 0; i < 11; i++) assert.equal(await c.poll(5e3), null);
+	assert.equal(c.asked, 7);
+	assert.deepEqual(await c.poll(5e3), { reply, at: c.t });
+	/* the browser's clock stepped back during a wait: time gone, not a wait without end */
+	c.took = 3000;
+	await c.poll(5e3);
+	const asked = c.asked;
+	c.t -= 3600e3;
+	await c.poll(5e3);
+	assert.equal(c.asked, asked + 1);
+}));
+
+/* what a poll's answer becomes: this.st.wg, the rates, and whether the tile exists (m.wg) */
+function wgState(self, reply, at, now) {
+	const m = {};
+	self.noteTunnels(m, reply ? { reply, at } : null, now == null ? at : now);
+	return m;
+}
+
+test('WireGuard: no tile without a tunnel; a tunnel seen once keeps it for the session', () => {
+	const self = Object.create(view);
+	self.st = {};
+	for (const r of [ null, {}, { wg0: 'x' }, 'x' ]) {
+		assert.equal(wgState(self, r, 1e12).wg, false, JSON.stringify(r));
+		assert.deepEqual(self.st.wg, []);
+	}
+	assert.equal(wgState(self, wgReply([]), 1e12 + 5e3).wg, true, 'a tunnel without peers is a tunnel');
+	assert.deepEqual(self.st.wg.map(t => [ t.name, t.port, t.peers.length ]), [ [ 'wg0', 51820, 0 ] ]);
+	/* the interface restarted, a failed call: the tile stays, with nothing in it; no reshuffle for one poll */
+	assert.equal(wgState(self, {}, 1e12 + 10e3).wg, true);
+	assert.equal(wgState(self, null, 1e12 + 15e3).wg, true);
+	assert.deepEqual(self.st.wg, []);
+	/* a rebuild of the model (names resolved) keeps it, as it keeps the wired-only decision */
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.match(src, /this\.markWired\(m, null\);\n\t\tm\.wg = st\.wgSeen === true;/);
+});
+
+test('WireGuard: a peer\'s rates between two answers; the same answer again is no sample; a handshake\'s age by the poll\'s clock', () => {
+	const self = Object.create(view);
+	self.st = {};
+	const T = 1700000000, k = 'wg0 ' + wgKey('A');
+	const reply = (rx, tx) => wgReply([ wgPeer('A', 'phone', { latest_handshake: String(T - 40), transfer_rx: String(rx), transfer_tx: String(tx) }), wgPeer('B', 'tablet') ]);
+	wgState(self, reply(1000, 2000), T * 1000);
+	assert.deepEqual(Object.keys(self.st.wgRates || {}), [], 'one answer: no rate yet');
+	assert.deepEqual(self.st.wg[0].peers.map(p => [ p.label, p.state, p.age ]), [ [ 'phone', 'recent', 40 ], [ 'tablet', 'never', null ] ]);
+	const second = reply(1000 + 6250, 2000 + 625);
+	wgState(self, second, T * 1000 + 5000);
+	assert.deepEqual(self.st.wgRates[k], { rx: 10000, tx: 1000 }, 'bit/s over the 5 s between the answers');
+	assert.deepEqual(self.st.wgRates['wg0 ' + wgKey('B')], { rx: 0, tx: 0 });
+	/* Low-power router, a long answer: the polls in between get that answer again. No sample, the rates stand,
+	   and the age goes on counting */
+	for (let i = 1; i <= 5; i++) {
+		wgState(self, second, T * 1000 + 5000, T * 1000 + 5000 + i * 5000);
+		assert.deepEqual(self.st.wgRates[k], { rx: 10000, tx: 1000 }, 'poll ' + i);
+		assert.equal(self.st.wg[0].peers[0].age, 45 + i * 5);
+	}
+	/* 30 s after the second answer: the average since then */
+	wgState(self, reply(7250 + 3750, 2625), T * 1000 + 35000);
+	assert.deepEqual(self.st.wgRates[k], { rx: 1000, tx: 0 });
+	/* the session ran out meanwhile: the peer is away, by the same clock */
+	wgState(self, reply(11000, 2625), T * 1000 + 40000, (T + 141) * 1000);
+	assert.equal(self.st.wg[0].peers[0].state, 'stale');
+	/* no answer: no tunnels shown, and no rate across the gap */
+	wgState(self, null, T * 1000 + 45000);
+	assert.deepEqual([ self.st.wg, self.st.wgPrev && Object.keys(self.st.wgPrev) ], [ [], [] ]);
+	wgState(self, reply(99000, 99000), T * 1000 + 50000);
+	assert.deepEqual(Object.keys(self.st.wgRates), [], 'the first answer after it is a first sample again');
+});
+
+/* the small DOM above with what patch() reads of a node (its type, tag and attribute names) and text as nodes:
+   the tile is painted as a poll paints it, into what the last poll left */
+class PNode extends FNode {
+	get nodeType() { return 1; }
+	get tagName() { return this.tag.toUpperCase(); }
+	getAttributeNames() { return Object.keys(this.attrs); }
+	get firstChild() { return this.childNodes[0] || null; }
+	replaceChild(n, o) { this.childNodes[this.childNodes.indexOf(o)] = n; return o; }
+	/* by one class, below this node */
+	querySelectorAll(sel) { return this.all().slice(1).filter(n => n.classList.contains(sel.replace(/^\./, ''))); }
+	focus() { PNode.focused = this; }
+}
+function withPatchDom(fn) {
+	const text = s => ({ nodeType: 3, data: String(s), textContent: String(s), html() { return JSON.stringify(this.data); } });
+	const saved = { E: global.E, document: global.document, L: global.L };
+	global.E = (tag, attrs, children) => {
+		const n = new PNode(tag);
+		for (const [ k, v ] of Object.entries(attrs || {})) if (typeof v === 'function') n.on[k] = v; else if (v != null) n.setAttribute(k, v);
+		if (!Array.isArray(children)) { if (children != null) n.innerHTML = String(children); return n; }
+		for (const c of children) if (c instanceof FNode) n.appendChild(c); else if (c != null) n.childNodes.push(text(c));
+		return n;
+	};
+	global.document = { createElementNS: (ns, tag) => new PNode(tag), createTextNode: text };
+	global.L = { url: (...p) => '/cgi-bin/luci/' + p.join('/') };
+	try { return fn(); }
+	finally { for (const k of Object.keys(saved)) if (saved[k] === undefined) delete global[k]; else global[k] = saved[k]; }
+}
+
+const WG_T = 1700000000;
+/* a tile over what one poll's answer holds (reply), as of WG_T + after seconds */
+function wgTile(reply, after, self) {
+	self = self || Object.assign(Object.create(dview), { st: {}, ui: { wgOpen: Object.create(null) }, el: { wg: new PNode('div') }, held: { wg: { h: 300, since: null }, sys: { h: 500, since: null } } });
+	self.m = wgState(self, reply, (WG_T + (after || 0)) * 1000);
+	self.paintWireguard();
+	return self;
+}
+const wgRows = self => self.el.wg.find('vt-wg-peer').map(r => ({
+	name: r.find('vt-wg-peer-name')[0].textContent, endpoint: r.find('vt-wg-ep')[0].textContent, rate: r.find('vt-wg-rate')[0].textContent,
+	when: r.find('vt-wg-side')[0].children[1].textContent, dot: r.find('vt-status')[0].getAttribute('class'), away: r.classList.contains('vt-wg-away'), title: r.getAttribute('title')
+}));
+/* seven peers: three with a session, two whose last handshake is old, two without one (one of them unnamed) */
+const WG_SEVEN = () => wgReply([
+	wgPeer('A', 'never came', { endpoint: '(none)', allowed_ips: [] }),
+	wgPeer('B', 'tablet', { latest_handshake: String(WG_T - 100), transfer_rx: '5000', transfer_tx: '9000' }),
+	wgPeer('C', 'an hour ago', { latest_handshake: String(WG_T - 3600), endpoint: '203.0.113.9:51820' }),
+	wgPeer('D', 'Laptop', { latest_handshake: String(WG_T - 5), endpoint: '[2001:db8::7]:51820', allowed_ips: [ '192.0.2.201/32', '2001:db8:2::201/128' ] }),
+	wgPeer('E', 'days ago', { latest_handshake: String(WG_T - 3 * 86400 - 2 * 3600) }),
+	wgPeer('F', undefined, { endpoint: '(none)', allowed_ips: [] }),
+	wgPeer('G', 'phone', { latest_handshake: String(WG_T - 47) })
+]);
+
+test('WireGuard tile: nothing is painted without a tunnel; with one, the tunnel\'s name, port and peers', () => withPatchDom(() => {
+	const none = wgTile(null);
+	assert.equal(none.m.wg, false);
+	assert.deepEqual(none.el.wg.childNodes, [], 'no tunnel: the tile is off (vantage.layout) and stays empty');
+	assert.deepEqual(wgTile({}).el.wg.childNodes, []);
+
+	const self = wgTile(WG_SEVEN());
+	assert.equal(self.m.wg, true);
+	const tuns = self.el.wg.find('vt-wg-tun');
+	assert.equal(tuns.length, 1);
+	assert.deepEqual(tuns[0].find('vt-wg-head')[0].children.map(n => n.textContent), [ 'wg0', 'UDP port 51820 · 7 peers' ]);
+	/* those with a session first, by name; then the latest handshake first; five until the rest is opened */
+	const rows = wgRows(self);
+	assert.deepEqual(rows.map(r => r.name), [ 'Laptop', 'phone', 'tablet', 'an hour ago', 'days ago' ]);
+	assert.deepEqual(rows.map(r => r.when), [ 'Handshake 5 s ago', 'Handshake 47 s ago', 'Handshake 1 min ago', 'Handshake 1 h ago', 'Handshake 3d 2h ago' ]);
+	assert.deepEqual(rows.map(r => [ r.dot, r.away ]), [ [ 'vt-status vt-status-ok', false ], [ 'vt-status vt-status-ok', false ], [ 'vt-status vt-status-ok', false ],
+		[ 'vt-status vt-status-off', true ], [ 'vt-status vt-status-off', true ] ], 'a dot for a session now, grey without: never a warning');
+	assert.deepEqual(rows.map(r => r.endpoint), [ '[2001:db8::7]:51820', '198.51.100.20:40321', '198.51.100.20:40321', '203.0.113.9:51820', '198.51.100.20:40321' ]);
+	assert.deepEqual(rows.map(r => r.rate), [ '—', '—', '—', '—', '—' ], 'no rate from one answer');
+	assert.equal(rows[0].title, 'Laptop\nPublic key DDDDD…DDDDD=\n[2001:db8::7]:51820\nAllowed IPs: 192.0.2.201/32, 2001:db8:2::201/128');
+	const more = self.el.wg.find('vt-wg-more');
+	assert.deepEqual(more.map(b => [ b.tag, b.textContent, b.getAttribute('aria-expanded'), b.getAttribute('data-tunnel') ]), [ [ 'button', '+2 more', 'false', 'wg0' ] ]);
+
+	/* the next answer, 5 s on: rates, ↓ what this device received from the peer and ↑ what it sent */
+	const next = WG_SEVEN();
+	Object.assign(next.wg0.peers[1], { transfer_rx: String(5000 + 6250), transfer_tx: String(9000 + 625000) });
+	wgTile(next, 5, self);
+	const tablet = wgRows(self)[2], rate = self.el.wg.find('vt-wg-rate')[2];
+	assert.deepEqual([ tablet.name, tablet.rate, rate.getAttribute('title') ], [ 'tablet', '↓ 10.0 kbit/s  ↑ 1 Mbit/s', 'Received 10.0 kbit/s, sent 1 Mbit/s' ]);
+	assert.equal(wgRows(self)[0].rate, 'idle');
+
+	/* a public key is on the page only as the model shortened it */
+	const html = self.el.wg.html();
+	for (const c of 'ABCDEFGZ') assert.ok(!html.includes(c.repeat(8)), 'the key of ' + c);
+	assert.ok(html.includes('DDDDD…DDDDD='));
+}));
+
+test('WireGuard tile: "+n more" opens a tunnel\'s other peers and "Show fewer" folds them; a poll keeps the choice', () => withPatchDom(() => {
+	const two = () => Object.assign(WG_SEVEN(), { wg1: { listen_port: '51821', peers: Array.from('HIJKLMNO', (c, i) => wgPeer(c, 'site ' + i, { latest_handshake: String(WG_T - 10 * i - 1) })) } });
+	const self = wgTile(two());
+	assert.deepEqual(self.el.wg.find('vt-wg-tun').map(t => t.find('vt-wg-peer').length), [ 5, 5 ]);
+	const [ b0, b1 ] = self.el.wg.find('vt-wg-more');
+	assert.deepEqual([ b0.textContent, b1.textContent ], [ '+2 more', '+3 more' ]);
+	/* the handler finds its tunnel on the button the click came from: a poll keeps the button (patch) */
+	b0.on.click({ currentTarget: b0 });
+	assert.deepEqual(self.el.wg.find('vt-wg-tun').map(t => t.find('vt-wg-peer').length), [ 7, 5 ], 'that tunnel only');
+	assert.deepEqual(wgRows(self).slice(5, 7).map(r => [ r.name, r.endpoint, r.when, r.title ]), [
+		[ 'FFFFF…FFFFF=', '—', 'No handshake yet', 'FFFFF…FFFFF=' ], [ 'never came', '—', 'No handshake yet', 'never came\nPublic key AAAAA…AAAAA=' ]
+	], 'a peer without a description goes by its shortened key; one that never came has no endpoint');
+	const open = self.el.wg.find('vt-wg-more')[0];
+	assert.deepEqual([ open.textContent, open.getAttribute('aria-expanded') ], [ 'Show fewer', 'true' ]);
+	assert.ok(open !== b0 && PNode.focused === open, 'the button was built anew, and the keyboard is on the new one');
+	assert.deepEqual(Object.keys(self.held), [ 'sys' ], 'the tile shows its new height at once, the others keep their hold');
+	/* polls go on: open stays open */
+	wgTile(two(), 5, self);
+	wgTile(two(), 10, self);
+	assert.deepEqual(self.el.wg.find('vt-wg-tun').map(t => t.find('vt-wg-peer').length), [ 7, 5 ]);
+	const again = self.el.wg.find('vt-wg-more')[0];
+	assert.equal(again, open, 'a poll keeps the button it finds');
+	again.on.click({ currentTarget: again });
+	assert.deepEqual(self.el.wg.find('vt-wg-tun').map(t => t.find('vt-wg-peer').length), [ 5, 5 ]);
+	assert.deepEqual(self.el.wg.find('vt-wg-more').map(b => [ b.textContent, b.getAttribute('aria-expanded') ]), [ [ '+2 more', 'false' ], [ '+3 more', 'false' ] ]);
+	/* five or fewer: nothing to fold */
+	const few = wgTile(wgReply(Array.from('ABCDE', c => wgPeer(c, 'p' + c))));
+	assert.deepEqual([ few.el.wg.find('vt-wg-peer').length, few.el.wg.find('vt-wg-more').length ], [ 5, 0 ]);
+}));
+
+test('WireGuard tile: a tunnel gone or without peers says so in words; names and endpoints reach the page as text', () => withPatchDom(() => {
+	const self = wgTile(wgReply([ wgPeer('A', '<img src=x onerror=alert(1)>', { latest_handshake: String(WG_T - 1), endpoint: 'javascript:alert(1)' }),
+		wgPeer('B', 'x‮y', { endpoint: '<b>' }) ]));
+	const rows = wgRows(self);
+	assert.deepEqual(rows.map(r => [ r.name, r.endpoint ]), [ [ '<img src=x onerror=alert(1)>', '—' ], [ 'x�y', '—' ] ], 'what is no endpoint is none');
+	const nodes = self.el.wg.all();
+	assert.ok(nodes.every(n => n.innerHTML === undefined), 'no markup from data');
+	assert.ok(nodes.every(n => !Object.keys(n.attrs).some(a => /^(on|href|src|style)/.test(a))), 'no handler, link or style from data');
+	assert.deepEqual(nodes.filter(n => Object.keys(n.on).length).map(n => [ n.tag, Object.keys(n.on) ]), [], 'two peers: nothing to click');
+	/* the interface went down (or the call failed): the tile stays for the session and says so */
+	wgTile({}, 5, self);
+	assert.deepEqual(self.el.wg.children.map(n => [ n.tag, n.getAttribute('class'), n.textContent ]), [ [ 'p', 'vt-empty-inline', 'No WireGuard tunnel is reported right now.' ] ]);
+	wgTile(null, 10, self);
+	assert.equal(self.el.wg.textContent, 'No WireGuard tunnel is reported right now.');
+	/* and back; a tunnel nobody is configured on */
+	wgTile(Object.assign(wgReply([]), { wg1: { listen_port: 'x', peers: [ wgPeer('C', 'only', { latest_handshake: String(WG_T - 2 * 86400) }) ] } }), 15, self);
+	assert.deepEqual(self.el.wg.find('vt-wg-tun').map(t => [ t.find('vt-wg-head')[0].children.map(n => n.textContent), t.find('vt-wg-peer').length, t.find('vt-empty-inline').map(n => n.textContent) ]), [
+		[ [ 'wg0', 'UDP port 51820 · 0 peers' ], 0, [ 'No peers configured.' ] ], [ [ 'wg1', '1 peer' ], 1, [] ]
+	]);
+	assert.equal(wgRows(self)[0].when, 'Handshake 2d 0h ago');
+}));
+
+test('WireGuard tile: built once like any tile, named for Customize, its link LuCI\'s own status page', () => withPatchDom(() => {
+	const self = Object.assign(Object.create(dview), { el: {} });
+	const tile = self.buildWireguard();
+	assert.deepEqual([ tile.tag, tile.getAttribute('class'), tile.getAttribute('aria-label') ], [ 'section', 'vt-tile vt-wg-tile', 'WireGuard' ]);
+	assert.equal(tile.find('vt-tile-title')[0].textContent, 'WireGuard');
+	assert.deepEqual(tile.find('vt-link').map(a => [ a.getAttribute('href'), a.textContent ]), [ [ '/cgi-bin/luci/admin/status/wireguard', 'Status' ] ]);
+	assert.equal(tile.children[1], self.el.wg);
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.match(src, /ssids: this\.buildSsids\(\), wg: this\.buildWireguard\(\)\n/);
+	assert.match(src, /ssids: _\('Wireless networks', 'vantage'\), wg: _\('WireGuard'\)\n/);
+	/* painted with the other tiles, after the device's own */
+	assert.match(src, /this\.paintSsids\(\);\n\t\tthis\.paintWireguard\(\);\n/);
+	/* the layout is told whether a tunnel was seen, and stores under the same keys as before */
+	assert.match(src, /wired = !!this\.m\.wired, wg = !!this\.m\.wg;\n\t\tvar list = this\.drag \? this\.drag\.list : this\.layoutFor\(tier, wired, wg\);/);
+	assert.match(src, /layout\.same\(list, layout\.defaults\(l\.tier, l\.wired, l\.wg\)\)/);
+}));

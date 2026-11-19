@@ -1789,3 +1789,123 @@ test('build: an access point\'s stations take their addresses from any of this d
 	assert.deepEqual(was.ips, [ '203.0.113.31' ], 'on a bridge without a network of its own: the uplink\'s subnet, as 1.0.20 has it');
 	assert.deepEqual([ now.ips, now.name, now.secondary, now.ap.id ], [ was.ips, was.name, was.secondary, AP1 ]);
 });
+
+/* ------------------------------------------------------------ WireGuard */
+
+/* keys in a WireGuard key's form: 43 base64 characters and '=' */
+const wgKey = c => c.repeat(43) + '=';
+/* a peer as luci.wireguard getWgInstances gives one: `wg show all dump` split by tabs, so numbers are text */
+const wgPeer = (c, extra) => Object.assign({ name: 'peer ' + c, public_key: wgKey(c), endpoint: '198.51.100.20:40321', allowed_ips: [ '192.0.2.200/32' ],
+	latest_handshake: '1700000000', transfer_rx: '1000', transfer_tx: '2000', persistent_keepalive: 'off' }, extra);
+const WG_NOW = 1700000100;
+
+test('wireguard: a reply as LuCI\'s plugin gives it: tunnels by name, numbers from text, the key only shortened', () => {
+	const t = model.wireguard({
+		wg1: { name: 'wg1', public_key: wgKey('Z'), listen_port: '51821', fwmark: 'off', peers: [] },
+		wg0: { name: 'wg0', public_key: wgKey('Y'), listen_port: '51820', fwmark: '0x1', peers: [
+			wgPeer('A', { name: ' phone ', allowed_ips: [ '192.0.2.200/32', '2001:db8:2::200/128' ], persistent_keepalive: '25' }),
+			wgPeer('B', { name: undefined, endpoint: '(none)', allowed_ips: [], latest_handshake: '0', transfer_rx: '0', transfer_tx: '0' }),
+			wgPeer('C', { name: null, endpoint: '[2001:db8::7]:51820' })
+		] }
+	}, WG_NOW);
+	assert.deepEqual(t.map(x => [ x.name, x.port, x.peers.length ]), [ [ 'wg0', 51820, 3 ], [ 'wg1', 51821, 0 ] ]);
+	/* the two with a session by label, then the one without a handshake */
+	const [ c, a, b ] = t[0].peers;
+	assert.deepEqual(a, { id: wgKey('A'), key: 'AAAAA…AAAAA=', name: 'phone', label: 'phone', endpoint: '198.51.100.20:40321',
+		allowed: [ '192.0.2.200/32', '2001:db8:2::200/128' ], handshake: 1700000000, age: 100, state: 'recent', rx: 1000, tx: 2000, keepalive: 25 });
+	assert.deepEqual([ c.name, c.label, c.endpoint, c.keepalive ], [ '', 'CCCCC…CCCCC=', '[2001:db8::7]:51820', null ], 'no description: the shortened key is its label');
+	assert.deepEqual([ b.label, b.endpoint, b.allowed, b.handshake, b.age, b.state, b.rx, b.tx ], [ 'BBBBB…BBBBB=', null, [], 0, null, 'never', 0, 0 ]);
+	/* numbers as numbers too (a stand-in, another version of the plugin) */
+	const n = model.wireguard({ wg0: { listen_port: 51820, peers: [ wgPeer('A', { latest_handshake: 1700000000, transfer_rx: 5, transfer_tx: 7, persistent_keepalive: 25 }) ] } }, WG_NOW + 0.75);
+	assert.deepEqual([ n[0].port, n[0].peers[0].handshake, n[0].peers[0].rx, n[0].peers[0].tx, n[0].peers[0].keepalive ], [ 51820, 1700000000, 5, 7, 25 ]);
+	assert.equal(n[0].peers[0].age, 100, 'whole seconds, whatever the clock\'s fraction');
+	/* the whole key is the peer's id and nowhere else */
+	for (const p of t[0].peers) assert.ok(!JSON.stringify(Object.assign({}, p, { id: '' })).includes(p.id), p.label);
+});
+
+test('wireguard: no reply, junk and half a reply are no tunnels or less of one, never an error', () => {
+	for (const r of [ undefined, null, 'x', 7, [], [ { name: 'wg0', peers: [] } ], {}, { wg0: 1, wg1: 'up', wg2: null, wg3: [], wg4: {} } ])
+		assert.deepEqual(model.wireguard(r, WG_NOW), [], JSON.stringify(r));
+	const t = model.wireguard({
+		'bad name': { peers: [ wgPeer('A') ] }, [ 'a'.repeat(16) ]: { peers: [ wgPeer('A') ] }, '': { peers: [ wgPeer('A') ] },
+		wg9: 'x', wg8: null, wg7: { listen_port: 'x', peers: 'x' }, wg6: { listen_port: '0', peers: [ null, 7, 'x', [], {} ] }, wg5: { listen_port: '65536' },
+		wg0: { listen_port: '51820', peers: [
+			wgPeer('A'), wgPeer('A', { name: 'the same key again' }),
+			wgPeer('B', { public_key: 'B'.repeat(44) }), wgPeer('C', { public_key: wgKey('C') + '\n' }), wgPeer('D', { public_key: [ wgKey('D') ] }), wgPeer('E', { public_key: 'E'.repeat(42) + '=' }),
+			wgPeer('F', { name: 'Evil‮name', endpoint: 'http://example.com/ x', allowed_ips: [ '192.0.2.1/32', '(none)', 7, null, 'a b/24', '192.0.2.0/24<', '2001:db8::/32' ],
+				latest_handshake: '-5', transfer_rx: '1e9', transfer_tx: -1, persistent_keepalive: '70000' }),
+			wgPeer('G', { name: 'n'.repeat(80), endpoint: 7, allowed_ips: 'x', latest_handshake: '17000000001700000000', transfer_rx: 1.5, transfer_tx: Infinity }),
+			wgPeer('H', { name: 7, latest_handshake: String(WG_NOW + 500) })
+		] }
+	}, WG_NOW);
+	assert.deepEqual(t.map(x => [ x.name, x.port, x.peers.length ]), [ [ 'wg0', 51820, 4 ], [ 'wg6', null, 0 ] ],
+		'a tunnel is a name an interface can have with a list of peers; a port that is none is none');
+	const by = Object.fromEntries(t[0].peers.map(p => [ p.id[0], p ]));
+	assert.deepEqual(Object.keys(by).sort(), [ 'A', 'F', 'G', 'H' ], 'a peer needs a key in a key\'s form, once');
+	assert.equal(by.A.name, 'peer A', 'the first of two with one key');
+	assert.deepEqual([ by.F.name, by.F.endpoint, by.F.allowed, by.F.handshake, by.F.state, by.F.rx, by.F.tx, by.F.keepalive ],
+		[ 'Evil�name', null, [ '192.0.2.1/32', '2001:db8::/32' ], 0, 'never', null, null, null ], 'text made safe; what is no address, time or count is none');
+	assert.deepEqual([ Array.from(by.G.name).length, by.G.name.slice(-1), by.G.endpoint, by.G.allowed, by.G.handshake, by.G.rx, by.G.tx ], [ 48, '…', null, [], 0, null, null ]);
+	assert.deepEqual([ by.H.name, by.H.label, by.H.age, by.H.state ], [ '', 'HHHHH…HHHHH=', 0, 'recent' ], 'a handshake ahead of this clock is now, not before');
+	/* without a clock nothing is recent */
+	assert.deepEqual(model.wireguard({ wg0: { peers: [ wgPeer('A') ] } }).map(x => x.peers.map(p => [ p.age, p.state ])), [ [ [ null, 'stale' ] ] ]);
+	/* a key that is also an object's own: a tunnel like any other, nothing of the prototype's */
+	assert.deepEqual(model.wireguard(JSON.parse('{"__proto__":{"peers":[]},"constructor":{"peers":[]}}'), WG_NOW).map(x => x.name), [ '__proto__', 'constructor' ]);
+});
+
+test('wireguard: caps: 8 tunnels, 128 peers each, 8 allowed IPs a peer', () => {
+	const b64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+	const key = n => b64[n >> 6 & 63] + b64[n & 63] + 'A'.repeat(41) + '=';
+	const reply = {};
+	for (let i = 0; i < 12; i++) reply['wg' + String(i).padStart(2, '0')] = { listen_port: String(51820 + i),
+		peers: Array.from({ length: 200 }, (x, k) => wgPeer('A', { public_key: key(k), allowed_ips: Array.from({ length: 20 }, (y, j) => '192.0.2.' + j + '/32') })) };
+	const t = model.wireguard(reply, WG_NOW);
+	assert.deepEqual(t.map(x => x.name), [ 'wg00', 'wg01', 'wg02', 'wg03', 'wg04', 'wg05', 'wg06', 'wg07' ]);
+	assert.ok(t.every(x => x.peers.length === 128 && x.peers.every(p => p.allowed.length === 8)));
+});
+
+test('wireguard: a peer is recent up to three minutes after its handshake, stale past that, never without one', () => {
+	assert.equal(model.WG_RECENT_S, 180, 'WireGuard uses no session key older than 180 s, and makes a new handshake after 120 s while traffic flows');
+	const at = ago => model.wireguard({ wg0: { peers: [ wgPeer('A', { latest_handshake: String(WG_NOW - ago) }) ] } }, WG_NOW)[0].peers[0];
+	assert.deepEqual([ 0, 119, 125, 180, 181, 3600, 30 * 86400 ].map(s => at(s).state), [ 'recent', 'recent', 'recent', 'recent', 'stale', 'stale', 'stale' ]);
+	assert.deepEqual([ at(47).age, at(181).age ], [ 47, 181 ]);
+	assert.equal(model.wireguard({ wg0: { peers: [ wgPeer('A', { latest_handshake: '0' }) ] } }, WG_NOW)[0].peers[0].state, 'never');
+});
+
+test('wireguard: peers with a session first, by name; then by their last handshake; then those without one', () => {
+	const order = (now, tablet) => model.wireguard({ wg0: { peers: [
+		wgPeer('A', { name: 'never, b', latest_handshake: '0' }),
+		wgPeer('B', { name: 'tablet', latest_handshake: String(tablet || WG_NOW - 110) }),
+		wgPeer('C', { name: 'an hour ago', latest_handshake: String(WG_NOW - 3600) }),
+		wgPeer('D', { name: 'Laptop', latest_handshake: String(WG_NOW - 5) }),
+		wgPeer('E', { name: 'days ago', latest_handshake: String(WG_NOW - 3 * 86400) }),
+		wgPeer('F', { name: undefined, latest_handshake: '0' }),
+		wgPeer('G', { name: 'phone', latest_handshake: String(WG_NOW - 60) })
+	] } }, now)[0].peers.map(p => p.label);
+	assert.deepEqual(order(WG_NOW), [ 'Laptop', 'phone', 'tablet', 'an hour ago', 'days ago', 'FFFFF…FFFFF=', 'never, b' ]);
+	/* the tablet makes its next handshake, the latest of all: nobody changes places for that */
+	assert.deepEqual(order(WG_NOW + 20, WG_NOW + 10).slice(0, 3), [ 'Laptop', 'phone', 'tablet' ]);
+	/* its session ran out instead: behind those that have one, ahead of older ones */
+	assert.deepEqual(order(WG_NOW + 100).slice(0, 4), [ 'Laptop', 'phone', 'tablet', 'an hour ago' ]);
+	assert.deepEqual(model.wireguard({ wg0: { peers: [ wgPeer('B', { latest_handshake: String(WG_NOW - 110) }) ] } }, WG_NOW + 100)[0].peers[0].state, 'stale');
+});
+
+test('wireguard: rates between two answers from the peers\' byte counters, as for any other counter', () => {
+	const counters = (rx, tx) => {
+		const out = {};
+		for (const t of model.wireguard({ wg0: { peers: [ wgPeer('A', { transfer_rx: String(rx), transfer_tx: String(tx) }), wgPeer('B', { transfer_rx: 'x' }) ] } }, WG_NOW))
+			for (const p of t.peers) if (p.rx != null && p.tx != null) out[t.name + ' ' + p.id] = { rx: p.rx, tx: p.tx };
+		return out;
+	};
+	const k = 'wg0 ' + wgKey('A');
+	const a = model.rates(null, counters(1000, 2000), 10000);
+	assert.deepEqual(Object.keys(a.next), [ k ], 'a peer without a count has no rate');
+	assert.deepEqual(Object.keys(a.rates), [], 'one answer is no rate');
+	const b = model.rates(a.next, counters(1000 + 5000, 2000 + 250), 15000);
+	assert.deepEqual(b.rates[k], { rx: 8000, tx: 400 }, 'bit/s: received from the peer, sent to it');
+	/* the same answer again (between slow polls): no sample, the base stays */
+	const same = model.rates(b.next, counters(6000, 2250), 15000);
+	assert.deepEqual([ Object.keys(same.rates), same.next[k] ], [ [], b.next[k] ]);
+	/* the interface restarted: its counters start over, no rate across that */
+	assert.deepEqual(Object.keys(model.rates(b.next, counters(10, 20), 20000).rates), []);
+});

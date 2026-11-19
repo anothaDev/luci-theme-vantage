@@ -58,8 +58,11 @@ add-on to it) plus offline tooling. No npm, no
    enforces this.
 6. **The ACL stays minimal and matches the code.** Every `rpc.declare` in
    the app must be granted in `luci-app-vantage.json`, and every grant must
-   be used (one call, `vantage.collector report`, is granted by the
-   add-on instead: see the end of this rule). The read group is read-only and never reads Wi-Fi keys
+   be used (two calls are granted elsewhere instead: `vantage.collector
+   report` by the add-on, see the end of this rule, and LuCI's own
+   `luci.wireguard getWgInstances` by `luci-proto-wireguard`, so that
+   only a login holding LuCI's group for it sees the WireGuard tile;
+   `test_acl_policy.js` pins both). The read group is read-only and never reads Wi-Fi keys
    (wireless data comes from the plugin's `wireless` method; LuCI's own
    groups, such as `luci-base-network-status`, can); reverse DNS
    sits in its own optional group (`luci-app-vantage-rdns`); the names

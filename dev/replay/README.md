@@ -8,7 +8,7 @@ Nothing is forwarded anywhere; there is no upstream.
         [--theme-dir <pkg>/htdocs/luci-static/<name>] [--theme <name>] \
         [--templates <pkg>/ucode/template] [--rootfs <device rootfs dump>] \
         [--app-dir <luci-app package dir>]... [--keep-uniwrt] [--no-synthetic] \
-        [--demo] [--wired | --big] [--multiwan] [--fullvpn] [--aps] [--lang <lang>] [--fixtures <dir>]...
+        [--demo] [--wired | --big] [--multiwan] [--fullvpn] [--aps] [--wg] [--lang <lang>] [--fixtures <dir>]...
 
 Open <http://127.0.0.1:8025/>. Any username/password logs in; the session
 lasts until the replay restarts (log in again after a restart).
@@ -270,6 +270,24 @@ none of the stand-in's networks and so without one.
 Without `--aps` the object is absent (uhttpd's "Object not found"), as on
 a device with none paired. Addresses and MACs are documentation values,
 names and SSIDs invented. Combine it with the other modes.
+
+## WireGuard tunnels (`--wg`)
+
+Answers `luci.wireguard getWgInstances` as luci-proto-wireguard's rpcd
+plugin does on a router with two tunnels, to work on the dashboard's
+WireGuard tile (`wg.js`): `wg0` with seven road-warrior peers (two with a
+session and traffic, one with a session and none, two whose last
+handshake is hours and days old, two that never made one, one of them
+without a description) and `wg1` with one site-to-site peer. The reply
+has the plugin's own form (`wg show all dump` split by tabs: numbers as
+text, `(none)` and `off` for nothing). Counters grow with the clock, and
+a peer with a session makes a handshake every two minutes. Without
+`--wg` the object is absent (uhttpd's "Object not found") and LuCI's
+group for it is not held, as on a device without luci-proto-wireguard,
+so the dashboard asks for nothing; a recording or a `--fixtures` plugin
+that has the object answers as before (`addons.sh`). Keys are hashes of
+a label, addresses documentation values, names invented. Combine it with
+the other modes.
 
 ## Translation preview (`--lang`)
 

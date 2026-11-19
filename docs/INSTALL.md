@@ -969,7 +969,9 @@ uci commit luci
   button. Names from reverse DNS need `luci-app-vantage-rdns` in the `read`
   list as well (see [Security notes](#security-notes) before you add it).
   The paired access points need `luci-app-vantage-aps-view` there (see
-  [Other access points](#other-access-points-optional)).
+  [Other access points](#other-access-points-optional)). The WireGuard
+  tile needs LuCI's own `luci-proto-wireguard` there, the group that
+  opens Status → WireGuard: Vantage grants nothing for it.
 - The dashboard's radios and SSIDs come from the app's rpcd plugin
   (`/usr/share/rpcd/ucode/luci.vantage`). If they are missing, check that
   `ubus list luci.vantage` shows the object; `/etc/init.d/rpcd reload`

@@ -19,6 +19,21 @@ open: access points without Dropbear; per-port traffic that a switch
 chip forwards without the kernel counting it; the collector under a user
 of its own instead of root; finding a moved access point over IPv6.
 
+### WireGuard tile (planned for 1.1)
+
+Each tunnel's peers with their name, the time since the last handshake
+and their traffic, shown only where a tunnel exists, as the Wi-Fi tiles
+need a radio
+([#129](https://github.com/anothaDev/luci-theme-vantage/issues/129)). In
+the tree for 1.1, from LuCI's own `luci.wireguard getWgInstances`
+(`luci-proto-wireguard`), which is read-only and returns no private or
+preshared keys: the plugin gets no new method and the dashboard's ACL no
+new grant. It shows for a login that holds LuCI's WireGuard group; one
+limited to the dashboard's read group does not get it (see the spec,
+"WireGuard tile"). Still open: what the call costs a router with many
+peers, or with peers configured by host name, which LuCI's plugin looks
+up on every call.
+
 ### Search for clients, radios and networks (Ctrl+K)
 
 The command palette searches pages only. The dashboard already knows every
@@ -96,14 +111,6 @@ loaded.
   `test_acl_policy.js` for this one call, and the app needs its own copy of
   the model (`vantage-theme/nftmodel.js`), since theme and app stay
   independent. Decide this before building the rpcd method.
-- **WireGuard tile:** each tunnel's peers with their name, the time since
-  the last handshake and their traffic, shown only where a tunnel exists
-  (as the Wi-Fi tiles need a radio). From LuCI's own `luci.wireguard
-  getWgInstances` (`luci-proto-wireguard`), which is read-only and
-  returns no private or preshared keys, so the plugin gets no new
-  method. To decide: show it only to logins that hold LuCI's WireGuard
-  group, or add that one read grant to the dashboard's group
-  ([#129](https://github.com/anothaDev/luci-theme-vantage/issues/129)).
 
 ## Upstream
 
