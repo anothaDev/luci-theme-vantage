@@ -20,8 +20,12 @@ const ROOTFS = process.env.VANTAGE_ROOTFS || path.join(ROOT, '../vantage-rootfs'
 const ready = fs.existsSync(MIRROR) && fs.existsSync(path.join(ROOTFS, 'usr/share/ucode/luci/template/view.ut'));
 const skip = !ready && 'no mirror or rootfs dump';
 
+/* from a place of this process's own in the range: two runs side by side
+   would both find the first free port free, and one would talk to the
+   other's server */
 async function freePort() {
-	for (let p = 8220; p <= 8239; p++) {
+	for (let i = 0; i < 20; i++) {
+		const p = 8220 + (process.pid + i) % 20;
 		const ok = await new Promise(res => {
 			const s = net.createServer().once('error', () => res(false)).listen(p, '127.0.0.1', () => s.close(() => res(true)));
 		});
