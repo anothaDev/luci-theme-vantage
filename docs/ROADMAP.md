@@ -34,22 +34,22 @@ limited to the dashboard's read group does not get it (see the spec,
 peers, or with peers configured by host name, which LuCI's plugin looks
 up on every call.
 
-### Search for clients, radios and networks (Ctrl+K)
+### Search for clients, radios and networks (planned for 1.1)
 
-The command palette searches pages only. The dashboard already knows every
-client, radio, SSID and interface; it should register them with the
-palette so that typing a name, MAC, IP or SSID jumps straight to it:
+In the tree for 1.1: on the dashboard the command palette (Ctrl+K) also
+finds what the dashboard knows:
 
-- clients by alias, resolved name, MAC or IP, opening the client inspector
-  (`#client=<mac>`);
-- radios by band, channel or name, opening the radio inspector
-  (`#radio=<name>`);
-- SSIDs, opening the dashboard filtered to that network;
+- clients by alias, resolved name, MAC or IP, opening the client's
+  details (a named device that is offline too);
+- radios by band, channel or name, opening the radio's details;
+- Wi-Fi networks, opening the dashboard filtered to that network;
 - interfaces, opening their LuCI page.
 
-The theme must keep working without the app, so the palette needs a small,
-optional provider API (the app registers a provider if the theme is
-present) and results must be built as text nodes like everything else.
+The theme keeps working without the app: while the palette opens it
+asks the page with an event, the dashboard answers with its entries, and
+the theme checks each one and draws it itself, as text (see the spec,
+"Entity search"). Other pages can answer the same way later; none
+does yet.
 
 ### Update notice (planned for 1.1)
 
