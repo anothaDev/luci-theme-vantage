@@ -850,6 +850,14 @@ return baseclass.extend({
 			return finite(v) && v >= 0 && v <= max && v % 1 === 0 ? v : null;
 		}
 		reply = obj(reply);
+		/* a handshake cannot lie ahead: where this browser's clock is
+		   behind the router's, the newest one is now */
+		Object.keys(reply).forEach(function(ifname) {
+			arr(obj(reply[ifname]).peers).forEach(function(p) {
+				var hs = count(obj(p).latest_handshake, 0xffffffff);
+				if (hs && finite(now) && hs > now) now = hs;
+			});
+		});
 		Object.keys(reply).sort().forEach(function(ifname) {
 			var x = obj(reply[ifname]), seen = Object.create(null), peers = [];
 			/* a tunnel is an interface's name with its list of peers */

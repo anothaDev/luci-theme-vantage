@@ -61,8 +61,7 @@ browser asks the project's package list once a day while a Vantage page
 is open and in view, which shows the list's host (GitHub Pages) the
 admin's IP address. The manual "Check for updates" stays, and updating
 stays with the package manager: no update button (see the spec,
-"Updates"). Still open: a page left open for days asks only when it is
-loaded.
+"Updates").
 
 ## Later
 

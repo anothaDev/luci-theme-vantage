@@ -2182,8 +2182,10 @@ return baseclass.extend({
 	   out of view or a page without a login (the login page does not
 	   load this script either), and not within UPDATE_EVERY of the last
 	   try, whichever page or tab of this browser made it. A check that
-	   fails says nothing. */
+	   fails says nothing. A page left open for days, or loaded in a tab
+	   out of view, checks when its tab comes into view. */
 	setupUpdate() {
+		if (document.addEventListener) document.addEventListener('visibilitychange', () => this.dailyCheck());
 		if (this.updatePref() !== 'on') return;
 		if (window.requestIdleCallback) window.requestIdleCallback(() => this.dailyCheck());
 		else setTimeout(() => this.dailyCheck(), 2000);

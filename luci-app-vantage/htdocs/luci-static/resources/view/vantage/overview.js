@@ -1019,8 +1019,12 @@ return view.extend({
 				var at = Date.now(), took = at - asked;
 				if (a.absent && !self.wgAnswered) { self.wgOff = true; return null; }
 				if (a.reply) self.wgAnswered = true;
-				self.wgLast = a.reply ? { reply: a.reply, at: at } : null;
-				var wait = a.absent ? WG_RETRY_MS : took > WG_SLOW_MS ? Math.min(WG_RETRY_MS, 10 * took) : 0;
+				/* one call that failed (a timeout, a busy rpcd) is not "no
+				   tunnel": the last answer stands while it is under
+				   WG_RETRY_MS old */
+				var last = self.wgLast;
+				self.wgLast = a.reply ? { reply: a.reply, at: at } : !a.absent && last && at - last.at < WG_RETRY_MS ? last : null;
+				var wait = a.absent ? WG_RETRY_MS : took > WG_SLOW_MS ? 10 * took : 0;
 				self.wgWait = wait ? { from: at, until: at + wait } : null;
 				return self.wgLast;
 			});
@@ -1944,11 +1948,30 @@ return view.extend({
 		if (!l) return;
 		var k = layout.key(l.tier, l.wired);
 		if (layout.same(list, layout.defaults(l.tier, l.wired, l.wg))) this.clearLayout(k);
-		else this.layouts[k] = layout.compact(list);
+		else this.layouts[k] = layout.compact(this.keepAbsent(list, this.layouts[k]));
 		writeLayouts(this.layouts);
 		this.viewChanged(layout.option(k));
 		this.held = Object.create(null);
 		this.doLayout();
+	},
+
+	/* A tile that does not exist right now (no tunnel is reported) is in
+	   no list being arranged. Where the stored layout has it, it keeps
+	   its entry, hidden or not, after the tile it followed there, so
+	   that it is where it was put once it is back. */
+	keepAbsent: function(list, stored) {
+		var out = list.slice(), prev = null;
+		(Array.isArray(stored) ? stored : []).forEach(function(e) {
+			var at = -1, i;
+			if (!e || layout.TILES.indexOf(e.id) < 0) return;
+			for (i = 0; i < out.length; i++) {
+				if (out[i].id === e.id) { prev = e.id; return; }
+				if (out[i].id === prev) at = i;
+			}
+			out.splice(at + 1, 0, e);
+			prev = e.id;
+		});
+		return out;
 	},
 
 	/* back to the default. The router's layout would come back on reload
@@ -2709,9 +2732,12 @@ return view.extend({
 	   on the path (wiredPorts; the gateway and whoever else is on a
 	   line's port carry the line's traffic, not their own). Not one a
 	   paired access point reports: its clients, stations or wired, push
-	   none of this device's out */
+	   none of this device's out. Nor that access point itself: with its
+	   stations counted as its own it is alone on its port, and the
+	   port's traffic is theirs */
 	talkHost: function(c, m) {
-		return !c.ap && !c.gateway && !this.linePort(c.port, m);
+		var peer = ((m || this.m || {}).accessPoints || []).some(function(a) { return !!a.mac && a.mac === c.mac; });
+		return !c.ap && !peer && !c.gateway && !this.linePort(c.port, m);
 	},
 
 	/* Top talkers: this device's stations and, by the same measure, the
@@ -4494,13 +4520,22 @@ return view.extend({
 		var d = this.ui.drawer, el = this.el;
 		if (!d || !el.drawer || el.drawer.hidden) return;
 		if (this.ui.editing) return;   /* do not replace a form being typed in */
+		/* nor a text someone selected in the details, to copy by hand */
+		var body = el.drawerBody, sel = body.contains && window.getSelection ? window.getSelection() : null;
+		if (sel && !sel.isCollapsed && sel.anchorNode && body.contains(sel.anchorNode)) return;
 		var content;
 		if (d.kind === 'client') content = this.drawerClient(d.id);
 		else if (d.kind === 'radio') content = this.drawerRadio(d.id);
 		else if (d.kind === 'uplink') content = this.drawerUplink(d.id);
 		else content = this.drawerDevice();
+		/* a poll's rebuild takes the focus with the old controls: the one
+		   in the same place (a Copy button say) has it again */
+		var focusable = function() { return body.querySelectorAll ? Array.prototype.slice.call(body.querySelectorAll('button, a[href], input, select')) : []; };
+		var had = focusable(), at = had.indexOf(document.activeElement);
 		dom.content(el.drawerTitle, content.title);
-		dom.content(el.drawerBody, content.body);
+		dom.content(body, content.body);
+		var now = focusable();
+		if (at >= 0 && now.length === had.length) now[at].focus();
 	},
 
 	section: function(title, children, cls) {
@@ -5073,10 +5108,10 @@ return view.extend({
 		}
 		function cut(parts, sep, max) { return fmt.safeText(parts.filter(Boolean).join(sep), max); }
 
-		give('client', m.clients.concat(m.wiredHosts || []).map(function(c) {
+		give('client', m.clients.concat(m.wiredHosts || [], m.offline || []).map(function(c) {
 			return {
 				title: cut([ c.name ], '', 64),
-				detail: cut([ c.secondary, typeof c.port === 'string' ? c.network || c.bridge : c.ssid, c.ap ? _('via %s').format(c.ap.name) : null ], ' · ', 64),
+				detail: cut([ c.secondary, c.offline ? _('Offline') : typeof c.port === 'string' ? c.network || c.bridge : c.ssid, c.ap ? _('via %s').format(c.ap.name) : null ], ' · ', 64),
 				words: cut([ c.mac ].concat(c.ips || []), ' ', 256),
 				run: function() { self.openDrawer('client', c.mac); }
 			};

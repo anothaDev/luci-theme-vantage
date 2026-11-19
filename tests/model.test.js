@@ -1924,6 +1924,16 @@ test('wireguard: a reply as LuCI\'s plugin gives it: tunnels by name, numbers fr
 	for (const p of t[0].peers) assert.ok(!JSON.stringify(Object.assign({}, p, { id: '' })).includes(p.id), p.label);
 });
 
+test('wireguard: a handshake ahead of this browser\'s clock is now, not in the future', () => {
+	const peer = (c, hs) => ({ name: c, public_key: wgKey(c), endpoint: '(none)', allowed_ips: [], latest_handshake: String(hs), transfer_rx: '0', transfer_tx: '0', persistent_keepalive: 'off' });
+	/* the browser is ten minutes behind the router: the newest handshake is the time it is, for every peer of every tunnel */
+	const out = model.wireguard({ wg0: { peers: [ peer('A', 1700000600), peer('B', 1700000300) ] }, wg1: { peers: [ peer('C', 1700000000), peer('D', 0) ] } }, 1700000000);
+	const by = Object.fromEntries(out.flatMap(t => t.peers).map(p => [ p.name, [ p.age, p.state ] ]));
+	assert.deepEqual(by, { A: [ 0, 'recent' ], B: [ 300, 'stale' ], C: [ 600, 'stale' ], D: [ null, 'never' ] });
+	/* a clock that is right, or ahead, is the clock: nothing is moved */
+	assert.deepEqual(model.wireguard({ wg0: { peers: [ peer('A', 1700000600) ] } }, 1700000700)[0].peers.map(p => [ p.age, p.state ]), [ [ 100, 'recent' ] ]);
+});
+
 test('wireguard: no reply, junk and half a reply are no tunnels or less of one, never an error', () => {
 	for (const r of [ undefined, null, 'x', 7, [], [ { name: 'wg0', peers: [] } ], {}, { wg0: 1, wg1: 'up', wg2: null, wg3: [], wg4: {} } ])
 		assert.deepEqual(model.wireguard(r, WG_NOW), [], JSON.stringify(r));

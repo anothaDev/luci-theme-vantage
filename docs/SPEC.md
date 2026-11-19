@@ -156,7 +156,9 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   the computer's IP address and the address the page was opened at (a
   browser sends it as the request's Origin, referrer or not). With it on, a page of the theme makes that
   same check once the page is idle, when the last try is 24 hours old or
-  older, and only from a logged-in page in a tab that is in view. The
+  older, and only from a logged-in page in a tab that is in view; a page
+  left open, or loaded out of view, makes it when its tab comes into
+  view. The
   time of the try and the version the list had are kept in that browser
   (`vantage.update.last`); the try is written before the answer comes,
   so the pages and tabs of one browser ask once a day, and a check that
@@ -378,7 +380,9 @@ text around it so it looks the same size.
   would name a port, not a device), and so do the gateway and whoever
   else is on a line's port, whose traffic is the line's. A paired access
   point's clients are not ranked, its stations and its wired hosts
-  alike: they push none of this device's own out.
+  alike: they push none of this device's own out. Nor is the access
+  point itself, which is alone on its port once its stations are
+  listed as its own: that port's traffic is theirs.
   Every row reads the same way round: a port counts like a radio, so
   what this device sent is the device's download. A wired host's row
   opens its details. The tile exists without Wi-Fi too, which gives a
@@ -387,8 +391,8 @@ text around it so it looks the same size.
   tile says that none can be measured.
 - **Entity search**: under the Vantage theme the command palette (Ctrl+K
   or `/`) also finds, while the dashboard is open: the clients (Wi-Fi
-  stations and wired hosts, a paired access point's with its name) by
-  name, MAC or address; the radios by band, channel or name; the Wi-Fi
+  stations and wired hosts, a paired access point's with its name, and
+  the named devices that are offline) by name, MAC or address; the radios by band, channel or name; the Wi-Fi
   networks by name (this device's and the paired access points', one
   entry a name; not while the layout hides the Clients tile); the
   interfaces (the lines to the internet and the other networks). Enter
@@ -490,12 +494,17 @@ text around it so it looks the same size.
   a minute. LuCI's plugin runs `wg`, and looks up the host name of each
   peer configured by name, on every call and inside rpcd: after an
   answer that took over a second the next call waits ten times as long,
-  a minute at most, with the last answer shown until then. The tile
+  with the last answer shown until then. A call that fails otherwise
+  (a timeout, rpcd busy) is not "no tunnel": the last answer stands
+  while it is under a minute old. The tile
   exists once a tunnel was seen and then stays for the session (an
   interface restarted is gone for a poll), saying so when none is
   reported. Its layout is the others': the same stored layouts as
   before, and one that does not mention the tile gets it where the
-  default has it (two columns wide under Clients on a wide screen).
+  default has it (two columns wide under Clients on a wide screen); a
+  layout arranged while no tunnel is reported keeps the tile's stored
+  entry, hidden or not, where it was. A handshake dated ahead of the
+  browser's clock counts as now.
 - **Throughput chart**: one row per line, then each radio, each
   with its own scale. Under "Customize", the viewer picks how download and
   upload share a row: overlaid on one scale (the default), overlaid on a

@@ -2743,16 +2743,26 @@ test('WireGuard: an object that went away under an open page is asked for again 
 	assert.equal(c.asked, 4);
 	assert.deepEqual(await c.poll(5e3), { reply, at: c.t });
 	assert.equal(c.asked, 5, 'a quick answer: every poll again');
-	await c.poll(5e3);
+	const good = await c.poll(5e3);
 	assert.equal(c.asked, 6);
 
-	/* no answer after 20 s (LuCI gives the call up): none, and the next question a minute on at most */
+	/* no answer after 20 s (LuCI gives the call up): that is not "no tunnel". The last answer stands, and the
+	   next question comes ten times that later, however long that is */
 	c.took = 20000;
 	c.answer = () => Promise.reject(new Error('XHR request timed out'));
-	assert.equal(await c.poll(5e3), null);
+	assert.equal(await c.poll(5e3), good, 'the answer of 25 s ago');
 	c.answer = () => Promise.resolve(reply);
-	for (let i = 0; i < 11; i++) assert.equal(await c.poll(5e3), null);
+	for (let i = 0; i < 39; i++) assert.equal(await c.poll(5e3), good, 'poll ' + i + ': no new question for 200 s');
 	assert.equal(c.asked, 7);
+	const back = await c.poll(5e3);
+	assert.deepEqual(back, { reply, at: c.t });
+	assert.equal(c.asked, 8);
+	/* a call that fails at once is asked again with every poll; the last answer stands for a minute, then there is none */
+	c.answer = () => Promise.reject(new Error('RPC call to luci.wireguard/getWgInstances failed with error -32603: Internal error'));
+	for (let i = 0; i < 11; i++) assert.equal(await c.poll(5e3), back, 'poll ' + i + ': ' + (i + 1) * 5 + ' s old');
+	assert.equal(await c.poll(5e3), null, 'a minute old: no answer rather than an old one');
+	assert.equal(c.asked, 20);
+	c.answer = () => Promise.resolve(reply);
 	assert.deepEqual(await c.poll(5e3), { reply, at: c.t });
 	/* the browser's clock stepped back during a wait: time gone, not a wait without end */
 	c.took = 3000;
@@ -3720,4 +3730,86 @@ test('offline: an address the host hints give now comes before the one remembere
 	const m = offModel(Object.assign({}, OFF_LEFT, { hints }));
 	self.markOffline(m, {}, 110000);
 	assert.deepEqual(m.offline.filter(c => c.name === 'Laptop').map(c => c.ips), [ [ '192.0.2.150' ] ]);
+});
+
+/* --------------------------- from the review of the 1.1 batch: what it found wrong */
+
+test('top talkers: a paired access point itself is not ranked, alone on its port with its clients\' traffic', () => {
+	const self = Object.create(view);
+	const m = talkModel();
+	self.st = { devRates: TALK_RATES, staRates: {} };
+	self.m = m;
+	assert.deepEqual(self.talkers(m).map(x => x.name), [ 'h1' ]);
+	/* h1 is ap-hall: its stations went to their own list, which left it alone on lan2 with the port's whole rate */
+	m.accessPoints = [ { id: AP_ID, name: 'ap-hall', mac: m.wiredHosts[0].mac } ];
+	assert.equal(self.talkHost(m.wiredHosts[0]), false);
+	assert.deepEqual(self.talkers(m), []);
+	/* an access point that is not reporting has no MAC to tell it by: nothing else is left out for it */
+	m.accessPoints = [ { id: AP_ID, name: 'ap-hall', mac: null } ];
+	assert.deepEqual(self.talkers(m).map(x => x.name), [ 'h1' ]);
+});
+
+test('search: a named device that is offline is found, said to be offline, and opens its details', () => {
+	const self = searching({ offline: [ { mac: '00:00:5e:00:53:c2', name: 'workshop camera', secondary: '00:00:5E:00:53:C2', ips: [], offline: true } ],
+		clients: [ sta('00:00:5e:00:53:21', 'camera bag tracker') ] });
+	assert.deepEqual(says(self.searchEntries('camera')), [ [ 'client', 'camera bag tracker', '00:00:5E:00:53:21 · Harbor' ], [ 'client', 'workshop camera', '00:00:5E:00:53:C2 · Offline' ] ]);
+	assert.deepEqual(says(self.searchEntries('53:c2')), [ [ 'client', 'workshop camera', '00:00:5E:00:53:C2 · Offline' ] ]);
+	self.searchEntries('workshop')[0].run();
+	assert.deepEqual(self.did, [ [ 'drawer', 'client', '00:00:5e:00:53:c2' ] ]);
+});
+
+test('layout: a tile that does not exist right now keeps its stored entry when the others are arranged', () => {
+	const self = Object.create(view);
+	const e = (id, c, w, hide) => Object.assign({ id, c, w }, hide ? { hide: true } : {});
+	const ids = l => l.map(x => x.id + (x.hide ? '(hidden)' : ''));
+	/* the WireGuard tile was hidden and put second; the tunnel is down, so the list being arranged has no such tile */
+	const stored = [ e('hero', 0, 4), e('wg', 0, 2, true), e('chart', 0, 2), e('clients', 0, 4) ];
+	assert.deepEqual(ids(self.keepAbsent([ e('clients', 0, 4), e('hero', 0, 4), e('chart', 0, 2) ], stored)), [ 'clients', 'hero', 'wg(hidden)', 'chart' ], 'after the tile it followed');
+	assert.deepEqual(ids(self.keepAbsent([ e('chart', 0, 2), e('clients', 0, 4) ], [ e('wg', 0, 2), e('chart', 0, 2) ])), [ 'wg', 'chart', 'clients' ], 'first, where it was first');
+	/* a tile in the list is taken as arranged; nothing stored, junk, or an unknown tile adds nothing */
+	const now = [ e('clients', 0, 4), e('hero', 0, 4), e('wg', 0, 1), e('chart', 0, 2) ];
+	assert.deepEqual(self.keepAbsent(now, stored), now);
+	for (const junk of [ null, undefined, 'x', {}, [ null, 7, { id: 'nope', c: 0, w: 1 }, { c: 0, w: 1 } ] ]) assert.deepEqual(self.keepAbsent(now, junk), now, JSON.stringify(junk));
+	/* and setLayout stores it so */
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.match(src, /else this\.layouts\[k\] = layout\.compact\(this\.keepAbsent\(list, this\.layouts\[k\]\)\);/);
+});
+
+test('details: a poll rebuilds them, but not under a selected text, and the focused control has the focus again', () => {
+	const saved = { window: global.window, document: global.document };
+	const self = Object.create(dview);
+	const made = [];
+	const button = () => ({ focused: 0, focus() { this.focused++; } });
+	/* the body's controls are other elements after each rebuild (dom.content replaces its children) */
+	let controls = [ button(), button() ], selection = null, next = () => controls.map(button);
+	const body = { contains: n => n === 'in the details', querySelectorAll: () => controls, get childNodes() { return []; }, set childNodes(v) { controls = next(); } };
+	self.ui = { drawer: { kind: 'device', id: 'device' }, editing: null };
+	self.el = { drawer: { hidden: false }, drawerTitle: {}, drawerBody: body };
+	self.drawerDevice = () => { made.push(1); return { title: [], body: [] }; };
+	global.window = { getSelection: () => selection };
+	global.document = { activeElement: null };
+	try {
+		self.paintDrawer();
+		assert.equal(made.length, 1);
+		assert.deepEqual(controls.map(c => c.focused), [ 0, 0 ], 'nothing had the focus: nothing gets it');
+		/* the second control (a Copy button) has the focus when the poll comes */
+		global.document.activeElement = controls[1];
+		self.paintDrawer();
+		assert.deepEqual([ made.length, controls.map(c => c.focused) ], [ 2, [ 0, 1 ] ], 'the control in its place has it again');
+		/* the details changed shape (a row came or went): no guess at which control it was */
+		global.document.activeElement = controls[1];
+		next = () => [ button() ];
+		self.paintDrawer();
+		assert.deepEqual(controls.map(c => c.focused), [ 0 ]);
+		next = () => controls.map(button);
+		/* a text selected in the details: left as it is until the selection is gone */
+		selection = { isCollapsed: false, anchorNode: 'in the details' };
+		self.paintDrawer();
+		assert.equal(made.length, 3, 'not rebuilt');
+		selection = { isCollapsed: false, anchorNode: 'elsewhere on the page' };
+		self.paintDrawer();
+		selection = { isCollapsed: true, anchorNode: 'in the details' };
+		self.paintDrawer();
+		assert.equal(made.length, 5);
+	} finally { global.window = saved.window; if (saved.document === undefined) delete global.document; else global.document = saved.document; }
 });

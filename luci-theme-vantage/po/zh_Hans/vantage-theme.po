@@ -197,7 +197,7 @@ msgstr "转入 %s，随后返回此处"
 msgid "Could not check for updates."
 msgstr "无法检查更新。"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2204
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2206
 msgid "Could not save this for every browser. Try again."
 msgstr "无法为所有浏览器保存此设置，请重试。"
 
@@ -345,7 +345,7 @@ msgstr "浅色"
 msgid "Log in"
 msgstr "登录"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2202
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2204
 msgid "Log in again to save Appearance for every browser."
 msgstr "重新登录后即可为所有浏览器保存外观设置。"
 
@@ -386,8 +386,8 @@ msgstr "内存"
 msgid "Model"
 msgstr "型号"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2559
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2576
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2561
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2578
 msgctxt "vantage-theme"
 msgid "More actions"
 msgstr "更多操作"
@@ -557,7 +557,7 @@ msgctxt "vantage-theme"
 msgid "Rules table"
 msgstr "规则表"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2203
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2205
 msgid "Saved in this browser only."
 msgstr "仅保存在此浏览器中。"
 
@@ -581,11 +581,11 @@ msgid "Show %d more rule"
 msgid_plural "Show %d more rules"
 msgstr[0] "再显示 %d 条规则"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2716
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2718
 msgid "Show full description"
 msgstr "显示完整描述"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2705
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2707
 msgid "Show full help: %s"
 msgstr "显示完整帮助：%s"
 

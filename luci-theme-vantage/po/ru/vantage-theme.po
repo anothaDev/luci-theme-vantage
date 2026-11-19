@@ -204,7 +204,7 @@ msgstr "Продолжается в %s, затем возвращается сю
 msgid "Could not check for updates."
 msgstr "Не удалось проверить обновления."
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2204
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2206
 msgid "Could not save this for every browser. Try again."
 msgstr "Не удалось сохранить это для всех браузеров. Попробуйте ещё раз."
 
@@ -355,7 +355,7 @@ msgstr "Светлая"
 msgid "Log in"
 msgstr "Войти"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2202
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2204
 msgid "Log in again to save Appearance for every browser."
 msgstr "Войдите снова, чтобы сохранить оформление для всех браузеров."
 
@@ -396,8 +396,8 @@ msgstr "Память"
 msgid "Model"
 msgstr "Модель"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2559
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2576
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2561
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2578
 msgctxt "vantage-theme"
 msgid "More actions"
 msgstr "Ещё действия"
@@ -568,7 +568,7 @@ msgctxt "vantage-theme"
 msgid "Rules table"
 msgstr "Таблица правил"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2203
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2205
 msgid "Saved in this browser only."
 msgstr "Сохранено только в этом браузере."
 
@@ -594,11 +594,11 @@ msgstr[0] "Показать ещё %d правило"
 msgstr[1] "Показать ещё %d правила"
 msgstr[2] "Показать ещё %d правил"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2716
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2718
 msgid "Show full description"
 msgstr "Показать полное описание"
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2705
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2707
 msgid "Show full help: %s"
 msgstr "Показать полную справку: %s"
 

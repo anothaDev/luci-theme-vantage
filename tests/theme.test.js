@@ -685,11 +685,13 @@ function updateBrowser(store) {
 	b.page = async save => {
 		const idle = [], timers = [];
 		const gear = E('button', { 'id': 'vt-look', 'aria-label': 'Appearance', 'title': 'Appearance' });
+		const heard = {};
 		const document = {
 			visibilityState: b.visible ? 'visible' : 'hidden',
 			body: { classList: { contains: c => c === (b.auth ? 'vt-auth' : 'vt-login-page') } },
 			getElementById: id => (id === 'vt-look' ? gear : null),
-			createTextNode: text
+			createTextNode: text,
+			addEventListener: (t, f) => { (heard[t] = heard[t] || []).push(f); }
 		};
 		const window = b.idle ? { requestIdleCallback: f => { idle.push(f); } } : {};
 		const proto = new Function('baseclass', 'ui', 'rpc', 'host', 'E', 'L', '_', 'document', 'window', 'localStorage', 'fetch', 'Date', 'setTimeout', 'clearTimeout', src)(
@@ -700,6 +702,8 @@ function updateBrowser(store) {
 		shell.applyUpdate();
 		shell.setupUpdate();
 		const page = { shell, gear, timers, line: null, waiting: idle.length + timers.length };
+		/* the tab comes into view, or goes out of it */
+		page.show = async on => { document.visibilityState = on ? 'visible' : 'hidden'; (heard.visibilitychange || []).forEach(f => f()); await b.settle(); };
 		/* the browser reaches its idle time */
 		idle.splice(0).forEach(f => f());
 		await b.settle();
@@ -790,7 +794,7 @@ test('daily update check: on, one request in 24 hours, whatever pages load', asy
 	/* the page-load call sites: applied with the theme, checked from __init__ only */
 	assert.match(src, /\t\tthis\.loadHost\(\);\n\t\tthis\.setupUpdate\(\);\n/);
 	assert.equal(src.split('this.setupUpdate()').length - 1, 1);
-	assert.equal(src.split('this.dailyCheck()').length - 1, 2, 'from the idle callback or its timer');
+	assert.equal(src.split('this.dailyCheck()').length - 1, 3, 'from the idle callback or its timer, and when the tab comes into view');
 	assert.equal(src.split('askLatest(').length - 1, 3, 'defined once; the manual check and the daily one ask through it');
 	assert.match(src, /const UPDATE_EVERY = 24 \* 3600 \* 1000;/);
 });
@@ -1302,4 +1306,35 @@ test('daily update check: setupTheme applies what is kept, and another tab\'s st
 	store['vantage.update.auto'] = 'on';
 	heard.storage.forEach(f => f({ key: 'vantage.update.last', newValue: store['vantage.update.last'] }));
 	assert.ok(gear.hasAttribute('data-vt-update'), 'another tab learned of a version');
+});
+
+test('daily update check: a page left open, or loaded out of view, checks when its tab comes into view, once a day', async () => {
+	/* loaded in a background tab: nothing asked there, and the check is not lost */
+	const b = updateBrowser({ 'vantage.update.auto': 'on' });
+	b.list = b.packages(NEWER);
+	b.visible = false;
+	const p = await b.page();
+	assert.equal(b.asked.length, 0);
+	await p.show(true);
+	assert.deepEqual([ b.asked.length, p.dot() ], [ 1, true ]);
+	/* looked at again and again that day: no more questions */
+	for (let i = 0; i < 3; i++) { await p.show(false); await p.show(true); }
+	assert.equal(b.asked.length, 1);
+	/* the same page, still open the next day */
+	b.now += b.DAY;
+	await p.show(false);
+	assert.equal(b.asked.length, 1, 'going out of view asks nothing');
+	await p.show(true);
+	assert.equal(b.asked.length, 2);
+	/* switched off, or on the login page: coming into view asks nothing */
+	const off = updateBrowser({});
+	off.list = off.packages(NEWER);
+	const q = await off.page();
+	await q.show(false); await q.show(true);
+	assert.equal(off.asked.length, 0);
+	const login = updateBrowser({ 'vantage.update.auto': 'on' });
+	login.auth = false; login.list = login.packages(NEWER);
+	const l = await login.page();
+	await l.show(false); await l.show(true);
+	assert.equal(login.asked.length, 0);
 });

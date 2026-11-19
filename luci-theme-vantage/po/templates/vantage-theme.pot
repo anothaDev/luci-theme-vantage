@@ -191,7 +191,7 @@ msgstr ""
 msgid "Could not check for updates."
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2204
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2206
 msgid "Could not save this for every browser. Try again."
 msgstr ""
 
@@ -334,7 +334,7 @@ msgstr ""
 msgid "Log in"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2202
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2204
 msgid "Log in again to save Appearance for every browser."
 msgstr ""
 
@@ -375,8 +375,8 @@ msgstr ""
 msgid "Model"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2559
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2576
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2561
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2578
 msgctxt "vantage-theme"
 msgid "More actions"
 msgstr ""
@@ -544,7 +544,7 @@ msgctxt "vantage-theme"
 msgid "Rules table"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2203
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2205
 msgid "Saved in this browser only."
 msgstr ""
 
@@ -569,11 +569,11 @@ msgid_plural "Show %d more rules"
 msgstr[0] ""
 msgstr[1] ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2716
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2718
 msgid "Show full description"
 msgstr ""
 
-#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2705
+#: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2707
 msgid "Show full help: %s"
 msgstr ""
 
