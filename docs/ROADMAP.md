@@ -36,6 +36,19 @@ The theme must keep working without the app, so the palette needs a small,
 optional provider API (the app registers a provider if the theme is
 present) and results must be built as text nodes like everything else.
 
+### Update notice (planned for 1.1)
+
+An opt-in daily check for a newer release, shown as a small dot on the
+gear ([#133](https://github.com/anothaDev/luci-theme-vantage/issues/133)).
+In the tree, for 1.1: **Daily update check** under Appearance, off by
+default and set per browser, never saved on the router. With it on the
+browser asks the project's package list once a day while a Vantage page
+is open and in view, which shows the list's host (GitHub Pages) the
+admin's IP address. The manual "Check for updates" stays, and updating
+stays with the package manager: no update button (see the spec,
+"Updates"). Still open: a page left open for days asks only when it is
+loaded.
+
 ## Later
 
 - **Proxies in the network path:** a full-tunnel VPN already shows on its
@@ -83,13 +96,6 @@ present) and results must be built as text nodes like everything else.
   `test_acl_policy.js` for this one call, and the app needs its own copy of
   the model (`vantage-theme/nftmodel.js`), since theme and app stay
   independent. Decide this before building the rpcd method.
-- **Update notice:** an opt-in daily check for a newer release, shown as
-  a small notice on the gear. Off by default: the browser would ask the
-  package feed once a day while LuCI is open, which tells the feed's
-  host the admin's address. The manual "Check for updates" under
-  Appearance stays, and updating stays with the package manager: no
-  update button, the dashboard's backend is read-only
-  ([#133](https://github.com/anothaDev/luci-theme-vantage/issues/133)).
 - **WireGuard tile:** each tunnel's peers with their name, the time since
   the last handshake and their traffic, shown only where a tunnel exists
   (as the Wi-Fi tiles need a radio). From LuCI's own `luci.wireguard

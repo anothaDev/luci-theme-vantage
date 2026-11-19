@@ -1092,6 +1092,14 @@ Then reload the page. To remove Vantage entirely, see
   without cookies or a referrer (browsers still send the address you
   opened LuCI at, as the request's Origin), and shows only the version it
   finds. Nothing is installed by it.
+  **Daily update check**, also under Appearance, lets a browser make
+  that same request by itself, at most once every 24 hours, while a
+  Vantage page is open and in view; a newer version then shows as a dot
+  on the gear. It is off unless you switch it on, and it is set per
+  browser, never saved on the router: each day's request shows GitHub
+  Pages the IP address of the computer you manage the router from, and
+  when. Switching it off also forgets what it found. The login page
+  never asks.
   LuCI itself still puts its `L.env` script on those pages: the LuCI
   build on every page and, on "not found" pages, the tree of installed
   menu entries. That comes from LuCI's core templates, happens with every

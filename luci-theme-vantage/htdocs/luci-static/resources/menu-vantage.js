@@ -63,15 +63,26 @@ const MOTION_EVENT = 'vantage:tick';
    the router has one. */
 /* this package's version, as its Makefile has it (tests/version.test.js) */
 const VERSION = '1.0.21';
-/* Check for updates (Appearance): when asked, never on its own, the browser
-   reads the project's 24.10 package list on GitHub Pages (the same release
-   as 25.12's), without cookies or a referrer. Only a version number passes;
-   the link is a constant, to the latest release. */
+/* Check for updates (Appearance): when asked, and never on its own unless
+   the daily check below is on, the browser reads the project's 24.10
+   package list on GitHub Pages (the same release as 25.12's), without
+   cookies or a referrer. Only a version number passes; the link is a
+   constant, to the latest release. */
 const UPDATE_INDEX = 'https://anothadev.github.io/luci-theme-vantage/24.10/Packages';
 /* the theme's entry in that list; up here, as jsmin reads a "/" right
    after => as a division and drops the space inside it (every packaged
    check before 1.0.18 failed that way) */
 const UPDATE_ENTRY = /^Package: luci-theme-vantage$/m;
+/* The daily check (#133), off unless picked under Appearance: this browser
+   then asks that list by itself, at most once in UPDATE_EVERY, from a page
+   of this theme that is open and in view. Asking shows the list's host
+   this computer's address, so the pick is this browser's alone: it is not
+   in LOOK, never goes to /etc/config/vantage_theme, and the login page
+   knows nothing of it. Kept with it: the last try and the version the
+   list had, { at, latest }. */
+const UPDATE_AUTO_KEY = 'vantage.update.auto';
+const UPDATE_LAST_KEY = 'vantage.update.last';
+const UPDATE_EVERY = 24 * 3600 * 1000;
 
 const LOOK = {
 	theme: { own: 'vantage.theme.own', before: THEME_KEY, ok: [ 'auto', 'light', 'dark' ] },
@@ -227,6 +238,24 @@ function listedVersion(text) {
 	const block = String(text || '').split(/\n\s*\n/).find(b => UPDATE_ENTRY.test(b));
 	const m = block && /^Version: (\S+)$/m.exec(block);
 	return m && versionParts(m[1]) ? m[1].replace(/-r\d+$/, '') : null;
+}
+/* the daily check's last try as kept, { at, latest }: a time, and a
+   version or null (none read); null for anything else */
+function updateMemory(text) {
+	let m = null;
+	try { m = JSON.parse(text); } catch (e) {}
+	if (!m || typeof m.at !== 'number' || !isFinite(m.at)) return null;
+	return { at: m.at, latest: (typeof m.latest === 'string' && versionParts(m.latest)) ? m.latest : null };
+}
+/* a check is due unless one was tried in the UPDATE_EVERY before `now`
+   (a try dated ahead of the clock does not count) */
+function updateDue(mem, now) {
+	return !(mem && mem.at <= now && now - mem.at < UPDATE_EVERY);
+}
+/* the version to tell about: the one the list had, when newer than `running` */
+function newerKnown(mem, running) {
+	const a = mem && versionParts(mem.latest), b = versionParts(running);
+	return (a && b && newerVersion(a, b)) ? mem.latest : null;
 }
 
 /* the value in force, from [ pending, own, router, before ]: the first
@@ -994,6 +1023,7 @@ return baseclass.extend({
 		setupNftFlow();
 		this.setupKeys();
 		this.loadHost();
+		this.setupUpdate();
 
 		ui.menu.load().then(L.bind(this.render, this));
 	},
@@ -1884,6 +1914,8 @@ return baseclass.extend({
 		const keys = [ LOOK_SYNC ];
 		Object.keys(LOOK).forEach(n => keys.push(LOOK[n].own, LOOK[n].before));
 		window.addEventListener('storage', ev => {
+			/* the daily check, switched or answered in another tab */
+			if (ev.key === UPDATE_AUTO_KEY || ev.key === UPDATE_LAST_KEY) this.applyUpdate();
 			if (keys.indexOf(ev.key) < 0) return;
 			if (ev.key === LOOK_SYNC) {
 				let m = null;
@@ -1924,6 +1956,7 @@ return baseclass.extend({
 		this.applyPower();
 		this.applyUnfocused();
 		this.applyBrand();
+		this.applyUpdate();
 	},
 
 	/* Appearance, under the gear button: the colour theme, the
@@ -1978,6 +2011,7 @@ return baseclass.extend({
 			(this.appearUnfocused = group('vt-unfocused', _('Motion when not in focus'), [ [ 'still', _('Off') ], [ 'moving', _('On') ] ], v => this.setUnfocusedPref(v))),
 			/* where the picks are kept, when not for every browser (syncAppearance) */
 			(this.appearNote = E('p', { 'class': 'vt-appear-note', 'role': 'status', 'hidden': 'hidden' })),
+			this.updateGroup(),
 			this.versionEl()
 		]));
 		box.addEventListener('keydown', ev => {
@@ -2008,11 +2042,44 @@ return baseclass.extend({
 		const btn = E('button', { 'type': 'button', 'class': 'vt-appear-check' }, [ _('Check for updates') ]);
 		const out = E('span', { 'class': 'vt-appear-update', 'role': 'status', 'hidden': 'hidden' });
 		btn.addEventListener('click', () => this.checkUpdates(btn, out));
+		this.updateOut = out;
+		this.applyUpdate();
 		return E('p', { 'class': 'vt-appear-ver' }, [ E('span', { 'class': 'vt-appear-num' }, [ 'Vantage ' + VERSION ]), ' · ', btn, out ]);
 	},
 
 	releaseLink(label) {
 		return E('a', { 'href': 'https://github.com/anothaDev/luci-theme-vantage/releases/latest', 'target': '_blank', 'rel': 'noopener noreferrer' }, [ label ]);
+	},
+
+	/* "Version 1.0.17 is available. What's new" */
+	tellNewer(out, latest) {
+		out.textContent = '';
+		out.appendChild(document.createTextNode(_('Version %s is available.').format(latest) + ' '));
+		out.appendChild(this.releaseLink(_('What\'s new')));
+		out.hidden = false;
+	},
+
+	/* The theme's version in the list: the one place that asks, for the
+	   manual check and the daily one. With the daily check on, the try
+	   is kept before the answer comes (a reload or another tab asks
+	   nothing more that day, and a try that fails still counts, with what
+	   was known before), then what the list had. */
+	askLatest() {
+		const at = Date.now(), mem = updateMemory(storageGet(UPDATE_LAST_KEY));
+		const keep = latest => { if (this.updatePref() === 'on') storageSet(UPDATE_LAST_KEY, JSON.stringify({ at: at, latest: latest })); };
+		keep(mem ? mem.latest : null);
+		const ctl = window.AbortController ? new AbortController() : null;
+		const timer = ctl ? setTimeout(() => ctl.abort(), 10000) : 0;
+		return fetch(UPDATE_INDEX, { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal: ctl ? ctl.signal : undefined })
+			.then(r => r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status)))
+			.then(text => {
+				clearTimeout(timer);
+				const latest = listedVersion(text);
+				if (!latest) throw new Error('no version');
+				keep(latest);
+				this.applyUpdate();
+				return latest;
+			}, e => { clearTimeout(timer); throw e; });
 	},
 
 	checkUpdates(btn, out) {
@@ -2022,18 +2089,9 @@ return baseclass.extend({
 		btn.setAttribute('aria-disabled', 'true');
 		out.textContent = _('Checking…');
 		out.hidden = false;
-		const ctl = window.AbortController ? new AbortController() : null;
-		const timer = ctl ? setTimeout(() => ctl.abort(), 10000) : 0;
-		fetch(UPDATE_INDEX, { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal: ctl ? ctl.signal : undefined })
-			.then(r => r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status)))
-			.then(text => {
-				const latest = listedVersion(text);
-				if (!latest) throw new Error('no version');
-				out.textContent = '';
-				if (newerVersion(versionParts(latest), versionParts(VERSION))) {
-					out.appendChild(document.createTextNode(_('Version %s is available.').format(latest) + ' '));
-					out.appendChild(this.releaseLink(_('What\'s new')));
-				}
+		this.askLatest()
+			.then(latest => {
+				if (newerVersion(versionParts(latest), versionParts(VERSION))) this.tellNewer(out, latest);
 				else out.textContent = _('Up to date');
 			})
 			/* offline, or a router whose pages forbid the request (a
@@ -2043,12 +2101,77 @@ return baseclass.extend({
 				out.textContent = _('Could not check for updates.') + ' ';
 				out.appendChild(this.releaseLink(_('See the latest release')));
 			})
-			.then(() => { clearTimeout(timer); btn.removeAttribute('aria-disabled'); });
+			/* shown again: a notice that went meanwhile hid the line (applyUpdate) */
+			.then(() => { out.hidden = false; btn.removeAttribute('aria-disabled'); });
+	},
+
+	/* ------------------------------------------------ the daily check */
+
+	updatePref() {
+		return storageGet(UPDATE_AUTO_KEY) === 'on' ? 'on' : 'off';
+	},
+
+	/* This browser's alone, so not through setLook: nothing of it is
+	   saved on the router. Switched off, what it learned goes too; on,
+	   the first check comes with the next page. */
+	setUpdatePref(pref) {
+		storageSet(UPDATE_AUTO_KEY, pref === 'on' ? 'on' : null);
+		if (pref !== 'on') storageSet(UPDATE_LAST_KEY, null);
+		this.applyUpdate();
+	},
+
+	/* its group, with what it costs in a line under it */
+	updateGroup() {
+		const set = this.appearGroup('vt-update', _('Daily update check'), [ [ 'off', _('Off') ], [ 'on', _('On') ] ], v => this.setUpdatePref(v));
+		set.setAttribute('aria-describedby', 'vt-update-help');
+		set.appendChild(E('p', { 'class': 'vt-appear-note', 'id': 'vt-update-help' }, [
+			_('Once a day this browser reads the project\'s package list on GitHub Pages, which shows GitHub this computer\'s IP address. For this browser only.') ]));
+		return set;
+	},
+
+	/* A newer version the daily check knows of: a dot on the gear, said
+	   in its label, and under Appearance the line the manual check
+	   shows. Gone once this version is that one or a later one, or the
+	   check is switched off. */
+	applyUpdate() {
+		const latest = this.updatePref() === 'on' ? newerKnown(updateMemory(storageGet(UPDATE_LAST_KEY)), VERSION) : null;
+		const btn = document.getElementById('vt-look'), out = this.updateOut;
+		if (btn) {
+			const name = _('Appearance', 'vantage-theme');
+			const label = latest ? '%s: %s'.format(name, _('Version %s is available.').format(latest)) : name;
+			btn.toggleAttribute('data-vt-update', !!latest);
+			if (btn.getAttribute('aria-label') !== label) {
+				btn.setAttribute('aria-label', label);
+				btn.setAttribute('title', label);
+			}
+		}
+		if (out && latest !== (this.updateTold || null)) {
+			if (latest) this.tellNewer(out, latest);
+			else { out.textContent = ''; out.hidden = true; }
+			this.updateTold = latest;
+		}
+		this.syncAppearance();
+	},
+
+	/* Once this page is idle, so it waits for nothing: never from a tab
+	   out of view or a page without a login (the login page does not
+	   load this script either), and not within UPDATE_EVERY of the last
+	   try, whichever page or tab of this browser made it. A check that
+	   fails says nothing. */
+	setupUpdate() {
+		if (this.updatePref() !== 'on') return;
+		if (window.requestIdleCallback) window.requestIdleCallback(() => this.dailyCheck());
+		else setTimeout(() => this.dailyCheck(), 2000);
+	},
+
+	dailyCheck() {
+		if (this.updatePref() !== 'on' || document.visibilityState !== 'visible' || !document.body.classList.contains('vt-auth')) return;
+		if (updateDue(updateMemory(storageGet(UPDATE_LAST_KEY)), Date.now())) this.askLatest().catch(() => {});
 	},
 
 	syncAppearance() {
 		if (!this.appear) return;
-		const now = { 'vt-colour': this.themePref(), 'vt-logo-name': this.brandPref(), 'vt-login': this.loginPref(), 'vt-backdrop': this.backdropPref(), 'vt-power': this.powerPref(), 'vt-unfocused': this.unfocusedPref() };
+		const now = { 'vt-colour': this.themePref(), 'vt-logo-name': this.brandPref(), 'vt-login': this.loginPref(), 'vt-backdrop': this.backdropPref(), 'vt-power': this.powerPref(), 'vt-unfocused': this.unfocusedPref(), 'vt-update': this.updatePref() };
 		Array.prototype.forEach.call(this.appear.querySelectorAll('input[type="radio"]'), r => { r.checked = (now[r.name] === r.value); });
 		const state = this.lookState();
 		const note = state === 'relogin' ? _('Log in again to save Appearance for every browser.')

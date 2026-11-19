@@ -124,6 +124,35 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   `vantage.layout` validates them again. The router's come first for a
   login that may save; any other keeps this browser's, and sees the
   router's where it has none. Without the theme they stay in the browser.
+- **Updates**: Appearance ends with the installed version and **Check
+  for updates** (#102). On that click the browser reads the project's
+  24.10 package list on GitHub Pages (the same release as 25.12's),
+  without cookies or a referrer. `menu-vantage.js` has one request and
+  one place that knows the URL (`askLatest`, `UPDATE_INDEX`). Only a
+  version number passes: two to four dotted numbers, compared part by
+  part as numbers (1.0.9 < 1.0.10 < 1.1), the package release (`-r1`)
+  left out; anything else is no answer. The link shown is a constant, to
+  the latest release. The theme never calls out on its own unless
+  **Daily update check** (#133) is on. That is an Appearance option, off
+  by default and this browser's alone: kept in `localStorage`
+  (`vantage.update.auto`), never saved in `/etc/config/vantage_theme`,
+  not handed over by the templates, and the login page neither reads it
+  nor acts on it. Where it is picked it says what it costs: once a day
+  the browser asks the list, which shows the list's host (GitHub Pages)
+  the computer's IP address. With it on, a page of the theme makes that
+  same check once the page is idle, when the last try is 24 hours old or
+  older, and only from a logged-in page in a tab that is in view. The
+  time of the try and the version the list had are kept in that browser
+  (`vantage.update.last`); the try is written before the answer comes,
+  so the pages and tabs of one browser ask once a day, and a check that
+  fails counts as that day's, says nothing and leaves what was known. A
+  manual check made with the option on counts and is kept the same way.
+  While the list's version is newer than the running one, the gear
+  carries a small dot, said in its label, and Appearance shows the
+  manual check's line ("Version 1.1.0 is available." with the constant
+  link). Both go once the running version is that one or a later one,
+  or the option is switched off, which also forgets the last try. There
+  is no update button: updating stays with the package manager.
 - **Tabs**: one segmented control for every level: the menu's page tabs
   (depth ≥ 3, at the top of the content column), tabs at page level, in a
   form or modal, and tabs inside a tab. Nesting shows by where a control
@@ -842,6 +871,13 @@ dashboard package itself stays read-only.
   `security-tests/check_dom_sinks.js`, on the theme and the app, with no
   `dom-safe` suppressions). Web Animations keyframes count as CSS from
   data.
+- One request leaves for the internet, from the theme: the update check
+  (section 3, Updates), to a constant URL, without cookies or a
+  referrer, on a click, or once a day in a browser whose user switched
+  Daily update check on. Nothing from the answer but a version number
+  reaches the page, as text. `tests/theme.test.js` holds the script to
+  that one `fetch`, the option to the browser and off by default, and
+  the login page to reading none of it.
 - ACL test: the app's ACL grants only the listed read methods and every
   `rpc.declare` in the app is covered, nothing unused is granted
   (`security-tests/test_acl_policy.js`, also run by `node --test tests/`).
