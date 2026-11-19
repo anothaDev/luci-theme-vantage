@@ -115,8 +115,8 @@ msgstr "%d Peers"
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:111
 msgid "%d radio down"
 msgid_plural "%d radios down"
-msgstr[0] "%d Funkmodul außer Betrieb"
-msgstr[1] "%d Funkmodule außer Betrieb"
+msgstr[0] "Außer Betrieb: %d"
+msgstr[1] "Außer Betrieb: %d"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:115
 msgid "%d radio off"
@@ -127,8 +127,8 @@ msgstr[1] "%d Funkmodule ausgeschaltet"
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:117
 msgid "%d radio up"
 msgid_plural "%d radios up"
-msgstr[0] "%d Funkmodul in Betrieb"
-msgstr[1] "%d Funkmodule in Betrieb"
+msgstr[0] "In Betrieb: %d"
+msgstr[1] "In Betrieb: %d"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3748
 msgid "%d radios"
