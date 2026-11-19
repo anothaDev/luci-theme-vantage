@@ -1251,3 +1251,55 @@ test('tab title: follows the dashboard, is written once a change, and is the tit
 	const part = src.slice(src.indexOf('function alertMark('), src.indexOf('/* Does help text carry a warning?')) + src.slice(src.indexOf('\tupdateTitle() {'), src.indexOf('\t/* -------------------------------------------------- indicators */'));
 	assert.doesNotMatch(part, /innerHTML|querySelector\('title'\)|textContent|_\(/);
 });
+
+/* --------------------------- from the review of the 1.1 batch: the wiring */
+
+test('daily update check: the theme itself applies what is kept at page load and puts the group in the panel', () => {
+	assert.match(src, /\t\tthis\.applyBrand\(\);\n\t\tthis\.applyUpdate\(\);\n\t\},/, 'setupTheme ends by applying it');
+	assert.match(src, /\n\t\t\tthis\.updateGroup\(\),\n\t\t\tthis\.versionEl\(\)\n/, 'the Appearance panel has the group');
+});
+
+test('daily update check: a manual check that finds this version current says so, after a notice', async () => {
+	const w = updateBrowser({ 'vantage.update.auto': 'on', 'vantage.update.last': JSON.stringify({ at: 1700000000000, latest: NEWER }) });
+	w.list = w.packages(RUNNING);
+	w.now += 3600 * 1000;
+	const wp = (await w.page()).open();
+	assert.ok(wp.dot() && !wp.line.hidden, 'the notice from what was kept');
+	wp.check.fire('click');
+	await w.settle();
+	assert.deepEqual([ wp.line.textContent, wp.line.hidden, wp.dot() ], [ 'Up to date', false, false ]);
+});
+
+test('daily update check: switched off before the page is idle, nothing is asked', async () => {
+	const late = updateBrowser({ 'vantage.update.auto': 'on' });
+	late.list = late.packages(NEWER);
+	late.idle = false;
+	const lp = await late.page();
+	delete late.store['vantage.update.auto'];
+	lp.timers[0].f();
+	await late.settle();
+	assert.equal(late.asked.length, 0);
+});
+
+test('daily update check: setupTheme applies what is kept, and another tab\'s storage event reaches it', () => {
+	require('./luci-stub');
+	const store = { 'vantage.update.auto': 'on', 'vantage.update.last': JSON.stringify({ at: 1, latest: NEWER }) };
+	const heard = {};
+	const gear = { attrs: { 'aria-label': 'Appearance' }, addEventListener() {}, getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }, setAttribute(k, v) { this.attrs[k] = String(v); },
+		toggleAttribute(k, on) { if (on) this.attrs[k] = ''; else delete this.attrs[k]; }, hasAttribute(k) { return k in this.attrs; } };
+	const document = { getElementById: id => (id === 'vt-look' ? gear : null) };
+	const window = { addEventListener: (t, f) => { (heard[t] = heard[t] || []).push(f); } };
+	const localStorage = { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } };
+	const proto = new Function('baseclass', 'ui', 'rpc', 'host', 'E', 'L', '_', 'document', 'window', 'localStorage', src)(
+		{ extend: x => x }, {}, { declare: () => () => Promise.resolve({}) }, {}, () => ({}), {}, t => t, document, window, localStorage);
+	const shell = Object.assign(Object.create(proto), { root: { getAttribute: () => null, setAttribute() {} } });
+	for (const k of [ 'applyTheme', 'applyBackdrop', 'applyPower', 'applyUnfocused', 'applyBrand' ]) shell[k] = () => {};
+	shell.setupTheme();
+	assert.ok(gear.hasAttribute('data-vt-update'), 'applied with the theme, at page load');
+	delete store['vantage.update.auto'];
+	heard.storage.forEach(f => f({ key: 'vantage.update.auto', newValue: null }));
+	assert.ok(!gear.hasAttribute('data-vt-update'), 'another tab switched it off: the dot goes here');
+	store['vantage.update.auto'] = 'on';
+	heard.storage.forEach(f => f({ key: 'vantage.update.last', newValue: store['vantage.update.last'] }));
+	assert.ok(gear.hasAttribute('data-vt-update'), 'another tab learned of a version');
+});

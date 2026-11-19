@@ -124,6 +124,8 @@ function setup(dispatchpath, nodespec) {
 			if (typeof v === 'function') el.addEventListener(k, v);
 			else if (v != null) el.setAttribute(k, v);
 		}
+		/* as LuCI's E(): a plain string is markup */
+		if (typeof kids === 'string' && kids !== '') { el.innerHTML = kids; return el; }
 		for (const c of (Array.isArray(kids) ? kids : (kids == null || kids === '' ? [] : [ kids ])))
 			if (c !== '' && c != null) el.appendChild(typeof c === 'object' ? c : document.createTextNode(c));
 		return el;
@@ -463,4 +465,20 @@ test('palette: what is handed over after the event, or by no list, is not listed
 	s.shell.pal.input.value = '';
 	s.shell.filterPalette();
 	assert.equal(s.shell.pal.list.children.length, before);
+});
+
+/* --------------------------- from the review of the 1.1 batch: the wiring */
+test('palette: no text of a provider entry is handed to E() as markup', () => {
+	const s = setup([ 'admin', 'status', 'overview' ]);
+	s.window.addEventListener('vantage:palette', ev => ev.detail.add([ { kind: 'ssid', title: 'Harbor-5G', detail: '<b>5 GHz</b>', words: 'x', run() {} } ]));
+	s.shell.openPalette();
+	for (const q of [ '', 'harbor' ]) {
+		s.shell.pal.input.value = q;
+		s.shell.filterPalette();
+		const nodes = s.shell.pal.list.querySelectorAll('li, span, a, mark, b');
+		assert.ok(nodes.length > 2, q);
+		assert.ok(nodes.every(n => n.innerHTML === undefined), 'a text node, never markup: ' + JSON.stringify(q));
+		assert.ok(s.shell.pal.list.textContent.includes('<b>5 GHz</b>'), q);
+	}
+	s.shell.closePalette();
 });

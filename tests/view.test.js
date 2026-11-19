@@ -3633,3 +3633,91 @@ test('copy buttons: the MAC and each IP address in a client\'s, a wired host\'s 
 	assert.match(bare.textContent, /IPv4—IPv6—/, 'a dash as before');
 	for (const d of [ client, up ]) assert.ok(d.find('vt-copy').every(b => b.tag === 'button' && b.getAttribute('type') === 'button'));
 });
+
+/* --------------------------- from the review of the 1.1 batch: the wiring */
+
+test('WireGuard: a poll\'s answer reaches the tile through the page\'s own state', () => {
+	const saved = { window: global.window, L: global.L, document: global.document };
+	global.window = { sessionStorage: { getItem: () => null, setItem() {} }, localStorage: { getItem: () => null, setItem() {} }, setTimeout: () => 0 };
+	global.document = { hidden: false, documentElement: { getAttribute: () => null } };
+	global.L = { env: {}, resolveDefault: (p, d) => Promise.resolve(p).then(v => v == null ? d : v, () => d) };
+	try {
+		const self = Object.create(dview);
+		self.initState({ board: {}, canWrite: false, canRdns: false, mdns: null });
+		const raw = t => ({ at: t, info: { localtime: t / 1000 }, stat: '', ifaces: [], wifi: null, hints: {}, thermal: [], fdb: [], assoc: {}, hapd: {}, hapdStatus: {}, iwinfo: {}, devs: {},
+			wg: { reply: WG_SEVEN(), at: t } });
+		self.ingest(Object.assign(raw(WG_T * 1000 - 5000), { wg: null }));
+		assert.equal(self.m.wg, false, 'a page that has seen no tunnel has no tile');
+		self.ingest(raw(WG_T * 1000));
+		assert.equal(self.m.wg, true, 'the poll\'s answer makes the tile exist');
+		assert.deepEqual(self.st.wg.map(t => [ t.name, t.peers.length ]), [ [ 'wg0', 7 ] ]);
+		withPatchDom(() => {
+			self.el = Object.assign(self.el || {}, { wg: new PNode('div') });
+			self.paintWireguard();
+			assert.equal(wgRows(self).length, 5, 'painted from the state the page itself made (ui.wgOpen)');
+		});
+	} finally { global.window = saved.window; global.L = saved.L; if (saved.document === undefined) delete global.document; else global.document = saved.document; }
+});
+
+test('copy: the drawer itself has the status line the Copy button speaks through', t => {
+	fakeDom(t);
+	const self = Object.create(dview);
+	self.el = {};
+	const layer = self.buildDrawer();
+	const say = self.el.drawerSay;
+	assert.ok(say, 'built with the drawer');
+	assert.deepEqual([ say.getAttribute('role'), say.classList.contains('vt-sr') ], [ 'status', true ]);
+	assert.ok(layer.all().includes(say), 'and in the drawer');
+});
+
+test('top talkers: the gateway stays out by its own mark, where the line\'s port is not known', () => {
+	const self = Object.create(view);
+	const m = talkModel();
+	self.st = { devRates: TALK_RATES, staRates: {} };
+	self.m = m;
+	m.uplinks[0].port = null;
+	m.uplink.port = null;
+	assert.ok(!self.talkers(m).some(x => x.name === 'h4'), 'the gateway carries the line\'s traffic, not its own');
+	assert.equal(self.talkHost(m.wiredHosts[3]), false);
+});
+
+test('offline: a rebuild with named devices listed notes nothing', () => {
+	const self = Object.create(view);
+	self.aliases = OFF_NAMES;
+	self.st = { named: Object.create(null) };
+	self.markOffline(offModel(), {}, 105000);
+	const before = JSON.stringify(self.st.named);
+	self.markOffline(offModel(), {}, null);
+	assert.equal(JSON.stringify(self.st.named), before);
+	assert.deepEqual([ self.st.named['00:00:5e:00:53:01'].at, self.st.named['00:00:5e:00:53:32'].at ], [ 105000, 85000 ]);
+});
+
+test('WireGuard: the wait starts past one second, not before', () => wgPolls(async c => {
+	const reply = wgReply([ wgPeer('A', 'phone') ]);
+	c.answer = () => Promise.resolve(reply);
+	await c.poll(0);
+	c.took = 1000;
+	await c.poll(5e3);
+	let n = c.asked;
+	await c.poll(5e3);
+	assert.equal(c.asked, n + 1, 'an answer within the second: asked again at the next poll');
+	c.took = 1001;
+	await c.poll(5e3);
+	n = c.asked;
+	await c.poll(5e3);
+	await c.poll(5e3);
+	assert.equal(c.asked, n, 'just over it: not for 10.01 s');
+	await c.poll(5e3);
+	assert.equal(c.asked, n + 1);
+}));
+
+test('offline: an address the host hints give now comes before the one remembered', () => {
+	const self = Object.create(view);
+	self.aliases = OFF_NAMES;
+	self.st = { named: Object.create(null) };
+	self.markOffline(offModel(), {}, 105000);
+	const hints = Object.assign({}, OFF_LEFT.hints, { '00:00:5E:00:53:01': { ipaddrs: [ '192.0.2.150' ] } });
+	const m = offModel(Object.assign({}, OFF_LEFT, { hints }));
+	self.markOffline(m, {}, 110000);
+	assert.deepEqual(m.offline.filter(c => c.name === 'Laptop').map(c => c.ips), [ [ '192.0.2.150' ] ]);
+});
