@@ -301,7 +301,23 @@ text around it so it looks the same size.
   are in name order until a column's header is clicked; that pick is
   kept per browser (`localStorage`), each list its own (#132: in order
   of live traffic the rows changed places at every poll). The cards of
-  the narrow layout have no header and keep that order. A wired
+  the narrow layout have no header and keep that order. One more quick
+  filter, Offline, lists the devices the administrator has named (the
+  aliases) that are in neither list now, and shows only while there is
+  one: by name, at most as many as there may be names (512), each with
+  the name, icon and MAC of its alias, the address the host hints still
+  give it (a lease that has not run out; else the one it had when this
+  page last listed it) and when this page last listed it (a wired host:
+  when its bridge last heard it), both only where known. What the page
+  saw is kept while it is open and stored nowhere. They count nowhere
+  else: not as Wi-Fi or wired clients, not in the header, the health
+  checks or Top talkers. A row opens details with what is known (the
+  vendor of the MAC where the built-in table has it) and the rename
+  control of a connected client, which also removes the name. "In
+  neither list" is all this device can tell: a wired device drops out
+  of its list once the bridge forgets it (about five minutes without
+  traffic), which the details say; and while a bridge holds too many
+  entries to list, nobody is said to be offline. A wired
   host alone on its port gets the port's link speed and traffic as its
   own; hosts sharing a port (a switch or another access point behind it)
   show the port as shared, with no speed or traffic of their own; their
@@ -329,7 +345,9 @@ text around it so it looks the same size.
   randomised MACs. Never "?". The source is shown. DHCP, mDNS and WPS
   names are what devices say about themselves: a device on the network can
   give another a misleading name when that one has no better name, and the
-  source tag is the only hint. An alias always wins.
+  source tag is the only hint. An alias always wins. A named device
+  that is not connected is not lost from view: the Clients tile lists it
+  under Offline, where its name can be changed or removed too.
 - **Insight over decoration**: per-client experience score with a reason,
   Wi-Fi generation badges and legacy-client flags, top talkers by live
   throughput, new/recently-gone clients, busiest radio; each insight links

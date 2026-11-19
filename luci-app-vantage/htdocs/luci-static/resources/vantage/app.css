@@ -1658,6 +1658,11 @@ html[data-darkmode="true"] .vt-app {
 	.vt-app .vt-live-cell .vt-mini, .vt-app .vt-live-split { display: none; }
 	.vt-app .vt-ctable td.vt-td-exp, .vt-app .vt-ctable td.vt-td-seen { grid-column: 1 / -1; grid-row: 3; padding-left: 44px; }
 	.vt-app .vt-ctable td.vt-td-seen { font-size: var(--vt-fs-sm); color: var(--vt-text-3); }
+	/* a named device that is offline: what is not known takes no line,
+	   and what is known says what it is (the cards have no header) */
+	.vt-app .vt-ctable td.vt-td-none { display: none; }
+	.vt-app .vt-ctable .vt-row-off td.vt-td-net { font-size: var(--vt-fs-sm); color: var(--vt-text-2); }
+	.vt-app .vt-ctable .vt-row-off td.vt-td-net::before, .vt-app .vt-ctable .vt-row-off td.vt-td-seen::before { content: attr(data-title) " "; color: var(--vt-text-3); }
 	.vt-app .vt-exp-text span { max-width: none; -webkit-line-clamp: 1; }
 	.vt-app .vt-exp { gap: 8px; }
 	.vt-app .vt-exp-text { flex-direction: row; align-items: baseline; gap: 6px; min-width: 0; }

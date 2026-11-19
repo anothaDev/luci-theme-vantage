@@ -1428,6 +1428,28 @@ return baseclass.extend({
 		clients.forEach(function(c) { if (c.ap) give(c.ap, true); });
 		wired.forEach(function(h) { if (h.ap || h.behind) give(h.ap || h.behind, false); });
 
+		/* The named devices (raw.aliases) in neither list: not connected
+		   now, as far as this device can tell (a wired host is listed
+		   while a bridge remembers it). As many as there may be names at
+		   most, by name. Each shows its MAC under the name; its address
+		   is what the host hints still give (a lease that has not run
+		   out), and its vendor is looked up whatever the name, for its
+		   details */
+		var here = Object.create(null);
+		[ clients, wired ].forEach(function(l) { l.forEach(function(c) { here[c.mac] = true; }); });
+		var offline = Object.keys(obj(raw.aliases)).filter(function(mac) {
+			return names.normMac(mac) === mac && !here[mac] && !ownMacs[mac];
+		}).slice(0, names.ALIAS_MAX).map(function(mac) {
+			var c = who(mac);
+			c.offline = true;
+			c.secondary = c.macLabel;
+			c.vendor = typeof raw.vendor === 'function' ? raw.vendor(names.ouiKey(mac)) : null;
+			return c;
+		}).filter(function(c) { return c.nameSource === 'alias'; }).sort(function(a, b) {
+			var x = a.name.toLowerCase(), y = b.name.toLowerCase();
+			return x < y ? -1 : x > y ? 1 : a.mac < b.mac ? -1 : 1;
+		});
+
 		var mem = this.memory(info.memory);
 		var release = obj(board.release);
 		return {
@@ -1455,6 +1477,8 @@ return baseclass.extend({
 			ssids: ssids,
 			clients: clients,
 			wiredHosts: wired,
+			/* the named devices in neither list */
+			offline: offline,
 			/* the paired access points (collectorAps), [] without any */
 			accessPoints: aps
 		};

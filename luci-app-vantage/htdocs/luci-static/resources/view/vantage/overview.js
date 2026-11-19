@@ -475,7 +475,7 @@ function hueOf(mac) {
 }
 
 function avatar(c, small) {
-	var el = E('span', { 'class': 'vt-av' + (small ? ' vt-av-sm' : '') + (c.gone ? ' vt-av-gone' : '') }, [ icon(c.icon || 'device') ]);
+	var el = E('span', { 'class': 'vt-av' + (small ? ' vt-av-sm' : '') + (c.gone || c.offline ? ' vt-av-gone' : '') }, [ icon(c.icon || 'device') ]);
 	el.style.setProperty('--vt-h', hueOf(c.mac).toFixed(0));
 	return el;
 }
@@ -1186,7 +1186,7 @@ return view.extend({
 			devPrev: null, staPrev: null, devRates: Object.create(null), staRates: Object.create(null), radioRates: Object.create(null), ssidRates: Object.create(null),
 			hist: { net: net, cpu: series.valid(stored.cpu, 2, HIST_FAST, now), mem: series.valid(stored.mem, 2, HIST_MAX, now) },
 			clientHist: clientHist, bestStd: Object.create(null),
-			presence: null, isNew: Object.create(null), gone: [],
+			presence: null, isNew: Object.create(null), gone: [], named: Object.create(null),
 			rdns: Object.create(null), rdnsBusy: false, rdnsOff: !data.canRdns,
 			mdns: Object.create(null), mdnsOff: true, mdnsAt: 0,
 			oui: null, ouiLoading: false,
@@ -1315,6 +1315,7 @@ return view.extend({
 		st.presence = p.state;
 		st.isNew = p.isNew;
 		st.gone = p.gone;
+		this.markOffline(m, raw, now);
 		Object.keys(st.clientHist).forEach(function(mac) {
 			if (!p.state.firstSeen[mac]) delete st.clientHist[mac];
 		});
@@ -1372,6 +1373,30 @@ return view.extend({
 		var r = model.rates(st.wgPrev, counters, wg ? wg.at : now);
 		st.wgPrev = r.next;
 		if (Object.keys(r.rates).length || !Object.keys(counters).length) st.wgRates = r.rates;
+	},
+
+	/* The named devices in neither list (the model's offline), with what
+	   this page still knows of each: when it was last listed since the
+	   page opened (a wired host: when its bridge last heard it), and the
+	   address it had then where the host hints give none now. A poll
+	   (now) notes the named devices it lists; kept for the names there
+	   are, so never more than those. While a bridge holds too many
+	   entries to list, who is on its ports is not known, and nobody is
+	   said to be offline. */
+	markOffline: function(m, raw, now) {
+		var aliases = this.aliases || {}, seen = this.st.named;
+		if (now != null) {
+			m.clients.concat(m.wiredHosts).forEach(function(c) {
+				if (aliases[c.mac]) seen[c.mac] = { at: now - (typeof c.port === 'string' && c.seen > 0 ? c.seen * 1000 : 0), ip: (c.ips && c.ips[0]) || null };
+			});
+			Object.keys(seen).forEach(function(mac) { if (!aliases[mac]) delete seen[mac]; });
+		}
+		if (raw && raw.fdbCrowded) m.offline = [];
+		m.offline.forEach(function(c) {
+			var s = seen[c.mac];
+			c.lastSeen = s ? s.at : null;
+			if (s && s.ip && !c.ips.length) c.ips = [ s.ip ];
+		});
 	},
 
 	/* The generation shown is the best standard a station used this
@@ -1521,10 +1546,15 @@ return view.extend({
 			L.resolveDefault(callMdns(), null).then(function(r) { self.applyMdns(r); });
 		}
 		var wantVendor = all.some(function(c) { return c.nameSource === 'mac'; });
-		if (wantVendor && !st.oui && !st.ouiLoading) {
-			st.ouiLoading = true;
-			L.require('vantage.oui').then(function(mod) { st.oui = mod; self.rerender(); }).catch(function() {});
-		}
+		if (wantVendor) this.loadOui();
+	},
+
+	/* the vendor table, once */
+	loadOui: function() {
+		var st = this.st, self = this;
+		if (st.oui || st.ouiLoading) return;
+		st.ouiLoading = true;
+		L.require('vantage.oui').then(function(mod) { st.oui = mod; self.rerender(); }).catch(function() {});
 	},
 
 	/* rebuild the model from the last replies (names changed) */
@@ -1540,6 +1570,7 @@ return view.extend({
 		});
 		this.markWired(m, null);
 		m.wg = st.wgSeen === true;
+		this.markOffline(m, raw, null);
 		this.stickyGen(m);
 		m.clients.forEach(function(c) { c.exp = insight.experience(c); c.firstSeen = st.presence && st.presence.firstSeen[c.mac]; c.isNew = !!st.isNew[c.mac]; });
 		st.talkers = this.talkers(m);
@@ -3842,6 +3873,8 @@ return view.extend({
 	/* the quick filters of the list shown: [ id, label, count, warn ] */
 	filterDefs: function() {
 		var self = this, m = this.m, st = this.st, out;
+		/* the named devices in neither list: a filter only while there are any */
+		var off = (m.offline || []).length;
 		if (this.ui.kind === 'wired') {
 			var hosts = m.wiredHosts, ports = [];
 			out = [ [ 'all', _('All'), hosts.length ] ];
@@ -3851,6 +3884,7 @@ return view.extend({
 			var via = this.aps().map(function(a) { return [ 'ap:' + a.id, _('Via %s').format(a.name), hosts.filter(function(h) { return self.behindAp(h, a.id); }).length ]; })
 				.filter(function(d) { return d[2] > 0; });
 			if (via.length) out = out.concat([ [ 'here', _('This device'), hosts.filter(function(h) { return !h.ap; }).length ] ], via);
+			if (off) out.push([ 'offline', _('Offline'), off ]);
 			return out;
 		}
 		var bands = [];
@@ -3864,6 +3898,7 @@ return view.extend({
 		out.push([ 'active', _('Active'), m.clients.filter(function(c) { var r = st.staRates[c.mac]; return r && r.rx + r.tx > 8000; }).length ]);
 		out.push([ 'weak', _('Weak signal'), m.clients.filter(function(c) { return self.isWeak(c); }).length, true ]);
 		out.push([ 'new', _('New', 'vantage'), m.clients.filter(function(c) { return c.isNew; }).length ]);
+		if (off) out.push([ 'offline', _('Offline'), off ]);
 		return out;
 	},
 
@@ -3925,34 +3960,43 @@ return view.extend({
 		   stations */
 		var hosts = m.wiredHosts || [], wifiList = !m.wired || m.clients.length > 0, both = !!(hosts.length && wifiList);
 		if (!both) ui.kind = wifiList ? 'wifi' : 'wired';
-		var wired = ui.kind === 'wired', all = wired ? hosts : m.clients;
+		var defs = this.filterDefs();
+		if (!defs.some(function(d) { return d[0] === ui.chip; })) ui.chip = 'all';
+		/* Offline: the named devices that are in neither list, a list of
+		   its own (no Wi-Fi or wired count has them); a click on Wi-Fi or
+		   Wired goes back to that list */
+		var off = ui.chip === 'offline';
+		var wired = !off && ui.kind === 'wired', all = off ? m.offline : wired ? hosts : m.clients;
 		el.kinds.hidden = !both;
-		var kindSig = both ? [ ui.kind, m.clients.length, hosts.length ].join(' ') : '';
+		var kindSig = both ? [ off ? 'offline' : ui.kind, m.clients.length, hosts.length ].join(' ') : '';
 		if (this.kindSig !== kindSig) {
 			this.kindSig = kindSig;
 			dom.content(el.kinds, !both ? [] : [ [ 'wifi', _('Wi-Fi'), m.clients.length ], [ 'wired', _('Wired'), hosts.length ] ].map(function(k) {
-				return E('button', { 'type': 'button', 'class': 'vt-kind' + (ui.kind === k[0] ? ' vt-kind-on' : ''), 'aria-pressed': String(ui.kind === k[0]),
-					'click': function() { if (ui.kind !== k[0]) { ui.kind = k[0]; ui.chip = 'all'; self.pickClients(); } } }, [
+				var on = !off && ui.kind === k[0];
+				return E('button', { 'type': 'button', 'class': 'vt-kind' + (on ? ' vt-kind-on' : ''), 'aria-pressed': String(on),
+					'click': function() { if (ui.kind !== k[0] || ui.chip === 'offline') { ui.kind = k[0]; ui.chip = 'all'; self.pickClients(); } } }, [
 					E('span', {}, [ k[1] ]), E('span', { 'class': 'vt-kind-n vt-tn' }, [ String(k[2]) ])
 				]);
 			}));
 		}
-		var hint = wired ? _('Filter by name, address, port…') : _('Filter by name, address, SSID…');
+		var hint = ui.kind === 'wired' ? _('Filter by name, address, port…') : _('Filter by name, address, SSID…');
 		if (el.filter.getAttribute('placeholder') !== hint) el.filter.setAttribute('placeholder', hint);
 
-		var defs = this.filterDefs();
-		if (!defs.some(function(d) { return d[0] === ui.chip; })) ui.chip = 'all';
 		this.paintFilters(defs);
 		el.filterClear.hidden = !ui.filter;
 
 		/* header with sort buttons; wired hosts have a link and when the
 		   bridge last heard from them instead of radio figures */
-		var cols = wired ? [ [ 'name', _('Device') ], [ 'link', _('Link', 'vantage') ], [ 'net', _('Network') ], [ 'live', _('Live') ],
+		var cols = off ? [ [ 'name', _('Device') ], [ 'net', _('Last address') ], [ 'seen', _('Last seen') ] ]
+			: wired ? [ [ 'name', _('Device') ], [ 'link', _('Link', 'vantage') ], [ 'net', _('Network') ], [ 'live', _('Live') ],
 			[ 'seen', _('Last heard'), _('The bridge forgets a device after about five minutes without traffic') ] ]
 			: [ [ 'name', _('Device') ], [ 'signal', _('Signal') ], [ 'ssid', _('Network') ], [ 'rate', _('Link rate') ], [ 'live', _('Live') ], [ 'exp', _('Experience') ], [ 'time', _('Online', 'vantage') ] ];
 		var so = ui.sorts[ui.kind];
-		var headSig = ui.kind + ' ' + so.key + ' ' + so.dir;
+		/* the offline list is by name, always: its headers are labels */
+		if (off) so = { key: 'name', dir: 1 };
+		var headSig = off ? 'offline' : ui.kind + ' ' + so.key + ' ' + so.dir;
 		if (this.headSig !== headSig) dom.content(el.thead, [ E('tr', {}, cols.map(function(c) {
+			if (off) return E('th', { 'class': 'vt-th-' + c[0], 'scope': 'col' }, [ E('span', { 'class': 'vt-label' }, [ c[1] ]) ]);
 			var on = so.key === c[0];
 			var btn = E('button', { 'type': 'button', 'class': 'vt-sort' + (on ? ' vt-sort-on' : ''), 'click': function() { self.setSort(c[0]); } }, [ E('span', {}, [ c[1] ]), E('span', { 'class': 'vt-sort-ind', 'aria-hidden': 'true' }, [ on ? (so.dir > 0 ? '↑' : '↓') : '' ]) ]);
 			if (c[2]) btn.setAttribute('title', c[2]);
@@ -3978,7 +4022,7 @@ return view.extend({
 		var keep = new Set(), at = 0;
 		this.rowSig = this.rowSig || new Map();
 		list.concat(gone).forEach(function(c) {
-			var key = (wired ? 'wired:' : '') + (c.gone ? 'gone:' : '') + c.mac;
+			var key = (off ? 'offline:' : wired ? 'wired:' : '') + (c.gone ? 'gone:' : '') + c.mac;
 			keep.add(key);
 			var tr = self.rowMap.get(key);
 			if (!tr) {
@@ -3989,11 +4033,12 @@ return view.extend({
 			}
 			tr.setAttribute('data-mac', c.mac);
 			tr.classList.toggle('vt-row-gone', !!c.gone);
+			tr.classList.toggle('vt-row-off', off);
 			tr.classList.toggle('vt-row-sel', !!(ui.drawer && ui.drawer.kind === 'client' && ui.drawer.id === c.mac));
 			tr.setAttribute('aria-label', _('Open details of %s').format(c.name));
 			/* a row that would come out the same keeps its cells, and rows
 			   already in order stay where they are */
-			var cells = wired ? self.wiredCells(c, maxRate) : self.clientCells(c, maxRate), sig = treeSig(cells);
+			var cells = off ? self.offlineCells(c) : wired ? self.wiredCells(c, maxRate) : self.clientCells(c, maxRate), sig = treeSig(cells);
 			if (self.rowSig.get(key) !== sig) { dom.content(tr, cells); self.rowSig.set(key, sig); }
 			if (el.tbody.children[at] !== tr) el.tbody.insertBefore(tr, el.tbody.children[at] || null);
 			at++;
@@ -4008,9 +4053,9 @@ return view.extend({
 
 		var total = all.length;
 		txt(el.count, list.length !== total ? _('%d of %d').format(list.length, total)
-			: wired ? (total === 1 ? _('1 device') : _('%d devices').format(total))
+			: wired || off ? (total === 1 ? _('1 device') : _('%d devices').format(total))
 			: (total === 1 ? _('1 connected') : _('%d connected').format(total)));
-		el.count.hidden = both && list.length === total;
+		el.count.hidden = both && !off && list.length === total;
 
 		el.clientsEmpty.hidden = list.length + gone.length > 0;
 		if (!el.clientsEmpty.hidden) {
@@ -4088,6 +4133,19 @@ return view.extend({
 			]),
 			/* a paired access point's host: not heard by this device's bridge */
 			E('td', { 'class': 'vt-td-seen vt-tn', 'data-title': _('Last heard') }, [ c.ap ? fmt.DASH : c.seen == null ? _('static entry') : fmt.ago(c.seen * 1000) ])
+		];
+	},
+
+	/* a named device that is not connected: its name, icon and MAC as its
+	   alias has them; an address and when it was last listed only where
+	   still known (a dash in the table, no line on a card: app.css) */
+	offlineCells: function(c) {
+		var seen = c.lastSeen != null;
+		return [
+			this.whoCell(c, []),
+			E('td', { 'class': 'vt-td-net' + (c.ips.length ? '' : ' vt-td-none'), 'data-title': _('Last address') }, [
+				c.ips.length ? E('span', { 'class': 'vt-mono' }, [ c.ips[0] ]) : E('span', { 'class': 'vt-muted' }, [ fmt.DASH ]) ]),
+			E('td', { 'class': 'vt-td-seen vt-tn' + (seen ? '' : ' vt-td-none'), 'data-title': _('Last seen') }, [ seen ? fmt.ago(Date.now() - c.lastSeen) : fmt.DASH ])
 		];
 	},
 
@@ -4407,6 +4465,8 @@ return view.extend({
 		if (!c && gone) c = Object.assign({}, gone.client, { gone: true, goneAt: gone.at });
 		if (!c) (this.m.wiredHosts || []).forEach(function(x) { if (x.mac === mac) c = x; });
 		if (c && typeof c.port === 'string') return this.drawerWired(c);
+		if (!c) (this.m.offline || []).forEach(function(x) { if (x.mac === mac) c = x; });
+		if (c && c.offline) return this.drawerOffline(c);
 		if (!c) return {
 			title: [ E('span', { 'class': 'vt-drawer-name' }, [ names.normMac(mac) ? fmt.mac(mac) : _('Unknown device', 'vantage') ]) ],
 			body: [ E('div', { 'class': 'vt-empty' }, [ icon('wifi'), E('p', { 'class': 'vt-empty-title' }, [ _('Not connected') ]), E('p', {}, [ _('This station is not associated right now.') ]) ]) ]
@@ -4538,6 +4598,27 @@ return view.extend({
 			]) ])
 		];
 		return { title: title, body: body };
+	},
+
+	/* a named device that is not connected: what is known of it, and its
+	   name to change or remove as for one that is */
+	drawerOffline: function(c) {
+		var self = this;
+		var rename = this.canWrite ? E('button', { 'type': 'button', 'class': 'vt-btn vt-btn-ghost', 'click': function() { self.startRename(c); } }, [ icon('pencil'), E('span', {}, [ _('Rename', 'vantage') ]) ]) : '';
+		/* the vendor table comes only when a name needs it: here for these details */
+		if (!c.isPrivate) this.loadOui();
+		return { title: this.drawerWho(c), body: [
+			E('div', { 'class': 'vt-banner vt-banner-muted' }, [ icon('info'), E('span', {}, [ _('Not connected right now. A wired device that stays quiet is forgotten after about five minutes.') ]) ]),
+			E('div', { 'class': 'vt-dactions' }, [ rename ]),
+			this.el.renameSlot = E('div', { 'class': 'vt-rename-slot' }),
+			this.section(_('Identity'), [ E('dl', { 'class': 'vt-kvs' }, [
+				kv(_('MAC address'), c.macLabel, true),
+				kv(_('Address type'), c.isPrivate ? _('Private address (randomised by the device)') : (c.vendor ? _('Globally unique · %s').format(c.vendor) : _('Globally unique'))),
+				c.ips.length ? kv(_('Last address'), c.ips.join('\n'), true) : '',
+				c.lastSeen != null ? kv(_('Last seen'), [ fmt.ago(Date.now() - c.lastSeen), E('small', {}, [ new Date(c.lastSeen).toLocaleTimeString() ]) ]) : '',
+				kv(_('Name from'), this.sourceText(c))
+			]) ])
+		] };
 	},
 
 	sourceText: function(c) {

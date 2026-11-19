@@ -2919,3 +2919,269 @@ test('top talkers: without Wi-Fi the empty tile says why, and never names Wi-Fi'
 	/* and a host that moves data is a row */
 	assert.equal(note(talkModel(), TALK_RATES), null);
 }));
+
+/* ------------------------------------------ named devices that are offline */
+
+/* a router with a laptop on its Wi-Fi and a NAS on lan2, both named; two
+   more names for devices in no list: a speaker the host hints still give
+   an address, and a camera they do not */
+const OFF_NAMES = {
+	'00:00:5e:00:53:01': { sid: 'cfg01', name: 'Laptop', icon: 'laptop' },
+	'00:00:5e:00:53:32': { sid: 'cfg02', name: 'NAS', icon: null },
+	'00:00:5e:00:53:c1': { sid: 'cfg03', name: 'Den speaker', icon: 'speaker' },
+	'00:00:5e:00:53:c2': { sid: 'cfg04', name: 'attic camera', icon: 'camera' }
+};
+function offRaw(more) {
+	return Object.assign({
+		ifaces: [
+			{ interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] },
+			{ interface: 'wan', up: true, l3_device: 'wan', device: 'wan', 'ipv4-address': [ { address: '203.0.113.2', mask: 24 } ],
+				route: [ { target: '0.0.0.0', mask: 0, nexthop: '203.0.113.1' } ] }
+		],
+		devs: { 'br-lan': { devtype: 'bridge', 'bridge-members': [ 'lan1', 'lan2', 'phy0-ap0' ] }, lan1: { devtype: 'ethernet', carrier: true, speed: '1000F' },
+			lan2: { devtype: 'ethernet', carrier: true, speed: '1000F' }, wan: { devtype: 'ethernet', carrier: true, speed: '1000F' }, 'phy0-ap0': { devtype: 'wlan' } },
+		wifi: { radio0: { up: true, config: { band: '5g', channel: '36', htmode: 'HE80' }, interfaces: [ { ifname: 'phy0-ap0', config: { ssid: 'Home', mode: 'ap', network: [ 'lan' ] } } ] } },
+		assoc: { 'phy0-ap0': [ { mac: '00:00:5E:00:53:01', signal: -50 }, { mac: '00:00:5E:00:53:02', signal: -60 } ] },
+		hints: { '00:00:5E:00:53:01': { name: 'laptop-7', ipaddrs: [ '192.0.2.101' ] }, '00:00:5E:00:53:32': { name: 'nas', ipaddrs: [ '192.0.2.132' ] },
+			'00:00:5E:00:53:C1': { ipaddrs: [ '192.0.2.61' ] } },
+		fdb: [ { mac: '00:00:5e:00:53:32', port: 'lan2', bridge: 'br-lan', seen: 20 }, { mac: '00:00:5e:00:53:33', port: 'lan1', bridge: 'br-lan', seen: 3 } ],
+		aliases: OFF_NAMES
+	}, more);
+}
+function offModel(more) {
+	const m = load('vantage.model').build(offRaw(more));
+	m.wired = false;
+	return m;
+}
+/* the two named devices that were connected are gone, and the laptop's lease with it */
+const OFF_LEFT = { assoc: { 'phy0-ap0': [ { mac: '00:00:5E:00:53:02', signal: -60 } ] }, fdb: [ { mac: '00:00:5e:00:53:33', port: 'lan1', bridge: 'br-lan', seen: 3 } ],
+	hints: { '00:00:5E:00:53:32': { name: 'nas', ipaddrs: [ '192.0.2.132' ] }, '00:00:5E:00:53:C1': { ipaddrs: [ '192.0.2.61' ] } } };
+
+test('offline: what the page still knows of a named device: when it was last listed and the address it had, for the names there are', () => {
+	const self = Object.create(view);
+	self.aliases = OFF_NAMES;
+	self.st = { named: Object.create(null) };
+	const info = m => m.offline.map(c => [ c.name, c.lastSeen, c.ips ]);
+	/* the page opens: two named devices in no list, never seen by it */
+	let m = offModel();
+	self.markOffline(m, {}, 100000);
+	assert.deepEqual(info(m), [ [ 'attic camera', null, [] ], [ 'Den speaker', null, [ '192.0.2.61' ] ] ], 'an address from the host hints, no last seen');
+	assert.deepEqual(Object.assign({}, self.st.named), { '00:00:5e:00:53:01': { at: 100000, ip: '192.0.2.101' }, '00:00:5e:00:53:32': { at: 80000, ip: '192.0.2.132' } },
+		'the named devices this poll lists: a station now, a wired host when its bridge last heard it; nobody without a name');
+	/* a later poll: still there */
+	self.markOffline(m = offModel(), {}, 105000);
+	assert.equal(self.st.named['00:00:5e:00:53:01'].at, 105000);
+	/* both leave */
+	self.markOffline(m = offModel(OFF_LEFT), {}, 110000);
+	assert.deepEqual(info(m), [ [ 'attic camera', null, [] ], [ 'Den speaker', null, [ '192.0.2.61' ] ], [ 'Laptop', 105000, [ '192.0.2.101' ] ], [ 'NAS', 85000, [ '192.0.2.132' ] ] ],
+		'last seen at the last poll that listed each; the laptop\'s address from then, the hints having none now');
+	/* a rebuild between polls (a name resolved) notes nothing and keeps what is known */
+	self.markOffline(m = offModel(OFF_LEFT), {}, null);
+	assert.deepEqual(info(m).slice(2), [ [ 'Laptop', 105000, [ '192.0.2.101' ] ], [ 'NAS', 85000, [ '192.0.2.132' ] ] ]);
+	/* much later: still known, while the page is open */
+	self.markOffline(m = offModel(OFF_LEFT), {}, 110000 + 6 * 3600 * 1000);
+	assert.equal(m.offline[2].lastSeen, 105000);
+	/* a name removed: nothing is kept for its device, and it is in no list */
+	const fewer = Object.assign({}, OFF_NAMES);
+	delete fewer['00:00:5e:00:53:01'];
+	self.aliases = fewer;
+	self.markOffline(m = offModel(Object.assign({ aliases: fewer }, OFF_LEFT)), {}, 120000);
+	assert.deepEqual([ Object.keys(self.st.named), m.offline.map(c => c.name) ], [ [ '00:00:5e:00:53:32' ], [ 'attic camera', 'Den speaker', 'NAS' ] ]);
+	/* a bridge with too many entries to list: who is on its ports is not known, nobody is said to be offline */
+	self.markOffline(m = offModel(OFF_LEFT), { fdbCrowded: true }, 125000);
+	assert.deepEqual(m.offline, []);
+	/* both the poll and a rebuild go through it, the poll with its time */
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.ok(src.includes('this.markOffline(m, raw, now);') && src.includes('this.markOffline(m, raw, null);'));
+	assert.match(src, /presence: null, isNew: Object\.create\(null\), gone: \[\], named: Object\.create\(null\),/, 'kept in the page only: no storage');
+	assert.doesNotMatch(src.slice(src.indexOf('function writeStore'), src.indexOf('function writeStore') + 600), /named/);
+});
+
+/* the Clients tile's elements, enough to paint the list */
+function clientsPage(m, ui) {
+	const self = Object.create(dview);
+	const el = { kinds: new FNode('div'), filter: new FNode('input'), filterBtn: new FNode('button'), filterMenu: new FNode('div'), filterTag: new FNode('button'),
+		filterClear: new FNode('button'), count: new FNode('span'), thead: new FNode('thead'), tbody: new FNode('tbody'), clientsEmpty: new FNode('div') };
+	/* as a document does it: a row put in again moves */
+	const insert = el.tbody.insertBefore.bind(el.tbody);
+	el.tbody.insertBefore = (n, ref) => { if (el.tbody.childNodes.includes(n)) el.tbody.removeChild(n); n.parentNode = el.tbody; return insert(n, ref); };
+	el.filterMenu.hidden = true;
+	Object.assign(self, { m, el, ui: Object.assign({ sorts: { wifi: { key: 'name', dir: 1 }, wired: { key: 'name', dir: 1 } }, kind: 'wifi', chip: 'all', filter: '', drawer: null }, ui),
+		st: { staRates: {}, devRates: {}, gone: [], named: Object.create(null) }, rowMap: new Map(), aliases: OFF_NAMES, quiet: {}, lastRaw: {} });
+	m.clients.forEach(c => { c.exp = { score: 90, level: 'ok', grade: 'Excellent', reason: '', short: '' }; });
+	self.picked = 0;
+	self.pickClients = function() { this.picked++; this.paint1(); };
+	/* a paint as the page makes one; the menu is rebuilt, not updated in place */
+	self.paint1 = function() { this.filterIds = null; this.rowSig = new Map(); this.paintClients(); return this; };
+	return self;
+}
+function withClientsDom(fn) {
+	return withFakeDom(() => {
+		const savedL = global.L;
+		global.L = { bind: (f, o) => f.bind(o), url: (...p) => '/cgi-bin/luci/' + p.join('/') };
+		global.window.setTimeout = () => 0;
+		try { return fn(); }
+		finally { global.L = savedL; }
+	});
+}
+const menuOf = self => self.el.filterMenu.children.map(i => i.find('vt-fmenu-label')[0].textContent + ' ' + i.find('vt-fmenu-n')[0].textContent + (i.getAttribute('aria-checked') === 'true' ? '*' : ''));
+const rowsOf = self => self.el.tbody.children.map(tr => tr.children.map(td => td.textContent));
+const pickFilter = (self, label) => self.el.filterMenu.children.filter(i => i.find('vt-fmenu-label')[0].textContent === label)[0].on.click();
+
+test('offline: a quick filter beside the others, only while a named device is in neither list; its rows by name with the alias\'s name, icon and MAC', () => withClientsDom(() => {
+	const m = offModel(OFF_LEFT);
+	const self = clientsPage(m);
+	self.el.filterBtn.focus = () => {};
+	self.markOffline(m, {}, null);
+	self.st.named['00:00:5e:00:53:01'] = { at: Date.now() - 90000, ip: '192.0.2.101' };
+	self.markOffline(m, {}, null);
+	self.paint1();
+	assert.deepEqual(menuOf(self), [ 'All 1*', '5 GHz 1', 'Active 0', 'Weak signal 0', 'New 0', 'Offline 4' ], 'last in the menu, with how many; the Wi-Fi count is its own');
+	assert.deepEqual(self.el.kinds.children.map(k => [ k.textContent, k.getAttribute('aria-pressed') ]), [ [ 'Wi-Fi1', 'true' ], [ 'Wired1', 'false' ] ], 'in neither count');
+	assert.equal(rowsOf(self).length, 1);
+	/* picked: the named devices that are in neither list */
+	pickFilter(self, 'Offline');
+	assert.deepEqual([ self.ui.chip, self.picked ], [ 'offline', 1 ]);
+	assert.deepEqual(rowsOf(self), [
+		[ 'attic cameraAlias00:00:5E:00:53:C2', '—', '—' ],
+		[ 'Den speakerAlias00:00:5E:00:53:C1', '192.0.2.61', '—' ],
+		[ 'LaptopAlias00:00:5E:00:53:01', '192.0.2.101', '1 min ago' ],
+		[ 'NASAlias00:00:5E:00:53:32', '192.0.2.132', '—' ]
+	], 'by name; the address and the last seen only where still known');
+	const rows = self.el.tbody.children;
+	assert.deepEqual(rows.map(tr => tr.getAttribute('data-mac')), [ '00:00:5e:00:53:c2', '00:00:5e:00:53:c1', '00:00:5e:00:53:01', '00:00:5e:00:53:32' ]);
+	assert.ok(rows.every(tr => tr.classList.contains('vt-row-off') && !tr.classList.contains('vt-row-gone')));
+	/* the alias's icon, or the one guessed from its name as for a connected device; dimmed like one that left */
+	assert.deepEqual(m.offline.map(c => c.icon), [ 'camera', 'speaker', 'laptop', 'device' ]);
+	assert.ok(rows.every(tr => tr.find('vt-av')[0].classList.contains('vt-av-gone')));
+	/* what is not known is marked, so a card leaves its line out (app.css) */
+	assert.deepEqual(rows.map(tr => tr.children.slice(1).map(td => td.classList.contains('vt-td-none'))), [ [ true, true ], [ false, true ], [ false, false ], [ false, true ] ]);
+	assert.deepEqual(rows[0].children.map(td => td.getAttribute('data-title')), [ 'Device', 'Last address', 'Last seen' ]);
+	/* its header: labels, no sorting (the list is by name), whatever the lists' own picks are */
+	assert.deepEqual(self.el.thead.find('vt-label').map(n => n.textContent), [ 'Device', 'Last address', 'Last seen' ]);
+	assert.equal(self.el.thead.all().filter(n => n.tag === 'button').length, 0);
+	self.ui.sorts.wifi = { key: 'signal', dir: -1 };
+	assert.deepEqual(rowsOf(self.paint1()).map(r => r[0].split('Alias')[0]), [ 'attic camera', 'Den speaker', 'Laptop', 'NAS' ]);
+	assert.deepEqual(self.ui.sorts.wifi, { key: 'signal', dir: -1 }, 'the Wi-Fi list keeps its own');
+	/* the tag in the search box, its own count, and neither Wi-Fi nor Wired pressed */
+	assert.deepEqual([ self.el.filterTag.hidden, self.el.filterTag.textContent, self.el.count.textContent, self.el.count.hidden ], [ false, 'Offline', '4 devices', false ]);
+	assert.deepEqual(self.el.kinds.children.map(k => k.getAttribute('aria-pressed')), [ 'false', 'false' ]);
+	assert.deepEqual(menuOf(self).slice(-1), [ 'Offline 4*' ]);
+	/* the search finds them by name, MAC and address */
+	for (const [ q, want ] of [ [ 'den', [ 'Den speaker' ] ], [ '53:c2', [ 'attic camera' ] ], [ '192.0.2.1', [ 'Laptop', 'NAS' ] ], [ 'nothing', [] ] ]) {
+		self.ui.filter = q;
+		assert.deepEqual(rowsOf(self.paint1()).map(r => r[0].split('Alias')[0]), want, q);
+	}
+	assert.equal(self.el.count.textContent, '0 of 4');
+	assert.equal(self.el.clientsEmpty.hidden, false);
+	assert.match(self.el.clientsEmpty.textContent, /No clients match “nothing”/);
+	self.ui.filter = '';
+	/* a row opens the device's details */
+	const opened = [];
+	self.openDrawer = (kind, id) => opened.push([ kind, id ]);
+	self.paint1().el.tbody.children[1].on.click();
+	assert.deepEqual(opened, [ [ 'client', '00:00:5e:00:53:c1' ] ]);
+	/* a click on Wi-Fi, the list it came from, goes back to it */
+	self.el.kinds.children[0].on.click();
+	assert.deepEqual([ self.ui.kind, self.ui.chip, rowsOf(self).length, self.el.kinds.children[0].getAttribute('aria-pressed') ], [ 'wifi', 'all', 1, 'true' ]);
+	/* the wired list has the filter too */
+	self.ui.kind = 'wired';
+	assert.deepEqual(menuOf(self.paint1()), [ 'All 1*', 'Offline 4' ]);
+	/* the last one comes back: no filter, and a page that was on it is on the whole list again */
+	self.ui.chip = 'offline';
+	self.m = offModel({ aliases: { '00:00:5e:00:53:01': OFF_NAMES['00:00:5e:00:53:01'], '00:00:5e:00:53:32': OFF_NAMES['00:00:5e:00:53:32'] } });
+	self.m.clients.forEach(c => { c.exp = { score: 90, level: 'ok', grade: 'Excellent', reason: '', short: '' }; });
+	assert.deepEqual(self.m.offline, []);
+	self.paint1();
+	assert.deepEqual([ self.ui.chip, menuOf(self) ], [ 'all', [ 'All 2*', 'lan1 1', 'lan2 1' ] ]);
+	assert.ok(rowsOf(self).every(r => r.length === 5), 'the wired list\'s own rows');
+}));
+
+test('offline: counted nowhere else: not as a client, in no health check, in no talker', () => withFakeDom(() => {
+	const insight = load('vantage.insight');
+	const m = offModel(OFF_LEFT), bare = offModel(Object.assign({ aliases: {} }, OFF_LEFT));
+	assert.equal(m.offline.length, 4);
+	assert.deepEqual([ m.clients.length, m.wiredHosts.length ], [ bare.clients.length, bare.wiredHosts.length ]);
+	const live = { cpu: { pct: 5, cores: [ 1 ] } };
+	assert.deepEqual(insight.health(m, live), insight.health(bare, live));
+	const self = Object.create(dview);
+	self.m = m;
+	self.st = { summary: { level: 'ok', headline: 'x' }, staRates: { '00:00:5e:00:53:01': { rx: 9e6, tx: 9e6 }, '00:00:5e:00:53:c1': { rx: 9e6, tx: 9e6 } },
+		devRates: { lan2: { rx: 9e6, tx: 9e6 }, lan1: { rx: 1000, tx: 1000 } } };
+	assert.deepEqual(self.talkers(m).map(x => x.mac), [ '00:00:5e:00:53:33' ], 'the host that is there, not the names that are not');
+	self.el = { orb: {}, headline: new FNode('div'), subline: new FNode('div') };
+	self.board = {};
+	global.document.documentElement = { setAttribute() {} };
+	self.paintHead();
+	assert.match(self.el.subline.textContent, /1 client$/);
+}));
+
+test('offline: its details show what is known, in the drawer\'s style, and rename or remove the name with the control a connected client has', () => withFakeDom(() => {
+	const savedL = global.L;
+	const required = [];
+	global.L = { url: (...p) => '/cgi-bin/luci/' + p.join('/'), require: name => { required.push(name); return new Promise(() => {}); } };
+	try {
+		const vendor = k => k === '00:00:5E' ? 'Example Corp' : null;
+		const m = offModel(Object.assign({ vendor }, OFF_LEFT));
+		const self = Object.create(dview);
+		Object.assign(self, { m, st: { staRates: {}, devRates: {}, clientHist: {}, gone: [], named: Object.create(null), oui: { lookup: vendor } }, ui: {}, el: {}, quiet: {}, aliases: OFF_NAMES, canWrite: true });
+		self.st.named['00:00:5e:00:53:01'] = { at: Date.now() - 125000, ip: '192.0.2.101' };
+		self.markOffline(m, {}, null);
+		const tree = list => { const n = new FNode('x'); append(n, list); return n; };
+		const renamed = [];
+		self.startRename = c => renamed.push(c);
+		/* seen while the page was open */
+		const d = self.drawerClient('00:00:5e:00:53:01'), body = tree(d.body), title = tree(d.title);
+		assert.equal(title.find('vt-drawer-name')[0].textContent, 'Laptop');
+		assert.equal(title.find('vt-drawer-sub')[0].textContent, 'Alias00:00:5E:00:53:01');
+		assert.ok(title.find('vt-av')[0].classList.contains('vt-av-gone'));
+		assert.equal(body.find('vt-banner')[0].textContent, 'Not connected right now. A wired device that stays quiet is forgotten after about five minutes.');
+		assert.deepEqual(body.find('vt-kv').map(k => k.children[0].textContent), [ 'MAC address', 'Address type', 'Last address', 'Last seen', 'Name from' ]);
+		const value = label => body.find('vt-kv').filter(k => k.children[0].textContent === label)[0].children[1].textContent;
+		assert.deepEqual([ value('MAC address'), value('Address type'), value('Last address'), value('Name from') ],
+			[ '00:00:5E:00:53:01', 'Globally unique · Example Corp', '192.0.2.101', 'Your name for this device' ]);
+		assert.match(value('Last seen'), /^2 min ago\d/, 'how long ago, and the time');
+		assert.equal(body.find('vt-rename-slot').length, 1);
+		assert.equal(self.el.renameSlot, body.find('vt-rename-slot')[0], 'the slot the rename control fills');
+		/* the one rename control: the button hands the device to startRename, as a connected client's does */
+		const btn = body.find('vt-dactions')[0].children.filter(n => n.tag === 'button');
+		assert.deepEqual(btn.map(b => b.textContent), [ 'Rename' ]);
+		btn[0].on.click();
+		assert.deepEqual(renamed.map(c => [ c.mac, c.alias ]), [ [ '00:00:5e:00:53:01', 'Laptop' ] ], 'with its MAC and its name: Save renames, Remove name removes');
+		/* never seen by this page, no address: only what the name gives */
+		const camera = tree(self.drawerClient('00:00:5e:00:53:c2').body);
+		assert.deepEqual(camera.find('vt-kv').map(k => k.children[0].textContent), [ 'MAC address', 'Address type', 'Name from' ]);
+		/* no link to any page, nothing of a station or a port */
+		for (const t of [ body, camera ]) {
+			assert.ok(!t.all().some(n => n.tag === 'a'));
+			assert.doesNotMatch(t.textContent, /Signal|Port|Traffic|Experience|dBm/);
+		}
+		/* a login that may not name devices: no button */
+		self.canWrite = false;
+		assert.deepEqual(tree(self.drawerClient('00:00:5e:00:53:c2').body).find('vt-dactions')[0].children, []);
+		/* the vendor table is asked for when these details need it, once, and not behind a private address */
+		assert.deepEqual(required, []);
+		self.st.oui = null;
+		const priv = offModel(Object.assign({}, OFF_LEFT, { aliases: { '02:00:5e:00:53:c9': { sid: 'x', name: 'Guest phone' } } }));
+		self.m = priv;
+		self.markOffline(priv, {}, null);
+		assert.match(tree(self.drawerClient('02:00:5e:00:53:c9').body).textContent, /Private address \(randomised by the device\)/);
+		assert.deepEqual(required, []);
+		self.m = offModel(OFF_LEFT);
+		self.markOffline(self.m, {}, null);
+		assert.match(tree(self.drawerClient('00:00:5e:00:53:c2').body).textContent, /Address typeGlobally uniqueName from/, 'until it is there: no vendor');
+		self.drawerClient('00:00:5e:00:53:c2');
+		assert.deepEqual(required, [ 'vantage.oui' ]);
+		/* a station that left a moment ago keeps the details of its last sample (as before), its name's rename with them */
+		self.st.gone = [ { client: { mac: '00:00:5e:00:53:c1', name: 'Den speaker', plainName: 'Den speaker', alias: 'Den speaker', nameSource: 'alias', nameSourceLabel: 'Alias', secondary: '192.0.2.61', macLabel: '00:00:5E:00:53:C1',
+			signal: -60, level: { word: 'Good' }, exp: { score: 90, level: 'ok', grade: 'Excellent', reason: '', factors: [] }, band: '5g', ssid: 'Home', ips: [] }, at: Date.now() - 5000 } ];
+		assert.match(tree(self.drawerClient('00:00:5e:00:53:c1').body).textContent, /^Disconnected/);
+		/* a MAC with no name and in no list: as before */
+		assert.match(tree(self.drawerClient('00:00:5e:00:53:ee').body).textContent, /Not connected/);
+		/* one way to save a name */
+		const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+		assert.equal([ ...src.matchAll(/callSetAlias\(/g) ].length, 1);
+		assert.equal([ ...src.matchAll(/self\.saveAlias\(/g) ].length, 1, 'only the rename control saves');
+		assert.equal([ ...src.matchAll(/self\.startRename\(c\)/g) ].length, 3, 'a station\'s, a wired host\'s and an offline device\'s button');
+	} finally { global.L = savedL; }
+}));

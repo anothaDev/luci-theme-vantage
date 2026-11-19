@@ -1909,3 +1909,87 @@ test('wireguard: rates between two answers from the peers\' byte counters, as fo
 	/* the interface restarted: its counters start over, no rate across that */
 	assert.deepEqual(Object.keys(model.rates(b.next, counters(10, 20), 20000).rates), []);
 });
+
+/* ------------------------------------------ named devices that are offline */
+
+/* the router above with ap-hall paired: a laptop on its own Wi-Fi, a
+   printer and a host on its ports, a phone on ap-hall's Wi-Fi and two
+   hosts on ap-hall's ports */
+const NAMED = {
+	'00:00:5e:00:53:01': { sid: 'cfg01', name: 'Laptop', icon: 'laptop' },
+	'00:00:5e:00:53:31': { sid: 'cfg02', name: 'Printer', icon: 'printer' },
+	'00:00:5e:00:53:21': { sid: 'cfg03', name: 'Phone', icon: 'phone' },
+	'00:00:5e:00:53:41': { sid: 'cfg04', name: 'Hall TV', icon: 'tv' }
+};
+const AWAY = {
+	'00:00:5e:00:53:c2': { sid: 'cfg10', name: 'workshop camera', icon: 'camera' },
+	'00:00:5e:00:53:c1': { sid: 'cfg11', name: 'Den speaker', icon: null },
+	'02:00:5e:00:53:c3': { sid: 'cfg12', name: 'Zoe\'s phone', icon: 'phone' },
+	'00:00:5e:00:53:c4': { sid: 'cfg13', name: 'Den speaker', icon: 'speaker' }
+};
+
+test('build: named devices in neither list are offline, by name, with the name, icon and MAC their alias has', () => {
+	const paired = { aps: [ ap(AP1, 'ap-hall', report()) ] };
+	const plain = model.build(router(paired, { aliases: NAMED }));
+	assert.deepEqual(plain.offline, [], 'every named device is in a list: a station, a wired host, an access point\'s station, its wired host');
+	const m = model.build(router(paired, { aliases: Object.assign({}, AWAY, NAMED) }));
+	assert.deepEqual(m.offline.map(c => [ c.mac, c.name, c.icon, c.secondary, c.nameSource, c.alias, c.aliasSid, c.offline ]), [
+		[ '00:00:5e:00:53:c1', 'Den speaker', 'speaker', '00:00:5E:00:53:C1', 'alias', 'Den speaker', 'cfg11', true ],
+		[ '00:00:5e:00:53:c4', 'Den speaker', 'speaker', '00:00:5E:00:53:C4', 'alias', 'Den speaker', 'cfg13', true ],
+		[ '00:00:5e:00:53:c2', 'workshop camera', 'camera', '00:00:5E:00:53:C2', 'alias', 'workshop camera', 'cfg10', true ],
+		[ '02:00:5e:00:53:c3', 'Zoe\'s phone', 'phone', '02:00:5E:00:53:C3', 'alias', 'Zoe\'s phone', 'cfg12', true ]
+	], 'by name whatever its case, one name twice by MAC; an icon the alias lacks is guessed from the name, as for a connected device');
+	assert.deepEqual(m.offline.map(c => [ c.plainName, c.macLabel, c.isPrivate, c.ips, c.vendor ]), [
+		[ 'Den speaker', '00:00:5E:00:53:C1', false, [], null ], [ 'Den speaker', '00:00:5E:00:53:C4', false, [], null ],
+		[ 'workshop camera', '00:00:5E:00:53:C2', false, [], null ], [ 'Zoe\'s phone', '02:00:5E:00:53:C3', true, [], null ] ]);
+	/* in no other list, count or access point: the lists are as without them */
+	const lists = x => [ x.clients, x.wiredHosts, x.accessPoints, x.radios, x.ssids ];
+	assert.deepEqual(lists(m), lists(plain));
+	assert.ok(!m.offline.some(c => 'port' in c || 'signal' in c || 'ap' in c), 'neither a station nor a wired host');
+	/* a named device that comes back is in its list again and offline no more */
+	const back = router(paired, { aliases: Object.assign({}, AWAY, NAMED) });
+	back.assoc['phy0-ap0'].push({ mac: '02:00:5E:00:53:C3', signal: -60 });
+	back.fdb.push({ mac: '00:00:5e:00:53:c2', port: 'lan2', bridge: 'br-lan', seen: 1 });
+	assert.deepEqual(model.build(back).offline.map(c => c.mac), [ '00:00:5e:00:53:c1', '00:00:5e:00:53:c4' ]);
+	/* without the access point its named clients are in no list here */
+	assert.deepEqual(model.build(router(null, { aliases: NAMED })).offline.map(c => c.name), [ 'Hall TV', 'Phone' ]);
+	/* no names, no list; a build without any input too */
+	assert.deepEqual(model.build(router(paired)).offline, []);
+	assert.deepEqual(model.build({}).offline, []);
+});
+
+test('build: an offline device\'s address is what the host hints still give; its vendor is looked up whatever its name', () => {
+	const r = router(null, { aliases: AWAY, vendor: k => k === '00:00:5E' ? 'Example Corp' : null });
+	/* a lease that has not run out, with an address outside this device's networks beside it */
+	r.hints['00:00:5E:00:53:C1'] = { name: 'speaker-lease-name', ipaddrs: [ '192.0.2.61', '198.51.100.61' ] };
+	const by = Object.fromEntries(model.build(r).offline.map(c => [ c.mac, c ]));
+	const den = by['00:00:5e:00:53:c1'];
+	assert.deepEqual([ den.name, den.nameSource, den.ips, den.secondary ], [ 'Den speaker', 'alias', [ '192.0.2.61' ], '00:00:5E:00:53:C1' ],
+		'the alias stays its name, the MAC its second line; the address is beside them');
+	assert.deepEqual(by['00:00:5e:00:53:c4'].ips, [], 'none where the hints have none');
+	assert.deepEqual([ den.vendor, by['00:00:5e:00:53:c2'].vendor, by['02:00:5e:00:53:c3'].vendor ], [ 'Example Corp', 'Example Corp', null ], 'no vendor behind a private address');
+	/* a connected device with a name keeps the vendor out of its entry, as before */
+	const here = model.build(router(null, { aliases: NAMED, vendor: () => 'Example Corp' }));
+	assert.equal(here.clients[0].vendor, null);
+});
+
+test('build: the offline list is bounded by the names the dashboard accepts; this device\'s own MACs and broken entries are never in it', () => {
+	const names = load('vantage.names');
+	const many = {};
+	for (let i = 0; i < names.ALIAS_MAX + 40; i++)
+		many['00:00:5e:01:' + (i >> 8).toString(16).padStart(2, '0') + ':' + (i & 255).toString(16).padStart(2, '0')] = { sid: 'c' + i, name: 'Device ' + String(i).padStart(4, '0') };
+	const m = model.build(router(null, { aliases: many }));
+	assert.equal(m.offline.length, names.ALIAS_MAX);
+	assert.deepEqual(m.offline.slice(0, 2).map(c => c.name), [ 'Device 0000', 'Device 0001' ]);
+	const odd = model.build(router(null, { aliases: {
+		'00:00:5e:00:53:f0': { sid: 'a', name: 'This router' },                /* br-lan's own MAC */
+		'00:00:5E:00:53:C1': { sid: 'b', name: 'Not a key of the map' },       /* upper case: aliasMap never writes one */
+		'not-a-mac': { sid: 'c', name: 'Junk' },
+		'00:00:5e:00:53:c5': { sid: 'd', name: '' },                           /* no name: not a named device */
+		'00:00:5e:00:53:c6': { sid: 'e', name: 'a‮b' },                   /* a name the dashboard refuses */
+		'00:00:5e:00:53:c7': null,
+		'00:00:5e:00:53:c8': { sid: 'f', name: 'Scanner', icon: 'rocket' }     /* an unknown icon: guessed */
+	} }));
+	assert.deepEqual(odd.offline.map(c => [ c.mac, c.name, c.icon ]), [ [ '00:00:5e:00:53:c8', 'Scanner', 'device' ] ]);
+	for (const junk of [ null, 7, 'x', [ { name: 'A' } ] ]) assert.deepEqual(model.build(router(null, { aliases: junk })).offline, [], JSON.stringify(junk));
+});
