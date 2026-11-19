@@ -2646,10 +2646,11 @@ return view.extend({
 
 	/* a wired host Top talkers may rank: downstream of this device, as
 	   on the path (wiredPorts; the gateway and whoever else is on a
-	   line's port carry the line's traffic, not their own), or one a
-	   paired access point reports */
+	   line's port carry the line's traffic, not their own). Not one a
+	   paired access point reports: its clients, stations or wired, push
+	   none of this device's out */
 	talkHost: function(c, m) {
-		return !c.gateway && !this.linePort(c.port, m);
+		return !c.ap && !c.gateway && !this.linePort(c.port, m);
 	},
 
 	/* Top talkers: this device's stations and, by the same measure, the
@@ -4227,7 +4228,7 @@ return view.extend({
 			/* wired hosts that all share their ports are connected, and
 			   none of them can be measured */
 			var hosts = (m.wiredHosts || []).filter(function(c) { return self.talkHost(c); });
-			var alone = hosts.some(function(c) { return c.ap ? !!c.ap.rate : !c.shared; });
+			var alone = hosts.some(function(c) { return !c.shared; });
 			dom.content(this.el.talkers, [ E('p', { 'class': 'vt-empty-inline' }, [ m.clients.length || alone ? _('Nobody is moving data right now.')
 				: hosts.length ? _('No device has a port to itself; traffic on a shared port is not counted per device.') : _('No clients connected.') ]) ].concat(slots));
 			return;

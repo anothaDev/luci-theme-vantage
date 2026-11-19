@@ -2817,8 +2817,8 @@ test('top talkers: wired hosts with a port to themselves rank with the stations;
 	/* the model in hand, before it is the view's (ingest, rerender) */
 	self.m = { uplinks: [], wiredHosts: [] };
 	const t = self.talkers(m);
-	assert.deepEqual(t.map(x => [ x.name, x.down, x.up, !!x.wired ]), [ [ 'h6', 9000, 4000, true ], [ 'h1', 3000, 1000, true ], [ 'phone', 1500, 500, false ] ],
-		'by live total: the access point\'s host by its report, the host alone on lan2 by its port, the station');
+	assert.deepEqual(t.map(x => [ x.name, x.down, x.up, !!x.wired ]), [ [ 'h1', 3000, 1000, true ], [ 'phone', 1500, 500, false ] ],
+		'by live total: the host alone on lan2 by its port, the station; a paired access point\'s host and station are not ranked, whatever they report');
 	/* what the Clients list shows for each is what ranks it */
 	const h = n => m.wiredHosts[n - 1];
 	assert.deepEqual([ self.portRate(h(1)), self.portRate(h(6)) ], [ TALK_RATES.lan2, { rx: 4000, tx: 9000 } ]);
@@ -2826,10 +2826,10 @@ test('top talkers: wired hosts with a port to themselves rank with the stations;
 	/* the port's rate is the line's, not theirs, however much it is */
 	self.m = m;
 	assert.deepEqual([ 4, 5 ].map(n => [ self.portRate(h(n)) !== null, self.talkHost(h(n)) ]), [ [ true, false ], [ true, false ] ]);
-	assert.deepEqual(m.wiredHosts.filter(c => self.talkHost(c)).map(c => c.name), [ 'h1', 'h2', 'h3', 'h6', 'h7', 'h8' ]);
+	assert.deepEqual(m.wiredHosts.filter(c => self.talkHost(c)).map(c => c.name), [ 'h1', 'h2', 'h3', 'h8' ]);
 	/* a backup line whose port is unknown leaves nobody out, as on the path */
 	m.uplinks[1].port = null;
-	assert.deepEqual(self.talkers(m).map(x => x.name), [ 'h5', 'h6', 'h1' ]);
+	assert.deepEqual(self.talkers(m).map(x => x.name), [ 'h5', 'h1', 'phone' ]);
 	assert.deepEqual(self.wiredPorts(), [ 'eth1', 'lan1', 'lan2', 'lan3' ]);
 	/* three at most */
 	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
@@ -2850,10 +2850,10 @@ test('top talkers: a wired host\'s row is a station\'s, to and from the device t
 	self.openDrawer = (kind, id) => opened.push([ kind, id ]);
 	self.paintTalkers();
 	const rows = self.el.talkers.children;
-	assert.deepEqual(rows.map(r => r.getAttribute('class')), [ 'vt-talk-row', 'vt-talk-row', 'vt-talk-row' ]);
+	assert.deepEqual(rows.map(r => r.getAttribute('class')), [ 'vt-talk-row', 'vt-talk-row', 'vt-talk-row vt-talk-slot' ], 'two to show, the third place kept');
 	const name = r => r.find('vt-talk-name')[0].textContent, sub = r => r.find('vt-talk-sub')[0];
-	assert.deepEqual(rows.map(name), [ 'h6', 'h1', 'phone' ]);
-	const wired = rows[1], wifi = rows[2];
+	assert.deepEqual(rows.slice(0, 2).map(name), [ 'h1', 'phone' ]);
+	const wired = rows[0], wifi = rows[1];
 	/* one row style: the same parts in the same order, no radio facts on either */
 	const shape = r => r.all().map(n => n.tag + '.' + (n.getAttribute('class') || '')).join(' ');
 	assert.equal(shape(wired), shape(wifi));
@@ -2862,7 +2862,7 @@ test('top talkers: a wired host\'s row is a station\'s, to and from the device t
 	assert.equal(sub(wired).getAttribute('title'), 'To device 3 kbit/s, from device 1 kbit/s');
 	assert.equal(sub(wifi).getAttribute('title'), sub(wired).getAttribute('title'));
 	assert.equal(sub(wired).textContent, sub(wifi).textContent);
-	assert.equal(sub(wired).textContent, '4 kbit/s19%↓ 3  ↑ 1 kbit/s', 'total, share of the three, down then up');
+	assert.equal(sub(wired).textContent, '4 kbit/s50%↓ 3  ↑ 1 kbit/s', 'total, share of the two, down then up');
 	/* as the Clients list has it for the same host */
 	const live = new FNode('x');
 	append(live, self.wiredCells(m.wiredHosts[0], 0));
@@ -2870,8 +2870,7 @@ test('top talkers: a wired host\'s row is a station\'s, to and from the device t
 	/* a click: the details a click on the host's row in the Clients list opens */
 	wired.on.click();
 	wifi.on.click();
-	rows[0].on.click();
-	assert.deepEqual(opened, [ [ 'client', '00:00:5e:00:53:01' ], [ 'client', '00:00:5e:00:53:a1' ], [ 'client', '00:00:5e:00:53:06' ] ]);
+	assert.deepEqual(opened, [ [ 'client', '00:00:5e:00:53:01' ], [ 'client', '00:00:5e:00:53:a1' ] ]);
 	self.st.gone = [];
 	self.st.clientHist = {};
 	self.ui = {};

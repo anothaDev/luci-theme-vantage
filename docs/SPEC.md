@@ -357,8 +357,8 @@ text around it so it looks the same size.
   shows for it. A host on a shared port has none and stays out (the row
   would name a port, not a device), and so do the gateway and whoever
   else is on a line's port, whose traffic is the line's. A paired access
-  point's wired host is ranked where that access point reports a rate
-  for it (alone on its port there); its stations are not, as before.
+  point's clients are not ranked, its stations and its wired hosts
+  alike: they push none of this device's own out.
   Every row reads the same way round: a port counts like a radio, so
   what this device sent is the device's download. A wired host's row
   opens its details. The tile exists without Wi-Fi too, which gives a
