@@ -48,7 +48,7 @@ msgstr[2] "%d SSID · простаивает: %d"
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3057
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3140
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3729
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5035
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5040
 msgid "%d clients"
 msgstr "Клиентов: %d"
 
@@ -441,7 +441,7 @@ msgstr "+ ещё %d"
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3057
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3140
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3729
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5035
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5040
 msgid "1 client"
 msgstr "1 клиент"
 
@@ -633,12 +633,12 @@ msgstr "Канал %d"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3037
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3728
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5011
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5016
 msgid "Ch %d · %d MHz"
 msgstr "Канал %d · %d МГц"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4863
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5012
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5017
 msgid "Channel"
 msgstr "Канал"
 
@@ -1946,6 +1946,10 @@ msgstr "Сохранить"
 msgid "Seen since"
 msgstr "Замечен с"
 
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4974
+msgid "Sensor"
+msgstr ""
+
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4942
 msgctxt "vantage"
 msgid "Sent"
@@ -2115,6 +2119,10 @@ msgstr "Тбит/с"
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:126
 msgid "Telnet (port 23)"
 msgstr "Telnet (порт 23)"
+
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4973
+msgid "Temperature"
+msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:79
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3407
@@ -3039,7 +3047,7 @@ msgstr "работает %s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4166
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4237
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5002
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5007
 msgid "via %s"
 msgstr "через %s"
 

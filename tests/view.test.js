@@ -1071,6 +1071,34 @@ test('stored history: it belongs to one login', () => {
 /* #101: the CPU tile shows the browser's last reading of this router
    (local storage, the router's origin's: every tab), if under ten
    minutes old, while the first measurement runs; not a dash */
+/* the device's details, with LuCI's url() for its page links */
+function deviceDrawer(t, st, device) {
+	const savedL = global.L;
+	global.L = { url: (...p) => '/cgi-bin/luci/' + p.join('/') };
+	t.after(() => { global.L = savedL; });
+	const self = Object.create(view);
+	self.m = { device: Object.assign({ model: 'Example AP', hostname: 'ap-hall', load: [ 65536, 32768, 0 ], memory: null }, device) };
+	self.st = st;
+	self.cpuShown = () => null;
+	return withDom(() => texts({ children: self.drawerDevice().body }));
+}
+
+test('device drawer: every temperature sensor has a row, the hottest first; no section without one', t => {
+	const model = load('vantage.model');
+	const temps = model.temps([ { zone: 'thermal_zone0', type: 'cpu-thermal', temp: 52100 }, { zone: 'thermal_zone1', type: 'wifi-phy0', temp: 77800 }, { zone: 'thermal_zone2', temp: 41400 } ]);
+	const all = deviceDrawer(t, { temps });
+	assert.deepEqual(all.slice(all.indexOf('Temperature')), [ 'Temperature', 'wifi-phy0', '78\u00a0°C', 'cpu-thermal', '52\u00a0°C', 'thermal_zone2', '41\u00a0°C' ]);
+	/* a sensor without a name still has its row */
+	const unnamed = deviceDrawer(t, { temps: [ { name: '', celsius: 30 } ] });
+	assert.deepEqual(unnamed.slice(unnamed.indexOf('Temperature')), [ 'Temperature', 'Sensor', '30\u00a0°C' ]);
+	/* a device without sensors, or before the first answer: nothing */
+	for (const st of [ { temps: [] }, {} ]) assert.ok(!deviceDrawer(t, st).includes('Temperature'));
+	/* a long name without a hyphen breaks inside its column (app.css) */
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8'), css = fs.readFileSync(path.join(RES, 'vantage/app.css'), 'utf8');
+	assert.match(src, /section\(_\('Temperature'\), [^\n]*\n[^\n]*\n[^\n]*\], 'vt-dsec-temps'\)/);
+	assert.match(css, /\.vt-app \.vt-dsec-temps dt \{ overflow-wrap: anywhere; \}/);
+});
+
 test('CPU: the last reading stands in for ten minutes while the first is measured', () => {
 	const savedWindow = global.window, savedL = global.L, box = {};
 	global.window = {

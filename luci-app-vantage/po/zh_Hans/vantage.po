@@ -41,7 +41,7 @@ msgstr[0] "%d 个 SSID · %d 个空闲"
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3057
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3140
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3729
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5035
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5040
 msgid "%d clients"
 msgstr "%d 个客户端"
 
@@ -418,7 +418,7 @@ msgstr "还有 %d 个"
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3057
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3140
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3729
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5035
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5040
 msgid "1 client"
 msgstr "1 个客户端"
 
@@ -604,12 +604,12 @@ msgstr "信道 %d"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3037
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3728
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5011
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5016
 msgid "Ch %d · %d MHz"
 msgstr "信道 %d · %d MHz"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4863
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5012
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5017
 msgid "Channel"
 msgstr "信道"
 
@@ -1881,6 +1881,10 @@ msgstr "保存"
 msgid "Seen since"
 msgstr "首次出现"
 
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4974
+msgid "Sensor"
+msgstr "传感器"
+
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4942
 msgctxt "vantage"
 msgid "Sent"
@@ -2048,6 +2052,10 @@ msgstr "Tbit/s"
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:126
 msgid "Telnet (port 23)"
 msgstr "Telnet（端口 23）"
+
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4973
+msgid "Temperature"
+msgstr "温度"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:79
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3407
@@ -2952,7 +2960,7 @@ msgstr "已运行 %s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4166
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4237
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5002
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5007
 msgid "via %s"
 msgstr "经由 %s"
 

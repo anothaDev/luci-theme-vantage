@@ -1512,6 +1512,9 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-dspark { padding-top: 14px; }
 .vt-app .vt-dspark .vt-spark { height: 48px; }
 .vt-app .vt-dsec-title { font-size: var(--vt-fs-micro); font-weight: var(--vt-fw-semibold); text-transform: uppercase; letter-spacing: .08em; color: var(--vt-text-3); margin: 0 0 6px; padding: 0; border: 0; }
+/* a sensor is labelled with the device's own name for it: up to 32
+   characters, often without a place to break */
+.vt-app .vt-dsec-temps dt { overflow-wrap: anywhere; }
 .vt-app .vt-kvs { display: flex; flex-direction: column; }
 .vt-app .vt-kvs .vt-kv { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--vt-line); }
 .vt-app .vt-kvs .vt-kv:last-child { border-bottom: 0; }

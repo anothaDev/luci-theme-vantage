@@ -4947,7 +4947,7 @@ return view.extend({
 	},
 
 	drawerDevice: function() {
-		var d = this.m.device, cpu = this.cpuShown();
+		var d = this.m.device, cpu = this.cpuShown(), temps = this.st.temps || [];
 		return {
 			title: [ E('span', { 'class': 'vt-drawer-ico' }, [ icon('ap') ]), E('div', { 'class': 'vt-drawer-titles' }, [
 				E('div', { 'class': 'vt-drawer-name' }, [ d.model ]),
@@ -4967,7 +4967,12 @@ return view.extend({
 					kv(_('CPU', 'vantage'), cpu ? fmt.N_(cpu.cores.length || 1, '%s over %d core', '%s over %d cores').format(fmt.pct(cpu.pct), cpu.cores.length || 1) : fmt.DASH),
 					kv(_('Load average', 'vantage'), d.load.map(fmt.load).join(' · ')),
 					kv(_('Memory in use'), d.memory ? _('%s of %s').format(fmt.bytes(d.memory.used), fmt.bytes(d.memory.total)) : fmt.DASH)
-				]) ])
+				]) ]),
+				/* every sensor, the hottest first: the System tile names
+				   that one and keeps the others in a tooltip */
+				temps.length ? this.section(_('Temperature'), [ E('dl', { 'class': 'vt-kvs' }, temps.map(function(t) {
+					return kv(t.name || _('Sensor'), fmt.celsius(t.celsius));
+				})) ], 'vt-dsec-temps') : ''
 			]
 		};
 	},
