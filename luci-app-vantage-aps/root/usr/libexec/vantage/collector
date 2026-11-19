@@ -353,7 +353,13 @@ if (!ubus || !ubus.publish('vantage.collector', {
 
 			return { aps: snapshot() };
 		},
-		args: {}
+		// A browser's request comes through rpcd, which adds the session
+		// it came with, and ucode turns away a request that carries
+		// anything its method does not name ("Invalid argument": the
+		// dashboard then showed no access point at all). Named, so that
+		// it is answered, and never read: who may ask is rpcd's to decide
+		// (the add-on's view group).
+		args: { ubus_rpc_session: '' }
 	}
 }))
 	exit(1);

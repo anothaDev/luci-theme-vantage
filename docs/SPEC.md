@@ -778,7 +778,10 @@ dashboard package itself stays read-only.
   (the dashboard's slow poll, the pairing page) keeps it fetching for
   60 s, at most every 10 s per access point, each fetch killed after 15 s
   and its output capped by the shell (`ulimit -f`, just above the 128 KiB
-  a report may have: the files are in RAM).
+  a report may have: the files are in RAM). The call takes nothing from
+  its caller: the method names one field, the session rpcd adds to a
+  request that comes from a browser (ucode's ubus turns away a call that
+  carries a field its method does not name), and never reads it.
   When an access point is not found at its address (or another device
   answers there), the collector looks its MAC up in the router's DHCP
   leases and neighbour table and tries the address it has now; the

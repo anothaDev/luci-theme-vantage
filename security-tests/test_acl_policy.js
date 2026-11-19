@@ -1231,6 +1231,11 @@ const COLLECTOR_PINS = [
 		'if (!ubus || !ubus.publish(\'vantage.collector\', {',
 		'call: function(req) {'
 	] ],
+	/* what a caller can hand it: the session rpcd adds, named and never read */
+	[ '\\b(?:args|req)\\b', [
+		'call: function(req) {',
+		'args: { ubus_rpc_session: \'\' }'
+	] ],
 	[ '\\b(?:trying|tried|paired|to|home|HOME)\\b|\\.addr\\b', [
 		'const MAX_LIST = 65536;           // bytes of the paired list',
 		'let home = RUN + \'/\' + id;',
@@ -1318,6 +1323,8 @@ test('add-on: the collector pins the host key and runs nothing but dbclient', ()
 		'no size limit': collectorSrc.replace('ulimit -f 272; ', ''),
 		'another program': collectorSrc.replace('system([ KILL, \'\' + p.pid() ]);', 'system([ KILL, \'\' + p.pid() ]);\n\t\t\tsystem(\'reboot\');'),
 		'another publish': collectorSrc.replace('uloop.run();', 'ubus.publish(\'x\', {});\nuloop.run();'),
+		'an argument taken from the caller': collectorSrc.replace('args: { ubus_rpc_session: \'\' }', 'args: { ubus_rpc_session: \'\', addr: \'\' }'),
+		'the caller\'s session read': collectorSrc.replace('\t\t\tviewed = now();\n\t\t\tload();', '\t\t\tviewed = req.args.ubus_rpc_session ? now() : 0;\n\t\t\tload();'),
 		'the paired list removed': add('unlink(APS);'),
 		'a directory removed elsewhere': add('rmdir(\'/etc/vantage\');'),
 		'the leases opened as they come': collectorSrc.replace('return vaps.own_file(lstat(LEASES), lstat(RUN)?.uid) ? readfile(LEASES, MAX_TABLE) : null;', 'return readfile(LEASES, MAX_TABLE);'),

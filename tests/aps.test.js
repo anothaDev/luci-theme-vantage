@@ -964,6 +964,17 @@ function runCollector(o, steps) {
 }
 const ASK = { report: true }, wait = s => ({ advance: s * 1000 });
 
+/* Seen on a 24.10 device: every call that comes through rpcd carries ubus_rpc_session, and ucode's ubus
+   answers "Invalid argument" (status 2) to a call with a field its method does not name. With args: {}
+   the dashboard and the pairing page were refused, and no access point showed. The sandbox below calls
+   the method directly, so it cannot see this: the form is held here */
+test('collector: a browser\'s call through rpcd is answered: report names the session rpcd adds, and reads nothing of it', () => {
+	const src = fs.readFileSync(COLLECTOR, 'utf8');
+	assert.match(src, /\n\t\targs: \{ ubus_rpc_session: '' \}\n\t\}\n\}\)\)\n/);
+	assert.equal([ ...src.matchAll(/\bargs:/g) ].length, 1, 'its one method');
+	assert.doesNotMatch(src.replace(/^\s*\/\/.*$/gm, ''), /\breq\s*[.\[]/, 'the request is never read');
+});
+
 test('collector: nothing runs without a viewer; a viewer gets one fetch per access point every 10 s for 60 s', { skip: NO_UCODE }, () => {
 	const idle = runCollector({ hosts: { '192.0.2.10': { out: apReport(1, 1000) } } }, [ wait(120) ]);
 	assert.deepEqual(idle.calls, [], 'no viewer, no login');
