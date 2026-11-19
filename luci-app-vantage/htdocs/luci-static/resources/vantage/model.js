@@ -192,6 +192,26 @@ function groupLines(ifaces, devs, kernel) {
 function cidrs(list) {
 	return arr(list).map(function(a) { return a && a.address ? a.address + '/' + a.mask : null; }).filter(Boolean);
 }
+/* the speeds (Mbit/s) in one of netifd's lists of link modes
+   ("1000baseT-F", "2500baseX-F") */
+function modeSpeeds(list) {
+	var out = [];
+	arr(list).forEach(function(m) {
+		var x = typeof m === 'string' ? /^(\d{1,7})base/.exec(m) : null;
+		if (x && +x[1] > 0 && out.indexOf(+x[1]) < 0) out.push(+x[1]);
+	});
+	return out;
+}
+/* the fastest link a port and the port at the other end both offer
+   (network.device status: link-supported, link-partner-advertising), in
+   Mbit/s. null where either list is missing or empty, which is netifd's
+   "not known" (no autonegotiation, a driver without ethtool), or where
+   they share no speed */
+function bestLink(d) {
+	var ours = modeSpeeds(obj(d)['link-supported']), theirs = modeSpeeds(obj(d)['link-partner-advertising']);
+	var both = ours.filter(function(s) { return theirs.indexOf(s) >= 0; });
+	return both.length ? Math.max.apply(null, both) : null;
+}
 /* a line's other interfaces add their addresses and DNS to it (wan6's
    IPv6 on wan's line) */
 function absorb(x, g) {
@@ -514,6 +534,8 @@ return baseclass.extend({
 			up: !!pick.up,
 			carrier: d ? d.carrier !== false : null,
 			speed: d ? this.parseSpeed(d.speed) : null,
+			/* what the link could be at best (bestLink), or null */
+			linkMax: bestLink(d),
 			ipv4: cidrs(pick['ipv4-address']),
 			ipv6: cidrs(pick['ipv6-address']),
 			gateway: hop && hop !== '0.0.0.0' && hop !== '::' ? hop : null,

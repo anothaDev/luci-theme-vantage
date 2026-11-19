@@ -48,7 +48,10 @@ return baseclass.extend({
 			detail: _('%s has no carrier: cable unplugged or switch port down').format(up.dev), page: PAGES.network });
 		else if (up.speed && up.speed.duplex === 'half') out.push({ id: 'uplink', level: 'warn', title: _('Uplink', 'vantage'), value: _('Half duplex'), reason: _('%s · check cable').format(up.dev),
 			detail: _('%s negotiated half duplex; check the cable and switch port').format(up.dev), page: PAGES.network });
-		else if (up.speed && up.speed.mbps < 1000) out.push({ id: 'uplink', level: 'warn', title: _('Uplink', 'vantage'), value: _('%s Mbit/s').format(up.speed.mbps), reason: _('%s · slow link').format(up.dev),
+		/* under 1 Gbit/s, unless that is the fastest the port and the one
+		   at the other end both offer (a Fast Ethernet port, a modem's
+		   100 Mbit/s hand-off); where that is not known, as before */
+		else if (up.speed && up.speed.mbps < 1000 && !(finite(up.linkMax) && up.speed.mbps >= up.linkMax)) out.push({ id: 'uplink', level: 'warn', title: _('Uplink', 'vantage'), value: _('%s Mbit/s').format(up.speed.mbps), reason: _('%s · slow link').format(up.dev),
 			detail: _('%s negotiated only %d Mbit/s; a cable pair or port may be faulty').format(up.dev, up.speed.mbps), page: PAGES.network });
 		else {
 			var rate = live.uplinkRate && finite(live.uplinkRate.rx) && finite(live.uplinkRate.tx) ? live.uplinkRate : null;

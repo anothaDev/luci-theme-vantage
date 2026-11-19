@@ -123,6 +123,26 @@ test('resolveUplink: AP bridge -> wired member, gateway and addresses', () => {
 	assert.equal(model.resolveUplink([], {}), null);
 });
 
+test('line: the fastest link the port and its partner both offer, null where netifd does not know', () => {
+	const fast = [ '10baseT-H', '10baseT-F', '100baseT-H', '100baseT-F' ], gig = fast.concat([ '1000baseT-F' ]), multi = gig.concat([ '2500baseT-F' ]);
+	const at = (supported, partner) => model.resolveUplink(IFACES, Object.assign({}, DEVS, {
+		eth0: Object.assign({}, DEVS.eth0, { speed: '100F', 'link-supported': supported, 'link-partner-advertising': partner })
+	}), [ 'phy2g-ap0', 'phy6g-ap0' ]).linkMax;
+	assert.equal(at(fast, multi), 100, 'a Fast Ethernet port');
+	assert.equal(at(multi, fast), 100, 'a 100 Mbit/s hand-off');
+	assert.equal(at(multi, gig), 1000);
+	assert.equal(at(multi, multi), 2500);
+	assert.equal(at([ '1000baseX-F', '2500baseX-F' ], [ '1000baseT-F' ]), 1000, 'by speed, whatever the medium is called');
+	/* unknown: a list missing or empty (no autonegotiation), no speed in common, junk */
+	for (const [ a, b ] of [ [ undefined, undefined ], [ multi, undefined ], [ undefined, multi ], [ [], [] ], [ multi, [] ], [ [], multi ],
+		[ [ '10baseT-F' ], [ '1000baseT-F' ] ], [ 'x', multi ], [ [ null, 5, 'fast', '0baseT-F', 'base' ], multi ] ])
+		assert.equal(at(a, b), null, JSON.stringify([ a, b ]));
+	/* the bridge's own lists are not the port's */
+	const br = model.resolveUplink(IFACES, Object.assign({}, DEVS, { 'br-lan': Object.assign({}, DEVS['br-lan'], { 'link-supported': fast, 'link-partner-advertising': fast }) }), [ 'phy2g-ap0', 'phy6g-ap0' ]);
+	assert.deepEqual([ br.dev, br.linkMax ], [ 'eth0', null ]);
+	assert.equal(model.line({ interface: 'wan', device: 'pppoe-wan' }, {}, []).linkMax, null, 'a device netifd lists nothing for');
+});
+
 test('resolveUplink: router prefers wan, DSA offload uses conduit', () => {
 	const u = model.resolveUplink([ ...IFACES, { interface: 'wan', up: true, l3_device: 'wan', device: 'wan',
 		route: [ { target: '0.0.0.0', mask: 0, nexthop: '198.51.100.1' } ] } ],

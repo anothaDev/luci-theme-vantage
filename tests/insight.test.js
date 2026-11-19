@@ -81,6 +81,35 @@ test('health: weak client, slow uplink, disabled radio, high memory', () => {
 	assert.equal(s.count, 4);
 });
 
+test('health: a link under 1 Gbit/s warns only when the port and its partner offer more, or that is not known', () => {
+	const up = (mbps, linkMax, duplex) => {
+		const m = baseModel();
+		m.uplink.speed = { mbps, duplex: duplex || 'full' };
+		if (linkMax !== undefined) m.uplink.linkMax = linkMax;
+		return byId(insight.health(m, { cpu: { pct: 7, cores: [ 1 ] }, uplinkRate: { rx: 2e6, tx: 1e6 } }), 'uplink');
+	};
+	/* as before where the lists say nothing: every wording and the level */
+	for (const unknown of [ undefined, null, NaN, '100' ]) {
+		const c = up(100, unknown);
+		assert.deepEqual([ c.level, c.value, c.reason, c.detail ], [ 'warn', '100 Mbit/s', 'eth0 · slow link', 'eth0 negotiated only 100 Mbit/s; a cable pair or port may be faulty' ], String(unknown));
+	}
+	/* both ends offer more: the same warning */
+	assert.deepEqual([ up(100, 1000).level, up(100, 2500).reason, up(10, 100).value ], [ 'warn', 'eth0 · slow link', '10 Mbit/s' ]);
+	/* the best there is: an ordinary uplink, counted nowhere */
+	const best = up(100, 100);
+	assert.deepEqual([ best.level, best.value ], [ 'ok', '↓ 2 Mbit/s' ]);
+	assert.equal(best.reason.replace(/\u00a0/g, ' '), '↑ 1 Mbit/s · 100 Mbit/s link');
+	assert.equal(best.detail, 'eth0 up at 100 Mbit/s, gateway 192.0.2.1; now 2 Mbit/s down, 1 Mbit/s up');
+	assert.equal(up(10, 10).level, 'ok');
+	const m = baseModel();
+	m.uplink.speed = { mbps: 100, duplex: 'full' };
+	m.uplink.linkMax = 100;
+	assert.deepEqual(insight.summary(insight.health(m, { cpu: { pct: 7, cores: [ 1 ] } })), { level: 'ok', count: 0, headline: 'Everything looks healthy' });
+	/* half duplex is still its own warning, and 1 Gbit/s and up never warned */
+	assert.equal(up(100, 100, 'half').value, 'Half duplex');
+	assert.equal(up(1000, 2500).level, 'ok');
+});
+
 test('health: a radio switched off is no warning; one enabled but down is an error', () => {
 	const m = baseModel();
 	m.radios[1].disabled = true;
