@@ -153,13 +153,17 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   not handed over by the templates, and the login page neither reads it
   nor acts on it. Where it is picked it says what it costs: once a day
   the browser asks the list, which shows the list's host (GitHub Pages)
-  the computer's IP address. With it on, a page of the theme makes that
+  the computer's IP address and the address the page was opened at (a
+  browser sends it as the request's Origin, referrer or not). With it on, a page of the theme makes that
   same check once the page is idle, when the last try is 24 hours old or
   older, and only from a logged-in page in a tab that is in view. The
   time of the try and the version the list had are kept in that browser
   (`vantage.update.last`); the try is written before the answer comes,
   so the pages and tabs of one browser ask once a day, and a check that
   fails counts as that day's, says nothing and leaves what was known. A
+  list its host says is larger than 256 KiB is not read, and no more
+  than that of one is looked at; where the browser's storage cannot keep
+  the try, the daily check asks nothing (every page would ask again). A
   manual check made with the option on counts and is kept the same way.
   While the list's version is newer than the running one, the gear
   carries a small dot, said in its label, and Appearance shows the

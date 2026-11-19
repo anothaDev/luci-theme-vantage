@@ -83,6 +83,9 @@ const UPDATE_ENTRY = /^Package: luci-theme-vantage$/m;
 const UPDATE_AUTO_KEY = 'vantage.update.auto';
 const UPDATE_LAST_KEY = 'vantage.update.last';
 const UPDATE_EVERY = 24 * 3600 * 1000;
+/* the list is a few kilobytes: one that says it is larger than this is
+   not read, and no more than this of one is looked at */
+const UPDATE_MAX = 262144;
 
 const LOOK = {
 	theme: { own: 'vantage.theme.own', before: THEME_KEY, ok: [ 'auto', 'light', 'dark' ] },
@@ -2079,17 +2082,24 @@ return baseclass.extend({
 	   is kept before the answer comes (a reload or another tab asks
 	   nothing more that day, and a try that fails still counts, with what
 	   was known before), then what the list had. */
-	askLatest() {
+	askLatest(daily) {
 		const at = Date.now(), mem = updateMemory(storageGet(UPDATE_LAST_KEY));
 		const keep = latest => { if (this.updatePref() === 'on') storageSet(UPDATE_LAST_KEY, JSON.stringify({ at: at, latest: latest })); };
 		keep(mem ? mem.latest : null);
+		/* the daily check asks only once its try is kept: where the
+		   browser's storage takes no more, every page would ask again */
+		const kept = updateMemory(storageGet(UPDATE_LAST_KEY));
+		if (daily && !(kept && kept.at === at)) return Promise.reject(new Error('try not kept'));
 		const ctl = window.AbortController ? new AbortController() : null;
 		const timer = ctl ? setTimeout(() => ctl.abort(), 10000) : 0;
 		return fetch(UPDATE_INDEX, { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal: ctl ? ctl.signal : undefined })
-			.then(r => r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status)))
+			.then(r => {
+				const size = r.headers && r.headers.get ? +r.headers.get('content-length') : 0;
+				return r.ok && !(size > UPDATE_MAX) ? r.text() : Promise.reject(new Error(r.ok ? 'too large' : 'HTTP ' + r.status));
+			})
 			.then(text => {
 				clearTimeout(timer);
-				const latest = listedVersion(text);
+				const latest = listedVersion(String(text).slice(0, UPDATE_MAX));
 				if (!latest) throw new Error('no version');
 				keep(latest);
 				this.applyUpdate();
@@ -2140,7 +2150,7 @@ return baseclass.extend({
 		const set = this.appearGroup('vt-update', _('Daily update check'), [ [ 'off', _('Off') ], [ 'on', _('On') ] ], v => this.setUpdatePref(v));
 		set.setAttribute('aria-describedby', 'vt-update-help');
 		set.appendChild(E('p', { 'class': 'vt-appear-note', 'id': 'vt-update-help' }, [
-			_('Once a day this browser reads the project\'s package list on GitHub Pages, which shows GitHub this computer\'s IP address. For this browser only.') ]));
+			_('Once a day this browser reads the project\'s package list on GitHub Pages, which shows GitHub this computer\'s IP address and the address this page was opened at. For this browser only.') ]));
 		return set;
 	},
 
@@ -2181,7 +2191,7 @@ return baseclass.extend({
 
 	dailyCheck() {
 		if (this.updatePref() !== 'on' || document.visibilityState !== 'visible' || !document.body.classList.contains('vt-auth')) return;
-		if (updateDue(updateMemory(storageGet(UPDATE_LAST_KEY)), Date.now())) this.askLatest().catch(() => {});
+		if (updateDue(updateMemory(storageGet(UPDATE_LAST_KEY)), Date.now())) this.askLatest(true).catch(() => {});
 	},
 
 	syncAppearance() {

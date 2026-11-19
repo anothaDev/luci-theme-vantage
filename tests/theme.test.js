@@ -645,7 +645,7 @@ test('update check: reads the theme\'s version from the package list, compares, 
 function updateBrowser(store) {
 	require('./luci-stub');      /* String.prototype.format */
 	const DAY = 24 * 3600 * 1000;
-	const b = { store: store || {}, now: 1700000000000, asked: [], saved: [], list: null, visible: true, auth: true, idle: true, DAY };
+	const b = { store: store || {}, now: 1700000000000, asked: [], saved: [], list: null, size: null, read: 0, full: false, visible: true, auth: true, idle: true, DAY };
 	const text = t => ({ nodeType: 3, data: String(t) });
 	const E = (tag, attrs, kids) => {
 		const el = {
@@ -668,14 +668,17 @@ function updateBrowser(store) {
 	};
 	const localStorage = {
 		getItem: k => (Object.prototype.hasOwnProperty.call(b.store, k) ? b.store[k] : null),
-		setItem: (k, v) => { b.store[k] = String(v); },
+		/* b.full: a browser whose storage takes no more */
+		setItem: (k, v) => { if (b.full) throw new Error('QuotaExceededError'); b.store[k] = String(v); },
 		removeItem: k => { delete b.store[k]; }
 	};
-	/* the list: a string answers 200 with it, a number is that HTTP status, null no answer at all */
+	/* the list: a string answers 200 with it, a number is that HTTP status, null no answer at all;
+	   b.size: the length its host says it has (Content-Length), b.read: how often its text was taken */
 	const fetch = (url, opts) => {
 		b.asked.push({ url, opts });
 		if (b.list == null) return Promise.reject(new TypeError('Failed to fetch'));
-		return Promise.resolve(typeof b.list === 'number' ? { ok: false, status: b.list } : { ok: true, status: 200, text: () => Promise.resolve(b.list) });
+		const headers = { get: k => (String(k).toLowerCase() === 'content-length' && b.size != null ? String(b.size) : null) };
+		return Promise.resolve(typeof b.list === 'number' ? { ok: false, status: b.list, headers } : { ok: true, status: 200, headers, text: () => { b.read++; return Promise.resolve(b.list); } });
 	};
 	const rpc = { declare: spec => (...args) => { b.saved.push([ spec.object, spec.method ].concat(args)); return Promise.resolve({}); } };
 	b.settle = async () => { for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r)); };
@@ -903,7 +906,38 @@ test('daily update check: a check that fails is that day\'s try, says nothing an
 	assert.deepEqual(b.last(), { at: t0 + b.DAY, latest: NEWER });
 	assert.ok(p.dot());
 	/* silent: the daily check's own failure reaches no console and no page text */
-	assert.match(src, /this\.askLatest\(\)\.catch\(\(\) => \{\}\);/);
+	assert.match(src, /this\.askLatest\(true\)\.catch\(\(\) => \{\}\);/);
+});
+
+test('daily update check: a list larger than a list is, is not read; where the try cannot be kept, nothing is asked', async () => {
+	const LIMIT = +/const UPDATE_MAX = (\d+);/.exec(src)[1];
+	assert.equal(LIMIT, 262144);
+	/* its host says it is larger: not read, and that day's try all the same */
+	const big = updateBrowser({ 'vantage.update.auto': 'on' });
+	big.list = big.packages(NEWER); big.size = LIMIT + 1;
+	let p = await big.page();
+	assert.deepEqual([ big.asked.length, big.read, p.dot() ], [ 1, 0, false ]);
+	assert.deepEqual(big.last(), { at: big.now, latest: null });
+	/* at the limit it is read */
+	const fits = updateBrowser({ 'vantage.update.auto': 'on' });
+	fits.list = fits.packages(NEWER); fits.size = LIMIT;
+	p = await fits.page();
+	assert.deepEqual([ fits.read, p.dot() ], [ 1, true ]);
+	/* no length given: read, and no more of it looked at than a list has */
+	const long = updateBrowser({ 'vantage.update.auto': 'on' });
+	long.list = 'x'.repeat(LIMIT) + '\n\n' + long.packages(NEWER);
+	p = await long.page();
+	assert.deepEqual([ long.read, p.dot() ], [ 1, false ], 'the entry lies past what is looked at');
+	/* storage that takes no more: every page would find no try kept and ask again, so the daily check asks nothing */
+	const full = updateBrowser({ 'vantage.update.auto': 'on' });
+	full.full = true; full.list = full.packages(NEWER);
+	for (let i = 0; i < 3; i++) p = await full.page();
+	assert.equal(full.asked.length, 0);
+	/* the manual check is asked for each time it runs: it still does */
+	p.open().check.fire('click');
+	await full.settle();
+	assert.equal(full.asked.length, 1);
+	assert.match(p.line.textContent, new RegExp('^Version ' + NEWER.replace(/\./g, '\\.') + ' is available\\.'));
 });
 
 test('daily update check: the dot on the gear, its label, and the manual check\'s line under Appearance', async () => {
@@ -1032,7 +1066,7 @@ test('daily update check: this browser\'s alone: never saved for every browser, 
 	assert.ok(src.includes("'vt-update': this.updatePref()"), 'the panel shows the pick in force');
 	assert.equal(p.set.children[0].textContent, 'Daily update check');
 	const help = p.set.all().find(e => e.tagName === 'P');
-	assert.match(help.textContent, /^Once a day this browser reads the project's package list on GitHub Pages, which shows GitHub this computer's IP address\. For this browser only\.$/);
+	assert.match(help.textContent, /^Once a day this browser reads the project's package list on GitHub Pages, which shows GitHub this computer's IP address and the address this page was opened at\. For this browser only\.$/);
 	assert.equal(p.set.getAttribute('aria-describedby'), help.getAttribute('id'), 'the help belongs to the group');
 	assert.deepEqual(p.set.all().filter(e => e.tagName === 'INPUT').map(e => [ e.attrs.type, e.attrs.name, e.attrs.value ]), [ [ 'radio', 'vt-update', 'off' ], [ 'radio', 'vt-update', 'on' ] ], 'off comes first');
 	/* neither template hands it over, the shipped config has no such option, and the login page reads none of it */

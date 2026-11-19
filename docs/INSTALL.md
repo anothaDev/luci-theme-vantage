@@ -1099,9 +1099,10 @@ Then reload the page. To remove Vantage entirely, see
   Vantage page is open and in view; a newer version then shows as a dot
   on the gear. It is off unless you switch it on, and it is set per
   browser, never saved on the router: each day's request shows GitHub
-  Pages the IP address of the computer you manage the router from, and
-  when. Switching it off also forgets what it found. The login page
-  never asks.
+  Pages the IP address of the computer you manage the router from, the
+  address you opened LuCI at (the request's Origin, as above) and when.
+  A list larger than 256 KiB is not read. Switching it off also forgets
+  what it found. The login page never asks.
   LuCI itself still puts its `L.env` script on those pages: the LuCI
   build on every page and, on "not found" pages, the tree of installed
   menu entries. That comes from LuCI's core templates, happens with every

@@ -76,7 +76,8 @@ Nothing loads from the internet: Vantage uses system fonts and its own
 icons, with no CDNs or frameworks. The one exception is **Check for
 updates** under Appearance, and only when you click it, or once a day in
 a browser where you switch **Daily update check** on (off by default; it
-shows GitHub Pages your computer's IP address). The dashboard's only write is device
+shows GitHub Pages your computer's IP address and the address you opened
+LuCI at). The dashboard's only write is device
 names, and it never reads Wi-Fi keys. See [Security](#security).
 
 ## Install
