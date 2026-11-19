@@ -5,7 +5,7 @@
 
    Needs the private mirror ($VANTAGE_MIRROR or ../vantage-mirror) and a
    rootfs dump ($VANTAGE_ROOTFS or the server's default); skipped without
-   them. Listens on a free port in 8220-8239 on 127.0.0.1. */
+   them. Listens on a free port in 8230-8239 on 127.0.0.1. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('child_process');
@@ -22,16 +22,17 @@ const skip = !ready && 'no mirror or rootfs dump';
 
 /* from a place of this process's own in the range: two runs side by side
    would both find the first free port free, and one would talk to the
-   other's server */
+   other's server. A range of its own too: replay-fixtures.test.js runs
+   beside this file and takes its port from 8221-8229 */
 async function freePort() {
-	for (let i = 0; i < 20; i++) {
-		const p = 8220 + (process.pid + i) % 20;
+	for (let i = 0; i < 10; i++) {
+		const p = 8230 + (process.pid + i) % 10;
 		const ok = await new Promise(res => {
 			const s = net.createServer().once('error', () => res(false)).listen(p, '127.0.0.1', () => s.close(() => res(true)));
 		});
 		if (ok) return p;
 	}
-	throw new Error('no free port in 8220-8239');
+	throw new Error('no free port in 8230-8239');
 }
 
 /* raw request, so Host / Origin can be anything */
