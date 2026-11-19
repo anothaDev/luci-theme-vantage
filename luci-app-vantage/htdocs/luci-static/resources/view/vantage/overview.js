@@ -4661,8 +4661,11 @@ return view.extend({
 			]) ]),
 			this.section(_('Connection'), [ E('dl', { 'class': 'vt-kvs' }, [
 				kv(_('Network'), [ c.ssid, ' ', bandBadge(c.band) ]),
+				/* a channel that is not known is a dash, as on the tiles, and
+				   a width that is not known is left out: neither is made up */
 				c.ap ? kv(_('Access point'), [ c.ap.name, c.ap.addr ? E('small', {}, [ c.ap.addr ]) : '', alsoLine(c.ap) ]) :
-					kv(_('Radio', 'vantage'), radio ? _('%s · channel %d · %d MHz').format(radio.id, radio.channel || 0, radio.width || 20) : c.radio)
+					kv(_('Radio', 'vantage'), !radio ? c.radio : radio.channel && radio.width ? _('%s · channel %d · %d MHz').format(radio.id, radio.channel, radio.width)
+						: radio.id + ' · ' + (radio.channel ? _('channel %d').format(radio.channel) : fmt.DASH))
 			].concat(c.ap && c.ap.bssid ? [ kv(_('BSSID'), [ fmt.mac(c.ap.bssid), c.ap.channel ? E('small', {}, [ _('channel %d').format(c.ap.channel) ]) : '' ]) ] : [], [
 				kv(_('Connected for'), c.gone ? fmt.DASH : fmt.duration(c.connected)),
 				kv(_('Last activity', 'vantage'), c.inactive == null || c.gone ? fmt.DASH : fmt.ago(c.inactive)),

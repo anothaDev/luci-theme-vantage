@@ -1563,6 +1563,35 @@ test('#110: a rebuilt quiet row shows the last attempt\'s error and stays disabl
 
 /* luci-rpc getHostHints reads the leases and the ARP table: every 30 s,
    and for the three polls after a station or wired host first appears */
+test('client details: the Radio row prints a dash for a channel that is not known and makes up no width', t => withFakeDom(() => {
+	const savedL = global.L;
+	global.L = { url: (...p) => '/cgi-bin/luci/' + p.join('/') };
+	t.after(() => { global.L = savedL; });
+	const m = apModel(null), sta = m.clients[0], radio = m.radios[0];
+	const self = Object.assign(Object.create(dview), { m, st: { staRates: {}, devRates: {}, clientHist: {}, gone: [] }, ui: {}, el: {}, quiet: {}, canWrite: false });
+	const row = () => {
+		const n = new FNode('x');
+		append(n, self.drawerClient(sta.mac).body);
+		return n.find('vt-kv').filter(r => r.children[0].textContent === 'Radio')[0].children[1].textContent;
+	};
+	assert.deepEqual([ radio.id, radio.channel, radio.width ], [ 'radio0', 36, 80 ]);
+	assert.equal(row(), 'radio0 · channel 36 · 80 MHz', 'as before where both are known');
+	/* the channel is not known (a radio that is down, a driver that gives none): the tiles' dash */
+	for (const channel of [ null, 0, undefined ]) {
+		radio.channel = channel;
+		assert.equal(row(), 'radio0 · —', String(channel));
+	}
+	radio.width = null;
+	assert.equal(row(), 'radio0 · —');
+	/* the width alone is not known (an htmode the model cannot read) */
+	radio.channel = 36;
+	assert.equal(row(), 'radio0 · channel 36');
+	assert.doesNotMatch(row(), /channel 0|20 MHz/);
+	/* a radio the device no longer reports: its name, as before */
+	sta.radio = 'radio9';
+	assert.equal(row(), 'radio9');
+}));
+
 test('host hints: every 30 s, and again for three polls when a station or host is new', async () => {
 	let hints = 0, stations = [ { mac: '00:00:5e:00:53:01' } ];
 	REPLIES['luci-rpc getHostHints'] = () => { hints++; return Promise.resolve({ '00:00:5e:00:53:01': { name: 'one' } }); };
