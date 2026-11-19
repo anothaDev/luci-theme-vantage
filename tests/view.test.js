@@ -2781,3 +2781,141 @@ test('WireGuard tile: built once like any tile, named for Customize, its link Lu
 	assert.match(src, /wired = !!this\.m\.wired, wg = !!this\.m\.wg;\n\t\tvar list = this\.drag \? this\.drag\.list : this\.layoutFor\(tier, wired, wg\);/);
 	assert.match(src, /layout\.same\(list, layout\.defaults\(l\.tier, l\.wired, l\.wg\)\)/);
 }));
+
+/* ------------------------------------- Top talkers with wired hosts (#129) */
+
+/* a router: one host alone on lan2, two sharing lan1, the gateway alone on
+   the WAN port, a host alone on a backup line's port, one alone on lan3
+   without counters yet; ap-hall adds one alone on its lan3 and one on a
+   port it shares there */
+function talkModel(extra) {
+	const host = (n, port, more) => Object.assign({ mac: '00:00:5e:00:53:0' + n, port, name: 'h' + n, plainName: 'h' + n, macLabel: '00:00:5E:00:53:0' + n, secondary: '192.0.2.' + n,
+		icon: 'desktop', nameSource: 'dhcp', nameSourceLabel: 'DHCP', bridge: 'br-lan', network: 'lan', vlan: null, seen: 5, shared: false, peers: 1,
+		speed: { mbps: 1000, duplex: 'full' }, carrier: true, ips: [ '192.0.2.' + n ] }, more);
+	const ap = { id: AP_ID, name: 'ap-hall', addr: '192.0.2.10', port: 'lan3', speed: null };
+	return Object.assign({
+		wired: true, radios: [], clients: [],
+		uplink: { dev: 'eth0', statsDev: 'eth0', port: 'eth0' },
+		uplinks: [ { dev: 'eth0', statsDev: 'eth0', port: 'eth0' }, { dev: 'eth1', statsDev: 'eth1', port: 'eth1' } ],
+		wiredHosts: [
+			host(1, 'lan2'),
+			host(2, 'lan1', { shared: true, peers: 2 }), host(3, 'lan1', { shared: true, peers: 2 }),
+			host(4, 'eth0', { gateway: true }),
+			host(5, 'eth1'),
+			host(6, '', { ap: Object.assign({ rate: { rx: 4000, tx: 9000 } }, ap) }),
+			host(7, '', { ap: Object.assign({ rate: null }, ap) }),
+			host(8, 'lan3')
+		]
+	}, extra);
+}
+const TALK_RATES = { lan2: { rx: 1000, tx: 3000 }, lan1: { rx: 7e6, tx: 7e6 }, eth0: { rx: 9e6, tx: 1e6 }, eth1: { rx: 5e6, tx: 5e6 } };
+
+test('top talkers: wired hosts with a port to themselves rank with the stations; a shared port, the gateway and a line\'s port stay out', () => {
+	const self = Object.create(view);
+	const m = talkModel({ clients: [ { mac: '00:00:5e:00:53:a1', name: 'phone' }, { mac: '00:00:5e:00:53:a2', name: 'theirs', ap: { id: AP_ID, rate: { rx: 9e9, tx: 9e9 } } } ] });
+	self.st = { devRates: TALK_RATES, staRates: { '00:00:5e:00:53:a1': { rx: 500, tx: 1500 }, '00:00:5e:00:53:a2': { rx: 9e9, tx: 9e9 } } };
+	/* the model in hand, before it is the view's (ingest, rerender) */
+	self.m = { uplinks: [], wiredHosts: [] };
+	const t = self.talkers(m);
+	assert.deepEqual(t.map(x => [ x.name, x.down, x.up, !!x.wired ]), [ [ 'h6', 9000, 4000, true ], [ 'h1', 3000, 1000, true ], [ 'phone', 1500, 500, false ] ],
+		'by live total: the access point\'s host by its report, the host alone on lan2 by its port, the station');
+	/* what the Clients list shows for each is what ranks it */
+	const h = n => m.wiredHosts[n - 1];
+	assert.deepEqual([ self.portRate(h(1)), self.portRate(h(6)) ], [ TALK_RATES.lan2, { rx: 4000, tx: 9000 } ]);
+	assert.deepEqual([ self.portRate(h(2)), self.portRate(h(7)), self.portRate(h(8)) ], [ null, null, null ], 'shared here, shared there, not measured yet: no rate, no row');
+	/* the port's rate is the line's, not theirs, however much it is */
+	self.m = m;
+	assert.deepEqual([ 4, 5 ].map(n => [ self.portRate(h(n)) !== null, self.talkHost(h(n)) ]), [ [ true, false ], [ true, false ] ]);
+	assert.deepEqual(m.wiredHosts.filter(c => self.talkHost(c)).map(c => c.name), [ 'h1', 'h2', 'h3', 'h6', 'h7', 'h8' ]);
+	/* a backup line whose port is unknown leaves nobody out, as on the path */
+	m.uplinks[1].port = null;
+	assert.deepEqual(self.talkers(m).map(x => x.name), [ 'h5', 'h6', 'h1' ]);
+	assert.deepEqual(self.wiredPorts(), [ 'eth1', 'lan1', 'lan2', 'lan3' ]);
+	/* three at most */
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.match(src, /var TALKERS = 3;/);
+	assert.equal([ ...src.matchAll(/st\.talkers = this\.talkers\(m\);/g) ].length, 2, 'a poll and a rebuild rank alike');
+});
+
+test('top talkers: a wired host\'s row is a station\'s, to and from the device the same way round, and opens the host\'s details', () => withFakeDom(() => {
+	const self = Object.create(dview);
+	const sta = { mac: '00:00:5e:00:53:a1', name: 'phone', icon: 'desktop' };
+	const m = talkModel({ wired: false, radios: [ { id: 'radio0' } ], clients: [ sta ] });
+	self.m = m;
+	/* the same counters on the radio and on the port */
+	self.st = { devRates: TALK_RATES, staRates: { '00:00:5e:00:53:a1': { rx: 1000, tx: 3000 } } };
+	self.st.talkers = self.talkers(m);
+	self.el = { talkers: new FNode('div') };
+	const opened = [];
+	self.openDrawer = (kind, id) => opened.push([ kind, id ]);
+	self.paintTalkers();
+	const rows = self.el.talkers.children;
+	assert.deepEqual(rows.map(r => r.getAttribute('class')), [ 'vt-talk-row', 'vt-talk-row', 'vt-talk-row' ]);
+	const name = r => r.find('vt-talk-name')[0].textContent, sub = r => r.find('vt-talk-sub')[0];
+	assert.deepEqual(rows.map(name), [ 'h6', 'h1', 'phone' ]);
+	const wired = rows[1], wifi = rows[2];
+	/* one row style: the same parts in the same order, no radio facts on either */
+	const shape = r => r.all().map(n => n.tag + '.' + (n.getAttribute('class') || '')).join(' ');
+	assert.equal(shape(wired), shape(wifi));
+	assert.doesNotMatch(rows.map(r => r.html()).join(''), /vt-band|vt-signal|dBm|GHz/);
+	/* the port sent the host 3 kbit/s and the radio sent the station 3 kbit/s: both downloads */
+	assert.equal(sub(wired).getAttribute('title'), 'To device 3 kbit/s, from device 1 kbit/s');
+	assert.equal(sub(wifi).getAttribute('title'), sub(wired).getAttribute('title'));
+	assert.equal(sub(wired).textContent, sub(wifi).textContent);
+	assert.equal(sub(wired).textContent, '4 kbit/s19%↓ 3  ↑ 1 kbit/s', 'total, share of the three, down then up');
+	/* as the Clients list has it for the same host */
+	const live = new FNode('x');
+	append(live, self.wiredCells(m.wiredHosts[0], 0));
+	assert.equal(live.find('vt-live-split')[0].getAttribute('title'), sub(wired).getAttribute('title'));
+	/* a click: the details a click on the host's row in the Clients list opens */
+	wired.on.click();
+	wifi.on.click();
+	rows[0].on.click();
+	assert.deepEqual(opened, [ [ 'client', '00:00:5e:00:53:01' ], [ 'client', '00:00:5e:00:53:a1' ], [ 'client', '00:00:5e:00:53:06' ] ]);
+	self.st.gone = [];
+	self.st.clientHist = {};
+	self.ui = {};
+	self.canWrite = false;
+	const savedL = global.L;
+	global.L = { url: (...p) => '/cgi-bin/luci/' + p.join('/') };
+	try {
+		const body = new FNode('x');
+		append(body, self.drawerClient('00:00:5e:00:53:01').body);
+		assert.match(body.textContent, /Portlan2/);
+		assert.match(body.textContent, /Traffic↓ 3 kbit\/s · ↑ 1 kbit\/s/, 'the wired details, the same way round');
+	} finally { global.L = savedL; }
+}));
+
+test('top talkers: without Wi-Fi the empty tile says why, and never names Wi-Fi', () => withFakeDom(() => {
+	const self = Object.create(dview);
+	const note = (m, rates) => {
+		self.m = m;
+		self.st = { devRates: rates || {}, staRates: {} };
+		self.st.talkers = self.talkers(m);
+		self.el = { talkers: new FNode('div') };
+		self.paintTalkers();
+		const all = self.el.talkers.children;
+		assert.equal(all.filter(n => n.classList.contains('vt-talk-slot')).length, 3 - self.st.talkers.length, 'the tile keeps its three rows');
+		return self.st.talkers.length ? null : all[0].textContent;
+	};
+	const every = talkModel().wiredHosts, shared = every.filter(h => h.shared), said = [];
+	/* nothing heard on the ports */
+	said.push(note(talkModel({ wiredHosts: [] })));
+	assert.equal(said[0], 'No clients connected.');
+	/* only the way to the gateway: no client either */
+	said.push(note(talkModel({ wiredHosts: [ every[3], every[4] ] }), TALK_RATES));
+	assert.equal(said[1], 'No clients connected.');
+	/* every host shares its port, here or on its access point: none can be measured */
+	said.push(note(talkModel({ wiredHosts: shared.concat(every[6]) }), TALK_RATES));
+	assert.equal(said[2], 'No device has a port to itself; traffic on a shared port is not counted per device.');
+	/* one has a port to itself and is idle, or not measured yet */
+	said.push(note(talkModel({ wiredHosts: shared.concat(every[0]) }), { lan2: { rx: 0, tx: 0 }, lan1: { rx: 7e6, tx: 7e6 } }));
+	said.push(note(talkModel({ wiredHosts: shared.concat(every[0]) })));
+	assert.deepEqual(said.slice(3), [ 'Nobody is moving data right now.', 'Nobody is moving data right now.' ]);
+	for (const s of said) assert.doesNotMatch(s, /Wi-?Fi|wireless|station|radio/i);
+	/* with stations it is as before */
+	assert.equal(note(talkModel({ wired: false, wiredHosts: shared, clients: [ { mac: '00:00:5e:00:53:a1', name: 'phone' } ] })), 'Nobody is moving data right now.');
+	assert.equal(note(talkModel({ wired: false, wiredHosts: [], clients: [] })), 'No clients connected.');
+	/* and a host that moves data is a row */
+	assert.equal(note(talkModel(), TALK_RATES), null);
+}));

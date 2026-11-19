@@ -187,6 +187,32 @@ test('topTalkers: ranked by live total, share of the sum, zero traffic left out'
 	assert.deepEqual(insight.topTalkers([], {}), []);
 });
 
+/* #129: a wired host with a port to itself has the port's rate. A port's
+   counters and a station's run the same way, as this device counts them:
+   tx is what it sent to the device */
+test('topTalkers: wired hosts with a rate of their own rank with the stations, in the same direction', () => {
+	const clients = [ { mac: 'a', name: 'Phone' }, { mac: 'b', name: 'Laptop' } ];
+	const hosts = [ { mac: 'w1', name: 'NAS' }, { mac: 'w2', name: 'Printer' }, { mac: 'w3', name: 'Idle' }, { mac: 'w4', name: 'Shared' } ];
+	const same = { rx: 1e6, tx: 9e6 };
+	const t = insight.topTalkers(clients, { a: same, b: { rx: 0, tx: 2e6 } }, 5, hosts, { w1: same, w2: { rx: 3e6, tx: 15e6 }, w3: { rx: 0, tx: 0 } });
+	assert.deepEqual(t.map(x => [ x.mac, x.total, !!x.wired ]), [ [ 'w2', 18e6, true ], [ 'a', 10e6, false ], [ 'w1', 10e6, true ], [ 'b', 2e6, false ] ],
+		'one ranking by live total; no traffic and no rate of its own stay out');
+	const row = mac => t.filter(x => x.mac === mac)[0];
+	assert.deepEqual([ row('a').down, row('a').up ], [ 9e6, 1e6 ], 'a station: the radio\'s transmit is its download');
+	assert.deepEqual([ row('w1').down, row('w1').up ], [ 9e6, 1e6 ], 'a wired host: the port\'s transmit is its download, the same way round');
+	assert.equal(t.reduce((n, x) => n + x.share, 0), 1, 'shares of one sum, stations and hosts together');
+	assert.equal(row('w2').share, 0.45);
+	assert.ok(!('wired' in row('a')), 'a station\'s row is as before');
+	/* the top n of both kinds */
+	assert.deepEqual(insight.topTalkers(clients, { a: same }, 2, hosts, { w1: same, w2: { rx: 3e6, tx: 15e6 } }).map(x => x.mac), [ 'w2', 'a' ]);
+	/* each list has its own rates: a host is never ranked by a station's, nor a station by a port's */
+	assert.deepEqual(insight.topTalkers(clients, { w1: same }, 5, hosts, { a: same }), []);
+	/* without hosts, as before */
+	assert.deepEqual(insight.topTalkers(clients, { a: same }, 5).map(x => [ x.mac, x.share ]), [ [ 'a', 1 ] ]);
+	assert.deepEqual(insight.topTalkers(clients, { a: same }, 5, null, null).length, 1);
+	assert.deepEqual(insight.topTalkers(null, null, 5, hosts, { w1: same }).map(x => [ x.mac, x.name, x.down, x.share ]), [ [ 'w1', 'NAS', 9e6, 1 ] ], 'a device without stations');
+});
+
 test('presence: baseline, new arrivals, gone kept for a while', () => {
 	const A = { mac: 'a' }, B = { mac: 'b' }, C = { mac: 'c' };
 	let p = insight.presence(null, [ A, B ], 1000, 60000);
@@ -275,6 +301,9 @@ test('top talkers: a paired access point\'s stations push none of this device\'s
 	const clients = [ { mac: 'a', name: 'Here' }, { mac: 'b', name: 'There', ap: { id: '0123456789abcdef' } } ];
 	const t = insight.topTalkers(clients, { a: { rx: 1000, tx: 1000 }, b: { rx: 9e9, tx: 9e9 } }, 5);
 	assert.deepEqual(t.map(x => [ x.mac, x.share ]), [ [ 'a', 1 ] ]);
+	/* nor with wired hosts beside them */
+	const w = insight.topTalkers(clients, { a: { rx: 1000, tx: 1000 }, b: { rx: 9e9, tx: 9e9 } }, 5, [ { mac: 'c', name: 'Wired' } ], { c: { rx: 500, tx: 500 } });
+	assert.deepEqual(w.map(x => x.mac), [ 'a', 'c' ]);
 });
 
 /* review F4: the collector answers its first call before it has fetched

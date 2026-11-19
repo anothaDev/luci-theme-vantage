@@ -13,8 +13,9 @@
 
 var TILES = [ 'hero', 'chart', 'radios', 'clients', 'sys', 'talk', 'ssids', 'wg' ];
 
-/* tiles that only exist with Wi-Fi (Clients lists wired hosts too) */
-var WIFI = { radios: true, talk: true, ssids: true };
+/* tiles that only exist with Wi-Fi (Clients lists wired hosts too, and
+   Top talkers ranks those with a port to themselves) */
+var WIFI = { radios: true, ssids: true };
 
 /* the tile that only exists with a WireGuard tunnel, with Wi-Fi or
    without. A tunnel makes no layouts of its own, as having no Wi-Fi
@@ -46,9 +47,9 @@ var DEFAULTS = {
 	narrow: [ [ 'clients', 0, 1 ], [ 'talk', 0, 1 ], [ 'radios', 0, 1 ], [ 'hero', 0, 1 ], [ 'ssids', 0, 1 ], [ 'chart', 0, 1 ], [ 'sys', 0, 1 ], [ 'wg', 0, 1 ] ]
 };
 var DEFAULTS_WIRED = {
-	wide: [ [ 'hero', 0, 4 ], [ 'chart', 0, 3 ], [ 'sys', 3, 1 ], [ 'clients', 0, 4 ], [ 'wg', 0, 2 ] ],
-	mid: [ [ 'hero', 0, 2 ], [ 'chart', 0, 2 ], [ 'sys', 0, 2 ], [ 'clients', 0, 2 ], [ 'wg', 0, 2 ] ],
-	narrow: [ [ 'hero', 0, 1 ], [ 'clients', 0, 1 ], [ 'chart', 0, 1 ], [ 'sys', 0, 1 ], [ 'wg', 0, 1 ] ]
+	wide: [ [ 'hero', 0, 4 ], [ 'chart', 0, 3 ], [ 'sys', 3, 1 ], [ 'clients', 0, 3 ], [ 'talk', 3, 1 ], [ 'wg', 0, 2 ] ],
+	mid: [ [ 'hero', 0, 2 ], [ 'chart', 0, 2 ], [ 'clients', 0, 2 ], [ 'talk', 0, 1 ], [ 'sys', 1, 1 ], [ 'wg', 0, 2 ] ],
+	narrow: [ [ 'hero', 0, 1 ], [ 'clients', 0, 1 ], [ 'talk', 0, 1 ], [ 'chart', 0, 1 ], [ 'sys', 0, 1 ], [ 'wg', 0, 1 ] ]
 };
 
 function own(o, k) { return o != null && Object.prototype.hasOwnProperty.call(o, k); }

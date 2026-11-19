@@ -198,17 +198,24 @@ return baseclass.extend({
 	/* clients + rates { mac: { rx, tx } } (AP view: tx = to the client)
 	   -> top n [ { mac, name, down, up, total, share } ] with total > 0.
 	   This device's clients: a paired access point's (c.ap) push none of
-	   them out */
-	topTalkers: function(clients, rates, n) {
+	   them out.
+	   hosts + hostRates: the wired hosts that have a rate of their own
+	   (the view's pick: a port to themselves), ranked with the stations
+	   and marked wired. A port counts as a radio does, from this side of
+	   the link: its tx went to the device, so down is tx in every row */
+	topTalkers: function(clients, rates, n, hosts, hostRates) {
 		var list = [], sum = 0;
-		(clients || []).forEach(function(c) {
-			var r = !c.ap && own(rates, c.mac) ? rates[c.mac] : null;
+		function add(c, r, wired) {
 			if (!r) return;
 			var down = num(r.tx), up = num(r.rx), total = down + up;
 			if (!(total > 0)) return;
 			sum += total;
-			list.push({ mac: c.mac, name: c.name, down: down, up: up, total: total });
-		});
+			var t = { mac: c.mac, name: c.name, down: down, up: up, total: total };
+			if (wired) t.wired = true;
+			list.push(t);
+		}
+		(clients || []).forEach(function(c) { add(c, !c.ap && own(rates, c.mac) ? rates[c.mac] : null, false); });
+		(hosts || []).forEach(function(h) { add(h, own(hostRates, h.mac) ? hostRates[h.mac] : null, true); });
 		list.sort(function(a, b) { return b.total - a.total || (a.mac < b.mac ? -1 : 1); });
 		list.forEach(function(t) { t.share = sum > 0 ? t.total / sum : 0; });
 		return list.slice(0, n > 0 ? n : 5);

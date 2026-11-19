@@ -333,7 +333,20 @@ text around it so it looks the same size.
 - **Insight over decoration**: per-client experience score with a reason,
   Wi-Fi generation badges and legacy-client flags, top talkers by live
   throughput, new/recently-gone clients, busiest radio; each insight links
-  to the LuCI page that fixes it.
+  to the LuCI page that fixes it. Top talkers ranks this device's Wi-Fi
+  stations and, by the same measure, the wired hosts with traffic of
+  their own (#129): one alone on its port, with the rate the Clients list
+  shows for it. A host on a shared port has none and stays out (the row
+  would name a port, not a device), and so do the gateway and whoever
+  else is on a line's port, whose traffic is the line's. A paired access
+  point's wired host is ranked where that access point reports a rate
+  for it (alone on its port there); its stations are not, as before.
+  Every row reads the same way round: a port counts like a radio, so
+  what this device sent is the device's download. A wired host's row
+  opens its details. The tile exists without Wi-Fi too, which gives a
+  wired-only device five tiles (network path, throughput, system,
+  clients, top talkers); where every host there shares its port, the
+  tile says that none can be measured.
 - **Entity search**: under the Vantage theme the command palette (Ctrl+K
   or `/`) also finds, while the dashboard is open: the clients (Wi-Fi
   stations and wired hosts, a paired access point's with its name) by
@@ -371,8 +384,10 @@ text around it so it looks the same size.
   a per-tile minimum and hide them. Saved per screen class (and
   separately for wired devices) and validated on read: under the Vantage
   theme with the chart style on the router (see the theme toggle), else
-  in `localStorage`, which also keeps this browser's copy. A tile whose
-  content shrinks keeps its height for 30 s,
+  in `localStorage`, which also keeps this browser's copy. A stored
+  layout that leaves a tile out (a wired device's saved before it had
+  Top talkers) gets it after the tile it follows by default, shown. A
+  tile whose content shrinks keeps its height for 30 s,
   then the layout settles on its own; while arranging, each tile's
   content starts below its handle bar.
 - **Lines to the internet**: every up interface with a default route in

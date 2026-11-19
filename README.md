@@ -45,8 +45,9 @@ third, optional one adds your other access points to the dashboard.
   generation, live traffic and an experience score that explains itself.
   Wired devices are listed too, with their port and link speed.
 - **Live charts.** Five minutes of throughput for the uplink and every
-  radio, in the chart style you choose, plus radio cards, top talkers and
-  a system tile.
+  radio, in the chart style you choose, plus radio cards, top talkers
+  (Wi-Fi clients, and wired devices that have a port to themselves, so a
+  router without Wi-Fi has them too) and a system tile.
 - **WireGuard peers.** Where a tunnel is up, a tile lists its peers by
   name, with the time since their last handshake and their live traffic.
   For logins that may open LuCI's own WireGuard status.

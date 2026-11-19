@@ -20,9 +20,50 @@ test('tier follows the stylesheet breakpoints', () => {
 test('defaults: Wi-Fi and wired devices', () => {
 	assert.deepEqual(ids(layout.defaults('wide', false)), [ 'hero', 'chart', 'radios', 'clients', 'sys', 'talk', 'ssids' ]);
 	assert.deepEqual(ids(layout.defaults('narrow', false)), [ 'clients', 'talk', 'radios', 'hero', 'ssids', 'chart', 'sys' ]);
-	assert.deepEqual(layout.defaults('wide', true).map(e => [ e.id, e.c, e.w ]), [ [ 'hero', 0, 4 ], [ 'chart', 0, 3 ], [ 'sys', 3, 1 ], [ 'clients', 0, 4 ] ]);
-	assert.deepEqual(ids(layout.defaults('narrow', true)), [ 'hero', 'clients', 'chart', 'sys' ], 'wired hosts are clients too');
+	assert.deepEqual(layout.defaults('wide', true).map(e => [ e.id, e.c, e.w ]), [ [ 'hero', 0, 4 ], [ 'chart', 0, 3 ], [ 'sys', 3, 1 ], [ 'clients', 0, 3 ], [ 'talk', 3, 1 ] ]);
+	assert.deepEqual(layout.defaults('mid', true).map(e => [ e.id, e.c, e.w ]), [ [ 'hero', 0, 2 ], [ 'chart', 0, 2 ], [ 'clients', 0, 2 ], [ 'talk', 0, 1 ], [ 'sys', 1, 1 ] ]);
+	assert.deepEqual(ids(layout.defaults('narrow', true)), [ 'hero', 'clients', 'talk', 'chart', 'sys' ], 'wired hosts are clients too, and talkers');
 	assert.equal(layout.key('wide', true), 'wide-wired');
+});
+
+/* #129: a wired-only device has Top talkers too; Radios and Wireless
+   networks stay Wi-Fi's */
+test('tiles: five without Wi-Fi, seven with it', () => {
+	const on = wired => layout.TILES.filter(id => layout.available(id, wired));
+	assert.deepEqual(on(true), [ 'hero', 'chart', 'clients', 'sys', 'talk' ]);
+	assert.deepEqual(on(false), [ 'hero', 'chart', 'radios', 'clients', 'sys', 'talk', 'ssids' ]);
+	for (const tier of [ 'wide', 'mid', 'narrow' ]) {
+		assert.deepEqual(ids(layout.defaults(tier, true)).sort(), on(true).sort(), tier);
+		assert.equal(layout.defaults(tier, false).length, 7, tier);
+	}
+	assert.equal(layout.available('nosuch', true), false);
+});
+
+/* a wired layout saved before Top talkers existed there does not mention
+   it: it comes in by the rule for any tile a stored layout leaves out,
+   after the tile it follows by default (Clients) */
+test('normalize: a wired layout saved without Top talkers gets it after Clients, the rest as saved', () => {
+	const before = {
+		wide: [ { id: 'hero', c: 0, w: 4 }, { id: 'chart', c: 0, w: 3 }, { id: 'sys', c: 3, w: 1 }, { id: 'clients', c: 0, w: 4 } ],
+		mid: [ { id: 'hero', c: 0, w: 2 }, { id: 'chart', c: 0, w: 2 }, { id: 'sys', c: 0, w: 2 }, { id: 'clients', c: 0, w: 2 } ],
+		narrow: [ { id: 'hero', c: 0, w: 1 }, { id: 'clients', c: 0, w: 1 }, { id: 'chart', c: 0, w: 1 }, { id: 'sys', c: 0, w: 1 } ]
+	};
+	const flat = list => list.map(e => [ e.id, e.c, e.w, e.hide ]);
+	assert.deepEqual(flat(layout.normalize(before.wide, 'wide', true)),
+		[ [ 'hero', 0, 4, false ], [ 'chart', 0, 3, false ], [ 'sys', 3, 1, false ], [ 'clients', 0, 4, false ], [ 'talk', 3, 1, false ] ]);
+	assert.deepEqual(flat(layout.normalize(before.mid, 'mid', true)),
+		[ [ 'hero', 0, 2, false ], [ 'chart', 0, 2, false ], [ 'sys', 0, 2, false ], [ 'clients', 0, 2, false ], [ 'talk', 0, 1, false ] ]);
+	assert.deepEqual(ids(layout.normalize(before.narrow, 'narrow', true)), [ 'hero', 'clients', 'talk', 'chart', 'sys' ]);
+	/* the viewer's own order and hidden tiles stay; the new tile is shown */
+	const mine = layout.normalize([ { id: 'clients', c: 0, w: 4 }, { id: 'sys', c: 0, w: 1, hide: true }, { id: 'hero', c: 0, w: 4 }, { id: 'chart', c: 1, w: 3 } ], 'wide', true);
+	assert.deepEqual(flat(mine), [ [ 'clients', 0, 4, false ], [ 'talk', 3, 1, false ], [ 'sys', 0, 1, true ], [ 'hero', 0, 4, false ], [ 'chart', 1, 3, false ] ]);
+	/* once saved with it, it stays where the viewer put it, hidden too */
+	const kept = layout.normalize(layout.compact(layout.setHidden(layout.move(mine, 'talk', 1), 'talk', true)), 'wide', true);
+	assert.deepEqual(flat(kept).filter(e => e[0] === 'talk'), [ [ 'talk', 3, 1, true ] ]);
+	assert.deepEqual(ids(kept), [ 'clients', 'sys', 'hero', 'talk', 'chart' ]);
+	/* a Wi-Fi layout is as before: nothing is added to one that names every tile */
+	const wifi = layout.compact(layout.defaults('wide', false));
+	assert.deepEqual(layout.normalize(wifi, 'wide', false), layout.defaults('wide', false));
 });
 
 test('normalize: junk, unknown and duplicate tiles are dropped; widths clamped', () => {
@@ -46,8 +87,9 @@ test('normalize: tiles missing from a stored layout return after their default n
 });
 
 test('normalize: Wi-Fi tiles never appear on a wired device; one tile always shows', () => {
-	const n = layout.normalize([ { id: 'talk', w: 2 }, { id: 'sys', w: 1, hide: true }, { id: 'hero', w: 4, hide: true }, { id: 'chart', w: 2, hide: true }, { id: 'clients', w: 4, hide: true } ], 'wide', true);
-	assert.deepEqual(ids(n), [ 'sys', 'hero', 'chart', 'clients' ]);
+	const n = layout.normalize([ { id: 'radios', w: 2 }, { id: 'ssids', w: 1 }, { id: 'sys', w: 1, hide: true }, { id: 'hero', w: 4, hide: true }, { id: 'chart', w: 2, hide: true },
+		{ id: 'clients', w: 4, hide: true }, { id: 'talk', w: 1, hide: true } ], 'wide', true);
+	assert.deepEqual(ids(n), [ 'sys', 'hero', 'chart', 'clients', 'talk' ]);
 	assert.equal(shown(n).length, 1);
 });
 
@@ -70,7 +112,7 @@ test('the WireGuard tile: only with a tunnel; without one every layout is as it 
 	}
 	/* the other tiles' conditions stand: Wi-Fi tiles need Wi-Fi, with a tunnel too */
 	assert.equal(layout.available('radios', true, true), false);
-	assert.deepEqual(ids(layout.defaults('wide', true, true)), [ 'hero', 'chart', 'sys', 'clients', 'wg' ]);
+	assert.deepEqual(ids(layout.defaults('wide', true, true)), [ 'hero', 'chart', 'sys', 'clients', 'talk', 'wg' ]);
 	assert.deepEqual(layout.defaults('wide', false, true).slice(-1), [ { id: 'wg', c: 0, w: 2, hide: false } ], 'two columns under Clients');
 	assert.deepEqual(layout.defaults('narrow', false, true).slice(-1), [ { id: 'wg', c: 0, w: 1, hide: false } ]);
 	/* a stored layout that names it, read without a tunnel (a login that may not ask, an interface that is down) */
@@ -94,10 +136,11 @@ test('the WireGuard tile: a stored layout from before it gets the tile where the
 	assert.deepEqual(ids(n), [ 'clients', 'hero', 'chart', 'radios', 'ssids', 'wg', 'sys', 'talk' ]);
 	assert.deepEqual(n[5], { id: 'wg', c: 0, w: 2, hide: false });
 	assert.deepEqual(n.filter(e => e.id !== 'wg'), layout.normalize(old, 'wide', false), 'the others stay as stored');
-	/* the router's form of it (decode), and a wired device's */
+	/* the router's form of it (decode), and a wired device's, from before Top talkers was a tile there:
+	   that one after Clients, the tunnels' after it, each as its default has it */
 	const dec = layout.decode('wide_wired=clients:0:4 hero:0:4 sys:3:1:h chart:0:3')['wide-wired'];
-	assert.deepEqual(ids(layout.normalize(dec, 'wide', true, true)), [ 'clients', 'wg', 'hero', 'sys', 'chart' ]);
-	assert.deepEqual(ids(layout.normalize(dec, 'wide', true)), [ 'clients', 'hero', 'sys', 'chart' ]);
+	assert.deepEqual(ids(layout.normalize(dec, 'wide', true, true)), [ 'clients', 'talk', 'wg', 'hero', 'sys', 'chart' ]);
+	assert.deepEqual(ids(layout.normalize(dec, 'wide', true)), [ 'clients', 'talk', 'hero', 'sys', 'chart' ]);
 	/* editing goes on as for any tile, and the result reads back */
 	let l = layout.resize(n, 'wg', 1, 'wide');
 	l = layout.setHidden(layout.move(l, 'wg', -1), 'wg', true);
@@ -177,6 +220,7 @@ test('the last shown tile cannot be hidden', () => {
 	l = layout.setHidden(l, 'hero', true);
 	l = layout.setHidden(l, 'chart', true);
 	l = layout.setHidden(l, 'clients', true);
+	l = layout.setHidden(l, 'talk', true);
 	l = layout.setHidden(l, 'sys', true);
 	assert.deepEqual(shown(l), [ 'sys' ]);
 	assert.deepEqual(shown(layout.setHidden(l, 'hero', false)), [ 'hero', 'sys' ]);
@@ -209,9 +253,23 @@ test('pack: small gaps snap, large ones only for the chart', () => {
 	assert.equal(near.talk.h, 130);
 	const far = layout.pack([ { id: 'talk', c: 0, w: 1, h: 100 }, { id: 'ssids', c: 1, w: 1, h: 400 }, { id: 'sys', c: 0, w: 2, h: 50 } ], 2, 10).rects;
 	assert.equal(far.talk.h, 100);
-	const wired = layout.pack(layout.defaults('wide', true).map(e => ({ id: e.id, c: e.c, w: e.w, h: { hero: 360, chart: 330, sys: 520, clients: 300 }[e.id] })), 4, 14);
+	/* Clients across the whole width under the chart and System (the wired default before Top talkers) */
+	const wired = layout.pack([ { id: 'hero', c: 0, w: 4, h: 360 }, { id: 'chart', c: 0, w: 3, h: 330 }, { id: 'sys', c: 3, w: 1, h: 520 }, { id: 'clients', c: 0, w: 4, h: 300 } ], 4, 14);
 	assert.equal(wired.rects.chart.h, 520, 'the chart fills the row beside System');
 	assert.equal(wired.height, 360 + 14 + 520 + 14 + 300);
+});
+
+test('pack: the default wired layout keeps Clients under the chart, Top talkers under System', () => {
+	const h = { hero: 360, chart: 330, sys: 520, clients: 300, talk: 200 };
+	const p = layout.pack(layout.defaults('wide', true).map(e => ({ id: e.id, c: e.c, w: e.w, h: h[e.id] })), 4, 14);
+	assert.deepEqual([ p.rects.chart.top, p.rects.chart.h ], [ 374, 330 ], 'the chart at its own height');
+	assert.deepEqual([ p.rects.clients.c, p.rects.clients.w, p.rects.clients.top ], [ 0, 3, 374 + 330 + 14 ]);
+	assert.deepEqual([ p.rects.sys.c, p.rects.sys.top ], [ 3, 374 ]);
+	assert.deepEqual([ p.rects.talk.c, p.rects.talk.top, p.rects.talk.h ], [ 3, 374 + 520 + 14, 200 ]);
+	assert.equal(p.height, 374 + 520 + 14 + 200);
+	/* two columns: Top talkers beside System, both under Clients */
+	const m = layout.pack(layout.defaults('mid', true).map(e => ({ id: e.id, c: e.c, w: e.w, h: h[e.id] })), 2, 14).rects;
+	assert.deepEqual([ m.talk.c, m.sys.c, m.talk.top, m.sys.top ], [ 0, 1, m.clients.top + 300 + 14, m.clients.top + 300 + 14 ]);
 });
 
 test('pack: a tile never stretches over a tile placed under it', () => {

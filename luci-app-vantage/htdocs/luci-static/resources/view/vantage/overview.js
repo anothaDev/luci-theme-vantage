@@ -1335,7 +1335,7 @@ return view.extend({
 		st.health = insight.health(m, { cpu: this.cpuShown(), uplinkRate: st.uplinkRate, temps: st.temps, quiet: this.quiet });
 		st.summary = insight.summary(st.health);
 		st.radioInsights = insight.radioInsights(m.radios, st.radioRates);
-		st.talkers = insight.topTalkers(m.clients, st.staRates, TALKERS);
+		st.talkers = this.talkers(m);
 		this.m = m;
 		this.lastRaw = raw;
 		this.resolveMore(m);
@@ -1542,7 +1542,7 @@ return view.extend({
 		m.wg = st.wgSeen === true;
 		this.stickyGen(m);
 		m.clients.forEach(function(c) { c.exp = insight.experience(c); c.firstSeen = st.presence && st.presence.firstSeen[c.mac]; c.isNew = !!st.isNew[c.mac]; });
-		st.talkers = insight.topTalkers(m.clients, st.staRates, TALKERS);
+		st.talkers = this.talkers(m);
 		st.health = insight.health(m, { cpu: this.cpuShown(), uplinkRate: st.uplinkRate, temps: st.temps, quiet: this.quiet });
 		st.summary = insight.summary(st.health);
 		this.m = m;
@@ -2608,8 +2608,30 @@ return view.extend({
 	},
 
 	/* the port is one a line to the internet leaves through */
-	linePort: function(port) {
-		return ((this.m && this.m.uplinks) || []).some(function(x) { return x.port && x.port === port; });
+	linePort: function(port, m) {
+		m = m || this.m;
+		return ((m && m.uplinks) || []).some(function(x) { return x.port && x.port === port; });
+	},
+
+	/* a wired host Top talkers may rank: downstream of this device, as
+	   on the path (wiredPorts; the gateway and whoever else is on a
+	   line's port carry the line's traffic, not their own), or one a
+	   paired access point reports */
+	talkHost: function(c, m) {
+		return !c.gateway && !this.linePort(c.port, m);
+	},
+
+	/* Top talkers: this device's stations and, by the same measure, the
+	   wired hosts with traffic of their own, which is the rate the
+	   Clients list shows for them (portRate: a port to themselves) */
+	talkers: function(m) {
+		var self = this, rates = Object.create(null);
+		var hosts = (m.wiredHosts || []).filter(function(c) {
+			var r = self.talkHost(c, m) ? self.portRate(c) : null;
+			if (r) rates[c.mac] = r;
+			return !!r;
+		});
+		return insight.topTalkers(m.clients, this.st.staRates, TALKERS, hosts, rates);
 	},
 
 	/* the Clients tile on its wired list, on one port's hosts, a paired
@@ -4130,8 +4152,9 @@ return view.extend({
 	   tile keeps its height as talkers come and go */
 	paintTalkers: function() {
 		var self = this, m = this.m, t = this.st.talkers || [];
-		var byMac = {}, slots = [];
+		var byMac = {}, hostBy = {}, slots = [];
 		m.clients.forEach(function(c) { byMac[c.mac] = c; });
+		(m.wiredHosts || []).forEach(function(c) { hostBy[c.mac] = c; });
 		for (var k = t.length; k < TALKERS; k++)
 			slots.push(E('div', { 'class': 'vt-talk-row vt-talk-slot', 'aria-hidden': 'true' }, [
 				E('span', { 'class': 'vt-talk-rank vt-tn' }, [ ' ' ]),
@@ -4143,11 +4166,16 @@ return view.extend({
 				])
 			]));
 		if (!t.length) {
-			dom.content(this.el.talkers, [ E('p', { 'class': 'vt-empty-inline' }, [ m.clients.length ? _('Nobody is moving data right now.') : _('No clients connected.') ]) ].concat(slots));
+			/* wired hosts that all share their ports are connected, and
+			   none of them can be measured */
+			var hosts = (m.wiredHosts || []).filter(function(c) { return self.talkHost(c); });
+			var alone = hosts.some(function(c) { return c.ap ? !!c.ap.rate : !c.shared; });
+			dom.content(this.el.talkers, [ E('p', { 'class': 'vt-empty-inline' }, [ m.clients.length || alone ? _('Nobody is moving data right now.')
+				: hosts.length ? _('No device has a port to itself; traffic on a shared port is not counted per device.') : _('No clients connected.') ]) ].concat(slots));
 			return;
 		}
 		dom.content(this.el.talkers, t.map(function(x, i) {
-			var c = byMac[x.mac] || { mac: x.mac, name: x.name, icon: 'device' };
+			var c = (x.wired ? hostBy : byMac)[x.mac] || { mac: x.mac, name: x.name, icon: 'device' };
 			var fill = E('span', { 'class': 'vt-talk-fill' });
 			setW(fill, x.share * 100);
 			return E('button', { 'type': 'button', 'class': 'vt-talk-row', 'click': function() { self.openDrawer('client', x.mac); } }, [
