@@ -1,9 +1,9 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Vantage Theme\n"
-"PO-Revision-Date: 2026-11-19 20:20+0100\n"
-"Last-Translator: ChatGPT\n"
-"Language-Team: German\n"
+"Project-Id-Version: luci-theme-vantage\n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -13,7 +13,7 @@ msgstr ""
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:69
 msgctxt "Yet unknown nftables table family (\"family\" table \"name\")"
 msgid "\"%h\" table \"%h\""
-msgstr "\"%h\"-Tabelle \"%h\""
+msgstr "\"%h\" Tabelle \"%h\""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:352
 msgctxt "vantage-theme"
@@ -39,7 +39,7 @@ msgstr[1] "%d Regeln"
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:407
 msgctxt "vantage-theme"
 msgid "%s matched"
-msgstr "%s von der Regel erfasst"
+msgstr "%s erfasst"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:306
 msgctxt "vantage-theme"
@@ -58,7 +58,7 @@ msgstr "(zu tief verschachtelt, um sie hier zu öffnen)"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:66
 msgid "ARP traffic table \"%h\""
-msgstr "Tabelle für ARP-Datenverkehr \"%h\""
+msgstr "ARP-Tabelle \"%h\""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:155
 msgctxt "vantage-theme"
@@ -72,7 +72,7 @@ msgstr "Aktionen"
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:399
 msgctxt "nft match any traffic"
 msgid "Any packet"
-msgstr "Beliebiges Paket"
+msgstr "Jedes Paket"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1539
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1540
@@ -88,7 +88,7 @@ msgstr "Erscheinungsbild"
 
 #: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:61
 msgid "Authorization Required"
-msgstr "Anmeldung erforderlich"
+msgstr "Autorisierung benötigt"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2022
 msgctxt "vantage-theme"
@@ -116,16 +116,16 @@ msgstr "Bridge"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:67
 msgid "Bridge traffic table \"%h\""
-msgstr "Tabelle für Bridge-Datenverkehr \"%h\""
+msgstr "Bridge-Tabelle \"%h\""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:51
 msgctxt "vantage-theme"
 msgid "Bridged between ports"
-msgstr "Zwischen Bridge-Ports weitergeleitet"
+msgstr "Zwischen Ports überbrückt"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:675
 msgid "Buffered"
-msgstr "Gepuffert"
+msgstr "Pufferspeicher"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:697
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:707
@@ -135,7 +135,7 @@ msgstr "Cache"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:675
 msgid "Cached"
-msgstr "Im Cache"
+msgstr "Zugriffsspeicher"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:208
 msgctxt "vantage-theme"
@@ -166,7 +166,7 @@ msgstr "Suche läuft…"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:376
 msgid "Clients"
-msgstr ""
+msgstr "Clients"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1178
 msgid "Collapse navigation"
@@ -208,7 +208,7 @@ msgstr ""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2150
 msgid "Daily update check"
-msgstr ""
+msgstr "Tägliche Update-Suche"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2022
 msgctxt "vantage-theme"
@@ -228,11 +228,11 @@ msgstr "Verwerfen: Richtlinie %s"
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:368
 msgctxt "vantage-theme"
 msgid "Drops unmatched"
-msgstr "Verwirft Pakete ohne Regeltreffer"
+msgstr "Verwirft den Rest"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:43
 msgid "Egress"
-msgstr "Ausgehend am Gerät"
+msgstr "Egress"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1178
 #: luci-theme-vantage/ucode/template/themes/vantage/header.ut:117
@@ -275,7 +275,7 @@ msgid ""
 "if br_netfilter is enabled; the ruleset doesn't show that.)"
 msgstr ""
 "Frames, die zwischen Ports derselben Bridge überbrückt werden, etwa zwischen "
-"WLAN und LAN in br-lan auf einem Access Point, erreichen die Ketten input, "
+"WLAN und LAN in br-lan auf einem Zugangspunkt, erreichen die Ketten input, "
 "forward und output nicht. Hier filtert sie auch keine Bridge-Kette. (Bei "
 "aktiviertem br_netfilter kann der Kernel sie an die IP-Ketten übergeben. Das "
 "ist im Regelwerk nicht ersichtlich.)"
@@ -301,15 +301,15 @@ msgstr "Hostname"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:63
 msgid "IPv4 traffic table \"%h\""
-msgstr "Tabelle für IPv4-Datenverkehr \"%h\""
+msgstr "IPv4-Tabelle \"%h\""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:65
 msgid "IPv4/IPv6 traffic table \"%h\""
-msgstr "Tabelle für IPv4-/IPv6-Datenverkehr \"%h\""
+msgstr "IPv4/IPv6-Tabelle \"%h\""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:64
 msgid "IPv6 traffic table \"%h\""
-msgstr "Tabelle für IPv6-Datenverkehr \"%h\""
+msgstr "IPv6-Tabelle \"%h\""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:697
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:706
@@ -320,7 +320,7 @@ msgstr "Belegt"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:42
 msgid "Ingress"
-msgstr "Eingehend am Gerät"
+msgstr "Ingress"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:38
 msgctxt "vantage-theme"
@@ -329,11 +329,12 @@ msgstr "Eingang"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:379
 msgid "Interfaces"
-msgstr ""
+msgstr "Schnittstellen"
 
 #: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:65
 msgid "Invalid username and/or password! Please try again."
-msgstr "Benutzername oder Passwort ungültig. Versuchen Sie es erneut."
+msgstr ""
+"Ungültiger Benutzername oder ungültiges Passwort! Bitte erneut versuchen."
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1571
 msgid "Jump to a page or action…"
@@ -342,7 +343,7 @@ msgstr "Zu einer Seite oder Aktion springen…"
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:370
 msgctxt "vantage-theme"
 msgid "Leaves unmatched unchanged"
-msgstr "Lässt Pakete ohne Regeltreffer unverändert"
+msgstr "Lässt den Rest unverändert"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2022
 msgctxt "vantage-theme"
@@ -376,7 +377,7 @@ msgstr "Nur Logo"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2013
 msgid "Low-power router"
-msgstr "Router mit geringem Stromverbrauch"
+msgstr "Leistungsschwacher Router"
 
 #: luci-theme-vantage/ucode/template/themes/vantage/header.ut:110
 msgctxt "vantage-theme"
@@ -418,7 +419,7 @@ msgstr "Netzwerk"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:68
 msgid "Network device table \"%h\""
-msgstr "Tabelle für Netzwerkgeräte \"%h\""
+msgstr "Schnittstellentabelle \"%h\""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1548
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2006
@@ -451,7 +452,7 @@ msgstr "Keine Regeln: %s"
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1843
 msgctxt "vantage-theme"
 msgid "None"
-msgstr "Keine"
+msgstr "Keiner"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1446
 #: luci-theme-vantage/ucode/template/themes/vantage/header.ut:17
@@ -460,7 +461,7 @@ msgstr "Nicht gefunden"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1653
 msgid "Nothing found"
-msgstr ""
+msgstr "Nichts gefunden"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2013
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2029
@@ -472,7 +473,7 @@ msgstr "Aus"
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2029
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2150
 msgid "On"
-msgstr "Ein"
+msgstr "An"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2153
 msgid ""
@@ -480,6 +481,9 @@ msgid ""
 "which shows GitHub this computer's IP address and the address this page was "
 "opened at. For this browser only."
 msgstr ""
+"Einmal täglich liest dieser Browser die Paketliste des Projekts auf GitHub "
+"Pages, wodurch GitHub die IP-Adresse dieses Computers und die Adresse "
+"erfährt, unter der diese Seite geöffnet wurde. Nur für diesen Browser."
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1466
 msgid "Other pages in %s"
@@ -501,7 +505,7 @@ msgstr "Seitenregisterkarten"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1631
 msgid "Pages and actions"
-msgstr ""
+msgstr "Seiten und Aktionen"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:382
 msgctxt "vantage-theme"
@@ -511,7 +515,7 @@ msgstr "Durchlassen: Richtlinie %s"
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:369
 msgctxt "vantage-theme"
 msgid "Passes unmatched"
-msgstr "Lässt Pakete ohne Regeltreffer passieren"
+msgstr "Lässt den Rest durch"
 
 #: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:74
 msgid "Password"
@@ -530,11 +534,11 @@ msgstr "Prerouting"
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:158
 msgctxt "vantage-theme"
 msgid "Queue to a program"
-msgstr "An ein Programm zur Verarbeitung übergeben"
+msgstr "An ein Programm übergeben"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:377
 msgid "Radios"
-msgstr ""
+msgstr "Funkmodule"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:161
 msgctxt "vantage-theme"
@@ -544,7 +548,7 @@ msgstr "Umleiten"
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:157
 msgctxt "vantage-theme"
 msgid "Reject"
-msgstr "Zurückweisen"
+msgstr "Ablehnen"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1573
 msgctxt "vantage-theme"
@@ -615,15 +619,15 @@ msgstr "Speicher"
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:723
 msgctxt "vantage-theme"
 msgid "Swap"
-msgstr "Auslagerungsspeicher"
+msgstr "Swap"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:676
 msgid "Swap free"
-msgstr "Freier Auslagerungsspeicher"
+msgstr "Swap frei"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:676
 msgid "Swap used"
-msgstr "Belegter Auslagerungsspeicher"
+msgstr "Swap belegt"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:249
 msgctxt "vantage-theme"
@@ -638,12 +642,12 @@ msgstr "Gesamt"
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:674
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:682
 msgid "Total Available"
-msgstr "Insgesamt verfügbar"
+msgstr "Verfügbar"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:406
 msgctxt "nft counter"
 msgid "Traffic matched by rule: %.1000mPackets, %.1024mBytes"
-msgstr "Von der Regel erfasster Datenverkehr: %.1000mPakete, %.1024mBytes"
+msgstr "Durch die Regel erfasster Verkehr: %.1000mPackets, %.1024mBytes"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:383
 msgctxt "vantage-theme"
@@ -709,7 +713,7 @@ msgstr "WLAN"
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:378
 msgctxt "vantage-theme"
 msgid "Wireless networks"
-msgstr ""
+msgstr "WLAN-Netzwerke"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:702
 msgctxt "vantage-theme"
@@ -723,12 +727,12 @@ msgstr "schließen"
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:293
 msgctxt "vantage-theme"
 msgid "drops unmatched"
-msgstr "verwirft Pakete ohne Regeltreffer"
+msgstr "verwirft den Rest"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:293
 msgctxt "vantage-theme"
 msgid "drops unmatched %s"
-msgstr "verwirft %s ohne Regeltreffer"
+msgstr "verwirft übriges %s"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:750
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:754
@@ -773,7 +777,7 @@ msgstr "freigebbar"
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:295
 msgctxt "vantage-theme"
 msgid "rules drop some"
-msgstr "Regeln verwerfen einen Teil der Pakete"
+msgstr "Regeln verwerfen einiges"
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:750
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:754
@@ -784,3 +788,11 @@ msgstr "gesamt"
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:754
 msgid "used"
 msgstr "belegt"
+
+#~ msgid ""
+#~ "Once a day this browser reads the project's package list on GitHub Pages, "
+#~ "which shows GitHub this computer's IP address. For this browser only."
+#~ msgstr ""
+#~ "Einmal täglich liest dieser Browser die Paketliste des Projekts auf "
+#~ "GitHub Pages, wodurch GitHub die IP-Adresse dieses Computers erfährt. Nur "
+#~ "für diesen Browser."
