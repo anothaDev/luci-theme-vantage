@@ -534,14 +534,20 @@ text around it so it looks the same size.
   else in that reply tells them from a port, so they are left out. Not
   a wireless device, not a conduit (the CPU's side of a DSA switch,
   which its ports name in `conduit`), not the CPU's side of a swconfig
-  switch. A swconfig switch's ports come from the map `luci.vantage
+  switch, and not a device netifd reports a `parent` for: a macvlan has
+  no type of its own in the kernel and answers with its parent's link
+  modes, and a line on one is marked on the port it is on. The mark is
+  for a line with a default route: the network the uplink falls back to
+  while every line is down marks no port. A swconfig switch's ports come from the map `luci.vantage
   wired` already returns for the wired hosts (`switches`), each once
   whatever VLANs it is in, with the link LuCI's `getSwconfigPortState`
   reports; that call is made as before, only for a switch with hosts
   behind it, so until then such a port's link is shown as not known
   ("—"). A switch port has no counters here, so no traffic and no
   errors; the hosts and the line of a switch VLAN are one port's only
-  where the VLAN has one port, or one with a link. Limits of what the
+  where the VLAN has one port, or one with a link (a port tagged in
+  several such VLANs is each one's: a line on any is marked on it, and
+  its hosts are those of the first). Limits of what the
   dashboard can read: netifd lists the devices the configuration uses,
   so a port no interface or bridge names is missing; the roles
   `/etc/board.json` gives a device's own ports ("lan", "wan") are not

@@ -934,7 +934,7 @@ return baseclass.extend({
 	MAX_PORTS: MAX_PORTS,
 	ports: function(devs, switches, states, wirelessNames, hosts, lines) {
 		var self = this, out = [], byDev = Object.create(null), byVlan = Object.create(null), bySw = Object.create(null);
-		var conduit = Object.create(null), cpu = Object.create(null);
+		var conduit = Object.create(null), cpu = Object.create(null), only = Object.create(null);
 		devs = obj(devs);
 		switches = obj(switches);
 		function under(n) { for (var m = VLAN_DEV.exec(n); m; m = VLAN_DEV.exec(n)) n = m[1]; return n; }
@@ -955,6 +955,9 @@ return baseclass.extend({
 
 		Object.keys(devs).forEach(function(n) {
 			var d = obj(devs[n]);
+			/* a device on another (a macvlan, which the kernel gives no
+			   type of its own and its parent's link modes) is no port */
+			if (typeof d.parent === 'string') return;
 			if (d.devtype !== 'dsa' && !(d.devtype === 'ethernet' && arr(d['link-supported']).length && !conduit[n] && !cpu[n])) return;
 			if (self.isWireless(n, d, wirelessNames)) return;
 			var s = obj(d.statistics), link = d.carrier === true ? true : d.carrier === false ? false : null;
@@ -974,6 +977,9 @@ return baseclass.extend({
 			sw.ports.forEach(function(p) {
 				var id = sw.name + ' ' + p.num, e = bySw[id];
 				if (!e) out.push(e = bySw[id] = { id: id, name: p.label, kind: 'switch', dev: null, link: p.link, speed: p.speed, counters: null, hosts: null, lines: [], sw: { name: sw.name, num: p.num } });
+				/* a port tagged in several VLANs is the one port of each:
+				   its hosts are the first's, a line on any leaves through it */
+				if (p === one) only[dev] = e;
 				if (p === one && !e.dev) { e.dev = dev; e.hosts = 0; byVlan[dev] = e; }
 			});
 		});
@@ -983,10 +989,14 @@ return baseclass.extend({
 			if (e) e.hosts++;
 		});
 		arr(lines).forEach(function(x) {
-			if (!x || typeof x.iface !== 'string') return;
+			/* without a default route it is no line out: the network the
+			   uplink falls back to while every line is down */
+			if (!x || typeof x.iface !== 'string' || x.defaultRoute === false) return;
 			/* a line that is not on a bridge: the device under its PPPoE session too */
 			var names = [ x.port ].concat(x.port && x.port === x.l3dev ? [ x.statsDev ] : []), e = null, name = fmt.safeText(x.iface, 32);
-			names.forEach(function(n) { if (!e && typeof n === 'string') e = byDev[n] || byVlan[n] || byDev[under(n)] || null; });
+			function at(n) { return typeof n === 'string' ? byDev[n] || only[n] || byDev[under(n)] || null : null; }
+			/* the device itself, or the one a macvlan or a named VLAN is on */
+			names.forEach(function(n) { if (!e && typeof n === 'string') e = at(n) || at(obj(devs[n]).parent); });
 			if (e && e.lines.indexOf(name) < 0) e.lines.push(name);
 		});
 

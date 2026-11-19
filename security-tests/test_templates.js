@@ -406,6 +406,9 @@ test('Appearance saved for every browser: only values the theme knows reach the 
 	const mine = renderPage({ path: ADMIN, authed: true, look: lay }).html;
 	assert.equal(view(mine, 'chart'), 'log');
 	assert.equal(view(mine, 'layout'), 'wide=hero:0:4 chart:0:2:h;mid=default;narrow_wired=sys:0:1');
+	/* twelve tiles at most: twelve pass, thirteen (below) do not */
+	const twelve = Array(12).fill('hero:0:1').join(' ');
+	assert.equal(view(renderPage({ path: ADMIN, authed: true, look: { layout_wide: twelve } }).html, 'layout'), 'wide=' + twelve);
 	for (const o of [ renderPage({ path: [ 'admin', 'x' ], authed: false, look: lay }).html ]) {
 		assert.equal(view(o, 'chart'), '', 'anonymous');
 		assert.equal(view(o, 'layout'), '', 'anonymous');
