@@ -133,6 +133,15 @@ function parseMakefile(text, file) {
 			throw new Error(`${file}: LUCI_DEPENDS entry ${d} is not a plain +package; extend the verifier`);
 		return d.slice(1);
 	});
+	/* a version floor on one of them, and only the package's own version:
+	   LUCI_EXTRA_DEPENDS:=<a LUCI_DEPENDS package> (>=$(PKG_VERSION)) */
+	let minDepends = null;
+	if (vars.LUCI_EXTRA_DEPENDS != null) {
+		const e = /^([A-Za-z0-9._-]+) \(>=\$\(PKG_VERSION\)\)$/.exec(vars.LUCI_EXTRA_DEPENDS);
+		if (!e || !depends.includes(e[1]))
+			throw new Error(`${file}: LUCI_EXTRA_DEPENDS is not "<a LUCI_DEPENDS package> (>=$(PKG_VERSION))"; extend the verifier`);
+		minDepends = e[1];
+	}
 	if (vars.LUCI_PKGARCH && vars.LUCI_PKGARCH !== 'all') throw new Error(`${file}: LUCI_PKGARCH must be all`);
 	const script = {};
 	for (const hook of [ 'preinst', 'postinst', 'prerm', 'postrm' ])
@@ -154,7 +163,7 @@ function parseMakefile(text, file) {
 	   not reproducible from the Makefile */
 	const poVersion = vars.PKG_PO_VERSION === '$(PKG_VERSION)-r$(PKG_RELEASE)' ? fullVersion : null;
 	return { name, version, release, fullVersion, license: vars.PKG_LICENSE || '',
-		depends, script, conffiles, minifyCss: vars.LUCI_MINIFY_CSS !== '0', basename, poVersion,
+		depends, minDepends, script, conffiles, minifyCss: vars.LUCI_MINIFY_CSS !== '0', basename, poVersion,
 		poVersionRaw: vars.PKG_PO_VERSION || null };
 }
 
@@ -571,6 +580,16 @@ function checkPackage(pkg, root, srcRoot, ctx) {
 	return { errors: [ `unexpected package name ${name}` ], notes: [] };
 }
 
+/* what a main package depends on, as each format writes it: libc and
+   LUCI_DEPENDS; a version floor is folded into its package's entry by
+   apk, and listed beside the plain entry by opkg */
+function expectedDepends(mk, ipk) {
+	const min = mk.minDepends;
+	if (!min) return [ 'libc', ...mk.depends ];
+	return ipk ? [ `${min} (>=${mk.version})`, 'libc', ...mk.depends ]
+		: [ 'libc', ...mk.depends.map(d => d === min ? `${d}>=${mk.version}` : d) ];
+}
+
 function checkMainPackage(pkg, root, srcRoot, ctx) {
 	const errors = [ ...pkg.errors ];
 	const notes = [];
@@ -579,7 +598,7 @@ function checkMainPackage(pkg, root, srcRoot, ctx) {
 	const payload = sourcePayload(path.join(srcRoot, name));
 	const ipk = pkg.format === 'ipk';
 
-	checkMetadata(pkg, { name, version: mk.fullVersion, license: mk.license, depends: [ 'libc', ...mk.depends ] }, errors);
+	checkMetadata(pkg, { name, version: mk.fullVersion, license: mk.license, depends: expectedDepends(mk, ipk) }, errors);
 	checkScripts(pkg, ipk ? expectedIpkScripts(mk) : expectedApkScripts(mk), errors);
 
 	/* expected file set: payload (uci-defaults scripts 0755) + apk metadata */
@@ -892,7 +911,7 @@ function main(argv) {
 	return failed ? 1 : 0;
 }
 
-module.exports = { parseMakefile, expectedApkScripts, expectedIpkScripts, sourcePayload, substituteVersion, parseJs,
+module.exports = { parseMakefile, expectedDepends, expectedApkScripts, expectedIpkScripts, sourcePayload, substituteVersion, parseJs,
 	modeFromString, checkPackage, LUCI_POSTINST, parseLuciLanguages, languagePackages, sourcePackages, packageFileName, main };
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));

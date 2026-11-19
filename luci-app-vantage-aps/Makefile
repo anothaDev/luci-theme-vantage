@@ -32,6 +32,9 @@ LUCI_DESCRIPTION:=Shows the network's other access points on the Vantage \
 # is not a dependency: a device with another SSH server can still read
 # access points if it has dbclient, and the page says what is missing.
 LUCI_DEPENDS:=+luci-app-vantage +rpcd-mod-ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci +ucode-mod-uloop
+# the dashboard of this release or a newer one: an older one does not read
+# what this add-on collects
+LUCI_EXTRA_DEPENDS:=luci-app-vantage (>=$(PKG_VERSION))
 LUCI_PKGARCH:=all
 LUCI_MAINTAINER:=anothaDev <10740588+anothaDev@users.noreply.github.com>
 LUCI_URL:=https://github.com/anothaDev/luci-theme-vantage

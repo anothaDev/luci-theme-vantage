@@ -111,6 +111,13 @@ test('verify_built_apk: Makefile parsing and generated scripts', () => {
 	assert.ok(s['post-upgrade'].startsWith('#!/bin/sh\nexport PKG_UPGRADE=1\n[ "${IPKG_NO_SCRIPT}"'));
 	assert.throws(() => V.parseMakefile(MAKEFILE.replace('exit 0\nendef', 'exit $(X)\nendef'), 'M'), /make expansion/);
 	assert.throws(() => V.parseMakefile(MAKEFILE.replace('+rpcd', '+PACKAGE_x:rpcd'), 'M'), /not a plain \+package/);
+	/* a version floor: one of its own dependencies, at its own version, nothing else */
+	const floor = v => MAKEFILE.replace('LUCI_MINIFY_CSS:=0', 'LUCI_EXTRA_DEPENDS:=' + v + '\nLUCI_MINIFY_CSS:=0');
+	assert.equal(mk.minDepends, null);
+	assert.deepEqual(V.expectedDepends(mk, true), [ 'libc', 'luci-base', 'rpcd' ]);
+	assert.equal(V.parseMakefile(floor('rpcd (>=$(PKG_VERSION))'), 'M').minDepends, 'rpcd');
+	for (const bad of [ 'wget (>=$(PKG_VERSION))', 'rpcd (>=1.0)', 'rpcd (=$(PKG_VERSION))', 'rpcd', 'rpcd (>=$(PKG_VERSION)), luci-base (>=$(PKG_VERSION))', '' ])
+		assert.throws(() => V.parseMakefile(floor(bad), 'M'), /LUCI_EXTRA_DEPENDS is not/, bad);
 	for (const name of [ 'luci-theme-vantage', 'luci-app-vantage', 'luci-app-vantage-aps' ]) {
 		const real = V.parseMakefile(fs.readFileSync(path.join(ROOT, name, 'Makefile'), 'utf8'), name);
 		assert.equal(real.name, name);
@@ -344,6 +351,10 @@ test('add-on: it ships exactly these files, the ones the device runs executable'
 	assert.equal(fs.readFileSync(path.join(APS, 'root/lib/upgrade/keep.d/luci-app-vantage-aps'), 'utf8'), '/etc/vantage/\n');
 	const mk = V.parseMakefile(fs.readFileSync(path.join(APS, 'Makefile'), 'utf8'), 'luci-app-vantage-aps/Makefile');
 	assert.deepEqual(mk.depends, [ 'luci-app-vantage', 'rpcd-mod-ucode', 'ucode-mod-fs', 'ucode-mod-ubus', 'ucode-mod-uci', 'ucode-mod-uloop' ]);
+	/* the dashboard of its own release or newer: apk folds the floor into the entry, opkg lists it beside the plain one */
+	assert.equal(mk.minDepends, 'luci-app-vantage');
+	assert.deepEqual(V.expectedDepends(mk, false), [ 'libc', 'luci-app-vantage>=' + mk.version, 'rpcd-mod-ucode', 'ucode-mod-fs', 'ucode-mod-ubus', 'ucode-mod-uci', 'ucode-mod-uloop' ]);
+	assert.deepEqual(V.expectedDepends(mk, true), [ 'luci-app-vantage (>=' + mk.version + ')', 'libc', 'luci-app-vantage', 'rpcd-mod-ucode', 'ucode-mod-fs', 'ucode-mod-ubus', 'ucode-mod-uci', 'ucode-mod-uloop' ]);
 	assert.deepEqual(Object.keys(mk.script).filter(k => mk.script[k] != null), [], 'no install or removal scripts of its own');
 });
 
