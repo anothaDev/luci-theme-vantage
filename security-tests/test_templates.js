@@ -412,7 +412,7 @@ test('Appearance saved for every browser: only values the theme knows reach the 
 	}
 	assert.ok(!/data-vt-look-(chart|layout)/.test(renderLogin({ path: ADMIN, look: lay }).html), 'the login page has no use for them');
 	for (const odd of [ HOSTILE, 'hero:0:4;mid=x', 'hero:0:4"', 'Hero:0:4', 'hero:9:9', 'hero:0:4 ', ' hero:0:4', 'hero', 'default x',
-		Array(9).fill('hero:0:1').join(' '), 'x'.repeat(9) + ':0:1', [ 'hero:0:4' ], {}, 1, '' ]) {
+		Array(13).fill('hero:0:1').join(' '), 'x'.repeat(9) + ':0:1', [ 'hero:0:4' ], {}, 1, '' ]) {
 		const page = renderPage({ path: ADMIN, authed: true, look: { chart: odd, layout_wide: odd } }).html;
 		assert.equal(view(page, 'chart'), '', `chart ${JSON.stringify(odd)}`);
 		assert.equal(view(page, 'layout'), '', `layout ${JSON.stringify(odd)}`);

@@ -569,10 +569,10 @@ test('Customize: the theme, the template and the dashboard keep the same chart s
 	assert.ok(header.includes(`const form = ${form};`) && header.includes('match(v, form)'), 'the template reads what the theme writes');
 	const re = new Function('return ' + form)();
 	/* every tile of every default layout, shown and hidden, fits the form and comes back:
-	   without and with the WireGuard tile (all eight tiles is as many as the form takes) */
+	   without and with the WireGuard tile, without and with the Ports tile */
 	for (const tier of [ 'wide', 'mid', 'narrow' ]) for (const wired of [ false, true ]) {
-		for (const hide of [ false, true ]) for (const wg of [ false, true ]) {
-			const list = layout.compact(layout.defaults(tier, wired, wg).map(e => Object.assign({}, e, { hide })));
+		for (const hide of [ false, true ]) for (const wg of [ false, true ]) for (const ports of [ false, true ]) {
+			const list = layout.compact(layout.defaults(tier, wired, wg, ports).map(e => Object.assign({}, e, { hide })));
 			const text = layout.encode(list);
 			assert.match(text, re, text);
 			const k = layout.key(tier, wired), opt = layout.option(k);
@@ -583,8 +583,15 @@ test('Customize: the theme, the template and the dashboard keep the same chart s
 	}
 	/* the longest tile name still fits */
 	for (const id of layout.TILES) assert.match(`${id}:0:1`, re, id);
-	assert.equal(layout.defaults('wide', false, true).length, layout.TILES.length);
-	assert.doesNotMatch(layout.encode(layout.defaults('wide', false, true)) + ' hero:0:1', re, 'a ninth entry is no layout');
+	/* a layout holds twelve entries: the nine tiles there are, and room for three more before the form must grow again */
+	const all = layout.defaults('wide', false, true, true);
+	assert.equal(all.length, layout.TILES.length);
+	assert.ok(layout.TILES.length <= 12, 'a tile more than the form takes: widen VIEW_LAYOUT and the template\'s form together');
+	const entries = n => Array.from({ length: n }, (x, i) => i < all.length ? layout.encode([ all[i] ]) : 'hero:0:1:h').join(' ');
+	for (let n = 1; n <= 12; n++) assert.match(entries(n), re, n + ' entries');
+	assert.doesNotMatch(entries(13), re, 'a thirteenth entry is no layout');
+	assert.doesNotMatch(entries(12) + ' ', re);
+	assert.ok(form.endsWith('){0,11})$/'), 'one entry and up to eleven more');
 	/* a failed save can be done again: only one under way stops a repeat */
 	assert.match(src, /pending\[name\] === value && !failed\[name\]/);
 	assert.match(src, /'click', \(\) => \{ if \(input\.checked && \(this\.lookFailed \|\| \{\}\)\[look\]\) set\(o\[0\]\)/);

@@ -217,6 +217,40 @@ test('--big: four radios, ten networks, 74 stations and six ports, one a switch 
 	assert.ok(Object.values(hints).every(h => h.ipaddrs.every(a => /^192\.0\.2\.\d+$/.test(a))), 'the recorded LAN\'s prefix');
 });
 
+/* the dashboard's Ports tile takes a device for a port when netifd calls it ethernet (or dsa) and its driver names
+   the link modes it supports, as every real port's does: the synthetic ports of the modes carry them */
+test('--wired, --multiwan, --big: the synthetic ports are ports to the dashboard (link modes), a VLAN and a bridge are not', () => {
+	const wired = require('../dev/replay/wired'), multiwan = require('../dev/replay/multiwan'), big = require('../dev/replay/big');
+	const model = require('./luci-stub').load('vantage.model');
+	const ok = data => ({ result: [ 0, data ] });
+	/* the recorded access point: a bridge of one Ethernet port and its Wi-Fi interfaces */
+	const modes = [ '10baseT-H', '10baseT-F', '100baseT-H', '100baseT-F', '1000baseT-F', '2500baseT-F' ];
+	const recorded = () => ok({ 'br-lan': { devtype: 'bridge', type: 'bridge', up: true, carrier: true, 'link-supported': [], 'bridge-members': [ 'eth0', 'phy0-ap0' ] },
+		eth0: { devtype: 'ethernet', up: true, carrier: true, speed: '2500F', 'link-supported': modes }, 'phy0-ap0': { up: true, carrier: true }, lo: { up: true, carrier: true } });
+	const ids = devs => model.ports(devs, {}, {}, [], [], []).map(p => p.id);
+	assert.deepEqual(ids(recorded().result[1]), [ 'eth0' ], 'as recorded: one port, no tile');
+	assert.deepEqual(wired.modes('1000F'), modes.slice(0, 5));
+	assert.deepEqual(wired.modes('2500F'), modes);
+	const w = wired.transform('network.device', 'status', {}, recorded()).result[1];
+	assert.deepEqual(ids(w), [ 'eth0', 'lan1', 'lan2' ]);
+	assert.deepEqual(ids(multiwan.transform('network.device', 'status', {}, recorded()).result[1]), [ 'eth0', 'eth9' ], 'a second line is a second port');
+	assert.deepEqual(ids(multiwan.transform('network.device', 'status', {}, ok(w)).result[1]), [ 'eth0', 'eth9', 'lan1', 'lan2' ]);
+	/* --big: five ports beside the uplink's, and switch0's four behind the VLAN eth1.1, which is no port itself */
+	const b = big.transform('network.device', 'status', {}, recorded()).result[1];
+	const reply = big.transform('luci.vantage', 'wired', {}, ok({ hosts: [] })).result[1];
+	const state = { switch0: big.transform('luci', 'getSwconfigPortState', { switch: 'switch0' }, { result: [ 4 ] }).result[1].result };
+	const ports = model.ports(b, reply.switches, state, big.NETS.map(n => n[0]), reply.hosts, []);
+	assert.deepEqual(ports.map(p => p.name), [ 'eth0', 'lan1', 'lan2', 'lan3', 'lan4', 'lan5', 'LAN 1', 'LAN 2', 'LAN 3', 'LAN 4' ]);
+	assert.deepEqual(ports.map(p => p.hosts), [ 1, 1, 1, 7, 1, 3, null, null, null, null ], 'three of the switch\'s ports have a link: whose the VLAN\'s hosts are is not known');
+	assert.deepEqual(ports.slice(6).map(p => p.link), [ false, true, true, true ]);
+	/* lan4, the port at 100 Mbit/s, counts receive errors that only grow; no other port counts any */
+	const errors = d => ports.map(p => p.sw ? 0 : d[p.id].statistics.rx_errors);
+	const first = errors(b), later = errors(big.transform('network.device', 'status', {}, recorded()).result[1]);
+	assert.ok(first[4] > 0 && later[4] >= first[4] && Number.isInteger(first[4]));
+	assert.deepEqual(first.filter((n, i) => i !== 4), [ 0, 0, 0, 0, 0, 0, 0, 0, 0 ]);
+	assert.equal(ports[4].counters.rxErrors, first[4]);
+});
+
 test('--wg: two WireGuard tunnels in the form LuCI\'s plugin gives; sessions and counters that move; documentation values only', () => {
 	const wg = require('../dev/replay/wg');
 	const model = require('./luci-stub').load('vantage.model');

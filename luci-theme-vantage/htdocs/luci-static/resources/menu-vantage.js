@@ -103,7 +103,7 @@ const LOOK_SET_EVENT = 'vantage:backdrop-set';   /* the dashboard's own picker h
    template reads them back with these same rules. */
 const VIEW_SAVE_EVENT = 'vantage:view-save';
 const VIEW_CHARTS = [ 'overlay', 'log', 'mirror', 'mirror-split', 'lanes' ];
-const VIEW_LAYOUT = /^(default|[a-z]{1,8}:[0-3]:[1-4](:h)?( [a-z]{1,8}:[0-3]:[1-4](:h)?){0,7})$/;
+const VIEW_LAYOUT = /^(default|[a-z]{1,8}:[0-3]:[1-4](:h)?( [a-z]{1,8}:[0-3]:[1-4](:h)?){0,11})$/;
 /* The palette finds more than pages where someone answers PALETTE_EVENT:
    the dashboard, while its page is open, with its clients, radios, Wi-Fi
    networks and interfaces (luci-app-vantage view/vantage/overview.js,

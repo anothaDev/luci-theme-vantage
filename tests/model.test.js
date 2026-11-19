@@ -2104,3 +2104,202 @@ test('build: the offline list is bounded by the names the dashboard accepts; thi
 	assert.deepEqual(odd.offline.map(c => [ c.mac, c.name, c.icon ]), [ [ '00:00:5e:00:53:c8', 'Scanner', 'device' ] ]);
 	for (const junk of [ null, 7, 'x', [ { name: 'A' } ] ]) assert.deepEqual(model.build(router(null, { aliases: junk })).offline, [], JSON.stringify(junk));
 });
+
+/* ------------------------------------------------------------ Ports tile */
+
+/* devices as netifd's network.device status lists them: a port's driver names the link modes it supports */
+const PORT_MODES = [ '10baseT-H', '10baseT-F', '100baseT-H', '100baseT-F', '1000baseT-F' ];
+const ethDev = extra => Object.assign({ devtype: 'ethernet', type: 'Network device', up: true, carrier: true, speed: '1000F', 'link-supported': PORT_MODES }, extra);
+const dsaDev = extra => Object.assign({ devtype: 'dsa', type: 'Network device', up: true, carrier: true, speed: '1000F', conduit: 'eth0', 'link-supported': PORT_MODES }, extra);
+const portIds = list => list.map(p => p.id);
+
+test('ports: a DSA router: the switch\'s ports and an adapter of its own, never the conduit', () => {
+	const devs = {
+		eth0: ethDev({ speed: '2500F' }),   /* the CPU's side of the switch: its ports name it */
+		wan: dsaDev(), lan1: dsaDev(), lan2: dsaDev({ carrier: false, speed: undefined }), lan3: dsaDev({ speed: '100H' }), lan10: dsaDev(),
+		eth1: ethDev({ speed: '2500F' }),   /* a second adapter with its own PHY */
+		'br-lan': { devtype: 'bridge', type: 'bridge', up: true, carrier: true, speed: '1000F', 'link-supported': [], 'bridge-members': [ 'lan1', 'lan2', 'lan3', 'lan10', 'phy0-ap0' ] },
+		'wan.35': { devtype: 'vlan', type: '8021q', up: true, carrier: true, speed: '1000F', 'link-supported': PORT_MODES },
+		'pppoe-wan': { devtype: 'ppp', type: 'Network device', up: true, carrier: true },
+		'phy0-ap0': { devtype: 'wlan', type: 'Network device', up: true, carrier: true },
+		'phy1-ap0': { type: 'Network device', up: true, carrier: true },   /* ath12k: no devtype at all */
+		lo: { type: 'Network device', up: true, carrier: true },
+		wg0: { devtype: 'wireguard', type: 'wireguard', up: true, carrier: true },
+		'gre4-site': { devtype: 'gre', type: 'tunnel', up: true, carrier: true },
+		bond0: { devtype: 'bond', type: 'bonding', up: true, carrier: true, speed: '2000F', 'link-supported': [] }
+	};
+	const p = model.ports(devs, {}, {}, [ 'phy0-ap0', 'phy1-ap0' ], [], []);
+	assert.deepEqual(portIds(p), [ 'eth1', 'lan1', 'lan2', 'lan3', 'lan10', 'wan' ], 'in name order, lan2 before lan10');
+	assert.deepEqual(p.map(x => x.kind), [ 'eth', 'dsa', 'dsa', 'dsa', 'dsa', 'dsa' ]);
+	assert.deepEqual(p.map(x => [ x.name, x.dev ]), p.map(x => [ x.id, x.id ]), 'a port goes by its device\'s name, and its hosts are that device\'s');
+	/* the link and what was negotiated on it; none without one */
+	assert.deepEqual(p.map(x => [ x.link, x.speed && x.speed.mbps, x.speed && x.speed.duplex ]),
+		[ [ true, 2500, 'full' ], [ true, 1000, 'full' ], [ false, null, null ], [ true, 100, 'half' ], [ true, 1000, 'full' ], [ true, 1000, 'full' ] ]);
+	assert.ok(p.every(x => x.sw === null && x.hosts === 0 && x.lines.length === 0));
+	/* a switch whose ports are all down still names its conduit: netifd asks the kernel, not the link */
+	assert.ok(!portIds(model.ports({ eth0: ethDev(), lan1: dsaDev({ carrier: false }) }, {}, {}, [], [], [])).includes('eth0'));
+	/* without anyone naming it, the same device is a port of its own (a board with one adapter and no switch) */
+	assert.deepEqual(portIds(model.ports({ eth0: ethDev() }, {}, {}, [], [], [])), [ 'eth0' ]);
+	/* a cascaded switch: its conduit is a port of the first, and stays one */
+	assert.deepEqual(portIds(model.ports({ eth0: ethDev(), lan1: dsaDev(), sw2p1: dsaDev({ conduit: 'lan1' }) }, {}, {}, [], [], [])), [ 'lan1', 'sw2p1' ]);
+});
+
+test('ports: an x86 box: every Ethernet adapter whose driver names a link mode; nothing virtual, nothing wireless', () => {
+	const devs = {
+		eth0: ethDev(), eth1: ethDev({ speed: '2500F' }), eth2: ethDev({ carrier: false, speed: undefined }), eth10: ethDev({ speed: '10000F' }),
+		/* what netifd also calls ethernet: no link mode named by the driver (ethtool: "Not reported") */
+		veth0: ethDev({ 'link-supported': [], speed: '10000F' }),
+		tap0: ethDev({ 'link-supported': [], speed: '10F' }),
+		eth5: ethDev({ 'link-supported': [], speed: undefined }),   /* a virtual machine's paravirtual adapter */
+		eth6: { devtype: 'ethernet', up: true, carrier: true, speed: '1000F' },   /* no such list at all: cannot tell */
+		eth7: ethDev({ 'link-supported': 'all' }),
+		/* a vendor Wi-Fi driver that answers ethtool: wireless by its name, and one the wireless status names */
+		ra0: ethDev(), apcli0: ethDev(),
+		'br-lan': { devtype: 'bridge', type: 'bridge', up: true, carrier: true, 'link-supported': [], 'bridge-members': [ 'eth1', 'eth2', 'veth0' ] },
+		'eth1.10': { devtype: 'vlan', type: 'VLAN', up: true, carrier: true, speed: '2500F', 'link-supported': PORT_MODES },
+		macvlan0: { devtype: 'macvlan', type: 'macvlan', up: true, carrier: true, speed: '1000F', 'link-supported': PORT_MODES, parent: 'eth0' },
+		dummy0: { type: 'Network device', up: true, carrier: true },
+		docker0: { devtype: 'bridge', type: 'bridge', up: true, carrier: false, 'link-supported': [] }
+	};
+	assert.deepEqual(portIds(model.ports(devs, {}, {}, [ 'apcli0' ], [], [])), [ 'eth0', 'eth1', 'eth2', 'eth10' ]);
+	/* an access point with one port: one, and the view shows no tile for that */
+	const ap = { 'br-lan': { devtype: 'bridge', 'bridge-members': [ 'eth0', 'phy0-ap0' ], 'link-supported': [] }, eth0: ethDev({ speed: '2500F' }), 'phy0-ap0': { up: true, carrier: true }, lo: { up: true } };
+	assert.deepEqual(portIds(model.ports(ap, {}, {}, [ 'phy0-ap0' ], [], [])), [ 'eth0' ]);
+});
+
+test('ports: a swconfig switch: its ports as the plugin maps them, each once; the CPU\'s side is none', () => {
+	const lan = n => ({ num: n, role: 'lan', index: n });
+	const switches = {
+		'eth0.1': { name: 'switch0', vlan: 1, ports: [ lan(1), lan(2), lan(3), lan(4) ] },
+		'eth0.2': { name: 'switch0', vlan: 2, ports: [ { num: 5, role: 'wan', index: null } ] },
+		/* a guest VLAN on two of the LAN ports, tagged: the same ports again */
+		'eth0.3': { name: 'switch0', vlan: 3, ports: [ lan(3), lan(4) ] }
+	};
+	const devs = { eth0: ethDev(), 'eth0.1': { devtype: 'vlan', up: true, carrier: true, speed: '1000F', 'link-supported': PORT_MODES }, 'eth0.2': { devtype: 'vlan', up: true, carrier: true, 'link-supported': PORT_MODES },
+		eth1: ethDev({ speed: '2500F' }), 'br-lan': { devtype: 'bridge', 'bridge-members': [ 'eth0.1' ], 'link-supported': [] } };
+	const st = (n, link, speed, duplex) => ({ port: n, link, speed, duplex: duplex !== false });
+	const state = { switch0: [ st(0, true, 1000), st(1, true, 1000), st(2, false, 0), st(3, true, 100, false), st(4, false, 0), st(5, true, 1000) ] };
+	const hosts = [ { mac: '00:00:5e:00:53:11', port: 'eth0.1' }, { mac: '00:00:5e:00:53:12', port: 'eth0.1' }, { mac: '00:00:5e:00:53:13', port: 'eth1' } ];
+	const p = model.ports(devs, switches, state, [], hosts, []);
+	/* eth0 carries the switch (eth0.1, eth0.2): not a port; eth1 is one; then the switch's, by their labels */
+	assert.deepEqual(portIds(p), [ 'eth1', 'switch0 1', 'switch0 2', 'switch0 3', 'switch0 4', 'switch0 5' ]);
+	assert.deepEqual(p.map(x => x.name), [ 'eth1', 'LAN 1', 'LAN 2', 'LAN 3', 'LAN 4', 'Port 5' ]);
+	assert.deepEqual(p.slice(1).map(x => [ x.kind, x.sw.name, x.sw.num, x.counters ]), [ 1, 2, 3, 4, 5 ].map(n => [ 'switch', 'switch0', n, null ]), 'a switch port has no counters here');
+	assert.deepEqual(p.slice(1).map(x => [ x.link, x.speed && x.speed.mbps, x.speed && x.speed.duplex ]),
+		[ [ true, 1000, 'full' ], [ false, null, null ], [ true, 100, 'half' ], [ false, null, null ], [ true, 1000, 'full' ] ]);
+	/* two LAN ports have a link: which of them the VLAN's hosts are behind is not known */
+	assert.deepEqual(p.map(x => [ x.dev, x.hosts ]), [ [ 'eth1', 1 ], [ null, null ], [ null, null ], [ 'eth0.3', 0 ], [ null, null ], [ 'eth0.2', 0 ] ],
+		'the guest VLAN has one port with a link, the WAN VLAN one port at all');
+	/* one with a link: the hosts are behind it, and a click lists the VLAN device's */
+	const one = model.ports(devs, switches, { switch0: [ st(1, false, 0), st(2, true, 1000), st(3, false, 0), st(4, false, 0), st(5, true, 1000) ] }, [], hosts, []);
+	assert.deepEqual(one.map(x => [ x.name, x.dev, x.hosts ]).slice(1, 3), [ [ 'LAN 1', null, null ], [ 'LAN 2', 'eth0.1', 2 ] ]);
+	/* a switch that has not answered (it is asked only with hosts behind it): the ports, their links unknown */
+	const quiet = model.ports(devs, switches, {}, [], hosts, []);
+	assert.deepEqual(quiet.slice(1).map(x => [ x.name, x.link, x.speed ]), [ 'LAN 1', 'LAN 2', 'LAN 3', 'LAN 4', 'Port 5' ].map(n => [ n, null, null ]));
+	assert.deepEqual(quiet.map(x => x.hosts), [ 1, null, null, null, null, 0 ]);
+	/* the CPU's side untagged (the map names the device itself), and a second switch after the first */
+	const two = model.ports({ eth0: ethDev(), eth1: ethDev() }, { eth0: { name: 'switch1', vlan: 1, ports: [ lan(2), lan(1) ] }, 'eth1.7': { name: 'switch0', vlan: 7, ports: [ lan(1) ] } }, {}, [], [], []);
+	assert.deepEqual(portIds(two), [ 'switch0 1', 'switch1 1', 'switch1 2' ]);
+	/* no map (a DSA device, an older plugin, a failed call): nothing of a switch, and no error */
+	for (const none of [ null, undefined, [], 'x', { 'eth0.1': null }, { 'eth0.1': { name: '../x', vlan: 1, ports: [ lan(1) ] } } ])
+		assert.ok(model.ports({ eth1: ethDev() }, none, state, [], [], []).every(x => !x.sw), JSON.stringify(none));
+});
+
+test('ports: the wired hosts learned on a port are counted on it, a paired access point\'s on none', () => {
+	const devs = { eth0: ethDev(), lan1: dsaDev(), lan2: dsaDev(), lan3: dsaDev(), 'lan3.20': { devtype: 'vlan', up: true, carrier: true, 'link-supported': PORT_MODES } };
+	const hosts = [ { mac: 'a', port: 'lan1' }, { mac: 'b', port: 'lan2' }, { mac: 'c', port: 'lan2' }, { mac: 'd', port: 'lan2' },
+		{ mac: 'e', port: 'lan2', ap: { id: 'x', port: 'lan2' } },   /* behind an access point: its port there, not here */
+		{ mac: 'f', port: 'lan3.20' },                                  /* on a VLAN of the port: listed under the VLAN device */
+		{ mac: 'g', port: 'phy0-ap0' }, { mac: 'h' }, null, 'x' ];
+	assert.deepEqual(model.ports(devs, {}, {}, [], hosts, []).map(p => [ p.id, p.hosts ]), [ [ 'lan1', 1 ], [ 'lan2', 3 ], [ 'lan3', 0 ] ]);
+	for (const junk of [ null, undefined, 'x', {}, 7 ]) assert.deepEqual(model.ports(devs, {}, {}, [], junk, junk).map(p => p.hosts), [ 0, 0, 0 ]);
+});
+
+test('ports: errors, drops and collisions since boot, as counts; junk is none', () => {
+	const devs = {
+		eth0: ethDev({ statistics: { rx_bytes: 1e9, tx_bytes: 2e9, rx_errors: 12, tx_errors: 0, rx_dropped: 3, tx_dropped: 4, collisions: 7, rx_crc_errors: 12 } }),
+		eth1: ethDev({ statistics: { rx_errors: -1, tx_errors: '5', rx_dropped: NaN, tx_dropped: null, collisions: Infinity } }),
+		eth2: ethDev({ statistics: 'x' }), eth3: ethDev()
+	};
+	const zero = { rxErrors: 0, txErrors: 0, rxDropped: 0, txDropped: 0, collisions: 0 };
+	assert.deepEqual(model.ports(devs, {}, {}, [], [], []).map(p => p.counters), [ { rxErrors: 12, txErrors: 0, rxDropped: 3, txDropped: 4, collisions: 7 }, zero, zero, zero ]);
+});
+
+test('ports: junk in, no ports out; 64 at most; a name is text made safe', () => {
+	for (const junk of [ null, undefined, [], 'x', 7, { eth0: null }, { eth0: 'x' }, { eth0: [ ethDev() ] }, { eth0: { devtype: [ 'ethernet' ], 'link-supported': PORT_MODES } } ])
+		assert.deepEqual(model.ports(junk, junk, junk, junk, junk, junk), [], JSON.stringify(junk));
+	const many = {};
+	for (let i = 1; i <= 70; i++) many['lan' + i] = dsaDev();
+	const p = model.ports(many, {}, {}, [], [], []);
+	assert.equal(p.length, model.MAX_PORTS);
+	assert.deepEqual([ model.MAX_PORTS, p[0].id, p[63].id ], [ 64, 'lan1', 'lan64' ]);
+	/* names that are object keys elsewhere, and one a kernel would take that no page should show as written */
+	const odd = model.ports({ __proto__: null, constructor: ethDev(), toString: dsaDev(), ['x‮y']: ethDev() }, { hasOwnProperty: { name: 'switch0', vlan: 1, ports: [ { num: 1 } ] } }, {}, [], [ { port: 'constructor' }, { port: '__proto__' } ], []);
+	assert.deepEqual(odd.map(x => [ x.id, x.name, x.hosts ]), [ [ 'constructor', 'constructor', 1 ], [ 'toString', 'toString', 0 ], [ 'x‮y', 'x�y', 0 ], [ 'switch0 1', 'Port 1', 0 ] ]);
+});
+
+/* a line to the internet as build() makes them, on a model of its own */
+const portsOf = raw => { const m = model.build(raw); return { m, marks: m.ports.map(p => [ p.id, p.lines ]).filter(x => x[1].length) }; };
+const route4 = hop => [ { target: '0.0.0.0', mask: 0, nexthop: hop } ];
+
+test('build: a line to the internet marks the port it leaves through; a VLAN\'s and a PPPoE session\'s is the port under it', () => {
+	const lan = { interface: 'lan', up: true, proto: 'static', device: 'br-lan', l3_device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] };
+	const bridge = { devtype: 'bridge', type: 'bridge', up: true, carrier: true, 'link-supported': [], 'bridge-members': [ 'lan1', 'lan2' ] };
+	const base = { eth0: ethDev(), lan1: dsaDev(), lan2: dsaDev(), wan: dsaDev(), 'br-lan': bridge };
+	/* a router: wan on its own port */
+	let r = portsOf({ devs: base, ifaces: [ lan, { interface: 'wan', up: true, proto: 'dhcp', device: 'wan', l3_device: 'wan', route: route4('203.0.113.1') } ] });
+	assert.deepEqual(portIds(r.m.ports), [ 'lan1', 'lan2', 'wan' ]);
+	assert.deepEqual(r.marks, [ [ 'wan', [ 'wan' ] ] ]);
+	/* hardware offload counts the line on the conduit: the mark stays on the port */
+	r = portsOf({ devs: Object.assign({}, base, { wan: dsaDev({ 'hw-tc-offload': true }) }), ifaces: [ lan, { interface: 'wan', up: true, proto: 'dhcp', device: 'wan', l3_device: 'wan', route: route4('203.0.113.1') } ] });
+	assert.deepEqual([ r.m.uplink.statsDev, r.marks ], [ 'eth0', [ [ 'wan', [ 'wan' ] ] ] ]);
+	/* a VLAN on the port (wan.35), and PPPoE over that VLAN */
+	const vlan = Object.assign({}, base, { 'wan.35': { devtype: 'vlan', up: true, carrier: true, 'link-supported': PORT_MODES }, 'pppoe-wan': { devtype: 'ppp', up: true, carrier: true } });
+	r = portsOf({ devs: vlan, ifaces: [ lan, { interface: 'wan', up: true, proto: 'dhcp', device: 'wan.35', l3_device: 'wan.35', route: route4('203.0.113.1') } ] });
+	assert.deepEqual(r.marks, [ [ 'wan', [ 'wan' ] ] ]);
+	r = portsOf({ devs: vlan, ifaces: [ lan, { interface: 'wan', up: true, proto: 'pppoe', device: 'wan.35', l3_device: 'pppoe-wan', route: route4('203.0.113.1') } ] });
+	assert.deepEqual([ r.m.uplink.port, r.m.uplink.statsDev, r.marks ], [ 'pppoe-wan', 'wan.35', [ [ 'wan', [ 'wan' ] ] ] ]);
+	/* two lines: each port its own, by the line's name; wan6 on wan's device is part of wan's */
+	r = portsOf({ devs: Object.assign({}, base, { eth1: ethDev() }), ifaces: [ lan,
+		{ interface: 'wan', up: true, proto: 'dhcp', device: 'wan', l3_device: 'wan', metric: 10, route: route4('203.0.113.1') },
+		{ interface: 'wan6', up: true, proto: 'dhcpv6', device: 'wan', l3_device: 'wan', metric: 10, route: [ { target: '::', mask: 0, nexthop: 'fe80::1' } ] },
+		{ interface: 'wanb', up: true, proto: 'dhcp', device: 'eth1', l3_device: 'eth1', metric: 20, route: route4('198.51.100.1') } ] });
+	assert.deepEqual(r.marks, [ [ 'eth1', [ 'wanb' ] ], [ 'wan', [ 'wan' ] ] ]);
+	/* a full-tunnel VPN is no line of its own, and a line over a tunnel or with no port leaves through none */
+	r = portsOf({ devs: Object.assign({}, base, { wg0: { devtype: 'wireguard', up: true, carrier: true } }), ifaces: [ lan, { interface: 'vpn', up: true, proto: 'wireguard', device: 'wg0', l3_device: 'wg0', route: [ { target: '0.0.0.0', mask: 0 } ] } ] });
+	assert.deepEqual(r.marks, []);
+	/* no line at all (the device status failed, nothing is up) */
+	assert.deepEqual(portsOf({ devs: base, ifaces: [ lan ] }).marks, []);
+	assert.deepEqual(model.build({}).ports, []);
+});
+
+test('build: on a bridge the mark is the port the gateway was learned on, never a guessed one; a swconfig VLAN\'s one port', () => {
+	const hints = { '00:00:5E:00:53:01': { ipaddrs: [ '192.0.2.1' ] } };
+	const lan = { interface: 'lan', up: true, proto: 'dhcp', device: 'br-lan', l3_device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.2', mask: 24 } ], route: route4('192.0.2.1') };
+	/* an access point: its one wired port is the way out, and the hosts heard there are counted on it */
+	const ap = { 'br-lan': { devtype: 'bridge', type: 'bridge', 'link-supported': [], 'bridge-members': [ 'eth0', 'phy0-ap0' ] }, eth0: ethDev({ speed: '2500F' }), 'phy0-ap0': { devtype: 'wlan', up: true, carrier: true } };
+	let r = portsOf({ devs: ap, ifaces: [ lan ], hints, fdb: [ { mac: '00:00:5e:00:53:01', port: 'eth0', bridge: 'br-lan', seen: 1 }, { mac: '00:00:5e:00:53:21', port: 'eth0', bridge: 'br-lan', seen: 2 } ] });
+	assert.deepEqual(r.m.ports.map(p => [ p.id, p.lines, p.hosts ]), [ [ 'eth0', [ 'lan' ], 2 ] ]);
+	/* a switch in bridge mode: several wired ports, and nothing says where the gateway is */
+	const sw = { 'br-lan': { devtype: 'bridge', type: 'bridge', 'link-supported': [], 'bridge-members': [ 'lan1', 'lan2', 'lan3' ] }, eth0: ethDev(), lan1: dsaDev(), lan2: dsaDev(), lan3: dsaDev() };
+	r = portsOf({ devs: sw, ifaces: [ lan ] });
+	assert.deepEqual([ r.m.uplink.dev, r.m.uplink.port, r.marks ], [ 'lan1', null, [] ], 'the line counts on a guessed member; no port is marked for it');
+	/* the gateway learned on lan3 */
+	r = portsOf({ devs: sw, ifaces: [ lan ], hints, fdb: [ { mac: '00:00:5e:00:53:01', port: 'lan3', bridge: 'br-lan', seen: 1 } ] });
+	assert.deepEqual(r.marks, [ [ 'lan3', [ 'lan' ] ] ]);
+	/* a swconfig router: wan is VLAN 2 of the switch, which has one port */
+	const switches = { 'eth0.1': { name: 'switch0', vlan: 1, ports: [ 1, 2, 3, 4 ].map(n => ({ num: n, role: 'lan', index: n })) }, 'eth0.2': { name: 'switch0', vlan: 2, ports: [ { num: 5, role: 'wan', index: 1 } ] } };
+	const old = { eth0: ethDev(), 'eth0.1': { devtype: 'vlan', up: true, carrier: true, 'link-supported': PORT_MODES }, 'eth0.2': { devtype: 'vlan', up: true, carrier: true, 'link-supported': PORT_MODES },
+		'br-lan': { devtype: 'bridge', type: 'bridge', 'link-supported': [], 'bridge-members': [ 'eth0.1' ] } };
+	const wan = { interface: 'wan', up: true, proto: 'dhcp', device: 'eth0.2', l3_device: 'eth0.2', route: route4('203.0.113.1') };
+	r = portsOf({ devs: old, switches, switchState: {}, ifaces: [ wan ] });
+	assert.deepEqual([ portIds(r.m.ports), r.marks ], [ [ 'switch0 1', 'switch0 2', 'switch0 3', 'switch0 4', 'switch0 5' ], [ [ 'switch0 5', [ 'wan' ] ] ] ]);
+	assert.deepEqual(r.m.ports[4].name, 'WAN 1');
+	/* and PPPoE over that VLAN */
+	r = portsOf({ devs: Object.assign({}, old, { 'pppoe-wan': { devtype: 'ppp', up: true, carrier: true } }), switches, switchState: {}, ifaces: [ Object.assign({}, wan, { proto: 'pppoe', l3_device: 'pppoe-wan' }) ] });
+	assert.deepEqual(r.marks, [ [ 'switch0 5', [ 'wan' ] ] ]);
+	/* a VLAN with several ports and no answer from the switch: which one is not known */
+	const wide = Object.assign({}, switches, { 'eth0.2': { name: 'switch0', vlan: 2, ports: [ { num: 5, role: 'wan', index: 1 }, { num: 6, role: 'wan', index: 2 } ] } });
+	assert.deepEqual(portsOf({ devs: old, switches: wide, switchState: {}, ifaces: [ wan ] }).marks, []);
+	assert.deepEqual(portsOf({ devs: old, switches: wide, switchState: { switch0: [ { port: 5, link: false }, { port: 6, link: true, speed: 1000, duplex: true } ] }, ifaces: [ wan ] }).marks, [ [ 'switch0 6', [ 'wan' ] ] ], 'the one with a link');
+});

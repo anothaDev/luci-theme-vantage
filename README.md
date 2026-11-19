@@ -51,6 +51,10 @@ third, optional one adds your other access points to the dashboard.
 - **WireGuard peers.** Where a tunnel is up, a tile lists its peers by
   name, with the time since their last handshake and their live traffic.
   For logins that may open LuCI's own WireGuard status.
+- **Every port.** On a device with two Ethernet ports or more, a tile
+  shows each one: link and speed, live traffic, the wired devices behind
+  it and which port your internet line leaves through. Errors and drops
+  show up only where there are any.
 - **Firewall overview.** What's open from the internet, which zones reach
   which, and warnings for risky setups. Every item links to the LuCI page
   that changes it.

@@ -2982,9 +2982,266 @@ test('WireGuard tile: built once like any tile, named for Customize, its link Lu
 	assert.match(src, /ssids: _\('Wireless networks', 'vantage'\), wg: _\('WireGuard'\)\n/);
 	/* painted with the other tiles, after the device's own */
 	assert.match(src, /this\.paintSsids\(\);\n\t\tthis\.paintWireguard\(\);\n/);
-	/* the layout is told whether a tunnel was seen, and stores under the same keys as before */
-	assert.match(src, /wired = !!this\.m\.wired, wg = !!this\.m\.wg;\n\t\tvar list = this\.drag \? this\.drag\.list : this\.layoutFor\(tier, wired, wg\);/);
-	assert.match(src, /layout\.same\(list, layout\.defaults\(l\.tier, l\.wired, l\.wg\)\)/);
+	/* the layout is told whether a tunnel was seen, and stores under the same keys as before
+	   (the Ports tile's condition follows the tunnel's in both calls: its own test) */
+	assert.match(src, /wired = !!this\.m\.wired, wg = !!this\.m\.wg, ports = !!this\.m\.portsTile;\n\t\tvar list = this\.drag \? this\.drag\.list : this\.layoutFor\(tier, wired, wg, ports\);/);
+	assert.match(src, /layout\.same\(list, layout\.defaults\(l\.tier, l\.wired, l\.wg, l\.ports\)\)/);
+}));
+
+/* ------------------------------------------------------------ Ports tile */
+
+const pmodel = load('vantage.model');
+const P_MODES = [ '10baseT-H', '10baseT-F', '100baseT-H', '100baseT-F', '1000baseT-F' ];
+const pEth = extra => Object.assign({ devtype: 'ethernet', up: true, carrier: true, speed: '1000F', 'link-supported': P_MODES }, extra);
+const pDsa = extra => Object.assign({ devtype: 'dsa', up: true, carrier: true, speed: '1000F', conduit: 'eth0', 'link-supported': P_MODES }, extra);
+/* a router: wan and four LAN ports of a switch (one unplugged, one at 100 Mbit/s half duplex), a host alone on lan1, three on lan3 */
+const P_DEVS = () => ({
+	eth0: pEth({ speed: '2500F' }), wan: pDsa({ speed: '2500F' }), lan1: pDsa(), lan2: pDsa({ carrier: false, speed: undefined }), lan3: pDsa(), lan4: pDsa({ speed: '100H' }),
+	'br-lan': { devtype: 'bridge', 'link-supported': [], 'bridge-members': [ 'lan1', 'lan2', 'lan3', 'lan4' ] }
+});
+const P_HOSTS = [ { mac: '00:00:5e:00:53:11', port: 'lan1' }, { mac: '00:00:5e:00:53:12', port: 'lan3' }, { mac: '00:00:5e:00:53:13', port: 'lan3' }, { mac: '00:00:5e:00:53:14', port: 'lan3' } ];
+const P_WAN = { iface: 'wan', port: 'wan', l3dev: 'wan', dev: 'wan', statsDev: 'wan' };
+
+/* the tile over one poll's model: ports as model.ports gives them, the rates the poll counted (st.devRates) */
+function portsTile(o, self) {
+	o = o || {};
+	self = self || Object.assign(Object.create(dview), { st: { devRates: Object.create(null) }, el: { ports: new PNode('div'), portsSum: new PNode('span') }, shown: [] });
+	self.showWired = function(port) { this.shown.push(port); };
+	self.st.devRates = Object.assign(Object.create(null), o.rates || {});
+	const lines = o.lines || [ P_WAN ];
+	self.m = { uplinks: lines, ports: o.ports || pmodel.ports(o.devs || P_DEVS(), o.switches || {}, o.states || {}, [], o.hosts || P_HOSTS, lines) };
+	self.notePorts(self.m);
+	self.paintPorts();
+	return self;
+}
+const portCells = self => self.el.ports.find('vt-port').map(c => ({
+	tag: c.tag, cls: c.getAttribute('class'), name: c.find('vt-port-name')[0].textContent, dot: c.find('vt-status')[0].getAttribute('class'),
+	mark: c.find('vt-pill').map(x => x.textContent), link: c.find('vt-port-link')[0].textContent, rates: c.find('vt-port-rates').map(r => r.children.map(x => x.textContent)),
+	hosts: c.find('vt-port-hosts').map(x => x.textContent), notes: c.find('vt-port-note').map(x => x.textContent), title: c.getAttribute('title')
+}));
+
+test('Ports: no tile with one port; two seen once keep it for the session', () => {
+	const self = Object.create(view);
+	self.st = {};
+	const note = ports => { const m = { ports }; self.notePorts(m); return m.portsTile; };
+	const port = id => ({ id });
+	assert.equal(note([]), false);
+	assert.equal(note([ port('eth0') ]), false, 'an access point with one port: it is on the path already');
+	assert.equal(self.st.portsSeen, undefined);
+	assert.equal(note([ port('eth0'), port('eth1') ]), true);
+	/* the device status failed for a poll (no devices), a USB adapter was pulled: the page is not rearranged */
+	assert.equal(note([]), true);
+	assert.equal(note([ port('eth0') ]), true);
+	/* a poll's model and its rebuild (names resolved) both carry it, after the tunnel's */
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.match(src, /this\.noteTunnels\(m, raw\.wg, now\);\n\t\tthis\.notePorts\(m\);\n/);
+	assert.match(src, /this\.markWired\(m, null\);\n\t\tm\.wg = st\.wgSeen === true;\n\t\tthis\.markOffline\(m, raw, null\);\n\t\tthis\.notePorts\(m\);\n/);
+	/* the model the poll builds lists them: build() -> m.ports, from the replies the poll has anyway */
+	const m = pmodel.build({ devs: P_DEVS(), ifaces: [] });
+	assert.deepEqual(m.ports.map(p => p.id), [ 'lan1', 'lan2', 'lan3', 'lan4', 'wan' ]);
+	assert.equal(note(m.ports), true);
+	assert.equal(note(pmodel.build({ devs: { eth0: pEth() }, ifaces: [] }).ports), true, 'kept');
+	self.st = {};
+	assert.equal(note(pmodel.build({ devs: { eth0: pEth(), 'br-lan': { devtype: 'bridge', 'link-supported': [] }, 'phy0-ap0': { devtype: 'wlan' } }, ifaces: [] }).ports), false);
+});
+
+test('Ports: no request of its own: the tile is painted from the device status and the wired hosts the poll already has', () => {
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	const body = /\n\tpaintPorts: function\(\) \{[\s\S]*?\n\t\},\n/.exec(src)[0] + /\n\tbuildPorts: function\(\) \{[\s\S]*?\n\t\},\n/.exec(src)[0] + /\n\tnotePorts: function\(m\) \{[\s\S]*?\n\t\},\n/.exec(src)[0];
+	assert.doesNotMatch(body, /\bcall[A-Z]\w*\(|rpc\.|L\.resolveDefault|fetch\(/);
+	/* the model lists the ports from what build() is handed for the path and the wired hosts */
+	const mod = fs.readFileSync(path.join(RES, 'vantage/model.js'), 'utf8');
+	assert.match(mod, /ports: this\.ports\(devs, raw\.switches, raw\.switchState, wlNames, wired, uplinks\),/);
+	const fn = mod.slice(mod.indexOf('\tports: function(devs, switches, states, wirelessNames, hosts, lines) {'), mod.indexOf('/* ------------------------------------------------------------ model */'));
+	assert.ok(fn.length > 500);
+	assert.doesNotMatch(fn, /\brpc\b|\bL\.|XMLHttpRequest|fetch\(/);
+});
+
+test('Ports tile: nothing is painted without the tile; with it, a cell a port: name, link, traffic, hosts and the uplink\'s mark', () => withPatchDom(() => {
+	const none = portsTile({ devs: { eth0: pEth() } });
+	assert.equal(none.m.portsTile, false);
+	assert.deepEqual([ none.el.ports.childNodes, none.el.portsSum.textContent ], [ [], '' ], 'one port: the tile is off (vantage.layout) and stays empty');
+
+	const rates = { wan: { rx: 364e6, tx: 2.92e6 }, lan1: { rx: 2.75e6, tx: 18.3e6 }, lan2: { rx: 0, tx: 0 }, lan3: { rx: 791e3, tx: 4.9e6 }, lan4: { rx: 0, tx: 0 }, eth0: { rx: 9e9, tx: 9e9 } };
+	const self = portsTile({ rates });
+	assert.equal(self.m.portsTile, true);
+	assert.equal(self.el.portsSum.textContent, '4 of 5 connected');
+	const cells = portCells(self);
+	assert.deepEqual(cells.map(c => c.name), [ 'lan1', 'lan2', 'lan3', 'lan4', 'wan' ], 'the conduit eth0 is no cell');
+	/* the link: a dot in the status colours, grey without one (never a warning), and the negotiated speed; half duplex said */
+	assert.deepEqual(cells.map(c => [ c.dot, c.link ]), [ [ 'vt-status vt-status-ok', '1 Gbit/s' ], [ 'vt-status vt-status-off', 'No link' ], [ 'vt-status vt-status-ok', '1 Gbit/s' ],
+		[ 'vt-status vt-status-ok', '100 Mbit/s · half duplex' ], [ 'vt-status vt-status-ok', '2.5 Gbit/s' ] ]);
+	assert.deepEqual(cells.map(c => c.cls), [ 'vt-port', 'vt-port vt-port-off', 'vt-port', 'vt-port', 'vt-port' ]);
+	assert.ok(self.el.ports.find('vt-status').every(d => d.getAttribute('aria-hidden') === 'true' && d.textContent === ''), 'the dot is no text: the words beside it say it');
+	/* traffic: ↓ to the devices on the port and ↑ from them (the port sends what they download), as the path's port nodes;
+	   on the line's port ↓ is what comes from the internet. Two items, so a narrow cell wraps them. None without a link */
+	assert.deepEqual(cells.map(c => c.rates), [ [ [ '↓ 18.3', '↑ 2.75 Mbit/s' ] ], [], [ [ '↓ 4.9 Mbit/s', '↑ 791 kbit/s' ] ], [ [ 'idle' ] ], [ [ '↓ 364', '↑ 2.92 Mbit/s' ] ] ]);
+	/* the hosts learned on it, and the mark on the port the line leaves through */
+	assert.deepEqual(cells.map(c => c.hosts), [ [ '1 device' ], [], [ '3 devices' ], [], [] ]);
+	assert.deepEqual(cells.map(c => c.mark), [ [], [], [], [], [ 'Uplink' ] ]);
+	assert.deepEqual(self.el.ports.find('vt-pill').map(p => p.getAttribute('class')), [ 'vt-pill vt-pill-accent' ]);
+	/* nothing counted wrong since boot: no note in any cell */
+	assert.deepEqual(cells.map(c => c.notes), [ [], [], [], [], [] ]);
+	/* the tooltip: the same in sentences, with the duplex and the port's own counting of its traffic */
+	assert.deepEqual(cells.map(c => c.title), [
+		'lan1\n1 Gbit/s · full duplex\nReceived 2.75 Mbit/s, sent 18.3 Mbit/s\nShow the devices on lan1',
+		'lan2\nNo link',
+		'lan3\n1 Gbit/s · full duplex\nReceived 791 kbit/s, sent 4.9 Mbit/s\nShow the devices on lan3',
+		'lan4\n100 Mbit/s · half duplex\nReceived 0 bit/s, sent 0 bit/s',
+		'wan\n2.5 Gbit/s · full duplex\nUplink · wan\nReceived 364 Mbit/s, sent 2.92 Mbit/s'
+	]);
+	/* no check mark, no colour of its own: classes of the app's stylesheet only (a .vt-status dot is the ok colour by itself) */
+	const css = fs.readFileSync(path.join(RES, 'vantage/app.css'), 'utf8');
+	for (const n of self.el.ports.all().slice(1)) for (const c of (n.getAttribute('class') || '').split(' ').filter(Boolean)) assert.ok(c === 'vt-status-ok' || css.includes('.' + c), c);
+	assert.ok(!self.el.ports.html().includes('✓') && self.el.ports.find('vt-ico').length === 0);
+	const rules = css.split('\n').filter(l => /\.vt-port/.test(l)).join('\n') + css.slice(css.indexOf('.vt-app .vt-port {'), css.indexOf('.vt-app button.vt-port {'));
+	assert.doesNotMatch(rules, /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsl\(/, 'tokens only');
+	assert.doesNotMatch(rules, /vt-seg\b/);
+}));
+
+test('Ports tile: the first answer has no rates yet; a second line names each port\'s; counters only where they count something', () => withPatchDom(() => {
+	/* one answer: nothing to say about traffic */
+	assert.deepEqual(portCells(portsTile()).map(c => c.rates), [ [ [ '—' ] ], [], [ [ '—' ] ], [ [ '—' ] ], [ [ '—' ] ] ]);
+	assert.ok(portCells(portsTile()).every(c => !/Received/.test(c.title)));
+	/* a backup line on lan4 (a modem in bridge mode): each line's port says which line, and counts as a line does */
+	const lines = [ P_WAN, { iface: 'wanb', port: 'lan4', l3dev: 'lan4', dev: 'lan4', statsDev: 'lan4' } ];
+	const two = portCells(portsTile({ lines, rates: { lan4: { rx: 30e6, tx: 4e6 }, wan: { rx: 1e6, tx: 2e6 } } }));
+	assert.deepEqual(two.map(c => c.mark), [ [], [], [], [ 'wanb' ], [ 'wan' ] ]);
+	assert.deepEqual([ two[3].rates, two[4].rates ], [ [ [ '↓ 30.0', '↑ 4 Mbit/s' ] ], [ [ '↓ 1', '↑ 2 Mbit/s' ] ] ]);
+	assert.match(two[3].title, /\nUplink · wanb\n/);
+	/* errors, drops and collisions since boot: a line each, in the cell and in its tooltip in the same words */
+	const devs = P_DEVS();
+	devs.lan1.statistics = { rx_errors: 12, tx_errors: 0, rx_dropped: 0, tx_dropped: 0, collisions: 0 };
+	devs.lan3.statistics = { rx_errors: 0, tx_errors: 3, rx_dropped: 20224239, tx_dropped: 4, collisions: 0 };
+	devs.lan4.statistics = { rx_errors: 0, tx_errors: 0, rx_dropped: 0, tx_dropped: 0, collisions: 7 };
+	devs.wan.statistics = { rx_errors: 0, tx_errors: 0, rx_dropped: 0, tx_dropped: 0, collisions: 0, rx_bytes: 1e12 };
+	const cells = portCells(portsTile({ devs }));
+	assert.deepEqual(cells.map(c => c.notes), [ [ 'Errors: 12 in · 0 out' ], [], [ 'Errors: 0 in · 3 out', 'Dropped: 20 224 239 in · 4 out' ], [ 'Collisions: 7' ], [] ]);
+	for (const c of cells) for (const n of c.notes) assert.ok(c.title.split('\n').includes(n), n + ': in the tooltip too');
+	assert.equal(cells[2].title, 'lan3\n1 Gbit/s · full duplex\nErrors: 0 in · 3 out\nDropped: 20 224 239 in · 4 out\nShow the devices on lan3');
+	assert.ok(!/Errors|Dropped|Collisions/.test(cells[4].title + cells[1].title), 'and nowhere where they are zero');
+}));
+
+test('Ports tile: a port with hosts opens the wired list on them; one without is no control; a poll keeps the cell', () => withPatchDom(() => {
+	const self = portsTile();
+	const cells = portCells(self);
+	assert.deepEqual(cells.map(c => [ c.name, c.tag ]), [ [ 'lan1', 'button' ], [ 'lan2', 'div' ], [ 'lan3', 'button' ], [ 'lan4', 'div' ], [ 'wan', 'div' ] ]);
+	const all = self.el.ports.find('vt-port'), btn = all[2];
+	assert.equal(btn.getAttribute('type'), 'button');
+	btn.on.click();
+	assert.deepEqual(self.shown, [ 'lan3' ], 'as the port\'s node on the path does');
+	assert.ok(all.filter(c => c.tag !== 'button').every(c => Object.keys(c.on).length === 0));
+	/* the next polls: every cell is the element it was, though its numbers and its tooltip moved: a cell under the
+	   keyboard keeps the focus, one under the pointer its tooltip */
+	const devs = P_DEVS();
+	devs.lan3.statistics = { rx_dropped: 5 };
+	portsTile({ devs, rates: { lan3: { rx: 1e3, tx: 2e3 } } }, self);
+	devs.lan3.statistics = { rx_dropped: 9 };
+	portsTile({ devs, rates: { lan3: { rx: 5e3, tx: 9e3 } } }, self);
+	assert.deepEqual(self.el.ports.find('vt-port'), all);
+	assert.equal(btn.find('vt-port-rates')[0].textContent, '↓ 9↑ 5 kbit/s');
+	assert.equal(btn.getAttribute('title'), 'lan3\n1 Gbit/s · full duplex\nReceived 5 kbit/s, sent 9 kbit/s\nDropped: 9 in · 0 out\nShow the devices on lan3');
+	assert.deepEqual(btn.find('vt-port-note').map(n => n.textContent), [ 'Dropped: 9 in · 0 out' ]);
+	/* a link going down is written to the same cell */
+	devs.lan3.carrier = false;
+	portsTile({ devs }, self);
+	assert.deepEqual([ self.el.ports.find('vt-port')[2], btn.getAttribute('class'), btn.find('vt-port-link')[0].textContent, btn.find('vt-port-rates').length ], [ btn, 'vt-port vt-port-off', 'No link', 0 ]);
+	/* its hosts left: no control any more (the cells are built anew); hosts on another: that one is */
+	portsTile({ hosts: [ { mac: '00:00:5e:00:53:15', port: 'lan4' } ] }, self);
+	assert.deepEqual(portCells(self).map(c => c.tag), [ 'div', 'div', 'div', 'button', 'div' ]);
+	assert.ok(!self.el.ports.find('vt-port').includes(btn));
+	self.el.ports.find('vt-port')[3].on.click();
+	assert.deepEqual(self.shown, [ 'lan3', 'lan4' ]);
+	/* the uplink's port lists what is heard on it too (an access point's whole network is behind its one port) */
+	const up = portsTile({ hosts: [ { mac: '00:00:5e:00:53:01', port: 'wan' } ] });
+	assert.deepEqual(portCells(up).filter(c => c.tag === 'button').map(c => [ c.name, c.hosts, c.mark ]), [ [ 'wan', [ '1 device' ], [ 'Uplink' ] ] ]);
+}));
+
+test('Ports tile: a swconfig switch\'s ports: a link and no counters; unknown until the switch has answered', () => withPatchDom(() => {
+	const lan = n => ({ num: n, role: 'lan', index: n });
+	const switches = { 'eth0.1': { name: 'switch0', vlan: 1, ports: [ lan(1), lan(2), lan(3) ] }, 'eth0.2': { name: 'switch0', vlan: 2, ports: [ { num: 5, role: 'wan', index: null } ] } };
+	const devs = { eth0: pEth(), eth1: pEth({ speed: '2500F' }), 'eth0.1': { devtype: 'vlan', up: true, carrier: true, 'link-supported': P_MODES }, 'eth0.2': { devtype: 'vlan', up: true, carrier: true, 'link-supported': P_MODES } };
+	const hosts = [ { mac: '00:00:5e:00:53:21', port: 'eth0.1' }, { mac: '00:00:5e:00:53:22', port: 'eth0.1' } ];
+	const lines = [ { iface: 'wan', port: 'eth0.2', l3dev: 'eth0.2', dev: 'eth0.2', statsDev: 'eth0.2' } ];
+	const rates = { eth1: { rx: 8e3, tx: 16e3 }, 'eth0.1': { rx: 1e6, tx: 2e6 }, 'eth0.2': { rx: 3e6, tx: 4e6 }, eth0: { rx: 5e6, tx: 6e6 } };
+	/* not asked yet */
+	const quiet = portsTile({ devs, switches, hosts, lines, rates });
+	assert.equal(quiet.el.portsSum.textContent, '', 'no count while some links are not known');
+	assert.deepEqual(portCells(quiet).map(c => [ c.name, c.tag, c.dot, c.link, c.rates, c.hosts, c.mark ]), [
+		[ 'eth1', 'div', 'vt-status vt-status-ok', '2.5 Gbit/s', [ [ '↓ 16.0', '↑ 8 kbit/s' ] ], [], [] ],
+		[ 'LAN 1', 'div', 'vt-status vt-status-off', '—', [], [], [] ], [ 'LAN 2', 'div', 'vt-status vt-status-off', '—', [], [], [] ], [ 'LAN 3', 'div', 'vt-status vt-status-off', '—', [], [], [] ],
+		[ 'Port 5', 'div', 'vt-status vt-status-off', '—', [], [], [ 'Uplink' ] ]
+	]);
+	assert.equal(portCells(quiet)[1].title, 'LAN 1 · Port 1 of switch0');
+	/* answered: one LAN port has a link, so the VLAN's hosts are behind it, and it opens their list (the VLAN device's) */
+	const st = (n, link, speed, duplex) => ({ port: n, link, speed, duplex });
+	const self = portsTile({ devs, switches, hosts, lines, rates, states: { switch0: [ st(0, true, 1000, true), st(1, false, 0, false), st(2, true, 100, false), st(3, false, 0, false), st(5, true, 1000, true) ] } }, quiet);
+	assert.equal(self.el.portsSum.textContent, '3 of 5 connected');
+	const cells = portCells(self);
+	assert.deepEqual(cells.slice(1).map(c => [ c.name, c.tag, c.link, c.rates, c.hosts ]), [
+		[ 'LAN 1', 'div', 'No link', [], [] ], [ 'LAN 2', 'button', '100 Mbit/s · half duplex', [], [ '2 devices' ] ], [ 'LAN 3', 'div', 'No link', [], [] ],
+		[ 'Port 5', 'div', '1 Gbit/s', [], [] ]
+	], 'no traffic of a switch port: the VLAN device\'s is every port\'s together');
+	assert.equal(cells[2].title, 'LAN 2 · Port 2 of switch0\n100 Mbit/s · half duplex\nShow the devices on eth0.1');
+	assert.equal(cells[4].title, 'Port 5 · Port 5 of switch0\n1 Gbit/s · full duplex\nUplink · wan');
+	self.el.ports.find('vt-port')[2].on.click();
+	assert.deepEqual(self.shown, [ 'eth0.1' ]);
+}));
+
+test('Ports tile: no ports in a poll says so in words; names reach the page as text', () => withPatchDom(() => {
+	const self = portsTile();
+	/* the device status failed: the tile stays for the session and says so */
+	portsTile({ devs: {} }, self);
+	assert.equal(self.m.portsTile, true);
+	assert.deepEqual(self.el.ports.children.map(n => [ n.tag, n.getAttribute('class'), n.textContent ]), [ [ 'p', 'vt-empty-inline', 'No Ethernet ports are reported right now.' ] ]);
+	assert.equal(self.el.portsSum.textContent, '');
+	/* and back */
+	portsTile({}, self);
+	assert.equal(self.el.ports.find('vt-port').length, 5);
+	/* names from the device and of a line: text, never markup, a handler, a link or a style */
+	const hostile = '<img src=x onerror=alert(1)>';
+	const odd = portsTile({ devs: { [hostile]: pEth(), 'javascript:alert(1)': pDsa(), 'x‮y': pDsa() }, hosts: [ { mac: '00:00:5e:00:53:31', port: hostile } ],
+		lines: [ { iface: hostile, port: hostile, l3dev: hostile, dev: hostile, statsDev: hostile }, { iface: 'b', port: 'x‮y', l3dev: 'x‮y', dev: 'x‮y', statsDev: 'x‮y' } ] });
+	assert.deepEqual(portCells(odd).map(c => [ c.name, c.mark ]), [ [ hostile, [ hostile ] ], [ 'javascript:alert(1)', [] ], [ 'x�y', [ 'b' ] ] ]);
+	const nodes = odd.el.ports.all();
+	assert.ok(nodes.every(n => n.innerHTML === undefined), 'no markup from data');
+	assert.ok(nodes.every(n => !Object.keys(n.attrs).some(a => /^(on|href|src|style)/.test(a))), 'no handler, link or style from data');
+	assert.deepEqual(nodes.filter(n => Object.keys(n.on).length).map(n => [ n.tag, Object.keys(n.on) ]), [ [ 'button', [ 'click' ] ] ]);
+	nodes.filter(n => n.tag === 'button')[0].on.click();
+	assert.deepEqual(odd.shown, [ hostile ], 'the port\'s name goes to the list\'s filter as a value, nowhere else');
+}));
+
+test('Ports tile: built once like any tile, named for Customize, laid out by the layout\'s rule for it', () => withPatchDom(() => {
+	const self = Object.assign(Object.create(dview), { el: {} });
+	const tile = self.buildPorts();
+	assert.deepEqual([ tile.tag, tile.getAttribute('class'), tile.getAttribute('aria-label') ], [ 'section', 'vt-tile vt-ports-tile', 'Ports' ]);
+	assert.equal(tile.find('vt-tile-title')[0].textContent, 'Ports');
+	assert.deepEqual(tile.find('vt-link').map(a => [ a.getAttribute('href'), a.textContent ]), [ [ '/cgi-bin/luci/admin/network/network', 'Interfaces' ] ]);
+	assert.deepEqual([ tile.children[0].find('vt-tile-extra')[0].children[0], tile.children[1] ], [ self.el.portsSum, self.el.ports ]);
+	/* Customize names a tile by tileNames (its handle bar, its buttons, the list of hidden tiles): a translated name */
+	self.tileNames = { ports: 'Ports' };
+	self.ov = {};
+	const ov = self.buildOverlay('ports');
+	assert.equal(ov.getAttribute('aria-label'), 'Ports');
+	assert.equal(ov.find('vt-ov-name')[0].textContent, 'Ports');
+	assert.deepEqual(ov.find('vt-ov-btn').map(b => b.getAttribute('aria-label')), [ 'Move Ports up', 'Move Ports down', 'Move Ports left', 'Move Ports right', 'Make Ports narrower', 'Make Ports wider', 'Hide Ports' ]);
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.match(src, /clients: this\.buildClients\(\),\n\t\t\tports: this\.buildPorts\(\),\n/);
+	assert.match(src, /clients: _\('Clients'\),\n\t\t\tports: _\('Ports'\),\n/, 'through _(): the catalogues translate it');
+	/* every tile the layout knows is built and named: one more tile in layout.TILES needs both */
+	const layout = load('vantage.layout');
+	const built = /this\.tiles = \{([\s\S]*?)\};/.exec(src)[1], named = /this\.tileNames = \{([\s\S]*?)\};/.exec(src)[1];
+	for (const id of layout.TILES) {
+		assert.match(built, new RegExp('\\b' + id + ': this\\.build[A-Z]\\w+\\(\\)'), id);
+		assert.match(named, new RegExp('\\b' + id + ': _\\('), id);
+	}
+	/* painted with the other tiles, after the WireGuard tile */
+	assert.match(src, /this\.paintWireguard\(\);\n\t\tthis\.paintPorts\(\);\n/);
+	/* the layout is told whether two ports were seen, and stores under the same keys as before */
+	assert.match(src, /wg = !!this\.m\.wg, ports = !!this\.m\.portsTile;\n\t\tvar list = this\.drag \? this\.drag\.list : this\.layoutFor\(tier, wired, wg, ports\);/);
+	assert.match(src, /return layout\.normalize\(this\.layouts\[k\] \|\| null, tier, wired, wg, ports\);/);
+	assert.match(src, /layout\.same\(list, layout\.defaults\(l\.tier, l\.wired, l\.wg, l\.ports\)\)/);
+	assert.match(src, /this\.laidPorts !== !!this\.m\.portsTile/);
 }));
 
 /* ------------------------------------- Top talkers with wired hosts (#129) */

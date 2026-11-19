@@ -1437,6 +1437,33 @@ html[data-darkmode="true"] .vt-app {
 }
 .vt-app .vt-wg-more:hover { background: var(--vt-hover); color: var(--vt-text); }
 
+/* Ports: a cell per Ethernet port, as many in a row as fit and no wider
+   than they need, so two ports do not stretch over a wide tile. A port
+   without a link is quieter: a dashed outline, as a line that is down
+   has on the path, with its text left readable */
+.vt-app .vt-ports { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 148px), 1fr)); gap: var(--vt-sp-2); }
+.vt-app .vt-ports > .vt-empty-inline { grid-column: 1 / -1; }
+.vt-app .vt-port {
+	display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 2px; min-width: 0;
+	margin: 0; padding: 8px 10px; border: 1px solid var(--vt-line); border-radius: var(--vt-r);
+	background: var(--vt-surface); box-shadow: none; color: var(--vt-text);
+	text-align: left; height: auto; line-height: 1.3; text-transform: none; font-weight: var(--vt-fw-regular);
+}
+.vt-app button.vt-port { cursor: pointer; transition: border-color .15s; }
+.vt-app button.vt-port:hover { border-color: color-mix(in oklab, var(--vt-accent-line) 60%, var(--vt-line)); background: var(--vt-surface); }
+.vt-app .vt-port-off, .vt-app button.vt-port-off:hover { background: transparent; border-style: dashed; }
+/* as tall as the uplink's mark, so the names line up along a row */
+.vt-app .vt-port-top { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 18px; }
+.vt-app .vt-port-top .vt-status { margin: 0; flex: none; }
+.vt-app .vt-port-name { flex: 1; min-width: 0; font-weight: var(--vt-fw-semibold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vt-app .vt-port-off .vt-port-name { color: var(--vt-text-2); }
+/* the line's name where there are several: cut, the name of the port stays */
+.vt-app .vt-port-top .vt-pill { display: inline-block; flex: none; line-height: 18px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+.vt-app .vt-port-link, .vt-app .vt-port-hosts { font-size: var(--vt-fs-sm); color: var(--vt-text-2); }
+.vt-app .vt-port-off .vt-port-link { color: var(--vt-text-3); }
+.vt-app .vt-port-rates { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: var(--vt-fs-sm); font-weight: var(--vt-fw-semibold); white-space: nowrap; }
+.vt-app .vt-port-note { font-size: var(--vt-fs-micro); color: var(--vt-text-3); }
+
 /* ------------------------------------------------------------ 11. drawer */
 
 .vt-app .vt-drawer-back {

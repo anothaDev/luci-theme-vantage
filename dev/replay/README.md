@@ -209,7 +209,10 @@ Serves the recorded access point as a router without Wi-Fi, to work on
 the dashboard's wired-only layout (`wired.js`): the wireless status lists
 no radios, the recorded uplink is renamed `wan` (proto `dhcp`), and
 synthetic `lan`, `vpn` (WireGuard) and `guest` (down) interfaces with
-documentation addresses and growing counters are added. Combine it with
+documentation addresses and growing counters are added. The switch ports
+`lan1` and `lan2` list the link modes they support, as netifd does for a
+port, so with the recorded `eth0` the dashboard's Ports tile has three
+(the recording alone has one port, and no tile). Combine it with
 `--demo` as usual.
 
 ## A bigger access point (`--big`)
@@ -223,7 +226,10 @@ behind `lan5`, and `eth1.1`, VLAN 1 of a swconfig switch `switch0` with
 three of its four ports linked, as `luci getSwconfigPortState` answers)
 plus the gateway on `eth0`. Counters grow with the clock
 and add up (a network's are its stations', `eth0` carries most of the
-total). Addresses take the recorded LAN's first three octets, so use it
+total). The ports list their link modes like `--wired`'s, and `lan4`,
+at 100 Mbit/s, counts receive errors, for the Ports tile: ten cells,
+`switch0`'s four among them.
+Addresses take the recorded LAN's first three octets, so use it
 with `--demo`; MACs are documentation values. Only the dashboard's calls
 are rewritten: LuCI's own wireless pages still show the recording. It
 cannot be combined with `--wired`.
@@ -235,7 +241,9 @@ lines (`multiwan.js`): `wanb` (DHCP, on a synthetic `eth9` at 1 Gbit/s, a
 device none of the other modes uses) with an IPv4 default route of metric
 20, above the recorded uplink's, and `wanb6` (DHCPv6) on the same device,
 which stays part of that line. Its counters grow with the clock, about
-30 Mbit/s down and 4 Mbit/s up. Combine it with `--wired` (a router
+30 Mbit/s down and 4 Mbit/s up; `eth9` is a port like `--wired`'s, so
+the recorded access point has two with it, and the Ports tile.
+Combine it with `--wired` (a router
 without Wi-Fi) or `--big`; addresses are documentation values.
 
 ## A full-tunnel VPN (`--fullvpn`)

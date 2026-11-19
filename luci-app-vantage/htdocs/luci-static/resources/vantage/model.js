@@ -58,6 +58,12 @@ var WG_CIDR = /^[0-9A-Fa-f.:]{2,45}[/]\d{1,3}$/;
    now, past it nothing has passed since */
 var WG_RECENT_S = 180;
 
+/* the Ethernet ports the Ports tile lists at most: a 48-port switch with
+   its uplinks fits */
+var MAX_PORTS = 64;
+/* a VLAN on a device, as netifd names one: eth1.10 */
+var VLAN_DEV = /^(.+)\.\d{1,4}$/;
+
 /* netifd protocols, and kernel device types, of tunnels that ride over
    another line: a full-tunnel VPN is not a second way out. PPTP and L2TP
    are left out: some ISPs give their access through them. */
@@ -890,6 +896,105 @@ return baseclass.extend({
 		return out;
 	},
 
+	/* ------------------------------------------------------------ ports */
+
+	/* The device's Ethernet ports, for the Ports tile, from what the
+	   dashboard reads anyway: no call and no grant of their own. `devs`
+	   is network.device status. A port is
+	   - a switch's port under DSA (devtype dsa);
+	   - an Ethernet adapter of its own (devtype ethernet: netifd's word
+	     for an Ethernet device the kernel gives no other type, so never
+	     a bridge, a VLAN, a bond, a tunnel or a WireGuard device) whose
+	     driver names a link mode it supports: a veth pair, a tap and a
+	     virtual machine's paravirtual adapter name none, and nothing
+	     else here tells those from a port. Never a wireless one
+	     (isWireless), a conduit (the CPU's side of a DSA switch, which
+	     its ports name) or the CPU's side of a swconfig switch;
+	   - a swconfig switch's port, as luci.vantage wired maps them by
+	     VLAN device (`switches`) with the links LuCI reports (`states`,
+	     see switchOf): each once, whatever VLANs it is in.
+	   netifd lists the devices the configuration uses: a port that no
+	   interface and no bridge names is not among them.
+	   `hosts` are the wired hosts (build's), counted on the port they
+	   were learned on; `lines` the lines to the internet (build's
+	   uplinks), each marking the port it leaves through: its known port,
+	   or the port under its VLAN or its PPPoE session, never a bridge
+	   member that was only guessed. A swconfig VLAN's hosts and line are
+	   one switch port's only where the VLAN has one port, or one with a
+	   link.
+	   -> [ { id, name, kind: 'dsa' | 'eth' | 'switch', dev, link, speed,
+	          counters, hosts, lines: [ interface ], sw } ] in name order,
+	   the swconfig ports last, MAX_PORTS at most. id: the device's name,
+	   or '<switch> <number>' (no device has a space in its name); dev:
+	   the device whose hosts are this port's, or null; link: true, false
+	   or null (a switch that has not answered); counters: { rxErrors,
+	   txErrors, rxDropped, txDropped, collisions } since boot, null for
+	   a swconfig port (it has none here); hosts: null where they cannot
+	   be told apart by port; sw: { name, num } of a swconfig port */
+	MAX_PORTS: MAX_PORTS,
+	ports: function(devs, switches, states, wirelessNames, hosts, lines) {
+		var self = this, out = [], byDev = Object.create(null), byVlan = Object.create(null), bySw = Object.create(null);
+		var conduit = Object.create(null), cpu = Object.create(null);
+		devs = obj(devs);
+		switches = obj(switches);
+		function under(n) { for (var m = VLAN_DEV.exec(n); m; m = VLAN_DEV.exec(n)) n = m[1]; return n; }
+		function count(v) { return finite(v) && v > 0 ? v : 0; }
+		function parts(n) { return String(n).match(/\d+|\D+/g) || []; }
+		/* lan2 before lan10 */
+		function natural(a, b) {
+			var x = parts(a), y = parts(b);
+			for (var i = 0; i < x.length && i < y.length; i++) {
+				if (x[i] === y[i]) continue;
+				if (/^\d/.test(x[i]) && /^\d/.test(y[i]) && +x[i] !== +y[i]) return +x[i] - +y[i];
+				return x[i] < y[i] ? -1 : 1;
+			}
+			return x.length - y.length;
+		}
+		Object.keys(devs).forEach(function(n) { var c = obj(devs[n]).conduit; if (typeof c === 'string') conduit[c] = true; });
+		Object.keys(switches).forEach(function(n) { cpu[n] = cpu[under(n)] = true; });
+
+		Object.keys(devs).forEach(function(n) {
+			var d = obj(devs[n]);
+			if (d.devtype !== 'dsa' && !(d.devtype === 'ethernet' && arr(d['link-supported']).length && !conduit[n] && !cpu[n])) return;
+			if (self.isWireless(n, d, wirelessNames)) return;
+			var s = obj(d.statistics), link = d.carrier === true ? true : d.carrier === false ? false : null;
+			out.push(byDev[n] = {
+				id: n, name: fmt.safeText(n, 32), kind: d.devtype === 'dsa' ? 'dsa' : 'eth', dev: n,
+				link: link, speed: link ? self.parseSpeed(d.speed) : null,
+				counters: { rxErrors: count(s.rx_errors), txErrors: count(s.tx_errors), rxDropped: count(s.rx_dropped), txDropped: count(s.tx_dropped), collisions: count(s.collisions) },
+				hosts: 0, lines: [], sw: null
+			});
+		});
+
+		Object.keys(switches).sort().forEach(function(dev) {
+			var sw = self.switchOf(switches, states, dev);
+			if (!sw) return;
+			var lit = sw.ports.filter(function(p) { return p.link; });
+			var one = sw.ports.length === 1 ? sw.ports[0] : lit.length === 1 ? lit[0] : null;
+			sw.ports.forEach(function(p) {
+				var id = sw.name + ' ' + p.num, e = bySw[id];
+				if (!e) out.push(e = bySw[id] = { id: id, name: p.label, kind: 'switch', dev: null, link: p.link, speed: p.speed, counters: null, hosts: null, lines: [], sw: { name: sw.name, num: p.num } });
+				if (p === one && !e.dev) { e.dev = dev; e.hosts = 0; byVlan[dev] = e; }
+			});
+		});
+
+		arr(hosts).forEach(function(h) {
+			var e = h && !h.ap && typeof h.port === 'string' ? byDev[h.port] || byVlan[h.port] : null;
+			if (e) e.hosts++;
+		});
+		arr(lines).forEach(function(x) {
+			if (!x || typeof x.iface !== 'string') return;
+			/* a line that is not on a bridge: the device under its PPPoE session too */
+			var names = [ x.port ].concat(x.port && x.port === x.l3dev ? [ x.statsDev ] : []), e = null, name = fmt.safeText(x.iface, 32);
+			names.forEach(function(n) { if (!e && typeof n === 'string') e = byDev[n] || byVlan[n] || byDev[under(n)] || null; });
+			if (e && e.lines.indexOf(name) < 0) e.lines.push(name);
+		});
+
+		return out.sort(function(a, b) {
+			return (a.sw ? 1 : 0) - (b.sw ? 1 : 0) || (a.sw ? natural(a.sw.name, b.sw.name) || natural(a.name, b.name) || a.sw.num - b.sw.num : natural(a.id, b.id));
+		}).slice(0, MAX_PORTS);
+	},
+
 	/* ------------------------------------------------------------ model */
 
 	/* raw: { board, info, ifaces, devs, wifi, iwinfo: { ifname: info },
@@ -1559,6 +1664,8 @@ return baseclass.extend({
 			wiredHosts: wired,
 			/* the named devices in neither list */
 			offline: offline,
+			/* its Ethernet ports (ports): the Ports tile's */
+			ports: this.ports(devs, raw.switches, raw.switchState, wlNames, wired, uplinks),
 			/* the paired access points (collectorAps), [] without any */
 			accessPoints: aps
 		};

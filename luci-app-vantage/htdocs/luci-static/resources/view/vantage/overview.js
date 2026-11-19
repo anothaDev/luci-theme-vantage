@@ -1234,6 +1234,7 @@ return view.extend({
 			oui: null, ouiLoading: false,
 			wireless: null,
 			wg: [], wgSeen: false, wgPrev: null, wgRates: Object.create(null),
+			portsSeen: false,
 			lastOk: 0, lastErr: null, paused: false
 		};
 		this.ui = { sorts: readSorts(), kind: 'wifi', filter: '', chip: 'all', drawer: null, editing: null, hover: null, wgOpen: Object.create(null) };
@@ -1296,6 +1297,7 @@ return view.extend({
 		});
 		this.markWired(m, raw);
 		this.noteTunnels(m, raw.wg, now);
+		this.notePorts(m);
 		if (m.device.memory) series.push(st.hist.mem, [ at, m.device.memory.usedPct ], WINDOW_MS, HIST_MAX);
 
 		/* interface counters */
@@ -1439,6 +1441,16 @@ return view.extend({
 			c.lastSeen = s ? s.at : null;
 			if (s && s.ip && !c.ips.length) c.ips = [ s.ip ];
 		});
+	},
+
+	/* The Ports tile exists on a device with two Ethernet ports or more
+	   (model.ports; one port is on the path already, as the uplink's).
+	   Two seen once keep the tile for the session (m.portsTile), as
+	   radios keep the Wi-Fi layout: a poll whose device status failed
+	   lists none, and the page is not rearranged for that */
+	notePorts: function(m) {
+		if (m.ports.length > 1) this.st.portsSeen = true;
+		m.portsTile = this.st.portsSeen === true;
 	},
 
 	/* The generation shown is the best standard a station used this
@@ -1613,6 +1625,7 @@ return view.extend({
 		this.markWired(m, null);
 		m.wg = st.wgSeen === true;
 		this.markOffline(m, raw, null);
+		this.notePorts(m);
 		this.stickyGen(m);
 		m.clients.forEach(function(c) { c.exp = insight.experience(c); c.firstSeen = st.presence && st.presence.firstSeen[c.mac]; c.isNew = !!st.isNew[c.mac]; });
 		st.talkers = this.talkers(m);
@@ -1780,14 +1793,18 @@ return view.extend({
 		this.paintTalkers();
 		this.paintSsids();
 		this.paintWireguard();
+		this.paintPorts();
 		this.paintDrawer();
 		this.paintLive();
 		if (!this.wireRo) this.scheduleWires();
 		/* the tiles' ResizeObserver lays out again when a tile changes
 		   size, so a poll lays out only when the tile set may change (the
-		   first one, wired or not, a WireGuard tunnel or none); one that
-		   changes nothing measures nothing */
-		if (this.laidWired !== !!this.m.wired || this.laidWg !== !!this.m.wg) { this.laidWired = !!this.m.wired; this.laidWg = !!this.m.wg; this.scheduleLayout(); }
+		   first one, wired or not, a WireGuard tunnel or none, ports or
+		   none); one that changes nothing measures nothing */
+		if (this.laidWired !== !!this.m.wired || this.laidWg !== !!this.m.wg || this.laidPorts !== !!this.m.portsTile) {
+			this.laidWired = !!this.m.wired; this.laidWg = !!this.m.wg; this.laidPorts = !!this.m.portsTile;
+			this.scheduleLayout();
+		}
 	},
 
 	/* ------------------------------------------------------------ folds */
@@ -1829,10 +1846,12 @@ return view.extend({
 		var self = this;
 		this.tiles = {
 			hero: this.buildHero(), chart: this.buildChart(), radios: this.buildRadios(), clients: this.buildClients(),
+			ports: this.buildPorts(),
 			sys: this.buildSystem(), talk: this.buildTalkers(), ssids: this.buildSsids(), wg: this.buildWireguard()
 		};
 		this.tileNames = {
 			hero: _('Network path'), chart: _('Throughput', 'vantage'), radios: _('Radios'), clients: _('Clients'),
+			ports: _('Ports'),
 			sys: _('System'), talk: _('Top talkers', 'vantage'), ssids: _('Wireless networks', 'vantage'), wg: _('WireGuard')
 		};
 		this.ov = {};
@@ -1846,10 +1865,11 @@ return view.extend({
 	},
 
 	/* the stored layout for this screen class, or the default; wg: with
-	   the WireGuard tile (a tunnel was seen) */
-	layoutFor: function(tier, wired, wg) {
+	   the WireGuard tile (a tunnel was seen); ports: with the Ports tile
+	   (two ports were) */
+	layoutFor: function(tier, wired, wg, ports) {
 		var k = layout.key(tier, wired);
-		return layout.normalize(this.layouts[k] || null, tier, wired, wg);
+		return layout.normalize(this.layouts[k] || null, tier, wired, wg, ports);
 	},
 
 	scheduleLayout: function() {
@@ -1865,8 +1885,8 @@ return view.extend({
 		var self = this, grid = this.el.grid, tiles = this.tiles;
 		var width = grid.clientWidth;
 		if (!width || !this.m) return;
-		var tier = layout.tier(width), cols = layout.cols(tier), wired = !!this.m.wired, wg = !!this.m.wg;
-		var list = this.drag ? this.drag.list : this.layoutFor(tier, wired, wg);
+		var tier = layout.tier(width), cols = layout.cols(tier), wired = !!this.m.wired, wg = !!this.m.wg, ports = !!this.m.portsTile;
+		var list = this.drag ? this.drag.list : this.layoutFor(tier, wired, wg, ports);
 		var gap = parseFloat(window.getComputedStyle(grid).getPropertyValue('--vt-gap')) || 14;
 		var shown = list.filter(function(e) { return !e.hide; });
 		var on = Object.create(null);
@@ -1922,7 +1942,7 @@ return view.extend({
 			ghost.style.setProperty('--y', g.top.toFixed(1) + 'px');
 			ghost.style.height = g.h.toFixed(1) + 'px';
 		}
-		this.lay = { tier: tier, cols: cols, wired: wired, wg: wg, list: list, rects: p.rects, gap: gap, width: width };
+		this.lay = { tier: tier, cols: cols, wired: wired, wg: wg, ports: ports, list: list, rects: p.rects, gap: gap, width: width };
 
 		/* reading and tab order follow the layout; not while dragging,
 		   moving the dragged tile would end the drag */
@@ -1947,7 +1967,7 @@ return view.extend({
 		var l = this.lay;
 		if (!l) return;
 		var k = layout.key(l.tier, l.wired);
-		if (layout.same(list, layout.defaults(l.tier, l.wired, l.wg))) this.clearLayout(k);
+		if (layout.same(list, layout.defaults(l.tier, l.wired, l.wg, l.ports))) this.clearLayout(k);
 		else this.layouts[k] = layout.compact(this.keepAbsent(list, this.layouts[k]));
 		writeLayouts(this.layouts);
 		this.viewChanged(layout.option(k));
@@ -4445,6 +4465,82 @@ return view.extend({
 		this.paintWireguard();
 		var btn = Array.prototype.filter.call(this.el.wg.querySelectorAll('.vt-wg-more'), function(b) { return b.getAttribute('data-tunnel') === name; })[0];
 		if (btn) btn.focus();
+	},
+
+	/* ------------------------------------------------------------ ports */
+
+	/* a tile only on a device with two Ethernet ports or more
+	   (vantage.layout); which devices are ports: model.ports */
+	buildPorts: function() {
+		var el = this.el;
+		el.portsSum = E('span', { 'class': 'vt-hint vt-tn' });
+		el.ports = E('div', { 'class': 'vt-ports' });
+		return E('section', { 'class': 'vt-tile vt-ports-tile', 'aria-label': _('Ports') }, [
+			tileHead('port', _('Ports'), [ el.portsSum, pageLink(insight.PAGES.network, _('Interfaces')) ]),
+			el.ports
+		]);
+	},
+
+	/* a cell per port: its name, its link (a dot, and the negotiated
+	   speed; half duplex said), its traffic, the wired hosts learned on
+	   it, and a mark where a line to the internet leaves through it (the
+	   line's name where there are several). ↓ is what goes to the
+	   devices on the port and ↑ what comes from them, as the path's port
+	   nodes and the wired list count; on a line's port ↓ is what comes
+	   from the internet, as the line itself shows it. A port without a
+	   link is quieter, never a warning: an empty socket is no fault. A
+	   swconfig switch's port has a link and no counters here. Errors,
+	   drops and collisions since boot only where there are any: a line
+	   each in the cell, and the same words in its tooltip, so they are
+	   there without a pointer too. A port with hosts opens the Clients
+	   tile's wired list on them, as its node on the path does.
+	   The cells are built when the ports or what a click opens change
+	   and written to in place by every poll, tooltip and all: a cell
+	   under the keyboard or the pointer stays the same element */
+	paintPorts: function() {
+		var self = this, m = this.m, st = this.st, ports = m.ports || [];
+		if (!m.portsTile) return;
+		var known = ports.length > 0 && ports.every(function(p) { return p.link !== null; });
+		txt(this.el.portsSum, known ? _('%d of %d connected').format(ports.filter(function(p) { return p.link; }).length, ports.length) : '');
+		function opens(p) { return p.hosts && p.dev ? p.dev : null; }
+		var shape = JSON.stringify(ports.map(function(p) { return [ p.id, opens(p) ]; }));
+		if (shape !== this.portsShape) {
+			this.portsShape = shape;
+			this.portCells = ports.map(function(p) {
+				var dev = opens(p);
+				return dev ? E('button', { 'type': 'button', 'click': function() { self.showWired(dev); } }) : E('div');
+			});
+			dom.content(this.el.ports, ports.length ? this.portCells : [ E('p', { 'class': 'vt-empty-inline' }, [ _('No Ethernet ports are reported right now.') ]) ]);
+		}
+		var several = (m.uplinks || []).length > 1;
+		ports.forEach(function(p, i) {
+			var r = p.link && !p.sw ? st.devRates[p.id] || null : null, line = p.lines.length > 0, c = p.counters, counted = [];
+			var rate = r && !(r.rx === 0 && r.tx === 0) ? (line ? fmt.rateParts(r.rx, r.tx) : fmt.rateParts(r.tx, r.rx)) : null;
+			if (c && (c.rxErrors || c.txErrors)) counted.push(_('Errors: %s in · %s out').format(fmt.count(c.rxErrors), fmt.count(c.txErrors)));
+			if (c && (c.rxDropped || c.txDropped)) counted.push(_('Dropped: %s in · %s out').format(fmt.count(c.rxDropped), fmt.count(c.txDropped)));
+			if (c && c.collisions) counted.push(_('Collisions: %s').format(fmt.count(c.collisions)));
+			var el = self.portCells[i];
+			setClass(el, 'vt-port' + (p.link ? '' : ' vt-port-off'));
+			setTitle(el, [
+				p.sw ? p.name + ' · ' + _('Port %s of %s').format(p.sw.num, p.sw.name) : p.name,
+				p.link === null ? null : !p.link ? _('No link') : p.speed ? model.speedLabel(p.speed) : _('link up'),
+				line ? _('Uplink · %s').format(p.lines.join(', ')) : null,
+				r ? _('Received %s, sent %s').format(fmt.bits(r.rx), fmt.bits(r.tx)) : null
+			].concat(counted, opens(p) ? [ _('Show the devices on %s').format(p.dev) ] : []).filter(Boolean).join('\n'));
+			patch(el, [
+				E('span', { 'class': 'vt-port-top' }, [
+					E('span', { 'class': 'vt-status vt-status-' + (p.link ? 'ok' : 'off'), 'aria-hidden': 'true' }),
+					E('span', { 'class': 'vt-port-name' }, [ p.name ]),
+					line ? pill(several ? p.lines.join(', ') : _('Uplink', 'vantage'), 'accent') : ''
+				]),
+				E('span', { 'class': 'vt-port-link vt-tn' }, [ p.link === null ? fmt.DASH : !p.link ? _('No link')
+					: p.speed ? fmt.phyRate(p.speed.mbps * 1000) + (p.speed.duplex === 'half' ? ' · ' + _('half duplex') : '') : _('link up') ]),
+				/* its rates as two items, so a narrow cell wraps them rather than cut them */
+				p.link && !p.sw ? E('span', { 'class': 'vt-port-rates vt-tn' }, rate ? [ E('span', {}, [ '↓ ' + rate.dn ]), E('span', {}, [ '↑ ' + rate.up + (rate.unit ? ' ' + rate.unit : '') ]) ]
+					: [ E('span', {}, [ r ? _('idle') : fmt.DASH ]) ]) : '',
+				p.hosts ? E('span', { 'class': 'vt-port-hosts vt-tn' }, [ p.hosts === 1 ? _('1 device') : _('%d devices').format(p.hosts) ]) : ''
+			].concat(counted.map(function(t) { return E('span', { 'class': 'vt-port-note vt-tn' }, [ t ]); })));
+		});
 	},
 
 	/* ----------------------------------------------------------- drawer */

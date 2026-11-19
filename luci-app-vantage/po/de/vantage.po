@@ -10,7 +10,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4977
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5073
 msgid "%d MHz (%d–%d MHz)"
 msgstr "%d MHz (%d–%d MHz)"
 
@@ -38,16 +38,16 @@ msgid_plural "%d SSIDs · %d idle"
 msgstr[0] "%d SSID · %d inaktiv"
 msgstr[1] "%d SSIDs · %d inaktiv"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2351
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2655
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3084
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3167
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3756
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5154
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2371
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2675
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3104
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3187
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3776
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5250
 msgid "%d clients"
 msgstr "%d Clients"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4145
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4165
 msgid "%d connected"
 msgstr "%d verbunden"
 
@@ -57,10 +57,11 @@ msgid_plural "%d days ago"
 msgstr[0] "vor %d Tag"
 msgstr[1] "vor %d Tagen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3114
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3118
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3150
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4144
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3134
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3138
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3170
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4164
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4541
 msgid "%d devices"
 msgstr "%d Geräte"
 
@@ -92,13 +93,17 @@ msgid_plural "%d months ago"
 msgstr[0] "vor %d Monat"
 msgstr[1] "vor %d Monaten"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4143
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4163
 msgid "%d of %d"
 msgstr "%d von %d"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2212
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2232
 msgid "%d of %d columns"
 msgstr "%d von %d Spalten"
+
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4504
+msgid "%d of %d connected"
+msgstr "%d von %d verbunden"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:291
 msgid "%d older devices (Wi-Fi 4 or earlier) slow airtime"
@@ -108,7 +113,7 @@ msgstr "%d ältere Geräte (Wi-Fi 4 oder älter) beanspruchen mehr Sendezeit"
 msgid "%d on this router, %d into your network"
 msgstr "%d auf diesem Router, %d in Ihr Netzwerk"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4413
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4433
 msgid "%d peers"
 msgstr "%d Peers"
 
@@ -130,7 +135,7 @@ msgid_plural "%d radios up"
 msgstr[0] "In Betrieb: %d"
 msgstr[1] "In Betrieb: %d"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3748
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3768
 msgid "%d radios"
 msgstr "%d Funkmodule"
 
@@ -154,7 +159,7 @@ msgstr "%d Punkte erfordern Aufmerksamkeit"
 msgid "%d weak"
 msgstr "%d schwach"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2656
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2676
 msgid "%d wired"
 msgstr "%d per Kabel"
 
@@ -164,7 +169,7 @@ msgid_plural "%d years ago"
 msgstr[0] "vor %d Jahr"
 msgstr[1] "vor %d Jahren"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3767
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3787
 msgid "%d–%d MHz of the %d–%d MHz band"
 msgstr "%d–%d MHz im Frequenzband %d–%d MHz"
 
@@ -182,27 +187,27 @@ msgstr "%s (%s) ist aktiviert, aber außer Betrieb"
 msgid "%s (IPv%d)"
 msgstr "%s (IPv%d)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4714
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4810
 msgid "%s (new this session)"
 msgstr "%s (neu in dieser Sitzung)"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:24
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:444
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:450
 msgid "%s Gbit/s"
 msgstr "%s Gbit/s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:178
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:103
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3774
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3788
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4268
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4970
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3794
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3808
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4288
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5066
 msgid "%s MHz"
 msgstr "%s MHz"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:24
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:54
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:444
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:450
 msgid "%s Mbit/s"
 msgstr "%s Mbit/s"
 
@@ -210,7 +215,7 @@ msgstr "%s Mbit/s"
 msgid "%s accepts every connection"
 msgstr "%s lässt jede Verbindung zu"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4405
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4425
 msgid "%s ago"
 msgstr "vor %s"
 
@@ -219,13 +224,13 @@ msgid "%s at %s; below %s roaming and throughput suffer"
 msgstr "%s bei %s; unter %s verschlechtern sich Roaming und Durchsatz"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:86
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3448
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3468
 msgctxt "vantage"
 msgid "%s available"
 msgstr "%s verfügbar"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3794
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4978
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3814
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5074
 msgid "%s dBm"
 msgstr "%s dBm"
 
@@ -237,13 +242,13 @@ msgstr "%s-Gerät"
 msgid "%s device on a newer radio; uses more airtime per byte"
 msgstr "%s-Gerät an einem neueren Funkmodul; benötigt mehr Sendezeit pro Byte"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5004
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5100
 msgid "%s error"
 msgid_plural "%s errors"
 msgstr[0] "%s Fehler"
 msgstr[1] "%s Fehler"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4673
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4769
 msgid "%s experience"
 msgstr "Verbindungsqualität: %s"
 
@@ -261,11 +266,11 @@ msgstr ""
 "%s hat kein Link-Signal: Kabel nicht angeschlossen oder Switch-Port außer "
 "Betrieb"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2178
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2198
 msgid "%s hidden"
 msgstr "%s ausgeblendet"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5056
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5152
 msgid "%s in · %s out"
 msgstr "%s eingehend · %s ausgehend"
 
@@ -281,7 +286,7 @@ msgstr "%s wird an %s weitergeleitet"
 msgid "%s is in no zone and accepts every connection"
 msgstr "%s gehört keiner Zone an und lässt jede Verbindung zu"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2171
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2191
 msgid "%s is narrower"
 msgstr "%s ist schmaler"
 
@@ -289,7 +294,7 @@ msgstr "%s ist schmaler"
 msgid "%s is not up"
 msgstr "%s ist außer Betrieb"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4207
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4227
 msgid ""
 "%s is shared by %d devices (a switch or another access point behind it); its "
 "%s link is not theirs"
@@ -298,11 +303,11 @@ msgstr ""
 "weiterer Zugangspunkt); die Linkrate %s gilt für den Port, nicht für die "
 "einzelnen Geräte"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4206
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4226
 msgid "%s is shared by %d devices behind the switch"
 msgstr "%s wird von %d Geräten hinter dem Switch gemeinsam genutzt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2174
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2194
 msgid "%s is wider"
 msgstr "%s ist breiter"
 
@@ -318,23 +323,23 @@ msgstr "Link: %s"
 msgid "%s may open the router's admin"
 msgstr "%s könnte die Router-Verwaltung zugänglich machen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2293
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2313
 msgid "%s moved"
 msgstr "%s verschoben"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2168
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2188
 msgid "%s moved down"
 msgstr "%s nach unten verschoben"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2159
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2179
 msgid "%s moved left"
 msgstr "%s nach links verschoben"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2162
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2182
 msgid "%s moved right"
 msgstr "%s nach rechts verschoben"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2165
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2185
 msgid "%s moved up"
 msgstr "%s nach oben verschoben"
 
@@ -349,9 +354,9 @@ msgstr ""
 "möglicherweise defekt"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:87
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3449
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3478
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5083
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3469
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3498
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5179
 msgid "%s of %s"
 msgstr "%s von %s"
 
@@ -373,21 +378,21 @@ msgid "%s of frames to the device fail; interference likely"
 msgstr ""
 "%s der Frames erreichen das Gerät nicht; Funkstörungen sind wahrscheinlich"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5081
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5177
 msgid "%s over %d core"
 msgid_plural "%s over %d cores"
 msgstr[0] "%s auf %d Kern"
 msgstr[1] "%s auf %d Kernen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3543
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3563
 msgid "%s radio"
 msgstr "Funkmodul %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4719
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4815
 msgid "%s sent · %s retried · %s failed"
 msgstr "%s gesendet · %s erneut gesendet · %s fehlgeschlagen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2218
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2238
 msgid "%s shown"
 msgstr "%s angezeigt"
 
@@ -403,11 +408,11 @@ msgstr "%s in Betrieb mit %s"
 msgid "%s used"
 msgstr "%s belegt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3486
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3506
 msgid "%s used of %s"
 msgstr "%s von %s belegt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4204
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4224
 msgid "%s · %d devices"
 msgstr "%s · %d Geräte"
 
@@ -415,7 +420,7 @@ msgstr "%s · %d Geräte"
 msgid "%s · %s"
 msgstr "%s · %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4709
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4805
 msgid "%s · channel %d · %d MHz"
 msgstr "%s · Kanal %d · %d MHz"
 
@@ -431,37 +436,38 @@ msgstr "%s · langsame Verbindung"
 msgid "%s: no carrier"
 msgstr "%s: kein Link-Signal"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4978
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5074
 msgid "(configured %d dBm, limited by regulatory rules)"
 msgstr "(konfiguriert: %d dBm, durch gesetzliche Vorgaben begrenzt)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3083
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3166
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4366
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3103
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3186
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4386
 msgid "(hidden)"
 msgstr "(versteckt)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3216
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4434
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3236
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4454
 msgid "+%d more"
 msgstr "+%d mehr"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2351
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2655
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3084
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3167
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3756
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5154
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2371
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2675
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3104
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3187
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3776
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5250
 msgid "1 client"
 msgstr "1 Client"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4145
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4165
 msgid "1 connected"
 msgstr "1 verbunden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3118
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3150
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4144
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3138
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3170
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4164
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4541
 msgid "1 device"
 msgstr "1 Gerät"
 
@@ -469,11 +475,11 @@ msgstr "1 Gerät"
 msgid "1 older device (Wi-Fi 4 or earlier) slows airtime"
 msgstr "1 älteres Gerät (Wi-Fi 4 oder älter) beansprucht mehr Sendezeit"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4413
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4433
 msgid "1 peer"
 msgstr "1 Peer"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3748
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3768
 msgid "1 radio"
 msgstr "1 Funkmodul"
 
@@ -482,7 +488,7 @@ msgstr "1 Funkmodul"
 msgid "1 thing needs attention"
 msgstr "1 Punkt erfordert Aufmerksamkeit"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2656
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2676
 msgid "1 wired"
 msgstr "1 per Kabel"
 
@@ -505,32 +511,32 @@ msgstr "6 GHz"
 msgid "60 GHz"
 msgstr "60 GHz"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3140
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4708
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4744
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4760
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3160
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4804
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4840
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4856
 msgid "Access point"
 msgstr "Zugangspunkt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2950
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2970
 msgid "Access points"
 msgstr "Zugangspunkte"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3986
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4006
 msgid "Active"
 msgstr "Aktiv"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4723
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4763
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4784
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4819
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4859
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4880
 msgid "Address type"
 msgstr "Adresstyp"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5043
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5139
 msgid "Addresses"
 msgstr "Adressen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3796
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3816
 msgid "Airtime"
 msgstr "Sendezeit"
 
@@ -539,12 +545,12 @@ msgctxt "vantage"
 msgid "Alias"
 msgstr "Alias"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3968
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3979
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3988
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3999
 msgid "All"
 msgstr "Alle"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4419
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4439
 msgid "Allowed IPs: %s"
 msgstr "Erlaubte IP-Adressen: %s"
 
@@ -577,11 +583,11 @@ msgctxt "vantage"
 msgid "B"
 msgstr "B"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4711
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4807
 msgid "BSSID"
 msgstr "BSSID"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4242
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4262
 msgid "Behind %s, its port %s"
 msgstr "Hinter %s, an dessen Port %s"
 
@@ -589,7 +595,7 @@ msgstr "Hinter %s, an dessen Port %s"
 msgid "Busiest radio: %s of Wi-Fi traffic"
 msgstr "Aktivstes Funkmodul: %s des WLAN-Datenverkehrs"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3413
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3433
 msgid "Busy share of each CPU core"
 msgstr "Auslastung pro CPU-Kern"
 
@@ -608,90 +614,94 @@ msgstr[1] ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:74
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:75
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3406
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5081
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3426
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5177
 msgctxt "vantage"
 msgid "CPU"
 msgstr "CPU"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:327
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:333
 msgid "Cache (reclaimable)"
 msgstr "Cache (freigebbar)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3137
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3157
 msgid "Calls itself %s"
 msgstr "Nennt sich %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4857
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4953
 msgid "Cancel"
 msgstr "Abbrechen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4701
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4797
 msgctxt "vantage"
 msgid "Capabilities"
 msgstr "Fähigkeiten"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5035
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5131
 msgid "Carrier"
 msgstr "Link-Signal"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4977
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5073
 msgid "Centre frequency"
 msgstr "Mittenfrequenz"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3787
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3807
 msgid "Ch %d"
 msgstr "Kanal %d"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3064
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3755
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5130
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3084
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3775
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5226
 msgid "Ch %d · %d MHz"
 msgstr "Kanal %d · %d MHz"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4970
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5131
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5066
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5227
 msgid "Channel"
 msgstr "Kanal"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3064
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3084
 msgid "Channel —"
 msgstr "Kanal —"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3820
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3840
 msgctxt "vantage"
 msgid "Clear filter"
 msgstr "Filter löschen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1835
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3793
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3838
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3839
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1853
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3813
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3858
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3859
 msgid "Clients"
 msgstr "Clients"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4984
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5080
 msgid "Clients on this radio"
 msgstr "Clients an diesem Funkmodul"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2313
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4456
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2333
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4552
 msgid "Close"
 msgstr "Schließen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4283
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4521
+msgid "Collisions: %s"
+msgstr "Kollisionen: %s"
+
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4303
 msgid "Connected"
 msgstr "Verbunden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4252
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4272
 msgid "Connected after you opened this page"
 msgstr "Nach dem Öffnen dieser Seite verbunden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4712
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4808
 msgid "Connected for"
 msgstr "Verbunden seit"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4665
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4761
 msgid ""
 "Connected to %s, a paired access point: signal, link rates and traffic as it "
 "reports them."
@@ -699,21 +709,21 @@ msgstr ""
 "Verbunden mit %s, einem gekoppelten Zugangspunkt: Signal, Linkraten und "
 "Datenverkehr, wie er sie meldet."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4704
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4743
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4748
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4800
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4839
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4844
 msgid "Connection"
 msgstr "Verbindung"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4575
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4671
 msgid "Copied"
 msgstr "Kopiert"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4575
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4671
 msgid "Copy"
 msgstr "Kopieren"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3440
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3460
 msgid "Core %d: %s"
 msgstr "Kern %d: %s"
 
@@ -721,27 +731,27 @@ msgstr "Kern %d: %s"
 msgid "Could not read the firewall configuration"
 msgstr "Die Firewall-Konfiguration konnte nicht gelesen werden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4840
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4936
 msgid "Could not save the name (no permission or the device refused it)."
 msgstr ""
 "Der Name konnte nicht gespeichert werden (fehlende Berechtigung oder vom "
 "Gerät abgelehnt)."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2055
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2075
 msgid "Could not save this for every browser. Try again."
 msgstr ""
 "Die Einstellung konnte nicht für alle Browser gespeichert werden. Versuchen "
 "Sie es erneut."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4928
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5024
 msgid "Could not save this."
 msgstr "Die Einstellung konnte nicht gespeichert werden."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5053
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5149
 msgid "Counters since boot"
 msgstr "Zähler seit dem Start"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4982
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5078
 msgid "Country"
 msgstr "Land"
 
@@ -752,13 +762,13 @@ msgstr ""
 "Eigene Regeldateien sind konfiguriert (%s); ihre Regeln werden hier nicht "
 "angezeigt."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2333
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2353
 msgid "Customize"
 msgstr "Anpassen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2122
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2123
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2332
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2142
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2143
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2352
 msgid "Customize the dashboard"
 msgstr "Dashboard anpassen"
 
@@ -766,16 +776,16 @@ msgstr "Dashboard anpassen"
 msgid "DHCP"
 msgstr "DHCP"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4797
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4893
 msgid "DHCP hostname"
 msgstr "DHCP-Hostname"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/names.js:45
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5051
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5147
 msgid "DNS"
 msgstr "DNS"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2985
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3005
 msgid "DNS %s"
 msgstr "DNS %s"
 
@@ -784,23 +794,23 @@ msgstr "DNS %s"
 msgid "Dashboard"
 msgstr "Dashboard"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4078
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4079
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4081
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4172
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5071
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4098
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4099
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4101
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4192
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5167
 msgid "Device"
 msgstr "Gerät"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4824
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4920
 msgid "Device name"
 msgstr "Gerätename"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4853
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4949
 msgid "Device type"
 msgstr "Gerätetyp"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4158
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4178
 msgid ""
 "Devices on the Ethernet ports appear here once they send traffic; the bridge "
 "forgets quiet ones after about five minutes."
@@ -808,42 +818,42 @@ msgstr ""
 "Geräte an den Ethernet-Ports erscheinen hier, sobald sie Daten senden. Nach "
 "etwa fünf Minuten ohne Datenverkehr entfernt die Bridge den Eintrag."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2666
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2686
 msgid "Did not answer in time"
 msgstr "Keine rechtzeitige Antwort"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3065
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3757
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3782
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4975
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3085
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3777
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3802
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5071
 msgid "Disabled"
 msgstr "Deaktiviert"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4664
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4760
 msgid "Disconnected %s; shown from the last sample."
 msgstr "%s getrennt; angezeigt wird der letzte Messwert."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4898
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4994
 msgid "Don't warn about its signal"
 msgstr "Bei schwachem Signal dieses Geräts nicht warnen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2137
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2157
 msgctxt "vantage"
 msgid "Done"
 msgstr "Fertig"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:45
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3065
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3757
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3782
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4975
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3085
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3777
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3802
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5071
 msgctxt "vantage"
 msgid "Down"
 msgstr "Außer Betrieb"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3520
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3615
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3690
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3540
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3635
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3710
 msgid "Download"
 msgstr "Download"
 
@@ -851,12 +861,12 @@ msgstr "Download"
 msgid "Download (to clients)"
 msgstr "Download (zu Clients)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4717
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4813
 msgctxt "vantage"
 msgid "Downloaded"
 msgstr "Heruntergeladen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2199
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2219
 msgid ""
 "Drag a tile by its handle or use its buttons. Done saves it for medium "
 "screens in every browser."
@@ -864,7 +874,7 @@ msgstr ""
 "Ziehen Sie eine Kachel am Griff oder verwenden Sie ihre Schaltflächen. "
 "„Fertig“ speichert das Layout für mittelbreite Bildschirme in allen Browsern."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2200
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2220
 msgid ""
 "Drag a tile by its handle or use its buttons. Done saves it for narrow "
 "screens in every browser."
@@ -872,7 +882,7 @@ msgstr ""
 "Ziehen Sie eine Kachel am Griff oder verwenden Sie ihre Schaltflächen. "
 "„Fertig“ speichert das Layout für schmale Bildschirme in allen Browsern."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2198
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2218
 msgid ""
 "Drag a tile by its handle or use its buttons. Done saves it for wide screens "
 "in every browser."
@@ -880,7 +890,7 @@ msgstr ""
 "Ziehen Sie eine Kachel am Griff oder verwenden Sie ihre Schaltflächen. "
 "„Fertig“ speichert das Layout für breite Bildschirme in allen Browsern."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2199
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2219
 msgid ""
 "Drag a tile by its handle or use its buttons. Saved in this browser for "
 "medium screens."
@@ -888,7 +898,7 @@ msgstr ""
 "Ziehen Sie eine Kachel am Griff oder verwenden Sie ihre Schaltflächen. Das "
 "Layout wird in diesem Browser für mittelbreite Bildschirme gespeichert."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2200
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2220
 msgid ""
 "Drag a tile by its handle or use its buttons. Saved in this browser for "
 "narrow screens."
@@ -896,7 +906,7 @@ msgstr ""
 "Ziehen Sie eine Kachel am Griff oder verwenden Sie ihre Schaltflächen. Das "
 "Layout wird in diesem Browser für schmale Bildschirme gespeichert."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2198
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2218
 msgid ""
 "Drag a tile by its handle or use its buttons. Saved in this browser for wide "
 "screens."
@@ -904,16 +914,20 @@ msgstr ""
 "Ziehen Sie eine Kachel am Griff oder verwenden Sie ihre Schaltflächen. Das "
 "Layout wird in diesem Browser für breite Bildschirme gespeichert."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2150
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2170
 msgid "Drag to move"
 msgstr "Zum Verschieben ziehen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5056
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5152
 msgctxt "vantage"
 msgid "Dropped"
 msgstr "Verworfen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4345
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4520
+msgid "Dropped: %s in · %s out"
+msgstr "Verworfen: %s eingehend · %s ausgehend"
+
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4365
 msgid "Edit"
 msgstr "Bearbeiten"
 
@@ -921,9 +935,13 @@ msgstr "Bearbeiten"
 msgid "Enhanced Open (OWE)"
 msgstr "Enhanced Open (OWE)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2501
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2521
 msgid "Error"
 msgstr "Fehler"
+
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4519
+msgid "Errors: %s in · %s out"
+msgstr "Fehler: %s eingehend · %s ausgehend"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:139
 msgid "Every client here is set not to warn about its signal"
@@ -941,8 +959,8 @@ msgctxt "vantage"
 msgid "Excellent"
 msgstr "Ausgezeichnet"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4081
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4277
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4101
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4297
 msgid "Experience"
 msgstr "Qualität"
 
@@ -960,25 +978,25 @@ msgstr "Mittelmäßiges Signal"
 msgid "Fair signal %s; lower rates at range"
 msgstr "Mittelmäßiges Signal %s; bei größerer Entfernung sinkt die Datenrate"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3817
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4070
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3837
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4090
 msgid "Filter by name, address, SSID…"
 msgstr "Nach Name, Adresse oder SSID filtern…"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4070
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4090
 msgid "Filter by name, address, port…"
 msgstr "Nach Name, Adresse oder Port filtern…"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3818
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3838
 msgid "Filter clients"
 msgstr "Clients filtern"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5074
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5170
 msgctxt "vantage"
 msgid "Firmware"
 msgstr "Firmware"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5190
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5286
 msgid "Firmware built"
 msgstr "Firmware erstellt"
 
@@ -990,25 +1008,25 @@ msgstr "Weiterleitung von %s nach %s"
 msgid "Forwarding is accepted by default"
 msgstr "Weiterleitungen sind standardmäßig erlaubt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4719
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4815
 msgid "Frames to device"
 msgstr "Frames an das Gerät"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:328
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:334
 msgctxt "vantage"
 msgid "Free"
 msgstr "Frei"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4696
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4699
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4792
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4795
 msgid "From device"
 msgstr "Vom Gerät"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4266
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4286
 msgid "From device: %s"
 msgstr "Vom Gerät: %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5029
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5125
 msgid "From network"
 msgstr "Vom Netzwerk"
 
@@ -1020,14 +1038,14 @@ msgstr ""
 "Angaben aus der Firewall-Konfiguration. Ports, die durch UPnP oder eigene "
 "Regeldateien geöffnet wurden, werden hier nicht angezeigt."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2986
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4192
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5048
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3006
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4212
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5144
 msgid "Gateway"
 msgstr "Gateway"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2989
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3021
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3009
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3041
 msgid "Gateway %s"
 msgstr "Gateway %s"
 
@@ -1040,7 +1058,7 @@ msgstr "Gbit/s"
 msgid "General Settings"
 msgstr "Allgemeine Einstellungen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4700
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4796
 msgctxt "vantage"
 msgid "Generation"
 msgstr "Generation"
@@ -1050,15 +1068,15 @@ msgctxt "vantage"
 msgid "GiB"
 msgstr "GiB"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4723
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4763
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4784
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4819
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4859
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4880
 msgid "Globally unique"
 msgstr "Global eindeutig"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4723
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4763
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4784
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4819
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4859
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4880
 msgid "Globally unique · %s"
 msgstr "Global eindeutig · %s"
 
@@ -1076,7 +1094,7 @@ msgstr "Gutes Signal"
 msgid "Good signal %s"
 msgstr "Gutes Signal %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2083
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2103
 msgid "Grid"
 msgstr "Raster"
 
@@ -1092,49 +1110,49 @@ msgstr "HTTPS (Port 443)"
 msgid "Half duplex"
 msgstr "Halbduplex"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4405
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4425
 msgid "Handshake %s"
 msgstr "Handshake %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1690
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1703
 msgctxt "vantage"
 msgid "Health checks"
 msgstr "Zustand"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2215
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4366
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2235
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4386
 msgctxt "vantage"
 msgid "Hidden"
 msgstr "Versteckt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2177
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2197
 msgid "Hide %s"
 msgstr "%s ausblenden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2667
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2687
 msgid "Host key changed: pair again"
 msgstr "Host-Schlüssel geändert: erneut koppeln"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4724
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4764
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4820
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4860
 msgid "IP addresses"
 msgstr "IP-Adressen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5044
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5140
 msgid "IPv4"
 msgstr "IPv4"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5045
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5141
 msgid "IPv6"
 msgstr "IPv6"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5047
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5143
 msgid "IPv6 prefix"
 msgstr "IPv6-Präfix"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4721
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4761
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4782
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4817
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4857
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4878
 msgid "Identity"
 msgstr "Identität"
 
@@ -1142,11 +1160,11 @@ msgstr "Identität"
 msgid "In no zone: the default policies apply."
 msgstr "Keiner Zone zugeordnet: Die Standardrichtlinien gelten."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5041
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5137
 msgid "In the tunnel"
 msgstr "Im Tunnel"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:326
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:332
 msgctxt "vantage"
 msgid "In use"
 msgstr "Belegt"
@@ -1156,21 +1174,22 @@ msgctxt "vantage"
 msgid "Input"
 msgstr "Eingehend"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3042
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3062
 msgid "Interface"
 msgstr "Schnittstelle"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5038
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5134
 msgid "Interface up for"
 msgstr "Schnittstelle aktiv seit"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4741
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5010
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5027
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4479
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4837
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5106
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5123
 msgid "Interfaces"
 msgstr "Schnittstellen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2986
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3006
 msgid "Internet"
 msgstr "Internet"
 
@@ -1202,15 +1221,15 @@ msgstr ""
 "Schnittstellenliste konnte nicht gelesen werden. Daher lässt sich hier nicht "
 "feststellen, ob das Ziel der Router selbst ist."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4891
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4987
 msgid "Its weak signal is left out of the warnings."
 msgstr "Das schwache Signal dieses Geräts löst keine Warnung aus."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5076
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5172
 msgid "Kernel"
 msgstr "Kernel"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3492
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3512
 msgid "Kernel %s"
 msgstr "Kernel %s"
 
@@ -1219,77 +1238,77 @@ msgctxt "vantage"
 msgid "KiB"
 msgstr "KiB"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3832
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3852
 msgid "Kind of client"
 msgstr "Clienttyp"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4713
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4809
 msgctxt "vantage"
 msgid "Last activity"
 msgstr "Letzte Aktivität"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4078
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4234
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4785
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4098
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4254
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4881
 msgid "Last address"
 msgstr "Letzte Adresse"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4080
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4223
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4759
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4100
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4243
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4855
 msgid "Last heard"
 msgstr "Zuletzt erkannt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3139
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3159
 msgid "Last report %s"
 msgstr "Letzter Bericht %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4078
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4236
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4786
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4098
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4256
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4882
 msgid "Last seen"
 msgstr "Zuletzt gesehen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2135
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2155
 msgid "Layout reset"
 msgstr "Layout zurückgesetzt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4251
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4271
 msgid "Left %s"
 msgstr "%s getrennt"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:186
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4253
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4273
 msgctxt "vantage"
 msgid "Legacy"
 msgstr "Legacy"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4079
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4199
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4202
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4694
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4697
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4746
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4750
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5034
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4099
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4219
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4222
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4790
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4793
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4842
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4846
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5130
 msgctxt "vantage"
 msgid "Link"
 msgstr "Link"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4081
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4265
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4101
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4285
 msgid "Link rate"
 msgstr "Linkrate"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2373
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4079
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4081
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4213
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4270
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2393
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4099
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4101
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4233
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4290
 msgid "Live"
 msgstr "Live"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5080
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5176
 msgid "Load"
 msgstr "Last"
 
@@ -1305,24 +1324,24 @@ msgid_plural "Load %s · %d cores"
 msgstr[0] "Last %s · %d Kern"
 msgstr[1] "Last %s · %d Kerne"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5082
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5178
 msgctxt "vantage"
 msgid "Load average"
 msgstr "Durchschnittslast"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3394
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3414
 msgid "Load average over 1, 5 and 15 minutes"
 msgstr "Durchschnittslast über 1, 5 und 15 Minuten"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3430
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3450
 msgid "Load avg %s"
 msgstr "Durchschnittslast %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5078
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5174
 msgid "Local time"
 msgstr "Ortszeit"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2014
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2034
 msgid "Log in again to save this for every browser."
 msgstr ""
 "Melden Sie sich erneut an, um die Einstellung für alle Browser zu speichern."
@@ -1341,9 +1360,9 @@ msgstr "Niedrige Linkrate im Verhältnis zur Signalstärke"
 msgid "MAC"
 msgstr "MAC"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4722
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4762
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4783
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4818
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4858
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4879
 msgid "MAC address"
 msgstr "MAC-Adresse"
 
@@ -1351,11 +1370,11 @@ msgstr "MAC-Adresse"
 msgid "MCS %d"
 msgstr "MCS %d"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2170
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2190
 msgid "Make %s narrower"
 msgstr "%s schmaler machen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2173
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2193
 msgid "Make %s wider"
 msgstr "%s breiter machen"
 
@@ -1372,11 +1391,11 @@ msgid "Measuring…"
 msgstr "Messung läuft…"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:86
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3417
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3437
 msgid "Memory"
 msgstr "Arbeitsspeicher"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5083
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5179
 msgid "Memory in use"
 msgstr "Belegter Arbeitsspeicher"
 
@@ -1385,64 +1404,64 @@ msgctxt "vantage"
 msgid "MiB"
 msgstr "MiB"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2069
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2089
 msgid "Mirrored"
 msgstr "Gespiegelt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2070
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2090
 msgid "Mirrored, scale per direction"
 msgstr "Gespiegelt, Skala je Richtung"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4976
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5072
 msgid "Mode"
 msgstr "Modus"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5072
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5168
 msgid "Model"
 msgstr "Modell"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2167
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2187
 msgid "Move %s down"
 msgstr "%s nach unten verschieben"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2158
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2178
 msgid "Move %s left"
 msgstr "%s nach links verschieben"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2161
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2181
 msgid "Move %s right"
 msgstr "%s nach rechts verschieben"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2164
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2184
 msgid "Move %s up"
 msgstr "%s nach oben verschieben"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2150
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2170
 msgid "Move %s: drag, or use the arrow keys"
 msgstr "%s verschieben: ziehen oder Pfeiltasten verwenden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4852
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4948
 msgid "Name"
 msgstr "Name"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/names.js:138
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4948
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5044
 msgid "Name contains invisible or control characters"
 msgstr "Der Name enthält unsichtbare Zeichen oder Steuerzeichen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4725
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4765
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4787
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4821
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4861
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4883
 msgid "Name from"
 msgstr "Namensquelle"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4177
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4197
 msgid "Name from: %s"
 msgstr "Namensquelle: %s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/names.js:136
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/names.js:141
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4949
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5045
 msgid "Name is longer than %d characters"
 msgstr "Der Name ist länger als %d Zeichen"
 
@@ -1450,27 +1469,27 @@ msgstr "Der Name ist länger als %d Zeichen"
 msgid "Name must be text"
 msgstr "Der Name muss als Text angegeben werden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4655
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4735
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4751
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4831
 msgid "Name this device"
 msgstr "Dieses Gerät benennen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4079
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4081
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4212
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4262
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4705
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4758
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4099
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4101
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4232
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4282
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4801
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4854
 msgid "Network"
 msgstr "Netzwerk"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1835
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2625
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2626
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1853
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2645
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2646
 msgid "Network path"
 msgstr "Netzwerkpfad"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2088
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2108
 msgid "Network path background"
 msgstr "Hintergrund des Netzwerkpfads"
 
@@ -1478,18 +1497,22 @@ msgstr "Hintergrund des Netzwerkpfads"
 msgid "Networks: %s"
 msgstr "Netzwerke: %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3988
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4252
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4008
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4272
 msgctxt "vantage"
 msgid "New"
 msgstr "Neu"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2885
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2939
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4513
+msgid "No Ethernet ports are reported right now."
+msgstr "Derzeit wird kein Ethernet-Port gemeldet."
+
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2905
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2959
 msgid "No SSIDs"
 msgstr "Keine SSIDs"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4400
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4420
 msgid "No WireGuard tunnel is reported right now."
 msgstr "Derzeit wird kein WireGuard-Tunnel gemeldet."
 
@@ -1497,29 +1520,29 @@ msgstr "Derzeit wird kein WireGuard-Tunnel gemeldet."
 msgid "No clients"
 msgstr "Keine Clients"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4160
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4989
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4180
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5085
 msgid "No clients connected"
 msgstr "Keine Clients verbunden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4320
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4340
 msgid "No clients connected."
 msgstr "Keine Clients verbunden."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4151
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4171
 msgid "No clients in this view"
 msgstr "Keine Clients in dieser Ansicht"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4151
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4171
 msgid "No clients match “%s”"
 msgstr "Keine Clients entsprechen „%s“"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2987
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3007
 msgctxt "vantage"
 msgid "No default route"
 msgstr "Keine Standardroute"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4320
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4340
 msgid ""
 "No device has a port to itself; traffic on a shared port is not counted per "
 "device."
@@ -1527,7 +1550,7 @@ msgstr ""
 "Kein Gerät hat einen Port für sich allein; an einem gemeinsam genutzten Port "
 "wird der Datenverkehr nicht pro Gerät erfasst."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4404
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4424
 msgid "No handshake yet"
 msgstr "Noch kein Handshake"
 
@@ -1535,7 +1558,7 @@ msgstr "Noch kein Handshake"
 msgid "No interface with a route"
 msgstr "Keine Schnittstelle mit Route"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5014
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5110
 msgid "No interface with a route is up."
 msgstr "Es ist keine Schnittstelle mit Route aktiv."
 
@@ -1544,7 +1567,9 @@ msgid "No internet-facing zone found"
 msgstr "Keine dem Internet zugewandte Zone gefunden"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:47
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5035
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4526
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4536
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5131
 msgid "No link"
 msgstr "Keine Verbindung"
 
@@ -1552,11 +1577,11 @@ msgstr "Keine Verbindung"
 msgid "No network interface with a route is up"
 msgstr "Es ist keine Netzwerkschnittstelle mit Route aktiv"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2866
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2886
 msgid "No other interfaces are up"
 msgstr "Keine weiteren Schnittstellen aktiv"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4430
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4450
 msgid "No peers configured."
 msgstr "Keine Peers konfiguriert."
 
@@ -1566,7 +1591,7 @@ msgid "No problems detected"
 msgstr "Keine Probleme erkannt"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:110
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2889
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2909
 msgid "No radios reported"
 msgstr "Keine Funkmodule gemeldet"
 
@@ -1589,16 +1614,16 @@ msgstr "Derzeit ist keine WLAN-Station verbunden"
 msgid "No warnings asked for"
 msgstr "Warnungen sind nicht aktiviert"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4157
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4177
 msgid "No wired devices heard"
 msgstr "Keine kabelgebundenen Geräte erkannt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4354
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4374
 msgctxt "vantage"
 msgid "No wireless networks configured."
 msgstr "Es sind keine WLAN-Netzwerke eingerichtet."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3762
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3782
 msgid "No wireless radios are reported by this device."
 msgstr "Dieses Gerät meldet keine WLAN-Funkmodule."
 
@@ -1617,38 +1642,38 @@ msgstr ""
 msgid "No zones are configured."
 msgstr "Es sind keine Zonen konfiguriert."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4319
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4339
 msgid "Nobody is moving data right now."
 msgstr "Derzeit überträgt kein Gerät Daten."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3795
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3815
 msgid "Noise"
 msgstr "Rauschen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4702
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4798
 msgid "Noise / SNR"
 msgstr "Rauschen / SNR"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4980
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4981
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5076
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5077
 msgid "Noise floor"
 msgstr "Rauschpegel"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:110
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2083
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2103
 msgid "None"
 msgstr "Keine"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/names.js:154
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4947
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5043
 msgid "Not a station MAC address"
 msgstr "Keine MAC-Adresse einer WLAN-Station"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4637
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4733
 msgid "Not connected"
 msgstr "Nicht verbunden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4779
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4875
 msgid ""
 "Not connected right now. A wired device that stays quiet is forgotten after "
 "about five minutes."
@@ -1656,12 +1681,12 @@ msgstr ""
 "Derzeit nicht verbunden. Ein kabelgebundenes Gerät, das nichts sendet, wird "
 "nach etwa fünf Minuten vergessen."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4575
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4671
 msgid "Not copied"
 msgstr "Nicht kopiert"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4214
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4755
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4234
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4851
 msgid "Not counted per device on a shared port"
 msgstr ""
 "An einem gemeinsam genutzten Port wird der Datenverkehr nicht pro Gerät "
@@ -1671,11 +1696,11 @@ msgstr ""
 msgid "Not in effect"
 msgstr "Nicht wirksam"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2665
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2685
 msgid "Not reachable over SSH"
 msgstr "Per SSH nicht erreichbar"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3467
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3487
 msgid "Not reported"
 msgstr "Nicht gemeldet"
 
@@ -1683,7 +1708,7 @@ msgstr "Nicht gemeldet"
 msgid "Not reported by the driver"
 msgstr "Vom Treiber nicht gemeldet"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4800
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4896
 msgid "Nothing better known"
 msgstr "Keine genaueren Angaben verfügbar"
 
@@ -1700,14 +1725,14 @@ msgctxt "vantage"
 msgid "OWE"
 msgstr "OWE"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2675
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3975
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3989
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5121
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2695
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3995
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4009
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5217
 msgid "Offline"
 msgstr "Offline"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2675
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2695
 msgid "Offline · last report %s"
 msgstr "Offline · letzter Bericht %s"
 
@@ -1715,7 +1740,7 @@ msgstr "Offline · letzter Bericht %s"
 msgid "Older %s device"
 msgstr "Älteres %s-Gerät"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4253
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4273
 msgid "Older Wi-Fi generation than the radio; uses more airtime"
 msgstr "Ältere WLAN-Generation als das Funkmodul; benötigt mehr Sendezeit"
 
@@ -1723,7 +1748,7 @@ msgstr "Ältere WLAN-Generation als das Funkmodul; benötigt mehr Sendezeit"
 msgid "On this router"
 msgstr "Auf diesem Router"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4081
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4101
 msgctxt "vantage"
 msgid "Online"
 msgstr "Online"
@@ -1744,7 +1769,7 @@ msgctxt "vantage"
 msgid "Open"
 msgstr "Offen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4126
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4146
 msgid "Open details of %s"
 msgstr "Details zu %s öffnen"
 
@@ -1760,7 +1785,7 @@ msgstr "Aus dem Internet erreichbar: %d"
 msgid "Open network"
 msgstr "Offenes Netzwerk"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1536
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1641
 msgid "OpenWrt device"
 msgstr "OpenWrt-Gerät"
 
@@ -1773,15 +1798,15 @@ msgstr ""
 "ablehnt. Dadurch werden keine neuen Regeln geladen, und es ist unklar, "
 "welche Zugriffe möglich sind."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2950
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2970
 msgid "Other access points"
 msgstr "Weitere Zugangspunkte"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2067
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2087
 msgid "Overlaid"
 msgstr "Überlagert"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2068
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2088
 msgid "Overlaid, log scale"
 msgstr "Überlagert, logarithmische Skala"
 
@@ -1789,15 +1814,15 @@ msgstr "Überlagert, logarithmische Skala"
 msgid "Overview"
 msgstr "Übersicht"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4701
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4797
 msgid "PMF"
 msgstr "PMF"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2371
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2391
 msgid "Paused"
 msgstr "Pausiert"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2371
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2391
 msgid "Paused while hidden"
 msgstr "Im Hintergrund pausiert"
 
@@ -1813,7 +1838,7 @@ msgstr ""
 "Ping und andere Kontrollmeldungen, Multicast, DHCP-Verlängerungen und an Ihr "
 "Netzwerk weitergeleitetes IPsec: was jeder Router durchlässt."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5073
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5169
 msgctxt "vantage"
 msgid "Platform"
 msgstr "Plattform"
@@ -1823,37 +1848,44 @@ msgctxt "vantage"
 msgid "Poor"
 msgstr "Schlecht"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4745
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4749
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4841
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4845
 msgid "Port"
 msgstr "Port"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:434
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:440
 msgid "Port %d"
 msgstr "Port %d"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4207
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4227
 msgid "Port %s"
 msgstr "Port %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4199
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4219
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4525
 msgid "Port %s of %s"
 msgstr "Port %s von %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3111
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3131
 msgid "Port total: %s"
 msgstr "Port insgesamt: %s"
+
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1854
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4478
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4479
+msgid "Ports"
+msgstr "Ports"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/names.js:46
 msgid "Private"
 msgstr "Privat"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4723
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4819
 msgid "Private Wi-Fi address (randomised by the device)"
 msgstr "Private WLAN-Adresse (vom Gerät zufällig erzeugt)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4763
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4784
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4859
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4880
 msgid "Private address (randomised by the device)"
 msgstr "Private Adresse (vom Gerät zufällig erzeugt)"
 
@@ -1861,30 +1893,30 @@ msgstr "Private Adresse (vom Gerät zufällig erzeugt)"
 msgid "Private device"
 msgstr "Privates Gerät"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5070
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5166
 msgid "Processes"
 msgstr "Prozesse"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5037
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5133
 msgid "Protocol"
 msgstr "Protokoll"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4418
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4438
 msgid "Public key %s"
 msgstr "Öffentlicher Schlüssel %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3827
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3829
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3847
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3849
 msgid "Quick filters"
 msgstr "Schnellfilter"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4709
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4974
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4805
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5070
 msgctxt "vantage"
 msgid "Radio"
 msgstr "Funkmodul"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3783
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3803
 msgid "Radio details"
 msgstr "Details zum Funkmodul"
 
@@ -1896,76 +1928,77 @@ msgstr "Das Funkmodul ist deaktiviert"
 msgid "Radio is enabled but not up"
 msgstr "Das Funkmodul ist aktiviert, aber außer Betrieb"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3807
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4968
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3827
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5064
 msgid "Radio settings"
 msgstr "Funkmoduleinstellungen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1835
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3735
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3737
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1853
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3755
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3757
 msgid "Radios"
 msgstr "Funkmodule"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2985
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3005
 msgid "Reachability not probed"
 msgstr "Erreichbarkeit nicht getestet"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4194
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4214
 msgid "Reached through the uplink port %s, not connected to this device"
 msgstr ""
 "Über den Uplink-Port %s erreichbar; nicht direkt mit diesem Gerät verbunden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5027
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5123
 msgid "Realtime graphs"
 msgstr "Echtzeit-Diagramme"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5054
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5150
 msgctxt "vantage"
 msgid "Received"
 msgstr "Empfangen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4426
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4446
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4528
 msgid "Received %s, sent %s"
 msgstr "Empfangen %s, gesendet %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2372
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2392
 msgctxt "vantage"
 msgid "Reconnecting…"
 msgstr "Verbindung wird wiederhergestellt…"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2668
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2688
 msgid "Refused this device's key"
 msgstr "Schlüssel dieses Geräts abgelehnt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4005
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4025
 msgid "Remove filter: %s"
 msgstr "Filter entfernen: %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4858
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4954
 msgid "Remove name"
 msgstr "Namen entfernen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4655
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4735
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4775
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4751
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4831
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4871
 msgctxt "vantage"
 msgid "Rename"
 msgstr "Umbenennen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2136
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2156
 msgid "Reset"
 msgstr "Zurücksetzen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4795
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4891
 msgid "Reverse DNS of its address"
 msgstr "Name aus der DNS-Rückwärtsauflösung der Adresse"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1549
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1654
 msgid "Root (overlay)"
 msgstr "Root (Overlay)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5050
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5146
 msgid "Route metric"
 msgstr "Routing-Metrik"
 
@@ -1977,28 +2010,28 @@ msgstr "Router-Verwaltung erreichbar: %s"
 msgid "SSH (port 22)"
 msgstr "SSH (Port 22)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4850
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4946
 msgid "Save"
 msgstr "Speichern"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4714
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4810
 msgid "Seen since"
 msgstr "Erkannt seit"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5088
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5184
 msgid "Sensor"
 msgstr "Sensor"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5055
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5151
 msgctxt "vantage"
 msgid "Sent"
 msgstr "Gesendet"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2671
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2691
 msgid "Sent a report that could not be read"
 msgstr "Unlesbaren Bericht gesendet"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2071
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2091
 msgid "Separate lanes"
 msgstr "Getrennte Spuren"
 
@@ -2006,61 +2039,62 @@ msgstr "Getrennte Spuren"
 msgid "Settings to check"
 msgstr "Zu prüfende Einstellungen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4750
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4846
 msgid "Shared by %d devices"
 msgstr "Von %d Geräten gemeinsam genutzt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4203
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4223
 msgid "Shared port"
 msgstr "Gemeinsam genutzter Port"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2217
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2237
 msgid "Show %s"
 msgstr "%s anzeigen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4152
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4172
 msgid "Show all clients"
 msgstr "Alle Clients anzeigen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3208
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3228
 msgid "Show details"
 msgstr "Details anzeigen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4434
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4454
 msgid "Show fewer"
 msgstr "Weniger anzeigen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3403
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3423
 msgid "Show or hide system details"
 msgstr "Systemdetails ein- oder ausblenden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2626
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2646
 msgid "Show or hide the network path"
 msgstr "Netzwerkpfad ein- oder ausblenden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3738
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3758
 msgid "Show or hide the radio details"
 msgstr "Details zum Funkmodul ein- oder ausblenden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3523
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3543
 msgid "Show or hide the throughput chart"
 msgstr "Durchsatzdiagramm ein- oder ausblenden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4345
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4365
 msgid "Show or hide the wireless networks"
 msgstr "WLAN-Netzwerke ein- oder ausblenden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3082
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3136
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4363
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3102
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3156
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4383
 msgid "Show the clients of %s"
 msgstr "Clients an %s anzeigen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3111
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3131
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4529
 msgid "Show the devices on %s"
 msgstr "Geräte an %s anzeigen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3151
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3171
 msgid "Show the wired devices of %s"
 msgstr "Kabelgebundene Geräte an %s anzeigen"
 
@@ -2068,9 +2102,9 @@ msgstr "Kabelgebundene Geräte an %s anzeigen"
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:130
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:138
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:140
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4081
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4258
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4682
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4101
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4278
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4778
 msgid "Signal"
 msgstr "Signal"
 
@@ -2078,7 +2112,7 @@ msgstr "Signal"
 msgid "Signal not reported"
 msgstr "Kein Signalwert gemeldet"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5036
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5132
 msgctxt "vantage"
 msgid "Speed"
 msgstr "Geschwindigkeit"
@@ -2089,27 +2123,27 @@ msgid_plural "Standard housekeeping: %d rules"
 msgstr[0] "Üblicher Netzwerkbetrieb: %d Regel"
 msgstr[1] "Üblicher Netzwerkbetrieb: %d Regeln"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2083
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2103
 msgid "Starfield"
 msgstr "Sternenfeld"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4161
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4181
 msgid "Stations appear here as soon as they associate with one of the SSIDs."
 msgstr ""
 "WLAN-Stationen erscheinen hier, sobald sie sich mit einer der SSIDs "
 "verbinden."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4384
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4975
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4404
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5071
 msgid "Status"
 msgstr "Status"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:98
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3420
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3440
 msgid "Storage"
 msgstr "Speicher"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4859
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4955
 msgid "Stored on this device in /etc/config/vantage"
 msgstr "Auf diesem Gerät unter /etc/config/vantage gespeichert"
 
@@ -2125,12 +2159,12 @@ msgstr "Starkes Signal %s, Verbindung mit %s"
 msgid "Strong signal, %s"
 msgstr "Starkes Signal, %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3477
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3497
 msgctxt "vantage"
 msgid "Swap"
 msgstr "Swap"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4753
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4849
 msgid "Switch ports"
 msgstr "Switch-Ports"
 
@@ -2142,13 +2176,13 @@ msgstr "Switch-Ports des VLAN %d auf %s: %s"
 msgid "Switched off"
 msgstr "Ausgeschaltet"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1836
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3402
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3403
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1855
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3422
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3423
 msgid "System"
 msgstr "System"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5070
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5166
 msgid "System settings"
 msgstr "Systemeinstellungen"
 
@@ -2160,26 +2194,26 @@ msgstr "Tbit/s"
 msgid "Telnet (port 23)"
 msgstr "Telnet (Port 23)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5087
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5183
 msgid "Temperature"
 msgstr "Temperatur"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:79
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3434
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3454
 msgid "Temperature %s"
 msgstr "Temperatur %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1549
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1654
 msgid "Temporary (RAM)"
 msgstr "Temporär (RAM)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4080
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4100
 msgid "The bridge forgets a device after about five minutes without traffic"
 msgstr ""
 "Nach etwa fünf Minuten ohne Datenverkehr entfernt die Bridge den "
 "Geräteeintrag"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4155
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4175
 msgid ""
 "The bridges have learned so many addresses that listing them here would "
 "strain this device."
@@ -2198,8 +2232,8 @@ msgstr ""
 "Zone wan zu oder stellen Sie in den allgemeinen Einstellungen „Eingehend“ "
 "auf „ablehnen“."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4923
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4952
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5019
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5048
 msgid "The device could not write /etc/config/vantage."
 msgstr "Das Gerät konnte /etc/config/vantage nicht schreiben."
 
@@ -2229,7 +2263,7 @@ msgstr ""
 "von außen erreichbar. Stellen Sie in den allgemeinen Einstellungen "
 "„Eingehend“ auf „ablehnen“."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4798
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4894
 msgid "The name the device announces (WPS)"
 msgstr "Der vom Gerät gemeldete Name (WPS)"
 
@@ -2241,7 +2275,7 @@ msgstr "Der einzige gemessene Client liegt über %s"
 msgid "The only measured client"
 msgstr "Der einzige gemessene Client"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4192
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4212
 msgid "The router this device sends its traffic to"
 msgstr "Der Router, an den dieses Gerät seinen Datenverkehr sendet"
 
@@ -2259,7 +2293,7 @@ msgstr "Der gespeicherte Name hat eine ungültige Abschnitts-ID"
 msgid "The uplinks could not be checked"
 msgstr "Die Uplinks konnten nicht geprüft werden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3005
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3025
 msgid "This access point"
 msgstr "Dieser Zugangspunkt"
 
@@ -2269,19 +2303,19 @@ msgstr ""
 "Diese Adressfamilie ist keiner Zone zugeordnet: Die Standardrichtlinien "
 "gelten."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3005
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3974
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3985
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3025
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3994
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4005
 msgid "This device"
 msgstr "Dieses Gerät"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4922
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5018
 msgid "This device already keeps %d of these; turn some off first."
 msgstr ""
 "Auf diesem Gerät sind bereits %d solcher Ausnahmen gespeichert. Deaktivieren "
 "Sie zuerst einige davon."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4951
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5047
 msgid "This device already stores %d names; remove some first."
 msgstr ""
 "Auf diesem Gerät sind bereits %d Namen gespeichert. Entfernen Sie zuerst "
@@ -2291,7 +2325,7 @@ msgstr ""
 msgid "This device reports no radios"
 msgstr "Dieses Gerät meldet keine Funkmodule"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5019
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5115
 msgid ""
 "This line has a private address (%s): another router, or the provider, "
 "translates addresses in front of this one (double NAT). Port forwards can be "
@@ -2302,7 +2336,7 @@ msgstr ""
 "Portweiterleitungen sind aus dem Internet nur erreichbar, soweit der andere "
 "Router oder der Anbieter sie weiterreicht."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5020
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5116
 msgid ""
 "This line has a shared address (%s): the provider translates addresses for "
 "many customers (carrier-grade NAT). Port forwards cannot be reached from the "
@@ -2312,7 +2346,7 @@ msgstr ""
 "übersetzt die Adressen für viele Kunden (Carrier-Grade-NAT). "
 "Portweiterleitungen sind aus dem Internet über IPv4 nicht erreichbar."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5011
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5107
 msgid "This line is down or has no default route now."
 msgstr ""
 "Diese Verbindung ist derzeit außer Betrieb oder hat keine Standardroute."
@@ -2325,7 +2359,7 @@ msgstr ""
 "Hier lässt sich nicht feststellen, welche Zugriffe möglich sind. Laden Sie "
 "die Seite neu. Falls das nicht hilft, prüfen Sie die Firewall-Seiten."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4959
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5055
 msgid "This radio is not reported any more."
 msgstr "Dieses Funkmodul wird nicht mehr gemeldet."
 
@@ -2333,23 +2367,23 @@ msgstr "Dieses Funkmodul wird nicht mehr gemeldet."
 msgid "This setup is beyond what this overview checks"
 msgstr "Diese Konfiguration geht über die Prüfungen dieser Übersicht hinaus"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4637
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4733
 msgid "This station is not associated right now."
 msgstr "Diese WLAN-Station ist derzeit nicht verbunden."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1835
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3515
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3517
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4688
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1853
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3535
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3537
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4784
 msgctxt "vantage"
 msgid "Throughput"
 msgstr "Durchsatz"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2076
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2096
 msgid "Throughput chart"
 msgstr "Durchsatzdiagramm"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3508
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3528
 msgid "Throughput per link; arrow keys read the values over time"
 msgstr ""
 "Durchsatz je Verbindung; mit den Pfeiltasten lassen sich die Werte im "
@@ -2360,40 +2394,40 @@ msgctxt "vantage"
 msgid "TiB"
 msgstr "TiB"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4695
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4698
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4791
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4794
 msgid "To device"
 msgstr "Zum Gerät"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4219
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4274
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4333
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4239
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4294
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4353
 msgid "To device %s, from device %s"
 msgstr "Zum Gerät: %s, vom Gerät: %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4266
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4286
 msgid "To device: %s"
 msgstr "Zum Gerät: %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5030
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5126
 msgid "To network"
 msgstr "Zum Netzwerk"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4154
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4174
 msgid "Too many devices to list"
 msgstr "Zu viele Geräte für die Anzeige"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1836
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4291
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4292
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1855
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4311
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4312
 msgctxt "vantage"
 msgid "Top talkers"
 msgstr "Aktivste Geräte"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4716
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4747
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4754
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4971
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4812
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4843
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4850
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5067
 msgid "Traffic"
 msgstr "Datenverkehr"
 
@@ -2412,20 +2446,20 @@ msgstr ""
 "passende Weiterleitung. Stellen Sie in den allgemeinen Einstellungen "
 "„Weiterleitung“ auf „ablehnen“."
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3001
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3021
 msgid "Traffic to the internet goes through %s, a tunnel over this line"
 msgstr "Der Internetverkehr läuft über %s, einen Tunnel über diese Verbindung"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5040
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5136
 msgid "Tunnel"
 msgstr "Tunnel"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3794
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4978
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3814
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5074
 msgid "Tx power"
 msgstr "Sendeleistung"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4412
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4432
 msgid "UDP port %d"
 msgstr "UDP-Port %d"
 
@@ -2438,16 +2472,16 @@ msgstr ""
 "selbst Ports öffnen. Diese Ports werden hier nicht angezeigt."
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/names.js:289
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4636
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4732
 msgctxt "vantage"
 msgid "Unknown device"
 msgstr "Unbekanntes Gerät"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4950
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5046
 msgid "Unknown device type"
 msgstr "Unbekannter Gerätetyp"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4959
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5055
 msgid "Unknown radio"
 msgstr "Unbekanntes Funkmodul"
 
@@ -2462,14 +2496,14 @@ msgid "Unnamed rule"
 msgstr "Unbenannte Regel"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:60
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3782
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4975
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5035
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3802
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5071
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5131
 msgctxt "vantage"
 msgid "Up"
 msgstr "In Betrieb"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3427
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3447
 msgid "Up %s"
 msgstr "Laufzeit %s"
 
@@ -2478,25 +2512,27 @@ msgstr "Laufzeit %s"
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:49
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:54
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:60
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3541
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5014
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3561
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4534
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5110
 msgctxt "vantage"
 msgid "Uplink"
 msgstr "Uplink"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3541
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3542
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3561
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3562
 msgid "Uplink %s"
 msgstr "Uplink %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5007
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5023
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4527
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5103
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5119
 msgid "Uplink · %s"
 msgstr "Uplink · %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3521
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3617
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3691
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3541
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3637
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3711
 msgid "Upload"
 msgstr "Upload"
 
@@ -2504,29 +2540,29 @@ msgstr "Upload"
 msgid "Upload (from clients)"
 msgstr "Upload (von Clients)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4718
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4814
 msgctxt "vantage"
 msgid "Uploaded"
 msgstr "Hochgeladen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4194
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4214
 msgid "Upstream"
 msgstr "Upstream"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5077
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5173
 msgid "Uptime"
 msgstr "Laufzeit"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4197
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4758
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4217
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4854
 msgid "VLAN %d"
 msgstr "VLAN %d"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2312
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2332
 msgid "Vantage %s: what's new"
 msgstr "Vantage %s: Neuerungen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2669
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2689
 msgid "Vantage add-on not installed on it"
 msgstr "Vantage-Add-on dort nicht installiert"
 
@@ -2573,7 +2609,7 @@ msgstr ""
 "Gateways) und auf den Rauschpegel jedes Funkmoduls (luci.vantage survey: "
 "Kanalmesswerte über nl80211)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2680
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2700
 msgid "Vantage's access point add-on is not installed on it"
 msgstr "Das Zugangspunkt-Add-on von Vantage ist dort nicht installiert"
 
@@ -2589,8 +2625,8 @@ msgstr "Sehr schwaches Signal %s; Verbindungsabbrüche sind zu erwarten"
 msgid "Very weak signal; expect drops"
 msgstr "Sehr schwaches Signal; Verbindungsabbrüche sind zu erwarten"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3972
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3983
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3992
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4003
 msgid "Via %s"
 msgstr "Über %s"
 
@@ -2690,15 +2726,15 @@ msgstr "WPA3-Personal"
 msgid "WPS"
 msgstr "WPS"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4726
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4822
 msgid "WPS device name"
 msgstr "WPS-Gerätename"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2663
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2683
 msgid "Waiting for its first report"
 msgstr "Warten auf den ersten Bericht"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2501
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2521
 msgid "Warning"
 msgstr "Warnung"
 
@@ -2712,7 +2748,7 @@ msgid "Weak"
 msgstr "Schwach"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:169
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3987
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4007
 msgid "Weak signal"
 msgstr "Schwaches Signal"
 
@@ -2738,42 +2774,42 @@ msgstr ""
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:111
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:115
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:117
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4062
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4082
 msgid "Wi-Fi"
 msgstr "WLAN"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1836
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4383
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4384
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1855
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4403
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4404
 msgid "WireGuard"
 msgstr "WireGuard"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2897
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3149
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4062
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2917
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3169
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4082
 msgid "Wired"
 msgstr "Kabelgebunden"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3138
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3158
 msgid "Wired to %s on %s"
 msgstr "Per Kabel mit %s verbunden, an %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4193
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4213
 msgid "Wired to %s, port %s"
 msgstr "Per Kabel mit %s verbunden, Port %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1836
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4344
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4345
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:1855
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4364
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4365
 msgctxt "vantage"
 msgid "Wireless networks"
 msgstr "WLAN-Netzwerke"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4667
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4763
 msgid "Wireless settings"
 msgstr "WLAN-Einstellungen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4794
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4890
 msgid "Your name for this device"
 msgstr "Ihr Name für dieses Gerät"
 
@@ -2811,19 +2847,19 @@ msgstr "beliebige Zone"
 msgid "any zone (default policy)"
 msgstr "beliebige Zone (Standardrichtlinie)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3788
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3808
 msgid "auto"
 msgstr "auto"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4714
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4810
 msgid "before this page opened"
 msgstr "vor dem Öffnen dieser Seite"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4196
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4216
 msgid "behind %s"
 msgstr "hinter %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4751
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4847
 msgid "behind %s, VLAN %d"
 msgstr "hinter %s, VLAN %d"
 
@@ -2832,22 +2868,22 @@ msgctxt "vantage"
 msgid "bit/s"
 msgstr "bit/s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3169
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4710
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4711
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3189
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4806
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4807
 msgid "channel %d"
 msgstr "Kanal %d"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3649
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3669
 msgid "collecting · %s of data"
 msgstr "Datenerfassung · %s erfasst"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3649
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3669
 msgid "collecting · first samples"
 msgstr "Datenerfassung · erste Messwerte"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:358
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3629
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3649
 msgid "collecting…"
 msgstr "Datenerfassung läuft…"
 
@@ -2859,18 +2895,18 @@ msgstr "eigene Regeldatei"
 msgid "dBm"
 msgstr "dBm"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2810
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3003
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2830
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3023
 msgid "default route"
 msgstr "Standardroute"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3003
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3023
 msgid "default route via %s"
 msgstr "Standardroute über %s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:515
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4203
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4750
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4223
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4846
 msgid "down"
 msgstr "keine Verbindung"
 
@@ -2879,7 +2915,7 @@ msgctxt "vantage"
 msgid "drop"
 msgstr "verwerfen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4824
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4920
 msgctxt "vantage"
 msgid "e.g. Living room TV"
 msgstr "z. B. Fernseher im Wohnzimmer"
@@ -2905,7 +2941,7 @@ msgstr "von überall"
 msgid "from anywhere except %s"
 msgstr "von überall außer %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:445
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:451
 msgid "full duplex"
 msgstr "Vollduplex"
 
@@ -2913,13 +2949,15 @@ msgstr "Vollduplex"
 msgid "gateway %s"
 msgstr "Gateway %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:445
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:451
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4537
 msgid "half duplex"
 msgstr "Halbduplex"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:62
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3026
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4371
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3046
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4391
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4540
 msgid "idle"
 msgstr "inaktiv"
 
@@ -2953,7 +2991,7 @@ msgstr "ignoriert: Die Zone %s existiert nicht oder ist deaktiviert"
 msgid "internet"
 msgstr "Internet"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4760
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4856
 msgid "its port %s"
 msgstr "dessen Port %s"
 
@@ -2967,18 +3005,20 @@ msgctxt "vantage"
 msgid "kbit/s"
 msgstr "kbit/s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3412
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3648
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3432
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3668
 msgid "last 5 min"
 msgstr "letzte 5 min"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:187
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:104
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4268
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4288
 msgid "legacy"
 msgstr "Legacy"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:515
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4526
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4537
 msgid "link up"
 msgstr "Verbindung aktiv"
 
@@ -2986,49 +3026,49 @@ msgstr "Verbindung aktiv"
 msgid "mDNS"
 msgstr "mDNS"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4796
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4892
 msgid "mDNS announcement"
 msgstr "mDNS-Ankündigung"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4690
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4757
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4786
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4853
 msgid "measuring"
 msgstr "Messung läuft"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3624
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3644
 msgid "measuring…"
 msgstr "Messung läuft…"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3605
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3625
 msgctxt "vantage"
 msgid "no data"
 msgstr "keine Daten"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2996
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3016
 msgid "no uplink"
 msgstr "kein Uplink"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4724
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4820
 msgid "not known to this AP"
 msgstr "diesem AP nicht bekannt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4764
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4860
 msgid "not known to this device"
 msgstr "diesem Gerät nicht bekannt"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4747
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4843
 msgid "not reported"
 msgstr "nicht gemeldet"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4981
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5077
 msgid "not reported (driver placeholder %s)"
 msgstr "nicht gemeldet (Treiber-Platzhalter %s)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4702
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4798
 msgid "not reported by the driver"
 msgstr "vom Treiber nicht gemeldet"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3645
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3665
 msgctxt "vantage"
 msgid "now"
 msgstr "jetzt"
@@ -3037,16 +3077,16 @@ msgstr "jetzt"
 msgid "now %s down, %s up"
 msgstr "jetzt %s Download, %s Upload"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4700
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4796
 msgid "older than the radio (%s)"
 msgstr "ältere WLAN-Generation als das Funkmodul (%s)"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3622
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3642
 msgctxt "vantage"
 msgid "peak"
 msgstr "Spitze"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3413
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3433
 msgid "per core"
 msgstr "pro Kern"
 
@@ -3055,11 +3095,11 @@ msgctxt "vantage"
 msgid "port forward"
 msgstr "Portweiterleitung"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4684
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4780
 msgid "range %s … %s"
 msgstr "Bereich %s … %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5029
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5125
 msgid "received on %s"
 msgstr "empfangen auf %s"
 
@@ -3072,7 +3112,7 @@ msgstr "ablehnen"
 msgid "router port %s"
 msgstr "Router-Port %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5030
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5126
 msgid "sent on %s"
 msgstr "gesendet auf %s"
 
@@ -3080,12 +3120,12 @@ msgstr "gesendet auf %s"
 msgid "short GI"
 msgstr "kurzes Schutzintervall"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4223
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4759
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4243
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4855
 msgid "static entry"
 msgstr "statischer Eintrag"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4752
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4848
 msgid "switch port %s"
 msgstr "Switch-Port %s"
 
@@ -3097,11 +3137,11 @@ msgstr "ausgeschaltet"
 msgid "the covered subnets of zone %s"
 msgstr "die abgedeckten Subnetze der Zone %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4756
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4852
 msgid "the port in total: %s"
 msgstr "der Port insgesamt: %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4751
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4847
 msgid "the port: %s"
 msgstr "der Port: %s"
 
@@ -3121,14 +3161,14 @@ msgstr "heute"
 msgid "traffic rule"
 msgstr "Traffic-Regel"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3010
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3143
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3030
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3163
 msgid "up %s"
 msgstr "Laufzeit %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4193
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4264
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5121
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4213
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4284
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5217
 msgid "via %s"
 msgstr "über %s"
 
@@ -3145,7 +3185,7 @@ msgstr "Zonenweiterleitung"
 msgid "zones %s and %s if they share a device"
 msgstr "Zonen %s und %s, wenn sie sich ein Gerät teilen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3642
+#: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3662
 msgid "−%d min"
 msgstr "−%d min"
 

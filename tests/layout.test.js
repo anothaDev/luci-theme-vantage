@@ -76,8 +76,8 @@ test('normalize: junk, unknown and duplicate tiles are dropped; widths clamped',
 	const hero = n[layout.indexOf(n, 'hero')], talk = n[layout.indexOf(n, 'talk')];
 	assert.deepEqual([ hero.c, hero.w ], [ 1, 3 ], 'raised to the path minimum, kept inside the grid');
 	assert.deepEqual([ talk.c, talk.w ], [ 0, 1 ]);
-	/* (the WireGuard tile only with a tunnel, below) */
-	assert.deepEqual(ids(n).slice().sort(), layout.TILES.filter(id => id !== 'wg').sort(), 'every tile present once');
+	/* (the WireGuard tile only with a tunnel, the Ports tile only with ports: below) */
+	assert.deepEqual(ids(n).slice().sort(), layout.TILES.filter(id => id !== 'wg' && id !== 'ports').sort(), 'every tile present once');
 });
 
 test('normalize: tiles missing from a stored layout return after their default neighbour', () => {
@@ -121,7 +121,7 @@ test('the WireGuard tile: only with a tunnel; without one every layout is as it 
 	assert.deepEqual(layout.normalize(stored, 'wide', false), layout.normalize(stored.slice(1), 'wide', false), 'as if it were not named');
 	const n = layout.normalize(stored, 'wide', false, true);
 	assert.deepEqual(n[0], { id: 'wg', c: 0, w: 4, hide: false }, 'and with one: where the viewer put it');
-	assert.equal(ids(n).length, layout.TILES.length);
+	assert.equal(ids(n).length, layout.TILES.length - 1, 'every tile but Ports, which needs ports');
 	/* hidden with a tunnel: it stays hidden */
 	assert.deepEqual(layout.normalize([ { id: 'hero', c: 0, w: 4 }, { id: 'wg', c: 0, w: 2, hide: true } ], 'wide', false, true).filter(e => e.hide).map(e => e.id), [ 'wg' ]);
 });
@@ -146,6 +146,78 @@ test('the WireGuard tile: a stored layout from before it gets the tile where the
 	l = layout.setHidden(layout.move(l, 'wg', -1), 'wg', true);
 	assert.deepEqual(l[layout.indexOf(l, 'wg')], { id: 'wg', c: 0, w: 3, hide: true });
 	assert.deepEqual(layout.normalize(layout.decode('wide=' + layout.encode(layout.compact(l))).wide, 'wide', false, true), l);
+});
+
+/* the Ports tile exists only on a device with two Ethernet ports or more, with Wi-Fi or without, a tunnel or none:
+   the fourth argument */
+test('the Ports tile: only with ports; without them every layout is as it was', () => {
+	assert.ok(layout.TILES.includes('ports'));
+	for (const wired of [ false, true ]) for (const wg of [ false, true ]) {
+		assert.equal(layout.available('ports', wired, wg), false);
+		assert.equal(layout.available('ports', wired, wg, false), false);
+		assert.equal(layout.available('ports', wired, wg, true), true);
+		assert.equal(layout.available('wg', wired, wg, true), wg, 'ports are no tunnel');
+		for (const tier of [ 'wide', 'mid', 'narrow' ]) {
+			const without = layout.defaults(tier, wired, wg), wth = layout.defaults(tier, wired, wg, true);
+			assert.ok(!ids(without).includes('ports'), tier);
+			assert.deepEqual(layout.defaults(tier, wired, wg, false), without);
+			/* with ports: the same tiles in the same places, and the tile after them */
+			assert.deepEqual(wth.slice(0, -1), without, tier);
+			assert.equal(wth[wth.length - 1].id, 'ports', tier);
+			assert.deepEqual(layout.normalize(null, tier, wired, wg, true), wth);
+		}
+	}
+	/* as wide as Clients on a wide screen (beside the right-hand column with Wi-Fi), the full width elsewhere */
+	assert.deepEqual(layout.defaults('wide', false, false, true).slice(-1), [ { id: 'ports', c: 0, w: 3, hide: false } ]);
+	assert.deepEqual(layout.defaults('wide', true, false, true).slice(-1), [ { id: 'ports', c: 0, w: 4, hide: false } ]);
+	for (const wired of [ false, true ]) {
+		assert.deepEqual(layout.defaults('mid', wired, false, true).slice(-1), [ { id: 'ports', c: 0, w: 2, hide: false } ]);
+		assert.deepEqual(layout.defaults('narrow', wired, false, true).slice(-1), [ { id: 'ports', c: 0, w: 1, hide: false } ]);
+	}
+	/* every tile there is: nine with Wi-Fi, a tunnel and ports */
+	assert.deepEqual(ids(layout.defaults('wide', false, true, true)), [ 'hero', 'chart', 'radios', 'clients', 'sys', 'talk', 'ssids', 'wg', 'ports' ]);
+	assert.deepEqual(ids(layout.defaults('wide', false, true, true)).slice().sort(), layout.TILES.slice().sort());
+	assert.equal(layout.available('radios', true, true, true), false, 'Wi-Fi tiles need Wi-Fi, with ports too');
+	/* it may be one column wide and is not stretched to fill a slot: its cells wrap */
+	assert.equal(layout.minW('ports', 'wide'), 1);
+	assert.equal(layout.resize(layout.defaults('wide', false, false, true), 'ports', -9, 'wide').slice(-1)[0].w, 1);
+	/* a stored layout that names it, read on a device with one port (or before two were seen) */
+	const stored = [ { id: 'ports', c: 0, w: 4 }, { id: 'hero', c: 0, w: 4 }, { id: 'chart', c: 0, w: 2, hide: true } ];
+	assert.ok(!ids(layout.normalize(stored, 'wide', false)).includes('ports'));
+	assert.deepEqual(layout.normalize(stored, 'wide', false), layout.normalize(stored.slice(1), 'wide', false), 'as if it were not named');
+	const n = layout.normalize(stored, 'wide', false, false, true);
+	assert.deepEqual(n[0], { id: 'ports', c: 0, w: 4, hide: false }, 'and with ports: where the viewer put it');
+	assert.deepEqual(layout.normalize([ { id: 'hero', c: 0, w: 4 }, { id: 'ports', c: 0, w: 2, hide: true } ], 'wide', false, false, true).filter(e => e.hide).map(e => e.id), [ 'ports' ], 'hidden stays hidden');
+});
+
+test('the Ports tile: a stored layout from before it gets the tile where the default has it', () => {
+	/* a 1.0.x layout: every tile of then, rearranged; nothing about ports (or wg) */
+	const old = [ { id: 'clients', c: 0, w: 4 }, { id: 'hero', c: 0, w: 4 }, { id: 'chart', c: 0, w: 2 }, { id: 'radios', c: 2, w: 2 },
+		{ id: 'ssids', c: 0, w: 1 }, { id: 'sys', c: 1, w: 1 }, { id: 'talk', c: 2, w: 1, hide: true } ];
+	assert.deepEqual(layout.normalize(old, 'wide', false), old.map(e => Object.assign({ hide: false }, e)), 'one port: exactly the stored one');
+	const n = layout.normalize(old, 'wide', false, false, true);
+	/* after the tile that precedes it by default (without a tunnel: the wireless networks), with its default place and width */
+	assert.deepEqual(ids(n), [ 'clients', 'hero', 'chart', 'radios', 'ssids', 'ports', 'sys', 'talk' ]);
+	assert.deepEqual(n[5], { id: 'ports', c: 0, w: 3, hide: false });
+	assert.deepEqual(n.filter(e => e.id !== 'ports'), layout.normalize(old, 'wide', false), 'the others stay as stored');
+	/* with a tunnel too: after the WireGuard tile, which itself comes after the wireless networks */
+	assert.deepEqual(ids(layout.normalize(old, 'wide', false, true, true)), [ 'clients', 'hero', 'chart', 'radios', 'ssids', 'wg', 'ports', 'sys', 'talk' ]);
+	/* a layout arranged with a tunnel and before the Ports tile: after the WireGuard tile, wherever that was put */
+	const tun = [ { id: 'wg', c: 0, w: 2 } ].concat(old);
+	assert.deepEqual(ids(layout.normalize(tun, 'wide', false, true, true)), [ 'wg', 'ports', 'clients', 'hero', 'chart', 'radios', 'ssids', 'sys', 'talk' ]);
+	/* the router's form of it (decode), and a wired device's: after the tile that precedes it in the wired default,
+	   the full width; the tiles the layout names stay in its order */
+	const dec = layout.decode('wide_wired=clients:0:4 hero:0:4 sys:3:1:h chart:0:3')['wide-wired'];
+	const w = layout.normalize(dec, 'wide', true, false, true), def = ids(layout.defaults('wide', true, false, true));
+	assert.equal(ids(w)[ids(w).indexOf('ports') - 1], def[def.indexOf('ports') - 1]);
+	assert.deepEqual(w[layout.indexOf(w, 'ports')], { id: 'ports', c: 0, w: 4, hide: false });
+	assert.deepEqual(ids(w).filter(id => [ 'clients', 'hero', 'sys', 'chart' ].includes(id)), [ 'clients', 'hero', 'sys', 'chart' ]);
+	assert.deepEqual(w.filter(e => e.id !== 'ports'), layout.normalize(dec, 'wide', true), 'and without ports: as it was');
+	/* editing goes on as for any tile, and the result reads back */
+	let l = layout.resize(n, 'ports', -1, 'wide');
+	l = layout.setHidden(layout.move(l, 'ports', -1), 'ports', true);
+	assert.deepEqual(l[layout.indexOf(l, 'ports')], { id: 'ports', c: 0, w: 2, hide: true });
+	assert.deepEqual(layout.normalize(layout.decode('wide=' + layout.encode(layout.compact(l))).wide, 'wide', false, false, true), l);
 });
 
 test('encode and decode: the router\'s form of a layout', () => {

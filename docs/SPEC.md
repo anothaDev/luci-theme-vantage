@@ -426,7 +426,10 @@ text around it so it looks the same size.
   a per-tile minimum and hide them. Saved per screen class (and
   separately for wired devices) and validated on read: under the Vantage
   theme with the chart style on the router (see the theme toggle), else
-  in `localStorage`, which also keeps this browser's copy. A stored
+  in `localStorage`, which also keeps this browser's copy. A layout on
+  the router names at most twelve tiles (nine exist: seven, and the
+  WireGuard and Ports tiles where the device has a tunnel or ports); the
+  theme and its template refuse a longer one. A stored
   layout that leaves a tile out (a wired device's saved before it had
   Top talkers) gets it after the tile it follows by default, shown. A
   tile whose content shrinks keeps its height for 30 s,
@@ -505,6 +508,54 @@ text around it so it looks the same size.
   layout arranged while no tunnel is reported keeps the tile's stored
   entry, hidden or not, where it was. A handshake dated ahead of the
   browser's clock counts as now.
+- **Ports tile**: on a device with two Ethernet ports or more, a tile
+  with a cell for each: its name, its link (a dot in the status colours,
+  grey without a link and never a warning, and the negotiated speed,
+  with "half duplex" where it is), its traffic, the number of wired
+  hosts learned on it, and a mark on the port a line to the internet
+  leaves through ("Uplink", or the line's name where there are several).
+  ↓ is what goes to the devices on the port and ↑ what comes from them,
+  as the path's port nodes and the wired list count; on a line's port ↓
+  is what comes from the internet, as the line shows it. Error, drop and
+  collision counters since boot show only where they are not zero, a
+  line each in the cell and the same words in its tooltip, which also
+  gives the duplex and what the port itself received and sent. A port
+  with hosts opens the Clients tile's wired list on them, as its node on
+  the path does. An access point with one port has no tile: that port
+  is on the path already, as the uplink's.
+  Nothing is asked of the device for it, and no grant is added: the
+  ports are read from `network.device status`, which the poll has
+  anyway. A port is a device netifd reports with `devtype` `dsa` (a
+  switch's port under DSA), or with `devtype` `ethernet` (netifd's word
+  for an Ethernet device the kernel gives no other type, so never a
+  bridge, a VLAN, a bond, a tunnel or a WireGuard device) whose driver
+  names at least one link mode in `link-supported`: a veth pair, a tap
+  and a virtual machine's paravirtual adapter name none, and nothing
+  else in that reply tells them from a port, so they are left out. Not
+  a wireless device, not a conduit (the CPU's side of a DSA switch,
+  which its ports name in `conduit`), not the CPU's side of a swconfig
+  switch. A swconfig switch's ports come from the map `luci.vantage
+  wired` already returns for the wired hosts (`switches`), each once
+  whatever VLANs it is in, with the link LuCI's `getSwconfigPortState`
+  reports; that call is made as before, only for a switch with hosts
+  behind it, so until then such a port's link is shown as not known
+  ("—"). A switch port has no counters here, so no traffic and no
+  errors; the hosts and the line of a switch VLAN are one port's only
+  where the VLAN has one port, or one with a link. Limits of what the
+  dashboard can read: netifd lists the devices the configuration uses,
+  so a port no interface or bridge names is missing; the roles
+  `/etc/board.json` gives a device's own ports ("lan", "wan") are not
+  read, which would take a grant, so such a port goes by its device's
+  name (a swconfig port keeps the label the wired hosts show, "LAN 2");
+  hosts on a VLAN device over a port (`eth1.10`) are listed under that
+  device, not counted on the port; and a port's
+  counters are the kernel's, so what a switch chip forwards on its own
+  (between two of its ports, or with hardware flow offloading) is not in
+  them. Two ports seen once keep the tile for the session, saying so
+  when a poll lists none. Its layout is the others': the same stored
+  layouts, and one that does not mention the tile gets it where the
+  default has it, after every other tile: as wide as Clients on a wide
+  screen with Wi-Fi, the full width otherwise.
 - **Throughput chart**: one row per line, then each radio, each
   with its own scale. Under "Customize", the viewer picks how download and
   upload share a row: overlaid on one scale (the default), overlaid on a
