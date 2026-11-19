@@ -9,8 +9,8 @@
 //   status        { router: { code, aps: [ { id, name, addr, port, net } ] },
 //                   ap: { ssh, routers: [ { name, key } ], reply } }
 //                 code: this router's pairing code (null before the
-//                 first router_code); net: the network of this router's
-//                 the access point was paired on, by name ("lan"), only
+//                 first router_code); net: the name of this router's
+//                 network the access point was paired on ("lan"), only
 //                 when one is kept with it; ssh: 'ok', or why this device
 //                 cannot be read or paired ('no-dropbear', 'no-key-options',
 //                 'unsupported', 'no-host-key', 'not-running',
