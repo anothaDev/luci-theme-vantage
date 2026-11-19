@@ -89,6 +89,20 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   the other contains (compared without case and punctuation) is left
   out. The chip links to Status → Overview, which has the rest of the
   system details.
+- **Page title**: "Page · hostname". While the dashboard reports that
+  something needs attention it starts with how many checks do, "(2)
+  Dashboard · hostname", so a tab left in the background shows it; the
+  mark is in front because a narrow tab cuts the title's end. The
+  dashboard sets `data-vt-alert` (`warn` or `err`, as for the refresh
+  dot) and `data-vt-alert-count` on `<html>` at every paint; the theme
+  watches those two attributes, takes the count only as a number from 1
+  to 999 ("(!)" for a level without one, as an older dashboard sets it)
+  and writes the title as text, in the one place that sets it
+  (`updateTitle`), only when it changes. The mark goes when the
+  dashboard reports no problem or another page loads; without the
+  dashboard nothing sets it. The dashboard does not poll in a hidden
+  tab (section 4), so such a tab keeps the title it was left with until
+  it is shown again.
 - **Theme toggle**: auto / light / dark, applied in `<head>` before CSS
   (no flash), exposed as `html[data-darkmode]`. The top bar's switch
   shows the pick (auto, sun, moon) and cycles auto → the look the system

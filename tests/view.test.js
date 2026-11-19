@@ -607,6 +607,45 @@ test('health: the theme\'s refresh dot hears a warning or an error, nothing else
 	}
 });
 
+test('health: the theme\'s tab title hears how many checks warn or err, with the level and never without it', () => {
+	const saved = global.document;
+	const root = { attrs: {}, set: [], setAttribute(k, v) { this.attrs[k] = v; this.set.push(k); } };
+	global.document = { documentElement: root };
+	const insight = load('vantage.insight');
+	const paint = summary => {
+		const self = Object.create(view);
+		self.st = { summary };
+		self.m = { clients: [], device: {}, wired: false };
+		self.el = { orb: {}, headline: { textContent: '' }, subline: { textContent: '' } };
+		self.identity = () => [];
+		root.set = [];
+		self.paintHead();
+		return [ root.attrs['data-vt-alert'], root.attrs['data-vt-alert-count'] ];
+	};
+	const check = level => ({ level });
+	try {
+		/* as insight.summary counts them: the warnings and the errors, not the notes */
+		assert.deepEqual(paint(insight.summary([ check('ok'), check('warn'), check('info'), check('warn') ])), [ 'warn', '2' ]);
+		assert.deepEqual(paint(insight.summary([ check('warn'), check('err'), check('err') ])), [ 'err', '3' ]);
+		assert.deepEqual(paint(insight.summary([ check('err') ])), [ 'err', '1' ]);
+		assert.deepEqual(root.set, [ 'data-vt-alert', 'data-vt-alert-count' ], 'both at every paint, so one never outlives the other');
+		/* all fine: both empty, so the theme's title is the page's again */
+		assert.deepEqual(paint(insight.summary([ check('ok'), check('info') ])), [ '', '' ]);
+		assert.deepEqual(paint(insight.summary([])), [ '', '' ]);
+		/* no count without a level, and none that is not above zero */
+		assert.deepEqual(paint({ level: 'ok', count: 4, headline: 'x' }), [ '', '' ]);
+		assert.deepEqual(paint({ level: 'warn', count: 0, headline: 'x' }), [ 'warn', '' ]);
+		assert.deepEqual(paint({ level: 'warn', headline: 'x' }), [ 'warn', '' ]);
+		assert.deepEqual(paint({ level: 'warn', count: '<b>', headline: 'x' }), [ 'warn', '' ]);
+	} finally {
+		if (saved === undefined) delete global.document; else global.document = saved;
+	}
+	/* the theme reads these two names (menu-vantage.js updateTitle, watchAlert) */
+	const theme = fs.readFileSync(path.join(RES, '..', '..', '..', '..', 'luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js'), 'utf8');
+	assert.ok(theme.includes("alertMark(this.root.getAttribute('data-vt-alert'), this.root.getAttribute('data-vt-alert-count'))"));
+	assert.ok(theme.includes("attributeFilter: [ 'data-vt-alert', 'data-vt-alert-count' ]"));
+});
+
 test('live pill: under the Vantage theme only when not live; under another theme always', () => {
 	const saved = { L: global.L, document: global.document };
 	const pill = () => ({ className: '', hidden: false, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; } });

@@ -1107,3 +1107,113 @@ test('translated column titles: the columns the English rule keeps on one line t
 	/* LuCI's own catalogue translates them: no literal _('...') of these titles in the theme */
 	for (const t of list) assert.ok(!src.includes("_('" + t + "')"), t + ' stays out of the theme catalogue');
 });
+
+/* The tab's title (1.1): while the dashboard says something needs
+   attention, how many things do, in front of "Page · hostname" */
+test('tab title: the count while the dashboard warns or errs, a plain mark without one, nothing otherwise', () => {
+	const alertMark = fn('alertMark');
+	assert.equal(alertMark('warn', '2'), '(2) ');
+	assert.equal(alertMark('err', '1'), '(1) ');
+	assert.equal(alertMark('warn', '12'), '(12) ');
+	assert.equal(alertMark('err', 3), '(3) ', 'a number too');
+	/* no count with the level (a dashboard from before 1.1), or not a count */
+	for (const none of [ null, undefined, '', '0', '-1', '1.5', '007', '1000', ' 2', '2 ', '2\n', 'two', '<b>2</b>', '2) Log in', {}, NaN ])
+		assert.equal(alertMark('warn', none), '(!) ', JSON.stringify(none));
+	/* no level, no mark, whatever the count says */
+	for (const level of [ null, undefined, '', 'ok', 'info', 'paused', 'WARN', 'warn ', 'error', true ])
+		assert.equal(alertMark(level, '2'), '', JSON.stringify(level));
+	/* signs and digits only, at any count: nothing of it is a word, an emoji or a check mark */
+	for (let n = 1; n < 1000; n++) assert.match(alertMark('warn', String(n)), /^\(\d{1,3}\) $/);
+});
+
+/* menu-vantage.js whole, on a page that has a title, <html> and
+   MutationObserver: set() is the dashboard writing an attribute */
+function titlePage(attrs) {
+	require('./luci-stub');      /* String.prototype.format */
+	const p = { watched: [], writes: [] };
+	let title = 'Dashboard · LuCI';      /* as header.ut wrote it */
+	p.document = { get title() { return title; }, set title(v) { title = String(v); p.writes.push(title); } };
+	p.root = { attrs: Object.assign({}, attrs), getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; } };
+	p.set = (k, v) => { p.root.attrs[k] = String(v); p.watched.filter(w => w.node === p.root && w.opts.attributes && w.opts.attributeFilter.includes(k)).forEach(w => w.f()); };
+	const window = { MutationObserver: function(f) { this.observe = (node, opts) => { p.watched.push({ node, opts, f }); }; } };
+	p.proto = new Function('baseclass', 'ui', 'rpc', 'host', 'E', 'L', '_', 'document', 'window', src)(
+		{ extend: x => x }, {}, { declare: () => () => Promise.resolve({}) }, {}, () => ({}), {}, t => t, p.document, window);
+	p.shell = Object.assign(Object.create(p.proto), { root: p.root });
+	p.window = window;
+	return p;
+}
+
+test('tab title: follows the dashboard, is written once a change, and is the title as before without one', () => {
+	/* the theme alone, or any page but the dashboard: "Page · hostname", as before */
+	let p = titlePage();
+	p.shell.watchAlert();
+	p.shell.updateTitle();
+	assert.equal(p.document.title, 'Dashboard · LuCI', 'nothing known yet: the template\'s title stands');
+	p.shell.pageTitle = 'Dashboard';
+	p.shell.updateTitle();
+	p.shell.hostname = 'attic-ap';
+	p.shell.updateTitle();
+	assert.deepEqual(p.writes, [ 'Dashboard', 'Dashboard · attic-ap' ]);
+	/* one observer, on <html>, for the dashboard's two attributes and nothing else of the page */
+	assert.equal(p.watched.length, 1);
+	assert.equal(p.watched[0].node, p.root);
+	assert.deepEqual(p.watched[0].opts, { attributes: true, attributeFilter: [ 'data-vt-alert', 'data-vt-alert-count' ] });
+
+	/* the dashboard reports: the level, then the count, as paintHead sets them */
+	p.writes.length = 0;
+	p.set('data-vt-alert', '');
+	p.set('data-vt-alert-count', '');
+	assert.deepEqual(p.writes, [], 'all fine: not written again');
+	p.set('data-vt-alert', 'warn');
+	p.set('data-vt-alert-count', '2');
+	assert.equal(p.document.title, '(2) Dashboard · attic-ap');
+	/* the same word at every poll writes nothing */
+	const n = p.writes.length;
+	for (let i = 0; i < 5; i++) { p.set('data-vt-alert', 'warn'); p.set('data-vt-alert-count', '2'); }
+	assert.equal(p.writes.length, n);
+	p.set('data-vt-alert', 'err');
+	p.set('data-vt-alert-count', '3');
+	assert.equal(p.document.title, '(3) Dashboard · attic-ap');
+	/* it clears: the title as before */
+	p.set('data-vt-alert', '');
+	p.set('data-vt-alert-count', '');
+	assert.equal(p.document.title, 'Dashboard · attic-ap');
+
+	/* a dashboard from before 1.1 sets the level only */
+	p = titlePage();
+	Object.assign(p.shell, { pageTitle: 'Dashboard', hostname: 'attic-ap' });
+	p.shell.watchAlert();
+	p.set('data-vt-alert', 'warn');
+	assert.equal(p.document.title, '(!) Dashboard · attic-ap');
+	p.set('data-vt-alert', '');
+	assert.equal(p.document.title, 'Dashboard · attic-ap');
+
+	/* the dashboard painted before the menu and the hostname came: whichever comes last finds its word */
+	p = titlePage({ 'data-vt-alert': 'err', 'data-vt-alert-count': '1' });
+	p.shell.watchAlert();
+	p.shell.updateTitle();
+	assert.equal(p.document.title, 'Dashboard · LuCI');
+	p.shell.pageTitle = 'Dashboard';
+	p.shell.updateTitle();
+	assert.equal(p.document.title, '(1) Dashboard');
+	p.shell.hostname = 'attic-ap';
+	p.shell.updateTitle();
+	assert.equal(p.document.title, '(1) Dashboard · attic-ap');
+	/* what is not a count never reaches the title */
+	p.set('data-vt-alert-count', '2) Log in again');
+	assert.equal(p.document.title, '(!) Dashboard · attic-ap');
+
+	/* a browser without MutationObserver: the title as before, and no error */
+	p = titlePage();
+	delete p.window.MutationObserver;
+	Object.assign(p.shell, { pageTitle: 'Dashboard', hostname: 'attic-ap' });
+	p.shell.watchAlert();
+	p.shell.updateTitle();
+	assert.equal(p.document.title, 'Dashboard · attic-ap');
+
+	/* one place writes the title, with text only; the watch starts with the shell */
+	assert.equal(src.split('document.title = ').length - 1, 1);
+	assert.match(src, /\n\t\tthis\.watchAlert\(\);\n\t\tthis\.loadHost\(\);\n/);
+	const part = src.slice(src.indexOf('function alertMark('), src.indexOf('/* Does help text carry a warning?')) + src.slice(src.indexOf('\tupdateTitle() {'), src.indexOf('\t/* -------------------------------------------------- indicators */'));
+	assert.doesNotMatch(part, /innerHTML|querySelector\('title'\)|textContent|_\(/);
+});

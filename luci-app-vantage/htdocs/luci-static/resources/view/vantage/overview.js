@@ -2260,8 +2260,11 @@ return view.extend({
 		var s = this.st.summary, clients = this.m.clients.filter(function(c) { return !c.ap; }).length;
 		this.el.orb.className = 'vt-orb vt-orb-' + s.level;
 		/* the Vantage theme's refresh dot pulses fast in the same colour
-		   while something needs attention (vantage.css) */
-		document.documentElement.setAttribute('data-vt-alert', s.level === 'warn' || s.level === 'err' ? s.level : '');
+		   while something needs attention (vantage.css), and its tab
+		   title says how many things do (menu-vantage.js alertMark) */
+		var needs = s.level === 'warn' || s.level === 'err';
+		document.documentElement.setAttribute('data-vt-alert', needs ? s.level : '');
+		document.documentElement.setAttribute('data-vt-alert-count', needs && s.count > 0 ? String(s.count) : '');
 		txt(this.el.headline, s.headline);
 		txt(this.el.subline, this.identity(this.m.device).concat(
 			this.m.wired ? [] : [ clients === 1 ? _('1 client') : _('%d clients').format(clients) ]).join('  ·  '));

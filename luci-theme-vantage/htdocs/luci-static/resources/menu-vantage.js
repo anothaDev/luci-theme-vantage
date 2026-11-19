@@ -514,6 +514,20 @@ function notFound(spec) {
 	return !type || type === 'firstchild';
 }
 
+/* What the tab's title starts with while the dashboard says something
+   needs attention: luci-app-vantage sets data-vt-alert on <html> ('warn'
+   or 'err', as the refresh dot reads it in vantage.css) and, since 1.1,
+   data-vt-alert-count, how many checks say so. "(2) " then, the form a
+   mail tab has made familiar, and in front, as a narrow tab cuts the
+   title's end; "(!) " where no count comes with the level (an older
+   dashboard), or what comes is not a number from 1 to 999. Signs and
+   digits only: nothing in it to translate. */
+function alertMark(level, count) {
+	if (level !== 'warn' && level !== 'err') return '';
+	const n = String(count == null ? '' : count), counted = /^[1-9]\d{0,2}$/.test(n);
+	return counted ? '(' + n + ') ' : '(!) ';
+}
+
 /* Does help text carry a warning? LuCI writes them as a paragraph that
    opens with a short label and a colon ("Note:", "Warning:", "注意：",
    "Uwaga:"), whatever the language, and sometimes in bold. Line breaks
@@ -1022,6 +1036,7 @@ return baseclass.extend({
 		setupCharts();
 		setupNftFlow();
 		this.setupKeys();
+		this.watchAlert();
 		this.loadHost();
 		this.setupUpdate();
 
@@ -2239,9 +2254,25 @@ return baseclass.extend({
 		});
 	},
 
+	/* "Page · hostname", with alertMark in front while the dashboard
+	   reports a problem, so a tab left in the background shows it. The
+	   one place that writes the title: the level is read from <html> each
+	   time, so whichever comes last (the menu, the hostname, the
+	   dashboard's word) finds the rest. */
 	updateTitle() {
 		const parts = [ this.pageTitle, this.hostname ].filter(Boolean);
-		if (parts.length) document.title = parts.join(' · ');
+		if (!parts.length) return;
+		const title = alertMark(this.root.getAttribute('data-vt-alert'), this.root.getAttribute('data-vt-alert-count')) + parts.join(' · ');
+		if (document.title !== title) document.title = title;
+	},
+
+	/* The dashboard sets its level again at every poll: the title is
+	   written only when it changes (updateTitle). Any other page, or no
+	   dashboard, sets nothing and the title stays as it was; leaving the
+	   dashboard loads a new page, which starts without the mark. */
+	watchAlert() {
+		if (!window.MutationObserver) return;
+		new window.MutationObserver(() => this.updateTitle()).observe(this.root, { attributes: true, attributeFilter: [ 'data-vt-alert', 'data-vt-alert-count' ] });
 	},
 
 	/* -------------------------------------------------- indicators */
