@@ -648,7 +648,9 @@ return baseclass.extend({
 	   point calls itself is in info. Only one in state ok has nodes,
 	   stations (sta) and hosts: what it reports, which build() gives or
 	   refuses it, counting what it gave in clients, wired and rate (0 and
-	   null here). No reply (a failed call, nothing paired): [] */
+	   null here); build() adds parent ({ id, name, port } of the access
+	   point it is plugged into, or null) and depth, and lists each under
+	   its parent. No reply (a failed call, nothing paired): [] */
 	collectorAps: function(reply) {
 		var self = this, out = [], ids = Object.create(null), total = 0;
 		function unicast(v) {
@@ -1291,6 +1293,45 @@ return baseclass.extend({
 				h.behind = { id: a.id, name: a.name, addr: a.addr, port: w.port, speed: w.speed ? { mbps: w.speed, duplex: null } : null, rate: traffic(w) };
 			});
 		});
+		/* An access point plugged into another paired one is listed under
+		   it (parent, depth). This device must hear both MACs on one port
+		   of its own, and the other must list this one's among its wired
+		   hosts: a claim alone moves no access point of another port. Of
+		   several that list it (a chain), the nearest: the one all the
+		   others list too. None for two that list each other, where no
+		   one is nearest, or in a ring: a branch of this device, as
+		   before. Then in that order, each under its parent */
+		var lists = Object.create(null), apOf = Object.create(null);
+		aps.forEach(function(a) {
+			var l = lists[a.id] = Object.create(null);
+			apOf[a.id] = a;
+			a.hosts.forEach(function(w) { l[w.mac] = w; });
+		});
+		function over(a, b) {
+			return a !== b && !!portOf[a.id] && portOf[a.id] === portOf[b.id] && !!lists[a.id][b.mac] && !lists[b.id][a.mac];
+		}
+		aps.forEach(function(b) {
+			var by = aps.filter(function(a) { return over(a, b); });
+			var near = by.filter(function(a) { return by.every(function(x) { return x === a || over(x, a); }); });
+			b.parent = near.length === 1 ? { id: near[0].id, name: near[0].name, port: lists[near[0].id][b.mac].port } : null;
+			b.depth = 0;
+		});
+		aps.filter(function(a) {
+			for (var p = a.parent && apOf[a.parent.id], n = 0; p && n < aps.length; p = p.parent && apOf[p.parent.id], n++) if (p === a) return true;
+			return false;
+		}).forEach(function(a) { a.parent = null; });
+		var tree = [];
+		(function under(id, depth) {
+			aps.forEach(function(a) {
+				if ((a.parent ? a.parent.id : null) !== id) return;
+				a.depth = depth;
+				tree.push(a);
+				under(a.id, depth + 1);
+			});
+		})(null, 0);
+		aps.length = 0;
+		tree.forEach(function(a) { aps.push(a); });
+
 		/* Each access point's counts and traffic are what it was given
 		   above, as the lists show it, never what it reports: a MAC it
 		   claims that stayed this device's, or went to another, is none

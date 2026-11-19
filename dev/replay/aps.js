@@ -7,15 +7,18 @@
 
    Replies are rewritten after the store (and the other modes) answered:
      vantage.collector report  SYNTHETIC: ap-hall (two SSIDs, seven
-                               stations, three wired hosts), ap-den (one
-                               SSID, three stations, one wired host) and
+                               stations, three wired hosts and ap-den
+                               in its lan1), ap-den (one SSID, three
+                               stations, one wired host) and
                                ap-loft, offline: not reachable for six
                                minutes, so without a report
      luci-rpc getHostHints     SYNTHETIC names and addresses for most of
                                their stations and for the two access
                                points themselves, as a router's leases
                                give
-     luci.vantage wired        SYNTHETIC: ap-hall's own MAC beside this
+     luci.vantage wired        SYNTHETIC: ap-hall's own MAC, and
+                               ap-den's (plugged into ap-hall, so drawn
+                               under it), beside this
                                device's first two wired hosts, which
                                ap-hall also lists: the first as its wired
                                host (the note "behind ap-hall"), the
@@ -57,7 +60,9 @@ const APS = [
 		wired: [
 			[ null, 'lan2', 1000, null, null ],
 			[ '02:00:5e:30:00:01', 'lan3', 1000, 85e3, 1.2e6, 'office-printer', 211 ],
-			[ '02:00:5e:30:00:02', 'lan4', 100, 3e3, 12e3, null, 212 ]
+			[ '02:00:5e:30:00:02', 'lan4', 100, 3e3, 12e3, null, 212 ],
+			/* ap-den */
+			[ '02:00:5e:10:00:02', 'lan1', 1000, null, null ]
 		]
 	},
 	{
@@ -140,8 +145,8 @@ function transform(object, method, args, reply) {
 	if (object === 'luci.vantage' && method === 'wired' && Array.isArray(res[1].hosts)) {
 		heard = shared(res[1].hosts);
 		if (!heard) return reply;
-		const hall = { mac: APS[0].mac, port: heard.port, bridge: heard.bridge || null, vlan: null, seen: Math.floor(Date.now() / 1000) % 20 };
-		return { result: [ 0, Object.assign({}, res[1], { hosts: res[1].hosts.concat([ hall ]) }) ] };
+		const own = APS.slice(0, 2).map(a => ({ mac: a.mac, port: heard.port, bridge: heard.bridge || null, vlan: null, seen: Math.floor(Date.now() / 1000) % 20 }));
+		return { result: [ 0, Object.assign({}, res[1], { hosts: res[1].hosts.concat(own) }) ] };
 	}
 	return reply;
 }

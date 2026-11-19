@@ -673,8 +673,19 @@ dashboard package itself stays read-only.
   one of this device's) and that the access point lists as its station
   is shown as that access point's Wi-Fi client, not as a wired host of
   this device. A host the access point lists as wired behind it gets a
-  note saying so. Where this device hears the access point's MAC is
-  decided against its own host hints, addresses compared by value (an
+  note saying so. An access point plugged into another paired one is
+  drawn under it: its branch further in (three steps at most), its wire
+  from that one, the port in its tooltip. For that this device must
+  hear both MACs on one port of its own, and the other must list this
+  one's among its wired hosts: a claim alone moves no access point of
+  another port. Of several that list it (a chain), the nearest has it,
+  the one all the others list too; two that list each other, several
+  with no nearest one and a ring of claims stay branches of this
+  device, as do all while one of the two is not reporting. Between two
+  access points on one port of this device the claim is all there is:
+  one of them can place itself above the other. Where this device hears
+  the access point's MAC is decided against its own host hints,
+  addresses compared by value (an
   IPv6 address has many spellings). The gateway is a host the hints
   give the next hop's address. Any device gets its MAC listed under any
   address with one ARP request, so among several such hosts this

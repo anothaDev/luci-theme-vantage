@@ -838,6 +838,12 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-path-mesh .vt-node-peer .vt-node-title { font-size: var(--vt-fs-md); }
 .vt-app .vt-path-mesh .vt-node-peer .vt-node-kicker { display: block; overflow: hidden; text-overflow: ellipsis; }
 /* the paired access points, after this device's own branches */
+/* an access point plugged into another: its branch further in, a step a
+   level (--vt-nest: wider where the path is wide, below) */
+.vt-app .vt-path-mesh { --vt-nest: 28px; }
+.vt-app .vt-path-mesh .vt-branch-d1 { margin-inline-start: var(--vt-nest); }
+.vt-app .vt-path-mesh .vt-branch-d2 { margin-inline-start: calc(2 * var(--vt-nest)); }
+.vt-app .vt-path-mesh .vt-branch-d3 { margin-inline-start: calc(3 * var(--vt-nest)); }
 .vt-app .vt-path-mesh .vt-branches-label { margin: 6px 0 -8px; font-size: var(--vt-fs-micro); font-weight: var(--vt-fw-semibold); color: var(--vt-text-3); text-transform: uppercase; letter-spacing: .08em; }
 .vt-app .vt-dots { display: inline-flex; gap: 3px; }
 /* no clients, no dots: the count starts where the name does */
@@ -940,7 +946,7 @@ html[data-darkmode="true"] .vt-app {
    room to the branches; every branch's node column alike, and the nodes
    at the ends fill what is left, so their rows line up and nothing is cut */
 @container vthero (min-width: 1021px) {
-	.vt-app .vt-path-mesh { grid-template-columns: minmax(150px, .7fr) minmax(90px, .4fr) minmax(184px, .85fr) minmax(0, 3.4fr); }
+	.vt-app .vt-path-mesh { grid-template-columns: minmax(150px, .7fr) minmax(90px, .4fr) minmax(184px, .85fr) minmax(0, 3.4fr); --vt-nest: 48px; }
 	.vt-app .vt-path-mesh .vt-branches { padding-left: clamp(40px, 5cqi, 120px); }
 	/* an access point's own page: gateway, link and device at the top, so
 	   the gateway's wires to the other access points pass below them */

@@ -1592,7 +1592,7 @@ function withFakeDom(fn) {
 const AP_ID = '0123456789abcdef';
 /* a router with one Wi-Fi network, two stations, a host on lan2 and one
    behind ap-hall on lan1, and its WAN */
-function apModel(collector) {
+function apModel(collector, heard) {
 	const model = load('vantage.model');
 	const m = model.build({
 		ifaces: [
@@ -1606,7 +1606,7 @@ function apModel(collector) {
 		assoc: { 'phy0-ap0': [ { mac: '00:00:5E:00:53:01', signal: -50 }, { mac: '00:00:5E:00:53:02', signal: -80 } ] },
 		hints: { '00:00:5E:00:53:31': { name: 'printer', ipaddrs: [ '192.0.2.131' ] }, '00:00:5E:00:53:21': { name: 'phone', ipaddrs: [ '192.0.2.121' ] } },
 		fdb: [ { mac: '02:00:5e:10:00:01', port: 'lan1', bridge: 'br-lan', seen: 1 }, { mac: '00:00:5e:00:53:31', port: 'lan1', bridge: 'br-lan', seen: 1 },
-			{ mac: '00:00:5e:00:53:32', port: 'lan2', bridge: 'br-lan', seen: 1 } ],
+			{ mac: '00:00:5e:00:53:32', port: 'lan2', bridge: 'br-lan', seen: 1 } ].concat(heard || []),
 		collector
 	});
 	m.wired = false;
@@ -1640,6 +1640,27 @@ test('paired access points: without one the path has nothing new: no mesh class,
 	assert.equal(ssid.find('vt-node-body')[0].children.length, 2, 'the SSID node: its name and its dots, no rows');
 	assert.doesNotMatch(self.heroKey(), /aps=/);
 	assert.equal(self.wireList().filter(w => w.elbow).length, 0);
+}));
+
+/* #130: the router hears ap-den on ap-hall's port, and ap-hall lists it on its lan4 */
+test('paired access points: one plugged into another is under it: its branch further in, its wire from that one, the port in its tooltip', () => withFakeDom(() => {
+	const DEN_ID = 'fedcba9876543210', DEN_MAC = '02:00:5e:10:00:02';
+	const den = hall({ id: DEN_ID, name: 'ap-den', addr: '192.0.2.11' }, { mac: DEN_MAC, stations: [], wired: [] });
+	const heard = [ { mac: DEN_MAC, port: 'lan1', bridge: 'br-lan', seen: 1 } ];
+	const self = hero(apModel({ aps: [ den, hall({}, { wired: [ { mac: DEN_MAC, port: 'lan4', speed: 1000 } ] }) ] }, heard));
+	const path = self.el.path, peers = path.find('vt-node-peer');
+	assert.deepEqual(path.find('vt-branch-peer').map(w => [ w.find('vt-node-title')[0].textContent, w.getAttribute('class') ]),
+		[ [ 'ap-hall', 'vt-branch vt-branch-peer' ], [ 'ap-den', 'vt-branch vt-branch-peer vt-branch-d1' ] ], 'after its parent, whatever the pairing order');
+	assert.match(peers[1].getAttribute('title'), /\nWired to ap-hall on lan4(\n|$)/);
+	assert.doesNotMatch(peers[0].getAttribute('title'), /Wired to/);
+	assert.deepEqual(self.wireList().filter(w => /^r::ap:/.test(w.key)).map(w => [ w.key, w.from === self.hero.ap, w.from === peers[0], !!w.elbow ]),
+		[ [ 'r::ap:' + AP_ID, true, false, false ], [ 'r::ap:' + DEN_ID, false, true, false ] ], 'from the one it is plugged into');
+	assert.match(self.heroKey(), new RegExp('aps=' + AP_ID + '=[^;]*;' + DEN_ID + '<' + AP_ID + '='), 'a change of parent rebuilds the path');
+	/* not listed by ap-hall: a branch of this device, as before */
+	const flat = hero(apModel({ aps: [ den, hall() ] }, heard));
+	assert.doesNotMatch(flat.el.path.html(), /vt-branch-d\d|Wired to/);
+	assert.deepEqual(flat.wireList().filter(w => /^r::ap:/.test(w.key)).map(w => w.from === flat.hero.ap), [ true, true ]);
+	assert.doesNotMatch(flat.heroKey(), /</);
 }));
 
 test('paired access points: a branch each with the pairing name and the address as text, rows only under the mesh class; never the gateway or a relabel', () => withFakeDom(() => {

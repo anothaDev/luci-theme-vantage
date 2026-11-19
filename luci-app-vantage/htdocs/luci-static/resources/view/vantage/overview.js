@@ -2395,7 +2395,7 @@ return view.extend({
 	   place */
 	heroKey: function() {
 		/* an SSID node by its interface, 's:' before it: never the wired node's 'w' */
-		var m = this.m, aps = this.aps().map(function(a) { return a.id + '=' + a.nodes.map(function(n) { return 's:' + n.id; }).concat(a.wired ? [ 'w' ] : []).join(','); }).join(';');
+		var m = this.m, aps = this.aps().map(function(a) { return a.id + (a.parent ? '<' + a.parent.id : '') + '=' + a.nodes.map(function(n) { return 's:' + n.id; }).concat(a.wired ? [ 'w' ] : []).join(','); }).join(';');
 		var tail = '\nwired=' + this.wiredPorts().join(',') + '\nlines=' + this.extraLines().map(function(x) { return x.iface; }).join(',') + (aps ? '\naps=' + aps : '');
 		if (m.wired) return 'w\n' + m.networks.filter(function(n) { return n.up; }).slice(0, 8).map(function(n) { return n.name; }).join('\n') + tail;
 		return 'r\n' + m.radios.map(function(r) {
@@ -2645,7 +2645,7 @@ return view.extend({
 		   for the wired hosts behind it, each opening the Clients list on
 		   that access point; one not reporting has none of them */
 		this.aps().forEach(function(a) {
-			var ab = { id: ':ap:' + a.id, ap: true, apId: a.id, ssids: [], kicker: span('vt-node-kicker'), title: span('vt-node-title'), addr: span('vt-node-sub vt-mono'),
+			var ab = { id: ':ap:' + a.id, ap: true, apId: a.id, under: a.parent ? a.parent.id : null, ssids: [], kicker: span('vt-node-kicker'), title: span('vt-node-title'), addr: span('vt-node-sub vt-mono'),
 				up: span('vt-node-sub'), sub: span('vt-node-sub vt-tn'), rateEl: span('vt-node-sub vt-tn') };
 			ab.el = E('button', { 'type': 'button', 'class': 'vt-node vt-node-peer', 'click': function() { self.showAp(a.id); } }, [
 				E('span', { 'class': 'vt-node-ico' }, [ icon('ap') ]),
@@ -2670,7 +2670,8 @@ return view.extend({
 				acol.appendChild(wn.el);
 			}
 			if (!ab.ssids.length && a.state === 'ok') acol.appendChild(E('span', { 'class': 'vt-empty-inline' }, [ _('No SSIDs') ]));
-			ab.wrap = E('div', { 'class': 'vt-branch vt-branch-peer' }, [ ab.el, acol ]);
+			/* plugged into another: under it and further in, three steps at most */
+			ab.wrap = E('div', { 'class': 'vt-branch vt-branch-peer' + (a.parent ? ' vt-branch-d' + Math.min(a.depth, 3) : '') }, [ ab.el, acol ]);
 			h.radios.push(ab);
 		});
 		/* the paired access points after this device's own branches,
@@ -2867,6 +2868,7 @@ return view.extend({
 		/* what it calls itself only as a detail: the name is the pairing's */
 		setTitle(b.el, [ ok ? _('Show the clients of %s').format(a.name) : this.apState(a), ok ? null : this.apStateMore(a),
 			info.name && info.name !== a.name ? _('Calls itself %s').format(info.name) : null, info.model, a.addr,
+			a.parent ? _('Wired to %s on %s').format(a.parent.name, a.parent.port) : null,
 			ok && a.age != null ? _('Last report %s').format(fmt.ago(a.age * 1000)) : null ].filter(Boolean).join('\n'));
 		txt(b.kicker, _('Access point'));
 		txt(b.title, a.name);
@@ -2956,14 +2958,19 @@ return view.extend({
 
 	/* the wires the nodes call for: key, ends, and how busy */
 	wireList: function() {
-		var self = this, h = this.hero, out = [];
+		var self = this, h = this.hero, out = [], peer = Object.create(null);
 		if (!h) return out;
+		h.radios.forEach(function(b) { if (b.ap) peer[b.apId] = b.el; });
 		out.push({ key: 'gw', from: h.gw, to: h.ap, active: h.upActive, speed: wires.speed(h.upRate), main: true, tunnel: !!(this.m && this.m.uplink && this.m.uplink.tunnel) });
 		h.lines.forEach(function(ln, k) { out.push({ key: 'l:' + ln.id, from: ln.el, to: h.ap, active: ln.active, speed: wires.speed(ln.rate), line: k }); });
 		h.radios.forEach(function(b) {
-			/* on an access point the paired ones are its siblings: wired
+			/* one plugged into another paired one: from that one, down its
+			   left side as its own SSIDs' wires go when stacked. On an
+			   access point the other paired ones are its siblings: wired
 			   from the gateway (drawWires falls back to this device) */
-			if (b.ap && !(self.m && self.m.uplink && self.m.uplink.isWan))
+			if (b.ap && peer[b.under])
+				out.push({ key: 'r:' + b.id, from: peer[b.under], to: b.el, active: b.active, speed: wires.speed(b.rate) });
+			else if (b.ap && !(self.m && self.m.uplink && self.m.uplink.isWan))
 				out.push({ key: 'r:' + b.id, from: h.gw, to: b.el, active: b.active, speed: wires.speed(b.rate), elbow: true, alt: h.ap });
 			else
 				out.push({ key: 'r:' + b.id, from: h.ap, to: b.el, active: b.active, speed: wires.speed(b.rate) });

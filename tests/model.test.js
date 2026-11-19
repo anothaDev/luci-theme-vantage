@@ -1584,6 +1584,38 @@ test('build: a client two access points report keeps its place and names the oth
 	}
 });
 
+/* #130: an access point plugged into another is listed under it */
+test('build: an access point heard on another\'s port, which the other lists as wired, goes under it; a claim alone, two that list each other, no nearest one or a ring do not', () => {
+	const DEN = '02:00:5e:10:00:02', ATTIC = '02:00:5e:10:00:03', AP3 = '0011223344556677';
+	const at = (...on) => router(null).fdb.concat(on.map(([ mac, port ]) => ({ mac, port, bridge: 'br-lan', seen: 1 })));
+	const rep = (mac, wired) => report({ mac, stations: [], wired: (wired || []).map(m => ({ mac: m, port: 'lan4', speed: 1000 })) });
+	const tree = (aps, fdb) => model.build(router({ aps }, { fdb })).accessPoints.map(a => [ a.name, a.depth, a.parent && a.parent.name ]);
+	const hall = wired => ap(AP1, 'ap-hall', rep(HALL_MAC, wired)), den = wired => ap(AP2, 'ap-den', rep(DEN, wired)), attic = wired => ap(AP3, 'ap-attic', rep(ATTIC, wired));
+	/* ap-den in ap-hall's lan4: this device hears both on lan1. Under its parent, whatever the pairing order */
+	const m = model.build(router({ aps: [ den(), hall([ DEN ]) ] }, { fdb: at([ DEN, 'lan1' ]) }));
+	assert.deepEqual(m.accessPoints.map(a => [ a.name, a.depth, a.parent ]), [ [ 'ap-hall', 0, null ], [ 'ap-den', 1, { id: AP1, name: 'ap-hall', port: 'lan4' } ] ]);
+	/* as a host it stays what it was: this device's, on lan1, with the note */
+	assert.deepEqual(m.wiredHosts.filter(h => h.mac === DEN).map(h => [ h.port, h.behind.name, !!h.ap ]), [ [ 'lan1', 'ap-hall', false ] ]);
+	/* the claim alone moves nothing: ap-den is heard on lan2, or nowhere */
+	assert.deepEqual(tree([ den(), hall([ DEN ]) ], at([ DEN, 'lan2' ])), [ [ 'ap-den', 0, null ], [ 'ap-hall', 0, null ] ]);
+	assert.deepEqual(tree([ den(), hall([ DEN ]) ], at()), [ [ 'ap-den', 0, null ], [ 'ap-hall', 0, null ] ]);
+	/* nor does a parent that is not reporting */
+	assert.deepEqual(tree([ den(), ap(AP1, 'ap-hall', null, { state: 'offline', error: 'unreachable' }) ], at([ DEN, 'lan1' ])), [ [ 'ap-den', 0, null ], [ 'ap-hall', 0, null ] ]);
+	/* a chain: ap-hall hears ap-attic through ap-den, and the nearest one has it */
+	const all = at([ DEN, 'lan1' ], [ ATTIC, 'lan1' ]);
+	assert.deepEqual(tree([ attic(), den([ ATTIC ]), hall([ DEN, ATTIC ]) ], all), [ [ 'ap-hall', 0, null ], [ 'ap-den', 1, 'ap-hall' ], [ 'ap-attic', 2, 'ap-den' ] ]);
+	/* two on a switch behind ap-hall: both under it, in pairing order */
+	assert.deepEqual(tree([ attic(), den(), hall([ DEN, ATTIC ]) ], all), [ [ 'ap-hall', 0, null ], [ 'ap-attic', 1, 'ap-hall' ], [ 'ap-den', 1, 'ap-hall' ] ]);
+	/* two that list each other: neither is the other's */
+	assert.deepEqual(tree([ hall([ DEN ]), den([ HALL_MAC ]) ], all), [ [ 'ap-hall', 0, null ], [ 'ap-den', 0, null ] ]);
+	/* two list it and neither lists the other: no nearest one */
+	assert.deepEqual(tree([ hall([ ATTIC ]), den([ ATTIC ]), attic() ], all), [ [ 'ap-hall', 0, null ], [ 'ap-den', 0, null ], [ 'ap-attic', 0, null ] ]);
+	/* a ring of claims: none */
+	assert.deepEqual(tree([ hall([ DEN ]), den([ ATTIC ]), attic([ HALL_MAC ]) ], all), [ [ 'ap-hall', 0, null ], [ 'ap-den', 0, null ], [ 'ap-attic', 0, null ] ]);
+	/* without any of it: depth 0, no parent, the pairing order */
+	assert.deepEqual(tree([ den(), hall() ], all), [ [ 'ap-den', 0, null ], [ 'ap-hall', 0, null ] ]);
+});
+
 test('build: an access point not reporting (waiting, offline, error) keeps its branch, with no SSIDs, stations, hosts or notes', () => {
 	for (const extra of [ { state: 'waiting', report: null, age: null }, { state: 'offline', age: 120 }, { state: 'error', error: 'timeout' } ]) {
 		const m = model.build(apDevice({ aps: [ ap(AP1, 'ap-hall', report({ wired: [ { mac: '00:00:5e:00:53:31', port: 'lan2' } ] }), extra) ] }));
