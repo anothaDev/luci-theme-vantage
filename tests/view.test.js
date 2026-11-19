@@ -3597,6 +3597,25 @@ test('copy button: a real button named after what it copies; it reads "Copied" f
 	assert.deepEqual([ addr.textContent, mac.textContent, self.copied ], [ 'Copy 192.0.2.7', 'Copy 00:00:5E:00:53:01', null ]);
 	assert.equal(build()[0].textContent, 'Copy 192.0.2.7');
 
+	/* a poll rebuilt the details between the click and the clipboard's answer: the button that is there now says it,
+	   not only the one that was clicked and is gone */
+	now += 5000;
+	let answer;
+	self.copyText = () => new Promise(r => { answer = r; });
+	[ addr, mac ] = build();
+	mac.on.click();
+	const gone = mac;
+	[ addr, mac ] = build();
+	assert.equal(mac.textContent, 'Copy 00:00:5E:00:53:01', 'no answer yet');
+	answer(true);
+	await settle();
+	assert.deepEqual([ gone.textContent, mac.textContent, addr.textContent ], [ 'Copied 00:00:5E:00:53:01', 'Copied 00:00:5E:00:53:01', 'Copy 192.0.2.7' ]);
+	now += 2000;
+	fire(2000);
+	fire(30);
+	assert.equal(mac.textContent, 'Copy 00:00:5E:00:53:01');
+	self.copyText = (text, node) => { copied.push([ text, node.textContent ]); return Promise.resolve(result); };
+
 	/* a copy that did not work says so, with no mark either */
 	result = false;
 	[ addr, mac ] = build();

@@ -4579,6 +4579,13 @@ return view.extend({
 			self.copyText(text, value).then(function(ok) {
 				var mine = self.copied = { text: text, at: Date.now(), ok: ok }, say = self.el.drawerSay, body = self.el.drawerBody;
 				txt(label, word(mine));
+				/* a poll may have rebuilt the details between the click and
+				   this answer: the button that is there now for this value
+				   says it too */
+				if (body) Array.prototype.forEach.call(body.querySelectorAll('.vt-copy'), function(b) {
+					var parts = b.childNodes;
+					if (parts.length === 2 && parts[1].textContent === ' ' + text) txt(parts[0], word(mine));
+				});
 				if (say) { txt(say, ''); window.setTimeout(function() { txt(say, word(mine)); }, 30); }
 				window.setTimeout(function() {
 					/* a later copy has its own timer; every button, also one
