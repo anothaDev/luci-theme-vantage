@@ -561,7 +561,7 @@ msgstr "Разрешённые IP-адреса: %s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:534
 msgid "Also reported by %s"
-msgstr "Также сообщает: %s"
+msgstr "Также по данным %s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:251
 msgid "Any zone"
@@ -2022,7 +2022,7 @@ msgstr "Показать всех клиентов"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3182
 msgid "Show details"
-msgstr "Показать подробности"
+msgstr "Показать сведения"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4408
 msgid "Show fewer"
@@ -2283,8 +2283,8 @@ msgid ""
 "reached from the internet only where that one passes them on."
 msgstr ""
 "У этой линии частный адрес (%s): другой маршрутизатор или провайдер "
-"транслирует адреса перед этим устройством (двойной NAT). Перенаправления "
-"портов доступны из интернета, только если тот их пропускает."
+"транслирует адреса перед этим устройством (двойной NAT). Проброшенные порты "
+"доступны из интернета, только если тот их пропускает."
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4978
 msgid ""
@@ -2293,7 +2293,7 @@ msgid ""
 "internet over IPv4."
 msgstr ""
 "У этой линии общий адрес (%s): провайдер транслирует адреса для многих "
-"клиентов (NAT операторского уровня). Перенаправления портов недоступны из "
+"абонентов (NAT операторского уровня). Проброшенные порты недоступны из "
 "интернета по IPv4."
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4969

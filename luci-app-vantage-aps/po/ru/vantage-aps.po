@@ -13,7 +13,7 @@ msgstr ""
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:135
 msgid "%d days ago"
-msgstr "%d дн назад"
+msgstr "%d дн. назад"
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:134
 msgid "%d h ago"
@@ -26,8 +26,8 @@ msgstr "%d мин назад"
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:184
 msgid "%d routers can already read this access point. Revoke one first."
 msgstr ""
-"Эту точку доступа уже могут читать маршрутизаторы: %d. Сначала отзовите один "
-"из них."
+"Маршрутизаторов, которые уже могут читать эту точку доступа: %d. Сначала "
+"отзовите доступ у одного из них."
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:132
 msgid "%d s ago"
@@ -124,11 +124,11 @@ msgstr "Копировать"
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:705
 msgid "Copy this access point's reply"
-msgstr "Скопировать ответ этой точки доступа"
+msgstr "Скопируйте ответ этой точки доступа"
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:542
 msgid "Copy this router's code"
-msgstr "Скопировать код этого маршрутизатора"
+msgstr "Скопируйте код этого маршрутизатора"
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:326
 msgid ""
@@ -173,7 +173,7 @@ msgid ""
 "System → Startup."
 msgstr ""
 "Dropbear, SSH-сервер, не запущен, поэтому сопряжение отключено. Запустите "
-"его в разделе «Система → Загрузка»."
+"его в разделе «Система → Автозапуск»."
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:639
 msgid ""
@@ -259,7 +259,7 @@ msgstr ""
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:260
 msgid "Not reporting"
-msgstr "Отчётов нет"
+msgstr "Отчёты не поступают"
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:258
 msgid "Offline"
@@ -331,11 +331,11 @@ msgstr "Отозвать"
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:676
 msgid "Revoke %s"
-msgstr "Отозвать %s"
+msgstr "Отозвать доступ у %s"
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:688
 msgid "Revoke router"
-msgstr "Отозвать маршрутизатор"
+msgstr "Отозвать доступ маршрутизатора"
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:745
 msgid "Router %s."
@@ -434,7 +434,9 @@ msgstr "Ответ этой точки доступа"
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:174
 msgid "This dashboard already reads %d access points. Remove one first."
-msgstr "Эта панель уже читает точки доступа: %d. Сначала удалите одну из них."
+msgstr ""
+"Точек доступа, которые уже читает эта панель: %d. Сначала удалите одну из "
+"них."
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:198
 msgid "This device could not make its SSH key. Try again."
@@ -479,8 +481,8 @@ msgid ""
 "This device's Dropbear ignores key restrictions; letting a router in would "
 "give it full access, so pairing is off."
 msgstr ""
-"Dropbear на этом устройстве игнорирует ограничения ключей; маршрутизатор "
-"получил бы полный доступ, поэтому сопряжение отключено."
+"Dropbear на этом устройстве игнорирует ограничения ключей; доступ, данный "
+"маршрутизатору, оказался бы полным, поэтому сопряжение отключено."
 
 #: luci-app-vantage-aps/htdocs/luci-static/resources/view/vantage/aps.js:160
 msgid ""
@@ -528,9 +530,9 @@ msgid ""
 "This router's key is already in this device's SSH keys, added by hand. "
 "Remove it under System → Administration → SSH-Keys first."
 msgstr ""
-"Ключ этого маршрутизатора уже есть среди SSH-ключей этого устройства, "
-"добавленный вручную. Сначала удалите его в разделе «Система → Управление → "
-"SSH-ключи»."
+"Ключ этого маршрутизатора уже есть среди SSH-ключей этого устройства: он "
+"добавлен вручную. Сначала удалите его в разделе «Система → Администрирование "
+"→ SSH-ключи»."
 
 #: luci-app-vantage-aps/root/usr/share/rpcd/acl.d/luci-app-vantage-aps.json:11
 msgid ""
