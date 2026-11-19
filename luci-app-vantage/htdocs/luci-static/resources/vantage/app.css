@@ -1521,6 +1521,17 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-kvs .vt-kv dt { font-size: var(--vt-fs-sm); text-transform: none; letter-spacing: 0; font-weight: var(--vt-fw-medium); color: var(--vt-text-3); }
 .vt-app .vt-kvs .vt-kv dd { font-size: var(--vt-fs-base); font-weight: var(--vt-fw-medium); margin: 0; white-space: pre-line; overflow-wrap: anywhere; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
 .vt-app .vt-kvs .vt-kv dd small { font-size: var(--vt-fs-micro); color: var(--vt-text-3); font-weight: var(--vt-fw-regular); }
+/* Copy beside a MAC or an address, on the value's own line. The button
+   is a control like any other (--vt-ctl high), so the line is as high as
+   it and the row gives up its own padding; the label stays beside the
+   first line. The button's text is the text font's, in a mono row too. */
+.vt-app .vt-kvs .vt-kv:has(.vt-copyline) { padding: 0; }
+.vt-app .vt-kvs .vt-kv:has(.vt-copyline) dt { display: flex; align-items: center; align-self: start; min-height: var(--vt-ctl); }
+.vt-app .vt-kvs .vt-kv:has(.vt-copyline) dd { gap: 0; }
+.vt-app .vt-copyline { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; min-height: var(--vt-ctl); max-width: 100%; }
+/* a long address wraps: room above and below it, as a row has */
+.vt-app .vt-copyline > span { padding: 5px 0; }
+.vt-app .vt-btn.vt-copy { flex: none; font-family: var(--vt-font); font-size: var(--vt-fs-sm); letter-spacing: 0; }
 .vt-app .vt-dlist { display: flex; flex-direction: column; }
 .vt-app .vt-dlist-name { flex: 1; min-width: 0; font-weight: var(--vt-fw-semibold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

@@ -67,6 +67,7 @@ var WINDOW_MS = 5 * 60 * 1000;        /* throughput history shown */
 var HIST_MAX = 90;
 var HIST_FAST = 160;                  /* five minutes at FAST_S, and some */
 var GONE_KEEP_MS = 5 * 60 * 1000;     /* disconnected stations stay listed */
+var COPIED_MS = 2000;                 /* a Copy button reads "Copied" this long */
 var TALKERS = 3;                      /* top talkers shown; the tile keeps room for all */
 var SWITCH_MS = 30 * 1000;            /* LuCI runs swconfig for each switch's link state: at most this often */
 /* how long a poll waits for the paired access points' report (the add-on's
@@ -4427,10 +4428,13 @@ return view.extend({
 		el.drawerTitle = E('div', { 'class': 'vt-drawer-title', 'id': 'vt-drawer-title' });
 		el.drawerBody = E('div', { 'class': 'vt-drawer-body' });
 		el.drawerClose = E('button', { 'type': 'button', 'class': 'vt-drawer-close', 'aria-label': _('Close'), 'click': function() { self.closeDrawer(); } }, [ icon('close') ]);
+		/* what a Copy button did, for a screen reader (copyLine) */
+		el.drawerSay = E('span', { 'class': 'vt-sr', 'role': 'status' });
 		el.drawer = E('aside', { 'class': 'vt-drawer', 'role': 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'vt-drawer-title', 'hidden': 'hidden' }, [
 			E('div', { 'class': 'vt-drawer-grip', 'aria-hidden': 'true' }),
 			E('header', { 'class': 'vt-drawer-head' }, [ el.drawerTitle, el.drawerClose ]),
-			el.drawerBody
+			el.drawerBody,
+			el.drawerSay
 		]);
 		el.drawerBack = E('div', { 'class': 'vt-drawer-back', 'hidden': 'hidden', 'click': function() { self.closeDrawer(); } });
 		return E('div', { 'class': 'vt-drawer-layer' }, [ el.drawerBack, el.drawer ]);
@@ -4501,6 +4505,64 @@ return view.extend({
 
 	section: function(title, children, cls) {
 		return E('section', { 'class': 'vt-dsec' + (cls ? ' ' + cls : '') }, [ E('h4', { 'class': 'vt-dsec-title' }, [ title ]) ].concat(children));
+	},
+
+	/* Copies `text`, the value shown in `node`. The async clipboard needs
+	   a secure context, and LuCI is often served over plain HTTP: then
+	   the value's own text is selected and execCommand('copy') takes it
+	   (selecting plain text leaves the focus on the button). Where
+	   neither works the text stays selected, to copy by hand.
+	   -> Promise<boolean> */
+	copyText: function(text, node) {
+		var fallback = function() {
+			var ok = false, sel = window.getSelection(), range = document.createRange();
+			range.selectNodeContents(node);
+			sel.removeAllRanges();
+			sel.addRange(range);
+			try { ok = document.execCommand('copy') === true; } catch (e) {}
+			if (ok) sel.removeAllRanges();
+			return ok;
+		};
+		if (window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.writeText === 'function')
+			return navigator.clipboard.writeText(text).then(function() { return true; }, fallback);
+		return Promise.resolve(fallback());
+	},
+
+	/* A value of the details (a MAC, an address) with a Copy button on
+	   its line; `tail` is shown after the value and not copied. The
+	   button's name ends in the value, so it says what it copies; its
+	   label reads "Copied" for a moment (COPIED_MS), and the drawer's
+	   status line says so to a screen reader. The drawer is rebuilt on
+	   every poll, so what was copied and when is the view's
+	   (this.copied): a rebuilt button shows the same. */
+	copyLine: function(text, tail) {
+		var self = this, value = E('span', {}, [ text ]);
+		var word = function(c) { return !c ? _('Copy') : c.ok ? _('Copied') : _('Not copied'); };
+		var now = this.copied && this.copied.text === text && Date.now() - this.copied.at < COPIED_MS ? this.copied : null;
+		var label = E('span', { 'class': 'vt-copy-label' }, [ word(now) ]);
+		var btn = E('button', { 'type': 'button', 'class': 'vt-btn vt-btn-ghost vt-copy', 'click': function() {
+			self.copyText(text, value).then(function(ok) {
+				var mine = self.copied = { text: text, at: Date.now(), ok: ok }, say = self.el.drawerSay, body = self.el.drawerBody;
+				txt(label, word(mine));
+				if (say) { txt(say, ''); window.setTimeout(function() { txt(say, word(mine)); }, 30); }
+				window.setTimeout(function() {
+					/* a later copy has its own timer; every button, also one
+					   a poll has rebuilt since, reads Copy again */
+					if (self.copied !== mine) return;
+					self.copied = null;
+					txt(label, word(null));
+					if (body) Array.prototype.forEach.call(body.querySelectorAll('.vt-copy-label'), function(l) { txt(l, word(null)); });
+				}, COPIED_MS);
+			});
+		} }, [ label, E('span', { 'class': 'vt-sr' }, [ ' ' + text ]) ]);
+		return E('span', { 'class': 'vt-copyline' }, [ E('span', {}, [ value, tail || '' ]), btn ]);
+	},
+
+	/* an address with its Copy button; of "address/length" the address
+	   is what is copied */
+	addrLine: function(a) {
+		var p = String(a).split('/');
+		return this.copyLine(p[0], p.length > 1 ? '/' + p.slice(1).join('/') : '');
 	},
 
 	/* a client's drawer title: its name, where the name comes from and
@@ -4612,9 +4674,9 @@ return view.extend({
 				kv(_('Frames to device'), c.txPackets ? _('%s sent · %s retried · %s failed').format(fmt.count(c.txPackets), fmt.pct(c.txRetries / Math.max(1, c.txPackets) * 100, 1), fmt.pct(c.txFailed / Math.max(1, c.txPackets + c.txFailed) * 100, 1)) : fmt.DASH)
 			]) ]),
 			this.section(_('Identity'), [ E('dl', { 'class': 'vt-kvs' }, [
-				kv(_('MAC address'), c.macLabel, true),
+				kv(_('MAC address'), this.copyLine(c.macLabel), true),
 				kv(_('Address type'), c.isPrivate ? _('Private Wi-Fi address (randomised by the device)') : (c.vendor ? _('Globally unique · %s').format(c.vendor) : _('Globally unique'))),
-				kv(_('IP addresses'), c.ips && c.ips.length ? c.ips.join('\n') : E('span', { 'class': 'vt-muted' }, [ _('not known to this AP') ]), true),
+				kv(_('IP addresses'), c.ips && c.ips.length ? c.ips.map(this.addrLine, this) : E('span', { 'class': 'vt-muted' }, [ _('not known to this AP') ]), true),
 				madeName(c) ? '' : kv(_('Name from'), this.sourceText(c)),
 				c.wps && c.nameSource !== 'wps' ? kv(_('WPS device name'), c.wps) : ''
 			]) ])
@@ -4652,9 +4714,9 @@ return view.extend({
 				kv(_('Last heard'), c.seen == null ? _('static entry') : fmt.ago(c.seen * 1000))
 			].concat(c.behind ? [ kv(_('Access point'), [ c.behind.name, E('small', {}, [ _('its port %s').format(c.behind.port) ]), alsoLine(c.behind) ]) ] : [])) ]),
 			this.section(_('Identity'), [ E('dl', { 'class': 'vt-kvs' }, [
-				kv(_('MAC address'), c.macLabel, true),
+				kv(_('MAC address'), this.copyLine(c.macLabel), true),
 				kv(_('Address type'), c.isPrivate ? _('Private address (randomised by the device)') : (c.vendor ? _('Globally unique · %s').format(c.vendor) : _('Globally unique'))),
-				kv(_('IP addresses'), c.ips && c.ips.length ? c.ips.join('\n') : E('span', { 'class': 'vt-muted' }, [ _('not known to this device') ]), true),
+				kv(_('IP addresses'), c.ips && c.ips.length ? c.ips.map(this.addrLine, this) : E('span', { 'class': 'vt-muted' }, [ _('not known to this device') ]), true),
 				madeName(c) ? '' : kv(_('Name from'), this.sourceText(c))
 			]) ])
 		];
@@ -4934,14 +4996,14 @@ return view.extend({
 					up.tunnel ? kv(_('In the tunnel'), tunR ? '↓ ' + fmt.bits(tunR.rx) + ' · ↑ ' + fmt.bits(tunR.tx) : fmt.DASH) : ''
 				]) ]),
 				this.section(_('Addresses'), [ E('dl', { 'class': 'vt-kvs' }, [
-					kv(_('IPv4'), up.ipv4.join('\n') || fmt.DASH, true),
-					kv(_('IPv6'), up.ipv6.join('\n') || fmt.DASH, true),
+					kv(_('IPv4'), up.ipv4.length ? up.ipv4.map(this.addrLine, this) : fmt.DASH, true),
+					kv(_('IPv6'), up.ipv6.length ? up.ipv6.map(this.addrLine, this) : fmt.DASH, true),
 					/* the prefix the provider delegated, where there is one */
 					up.prefix6 && up.prefix6.length ? kv(_('IPv6 prefix'), up.prefix6.join('\n'), true) : '',
-					kv(_('Gateway'), up.gateway || fmt.DASH, true),
+					kv(_('Gateway'), up.gateway ? this.addrLine(up.gateway) : fmt.DASH, true),
 					/* beside other lines, the metric says which one the kernel takes */
 					several ? kv(_('Route metric'), up.metric != null ? String(up.metric) : fmt.DASH, true) : '',
-					kv(_('DNS'), up.dns.join('\n') || fmt.DASH, true)
+					kv(_('DNS'), up.dns.length ? up.dns.map(this.addrLine, this) : fmt.DASH, true)
 				]) ]),
 				this.section(_('Counters since boot'), [ E('dl', { 'class': 'vt-kvs' }, [
 					kv(_('Received', 'vantage'), fmt.bytes(s.rx_bytes) + ' · ' + errors(+s.rx_errors || 0)),

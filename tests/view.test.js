@@ -3447,3 +3447,128 @@ test('what\'s new: above the head and outside the grid, which is all the layout 
 	assert.deepEqual(own.map(r => r.sel), [ '.vt-app .vt-banner.vt-news', '.vt-app .vt-news .vt-link', '.vt-app .vt-news .vt-icon-action' ]);
 	for (const r of own) assert.doesNotMatch(r.body, /(^|[;\s])(color|background(-color)?|border(-color)?|box-shadow|fill|stroke|height)\s*:/, r.sel);
 });
+
+/* ------------------------------------------- Copy buttons in the details */
+
+test('copy: the clipboard in a secure context, else the value selected and execCommand, else left selected to copy by hand', async () => {
+	/* Node has a navigator of its own, as a getter */
+	const NAMES = [ 'window', 'navigator', 'document' ];
+	const saved = NAMES.map(n => Object.getOwnPropertyDescriptor(globalThis, n));
+	const put = (n, value) => Object.defineProperty(globalThis, n, { value, configurable: true, writable: true });
+	const run = async (secure, clip, exec) => {
+		const used = [], node = { id: 'value' };
+		const sel = { ranges: [], removeAllRanges() { used.push('clear'); this.ranges = []; }, addRange(r) { used.push('select ' + r.of.id); this.ranges.push(r); } };
+		put('window', { isSecureContext: secure, getSelection: () => sel });
+		put('navigator', clip ? { clipboard: { writeText: t => { used.push('clip ' + t); return clip === 'ok' ? Promise.resolve() : Promise.reject(new Error('denied')); } } } : {});
+		put('document', { createRange: () => ({ selectNodeContents(n) { this.of = n; } }), execCommand: c => { used.push('exec ' + c); if (exec === 'throw') throw new Error('no'); return exec; } });
+		const ok = await view.copyText('192.0.2.7', node);
+		return { ok, used, selected: sel.ranges.length };
+	};
+	try {
+		assert.deepEqual(await run(true, 'ok', true), { ok: true, used: [ 'clip 192.0.2.7' ], selected: 0 }, 'nothing selected, the focus never moved');
+		/* plain HTTP: no clipboard API; the value's own text is selected, copied, and let go */
+		assert.deepEqual(await run(false, 'ok', true), { ok: true, used: [ 'clear', 'select value', 'exec copy', 'clear' ], selected: 0 });
+		assert.deepEqual(await run(true, null, true), { ok: true, used: [ 'clear', 'select value', 'exec copy', 'clear' ], selected: 0 }, 'a secure page without the API');
+		/* the clipboard refuses: the same way out */
+		assert.deepEqual(await run(true, 'no', true), { ok: true, used: [ 'clip 192.0.2.7', 'clear', 'select value', 'exec copy', 'clear' ], selected: 0 });
+		/* neither works: said so, and the text stays selected */
+		assert.deepEqual(await run(false, null, false), { ok: false, used: [ 'clear', 'select value', 'exec copy' ], selected: 1 });
+		assert.deepEqual(await run(false, null, 'throw'), { ok: false, used: [ 'clear', 'select value', 'exec copy' ], selected: 1 });
+		assert.equal((await run(false, null, 'yes')).ok, false, 'only true is a copy');
+	} finally {
+		NAMES.forEach((n, i) => { if (saved[i]) Object.defineProperty(globalThis, n, saved[i]); else delete globalThis[n]; });
+	}
+});
+
+/* the fake DOM for a test that awaits: put back when the test ends */
+function fakeDom(t) {
+	const fake = withFakeDom(() => ({ E: global.E, document: global.document, window: global.window }));
+	const saved = { E: global.E, document: global.document, window: global.window, L: global.L, now: Date.now };
+	Object.assign(global, fake, { L: { url: (...p) => '/cgi-bin/luci/' + p.join('/') } });
+	t.after(() => { Date.now = saved.now; delete saved.now; Object.assign(global, saved); });
+	return fake.window;
+}
+
+test('copy button: a real button named after what it copies; it reads "Copied" for a moment, on a button a poll rebuilt too, and a screen reader is told', async t => {
+	const win = fakeDom(t), timers = [], copied = [];
+	let now = 1e12, result = true;
+	Date.now = () => now;
+	win.setTimeout = (fn, ms) => { timers.push({ fn, ms }); };
+	const fire = ms => timers.splice(0).filter(x => x.ms === ms || (timers.push(x), false)).forEach(x => x.fn());
+	const settle = () => new Promise(r => setImmediate(r));
+	const self = Object.create(dview);
+	const body = new FNode('div'), say = new FNode('span');
+	body.querySelectorAll = sel => body.find(sel.slice(1));
+	self.el = { drawerBody: body, drawerSay: say };
+	self.copyText = (text, node) => { copied.push([ text, node.textContent ]); return Promise.resolve(result); };
+	/* the details as a poll builds them: an address with its prefix length, and a MAC */
+	const build = () => { body.childNodes = []; body.appendChild(self.addrLine('192.0.2.7/24')); body.appendChild(self.copyLine('00:00:5E:00:53:01')); return body.find('vt-copy'); };
+	let [ addr, mac ] = build();
+	assert.deepEqual([ addr.tag, addr.getAttribute('type'), addr.getAttribute('class') ], [ 'button', 'button', 'vt-btn vt-btn-ghost vt-copy' ]);
+	assert.deepEqual([ addr.textContent, mac.textContent ], [ 'Copy 192.0.2.7', 'Copy 00:00:5E:00:53:01' ], 'the name says what is copied');
+	assert.deepEqual(addr.children.map(n => [ n.getAttribute('class'), n.textContent ]), [ [ 'vt-copy-label', 'Copy' ], [ 'vt-sr', ' 192.0.2.7' ] ], 'the label, and the value for a screen reader');
+	assert.equal(body.children[0].textContent, '192.0.2.7/24Copy 192.0.2.7', 'the line shows the prefix length');
+	assert.equal(say.textContent, '');
+
+	addr.on.click();
+	await settle();
+	assert.deepEqual(copied, [ [ '192.0.2.7', '192.0.2.7' ] ], 'the address without its prefix length, from a node that holds just that');
+	assert.deepEqual([ addr.textContent, mac.textContent ], [ 'Copied 192.0.2.7', 'Copy 00:00:5E:00:53:01' ]);
+	fire(30);
+	assert.equal(say.textContent, 'Copied', 'the drawer\'s status line');
+	/* a poll rebuilds the details within the moment: the new button reads the same */
+	now += 1500;
+	[ addr, mac ] = build();
+	assert.deepEqual([ addr.textContent, mac.textContent ], [ 'Copied 192.0.2.7', 'Copy 00:00:5E:00:53:01' ]);
+	/* the moment is over: the button on the page, rebuilt or not, reads Copy again */
+	now += 500;
+	fire(2000);
+	assert.deepEqual([ addr.textContent, mac.textContent, self.copied ], [ 'Copy 192.0.2.7', 'Copy 00:00:5E:00:53:01', null ]);
+	assert.equal(build()[0].textContent, 'Copy 192.0.2.7');
+
+	/* a copy that did not work says so, with no mark either */
+	result = false;
+	[ addr, mac ] = build();
+	mac.on.click();
+	await settle();
+	fire(30);
+	assert.deepEqual([ mac.textContent, say.textContent ], [ 'Not copied 00:00:5E:00:53:01', 'Not copied' ]);
+	/* a second copy before the first one's moment is over keeps its own moment */
+	result = true;
+	now += 1000;
+	addr.on.click();
+	await settle();
+	now += 1000;
+	timers.splice(0).filter(x => x.ms === 2000)[0].fn();
+	assert.equal(addr.textContent, 'Copied 192.0.2.7', 'the first copy\'s timer leaves the second alone');
+	assert.deepEqual(copied.map(c => c[0]), [ '192.0.2.7', '00:00:5E:00:53:01', '192.0.2.7' ]);
+	for (const word of [ 'Copy', 'Copied', 'Not copied' ]) assert.doesNotMatch(word, /[✓✔✅☑]/);
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	assert.doesNotMatch(src.slice(src.indexOf('copyText: function'), src.indexOf('drawerWho: function')), /[✓✔✅☑]|icon\(/, 'no check mark, no icon');
+});
+
+test('copy buttons: the MAC and each IP address in a client\'s, a wired host\'s and the uplink\'s details; none where there is no value', t => {
+	fakeDom(t);
+	const m = apModel(null);
+	const self = Object.assign(Object.create(dview), { m, st: { staRates: {}, devRates: {}, clientHist: {}, gone: [], uplinkRate: null, hist: { net: {} } }, ui: {}, el: {}, quiet: {}, canWrite: false });
+	const tree = list => { const n = new FNode('x'); append(n, list); return n; };
+	const names = n => n.find('vt-copy').map(b => b.textContent);
+	const sta = m.clients[0], host = m.wiredHosts.filter(h => h.ips.length)[0];
+	/* a station the host hints give no address: its MAC only */
+	assert.deepEqual(names(tree(self.drawerClient(sta.mac).body)), [ 'Copy 00:00:5E:00:53:01' ]);
+	sta.ips = [ '192.0.2.50', '2001:db8::50' ];
+	const client = tree(self.drawerClient(sta.mac).body);
+	assert.deepEqual(names(client), [ 'Copy 00:00:5E:00:53:01', 'Copy 192.0.2.50', 'Copy 2001:db8::50' ]);
+	assert.match(client.textContent, /MAC address00:00:5E:00:53:01Copy 00:00:5E:00:53:01Address type/, 'on the value\'s own line');
+	assert.deepEqual(names(tree(self.drawerWired(host).body)), [ 'Copy 00:00:5E:00:53:31', 'Copy 192.0.2.131' ]);
+	/* the uplink: its addresses without their prefix lengths, the gateway, each DNS server */
+	Object.assign(m.uplink, { ipv6: [ '2001:db8:7::5/64' ], dns: [ '203.0.113.53', '2001:db8::53' ] });
+	const up = tree(self.drawerUplink('').body);
+	assert.deepEqual(names(up), [ 'Copy 203.0.113.2', 'Copy 2001:db8:7::5', 'Copy 192.0.2.10', 'Copy 203.0.113.53', 'Copy 2001:db8::53' ]);
+	assert.match(up.textContent, /IPv4203\.0\.113\.2\/24Copy 203\.0\.113\.2IPv62001:db8:7::5\/64Copy/, 'shown with the length');
+	Object.assign(m.uplink, { ipv4: [], ipv6: [], gateway: null, dns: [] });
+	const bare = tree(self.drawerUplink('').body);
+	assert.deepEqual(names(bare), []);
+	assert.match(bare.textContent, /IPv4—IPv6—/, 'a dash as before');
+	for (const d of [ client, up ]) assert.ok(d.find('vt-copy').every(b => b.tag === 'button' && b.getAttribute('type') === 'button'));
+});
