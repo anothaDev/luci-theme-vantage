@@ -338,14 +338,16 @@ return baseclass.extend({
 		return { total: total, free: free, used: total - free, usedPct: (total - free) / total * 100 };
 	},
 
-	/* system.info root/tmp (KiB) -> bytes { total, used, free, usedPct } */
-	mount: function(s, label) {
+	/* system.info root/tmp (KiB) -> bytes { key, label, total, used, free,
+	   usedPct }; key says which of the two it is ('root', 'tmp'), for a
+	   reader that wants one of them: the list has no fixed first entry */
+	mount: function(s, label, key) {
 		s = obj(s);
 		var total = num(s.total) * 1024;
 		if (!(total > 0)) return null;
 		var used = Math.min(Math.max(num(s.used) * 1024, 0), total);
 		var free = finite(s.avail) ? Math.min(num(s.avail) * 1024, total - used) : total - used;
-		return { label: label, total: total, used: used, free: free, usedPct: used / total * 100 };
+		return { key: key || null, label: label, total: total, used: used, free: free, usedPct: used / total * 100 };
 	},
 
 	/* ---------------------------------------------------------- counters */
@@ -1524,7 +1526,7 @@ return baseclass.extend({
 				load: arr(info.load).slice(0, 3).map(num),
 				memory: mem,
 				swap: this.swap(info.swap),
-				storage: [ this.mount(info.root, _('Root (overlay)')), this.mount(info.tmp, _('Temporary (RAM)')) ].filter(Boolean)
+				storage: [ this.mount(info.root, _('Root (overlay)'), 'root'), this.mount(info.tmp, _('Temporary (RAM)'), 'tmp') ].filter(Boolean)
 			},
 			uplink: uplink,
 			/* the main line first, then up to MAX_LINES others to the

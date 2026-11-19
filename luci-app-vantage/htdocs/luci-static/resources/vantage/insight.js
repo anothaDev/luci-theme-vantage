@@ -91,10 +91,12 @@ return baseclass.extend({
 		/* radios and signal; neither applies to a wired-only device */
 		if (!model.wired) this.wifiHealth(model, out, live.quiet);
 
-		/* storage */
-		var root = (dev.storage || [])[0];
+		/* storage: the root filesystem, by its key (the model's list starts
+		   with /tmp where system info has no root); without one, no check.
+		   An overlay on most devices, a plain ext4 root on others */
+		var root = (dev.storage || []).filter(function(s) { return s && s.key === 'root'; })[0];
 		if (root) out.push({ id: 'storage', level: root.usedPct >= 95 ? 'err' : root.usedPct >= 85 ? 'warn' : 'ok', title: _('Storage'), value: _('%s used').format(fmt.pct(root.usedPct)),
-			reason: _('%s free').format(fmt.bytes(root.free)), detail: _('%s free on the overlay (%s used)').format(fmt.bytes(root.free), fmt.pct(root.usedPct)), page: PAGES.mounts });
+			reason: _('%s free').format(fmt.bytes(root.free)), detail: _('%s free on the root filesystem (%s used)').format(fmt.bytes(root.free), fmt.pct(root.usedPct)), page: PAGES.mounts });
 
 		return out;
 	},

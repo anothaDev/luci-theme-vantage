@@ -80,6 +80,15 @@ test('swap only when configured; mounts in bytes', () => {
 	assert.equal(model.mount({}, 'x'), null);
 });
 
+test('build: the storage list names its entries (root, tmp); a device without a root has /tmp alone', () => {
+	const info = { root: { total: 100, used: 10, free: 90, avail: 80 }, tmp: { total: 50, used: 1, free: 49 } };
+	assert.deepEqual(model.build({ info }).device.storage.map(s => [ s.key, s.label, s.total ]), [ [ 'root', 'Root (overlay)', 102400 ], [ 'tmp', 'Temporary (RAM)', 51200 ] ]);
+	assert.deepEqual(model.build({ info: { tmp: info.tmp } }).device.storage.map(s => s.key), [ 'tmp' ]);
+	assert.deepEqual(model.build({ info: { root: { total: 0 }, tmp: info.tmp } }).device.storage.map(s => s.key), [ 'tmp' ]);
+	assert.deepEqual(model.build({ info: { root: info.root } }).device.storage.map(s => s.key), [ 'root' ]);
+	assert.equal(model.mount(info.root, 'x').key, null, 'no key unless one is given');
+});
+
 test('counterRate: states and bit/s', () => {
 	assert.equal(model.counterRate(null, { at: 1, rx: 0, tx: 0 }).state, 'first');
 	assert.equal(model.counterRate({ at: 1000, rx: 0, tx: 0 }, { at: 1500, rx: 10, tx: 10 }).state, 'skip');

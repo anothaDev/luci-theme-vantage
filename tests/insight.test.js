@@ -8,7 +8,7 @@ const insight = load('vantage.insight');
 
 function baseModel() {
 	return {
-		device: { load: [ 65536 ], memory: { usedPct: 40, available: 600, total: 1000 }, storage: [ { usedPct: 2, free: 1000 } ] },
+		device: { load: [ 65536 ], memory: { usedPct: 40, available: 600, total: 1000 }, storage: [ { key: 'root', usedPct: 2, free: 1000 } ] },
 		uplink: { dev: 'eth0', carrier: true, speed: { mbps: 2500, duplex: 'full' }, gateway: '192.0.2.1' },
 		radios: [ { id: 'radio0', bandLabel: '2.4 GHz', up: true, disabled: false }, { id: 'radio1', bandLabel: '6 GHz', up: true, disabled: false } ],
 		ssids: [ { up: true, clients: 0 }, { up: true, clients: 2 } ],
@@ -169,6 +169,22 @@ test('health: missing data degrades to info, never throws', () => {
 	assert.equal(byId(h, 'cpu').level, 'info');
 	assert.equal(byId(h, 'signal').level, 'info');
 	assert.equal(insight.summary([]).level, 'ok');
+});
+
+test('health: Storage is about the root filesystem, picked by its key; without one there is no check', () => {
+	const live = { cpu: { pct: 7, cores: [ 1 ] } };
+	const store = list => byId(insight.health(Object.assign(baseModel(), { device: Object.assign(baseModel().device, { storage: list }) }), live), 'storage');
+	const root = { key: 'root', label: 'Root (overlay)', usedPct: 90, free: 5 * 1024 * 1024 }, tmp = { key: 'tmp', label: 'Temporary (RAM)', usedPct: 1, free: 400 * 1024 * 1024 };
+	const c = store([ root, tmp ]);
+	assert.deepEqual([ c.level, c.value, c.reason, c.detail ], [ 'warn', '90% used', '5.00 MiB free', '5.00 MiB free on the root filesystem (90% used)' ]);
+	assert.doesNotMatch(c.detail, /overlay/, 'an ext4 root is no overlay');
+	/* wherever it is in the list */
+	assert.deepEqual(store([ tmp, root ]), c);
+	/* system info without a root: /tmp is not taken for it, and nothing is said */
+	for (const list of [ [ tmp ], [], undefined, [ { usedPct: 99, free: 1 } ], [ null, 'root' ] ]) assert.equal(store(list), undefined, JSON.stringify(list));
+	assert.deepEqual(insight.health(Object.assign(baseModel(), { device: Object.assign(baseModel().device, { storage: [ tmp ] }) }), live).map(x => x.id), [ 'uplink', 'cpu', 'memory', 'radios', 'signal' ]);
+	assert.equal(store([ Object.assign({}, root, { usedPct: 96 }) ]).level, 'err');
+	assert.equal(store([ Object.assign({}, root, { usedPct: 50 }) ]).level, 'ok');
 });
 
 test('health: a wired-only device has no Wi-Fi or Signal check', () => {
