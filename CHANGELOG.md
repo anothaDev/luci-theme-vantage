@@ -80,6 +80,15 @@ Each release ships both packages, `luci-theme-vantage` and
   radios are driven by `qcawificfg80211` (QWRT) the dashboard listed no
   Wi-Fi; it now reads the networks from the wireless configuration and
   shows Wi-Fi 6 and 7 radios as such.
+- **Firewall overview: a negative prefix length is a rule in effect**
+  (#144, [@FanxJK](https://github.com/FanxJK)). A rule that matches an
+  address by its last bits, such as `::1234/-64`, was listed under "Not
+  in effect" as refused by firewall4, which loads it. The overview now
+  reads a prefix length the way firewall4 does.
+- **Tables: the title of an actions column lines up with its buttons**
+  (#143, [@VIKINGYFY](https://github.com/VIKINGYFY)). "Static Lease"
+  over the leases' buttons was right-aligned, apart from every other
+  title, wherever the button is the wider of the two.
 - **Smaller fixes.** A client's Radio row no longer prints "channel 0 ·
   20 MHz" for a radio whose channel is not known; the storage check
   reads the root filesystem by name.
