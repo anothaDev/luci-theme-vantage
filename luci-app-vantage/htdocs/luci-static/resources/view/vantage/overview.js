@@ -93,7 +93,7 @@ var WG_RETRY_MS = 60 * 1000;
 var WG_ABSENT = /ubus code [346]\b|error -3200[02]\b/;
 var WG_PEERS = 5;                     /* peers a tunnel lists before "+n more" */
 var STORE_KEY = 'vantage.hist.v1';
-var VERSION = '1.0.21';               /* this package's, as its Makefile has it (tests/version.test.js) */
+var VERSION = '1.0.99.1';             /* this package's, as its Makefile has it (tests/version.test.js) */
 var SVGNS = 'http://www.w3.org/2000/svg';
 var HOSTAPD_OBJ = /^[A-Za-z0-9_.-]{1,64}$/;
 
@@ -653,7 +653,7 @@ function writeStore(v) {
    dotted numbers, this one and the kept one alike: anything else kept
    counts as nothing kept, and with a VERSION of another form there is
    no line. */
-var NEWS_URL = 'https://github.com/anothaDev/luci-theme-vantage/blob/v1.0.21/CHANGELOG.md';
+var NEWS_URL = 'https://github.com/anothaDev/luci-theme-vantage/blob/1.1.0-beta.1/CHANGELOG.md';
 var SEEN_KEY = 'vantage.seen.v1';
 var VERSION_FORM = /^\d{1,4}(\.\d{1,4}){1,3}$/;
 
