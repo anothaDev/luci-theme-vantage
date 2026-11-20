@@ -834,6 +834,13 @@ function movesUnfocused() {
 	return !!(root && root.getAttribute && root.getAttribute('data-vt-unfocused') === 'moving');
 }
 
+/* Speed units (the Vantage theme's Appearance, data-vt-units): what the
+   dashboard reads its traffic in (fmt); bits unless picked otherwise */
+function speedUnits() {
+	var root = typeof document !== 'undefined' ? document.documentElement : null;
+	return root && root.getAttribute && root.getAttribute('data-vt-units') === 'bytes' ? 'bytes' : 'bits';
+}
+
 function writeBackdrop(v) {
 	/* the theme takes it (and cancels the event) */
 	var ev = null;
@@ -1685,6 +1692,13 @@ return view.extend({
 		this.paintLive();
 	},
 
+	/* Speed units (the theme's Appearance): set once fmt reads, and again
+	   when another pick lands (UNITS_EVENT); the next paint shows it */
+	applyUnits: function() {
+		fmt.setSpeedUnits(speedUnits());
+		this.paintLive();
+	},
+
 	/* ----------------------------------------------------------- render */
 
 	render: function(data) {
@@ -1692,6 +1706,8 @@ return view.extend({
 		this.initState(data);
 		this.ingest(data.raw);
 		this.st.lastOk = Date.now();
+		/* before the first build: the tiles' rates read in the picked unit */
+		this.applyUnits();
 
 		this.el = {};
 		/* .vt-body is the size container for the layout; the drawer stays
@@ -1742,6 +1758,7 @@ return view.extend({
 			var d = ev.detail;
 			if (d && typeof d.add === 'function') d.add(self.searchEntries(d.query));
 		});
+		window.addEventListener('vantage:units', function() { self.applyUnits(); });
 		window.addEventListener('vantage:unfocused', function() { self.paintLive(); });
 		[ 'pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'focus' ].forEach(function(t) {
 			window.addEventListener(t, function() { self.noteInput(); }, { passive: true });
