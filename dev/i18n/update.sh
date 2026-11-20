@@ -22,7 +22,7 @@
 # from a sparse, shallow fetch of build/ and luci.mk at LUCI_REV below,
 # cached in ${XDG_CACHE_HOME:-~/.cache}/vantage/luci-<rev>.
 #
-# Needs git, perl and GNU gettext (xgettext, msguniq, msgmerge).
+# Needs git, perl and GNU gettext (xgettext, msguniq, msgcat, msgmerge).
 set -euo pipefail
 
 # the luci feed commit of the pinned SDK (feed= line in dist/<release>/BUILDINFO);
@@ -54,7 +54,7 @@ case ${1:-} in
 	*) usage ;;
 esac
 
-for tool in perl xgettext msguniq msgmerge; do
+for tool in perl xgettext msguniq msgcat msgmerge; do
 	command -v "$tool" >/dev/null || die "$tool not found; install GNU gettext and perl (Debian/Ubuntu: apt install gettext perl; Fedora: dnf install gettext perl; Arch: pacman -S gettext perl; macOS: brew install gettext)"
 done
 perl -MText::Balanced -MIPC::Open2 -e1 2>/dev/null || die "perl lacks Text::Balanced/IPC::Open2 (Debian/Ubuntu: apt install perl)"
@@ -151,7 +151,9 @@ make_templates() {
 		pkg=${entry%%:*} cat=${entry#*:}
 		pot=$out/$pkg/po/templates/$cat.pot
 		mkdir -p "${pot%/*}"
-		( cd "$repo" && LC_ALL=C perl "$luci/build/i18n-scan.pl" "$pkg" ) > "$pot.new"
+		# unwrapped, as the catalogues are: where a long line is broken
+		# differs between gettext versions
+		( cd "$repo" && LC_ALL=C perl "$luci/build/i18n-scan.pl" "$pkg" ) | msgcat --no-wrap - > "$pot.new"
 		[ "$(head -n 1 "$pot.new")" = 'msgid ""' ] || die "i18n-scan.pl produced no template for $pkg"
 		mv -f -- "$pot.new" "$pot"
 	done

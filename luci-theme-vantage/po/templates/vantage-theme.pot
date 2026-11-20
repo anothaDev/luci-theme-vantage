@@ -235,10 +235,7 @@ msgstr ""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:267
 msgctxt "vantage-theme"
-msgid ""
-"Flow offloading is on: once a forwarded connection is established, its "
-"packets can skip prerouting, forward and postrouting, so these chains and "
-"their counters see only its first packets."
+msgid "Flow offloading is on: once a forwarded connection is established, its packets can skip prerouting, forward and postrouting, so these chains and their counters see only its first packets."
 msgstr ""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1541
@@ -253,11 +250,7 @@ msgstr ""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:265
 msgctxt "vantage-theme"
-msgid ""
-"Frames bridged between ports of one bridge, such as Wi-Fi and LAN in br-lan "
-"on an access point, never reach the input, forward or output chains, and no "
-"bridge chain filters them here. (The kernel can hand them to the IP chains "
-"if br_netfilter is enabled; the ruleset doesn't show that.)"
+msgid "Frames bridged between ports of one bridge, such as Wi-Fi and LAN in br-lan on an access point, never reach the input, forward or output chains, and no bridge chain filters them here. (The kernel can hand them to the IP chains if br_netfilter is enabled; the ruleset doesn't show that.)"
 msgstr ""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:698
@@ -453,10 +446,7 @@ msgid "On"
 msgstr ""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:2153
-msgid ""
-"Once a day this browser reads the project's package list on GitHub Pages, "
-"which shows GitHub this computer's IP address and the address this page was "
-"opened at. For this browser only."
+msgid "Once a day this browser reads the project's package list on GitHub Pages, which shows GitHub this computer's IP address and the address this page was opened at. For this browser only."
 msgstr ""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js:1466
@@ -651,10 +641,7 @@ msgid "Username"
 msgstr ""
 
 #: luci-theme-vantage/root/usr/share/rpcd/acl.d/luci-theme-vantage.json:3
-msgid ""
-"Vantage theme: save its Appearance (colour mode, login and network path "
-"backgrounds) and the dashboard's chart style and layouts for every browser, "
-"in /etc/config/vantage_theme only"
+msgid "Vantage theme: save its Appearance (colour mode, login and network path backgrounds) and the dashboard's chart style and layouts for every browser, in /etc/config/vantage_theme only"
 msgstr ""
 
 #: luci-theme-vantage/htdocs/luci-static/resources/vantage-theme/nftflow.js:454

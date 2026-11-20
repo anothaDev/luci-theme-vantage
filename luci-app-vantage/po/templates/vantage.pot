@@ -284,9 +284,7 @@ msgid "%s is not up"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4227
-msgid ""
-"%s is shared by %d devices (a switch or another access point behind it); its "
-"%s link is not theirs"
+msgid "%s is shared by %d devices (a switch or another access point behind it); its %s link is not theirs"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4226
@@ -546,15 +544,11 @@ msgid "Any zone"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:252
-msgid ""
-"Anything on the internet can reach that network. Remove the forwarding "
-"unless you mean it."
+msgid "Anything on the internet can reach that network. Remove the forwarding unless you mean it."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:248
-msgid ""
-"Anything on the internet can reach the router itself. Set this zone's Input "
-"to reject."
+msgid "Anything on the internet can reach the router itself. Set this zone's Input to reject."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:81
@@ -678,9 +672,7 @@ msgid "Connected for"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4761
-msgid ""
-"Connected to %s, a paired access point: signal, link rates and traffic as it "
-"reports them."
+msgid "Connected to %s, a paired access point: signal, link rates and traffic as it reports them."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4800
@@ -726,8 +718,7 @@ msgid "Country"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:348
-msgid ""
-"Custom rule files are configured (%s); rules in them are not listed here."
+msgid "Custom rule files are configured (%s); rules in them are not listed here."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2353
@@ -779,9 +770,7 @@ msgid "Device type"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4178
-msgid ""
-"Devices on the Ethernet ports appear here once they send traffic; the bridge "
-"forgets quiet ones after about five minutes."
+msgid "Devices on the Ethernet ports appear here once they send traffic; the bridge forgets quiet ones after about five minutes."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2686
@@ -833,39 +822,27 @@ msgid "Downloaded"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2219
-msgid ""
-"Drag a tile by its handle or use its buttons. Done saves it for medium "
-"screens in every browser."
+msgid "Drag a tile by its handle or use its buttons. Done saves it for medium screens in every browser."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2220
-msgid ""
-"Drag a tile by its handle or use its buttons. Done saves it for narrow "
-"screens in every browser."
+msgid "Drag a tile by its handle or use its buttons. Done saves it for narrow screens in every browser."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2218
-msgid ""
-"Drag a tile by its handle or use its buttons. Done saves it for wide screens "
-"in every browser."
+msgid "Drag a tile by its handle or use its buttons. Done saves it for wide screens in every browser."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2219
-msgid ""
-"Drag a tile by its handle or use its buttons. Saved in this browser for "
-"medium screens."
+msgid "Drag a tile by its handle or use its buttons. Saved in this browser for medium screens."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2220
-msgid ""
-"Drag a tile by its handle or use its buttons. Saved in this browser for "
-"narrow screens."
+msgid "Drag a tile by its handle or use its buttons. Saved in this browser for narrow screens."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2218
-msgid ""
-"Drag a tile by its handle or use its buttons. Saved in this browser for wide "
-"screens."
+msgid "Drag a tile by its handle or use its buttons. Saved in this browser for wide screens."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2170
@@ -983,9 +960,7 @@ msgid "From network"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:352
-msgid ""
-"From the firewall configuration. Ports opened by UPnP or by custom rule "
-"files are not shown."
+msgid "From the firewall configuration. Ports opened by UPnP or by custom rule files are not shown."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3006
@@ -1153,16 +1128,11 @@ msgid "Into your network"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:272
-msgid ""
-"It accepts every port from any address, like a zone forwarding. Limit it to "
-"the ports and addresses you need."
+msgid "It accepts every port from any address, like a zone forwarding. Limit it to the ports and addresses you need."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:277
-msgid ""
-"It forwards %s from any address on the internet to %s. The interface list "
-"could not be read, so this page cannot tell whether that is the router "
-"itself."
+msgid "It forwards %s from any address on the internet to %s. The interface list could not be read, so this page cannot tell whether that is the router itself."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4987
@@ -1484,9 +1454,7 @@ msgid "No default route"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4340
-msgid ""
-"No device has a port to itself; traffic on a shared port is not counted per "
-"device."
+msgid "No device has a port to itself; traffic on a shared port is not counted per device."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4424
@@ -1535,8 +1503,7 @@ msgid "No radios reported"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:332
-msgid ""
-"No rule or port forward opens anything; the warnings above say what does."
+msgid "No rule or port forward opens anything; the warnings above say what does."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:116
@@ -1565,10 +1532,7 @@ msgid "No wireless radios are reported by this device."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:227
-msgid ""
-"No zone masquerades, holds the uplink or is called wan, so this page cannot "
-"tell which side faces the internet. On an access point that is expected; on "
-"a router, check the zones below."
+msgid "No zone masquerades, holds the uplink or is called wan, so this page cannot tell which side faces the internet. On an access point that is expected; on a router, check the zones below."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:382
@@ -1607,9 +1571,7 @@ msgid "Not connected"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4875
-msgid ""
-"Not connected right now. A wired device that stays quiet is forgotten after "
-"about five minutes."
+msgid "Not connected right now. A wired device that stays quiet is forgotten after about five minutes."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4671
@@ -1684,8 +1646,7 @@ msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:239
 msgid "Only standard housekeeping (ping, DHCP renewals and the like): %d rule"
-msgid_plural ""
-"Only standard housekeeping (ping, DHCP renewals and the like): %d rules"
+msgid_plural "Only standard housekeeping (ping, DHCP renewals and the like): %d rules"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1715,9 +1676,7 @@ msgid "OpenWrt device"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:268
-msgid ""
-"Option %s in General Settings has a value firewall4 refuses, so it loads no "
-"new rules: what is open is unknown."
+msgid "Option %s in General Settings has a value firewall4 refuses, so it loads no new rules: what is open is unknown."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2970
@@ -1753,9 +1712,7 @@ msgid "PiB"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:337
-msgid ""
-"Ping and other control messages, multicast, DHCP renewals and IPsec passed "
-"on to your network: what every router lets in."
+msgid "Ping and other control messages, multicast, DHCP renewals and IPsec passed on to your network: what every router lets in."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5169
@@ -2129,16 +2086,11 @@ msgid "The bridge forgets a device after about five minutes without traffic"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4175
-msgid ""
-"The bridges have learned so many addresses that listing them here would "
-"strain this device."
+msgid "The bridges have learned so many addresses that listing them here would strain this device."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:260
-msgid ""
-"The default Input policy applies there and accepts, so anything on the "
-"internet can reach the router itself. Add it to the wan zone or set Input to "
-"reject in General Settings."
+msgid "The default Input policy applies there and accepts, so anything on the internet can reach the router itself. Add it to the wan zone or set Input to reject in General Settings."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5019
@@ -2155,15 +2107,11 @@ msgid "The firewall cannot load these settings"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:282
-msgid ""
-"The firewall lets any address on the internet reach %s. Limit the rule to "
-"the addresses you use."
+msgid "The firewall lets any address on the internet reach %s. Limit the rule to the addresses you use."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:264
-msgid ""
-"The interface list could not be read, and the default Input policy accepts: "
-"an uplink in no zone would be open. Set Input to reject in General Settings."
+msgid "The interface list could not be read, and the default Input policy accepts: an uplink in no zone would be open. Set Input to reject in General Settings."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4894
@@ -2221,17 +2169,11 @@ msgid "This device reports no radios"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5115
-msgid ""
-"This line has a private address (%s): another router, or the provider, "
-"translates addresses in front of this one (double NAT). Port forwards can be "
-"reached from the internet only where that one passes them on."
+msgid "This line has a private address (%s): another router, or the provider, translates addresses in front of this one (double NAT). Port forwards can be reached from the internet only where that one passes them on."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5116
-msgid ""
-"This line has a shared address (%s): the provider translates addresses for "
-"many customers (carrier-grade NAT). Port forwards cannot be reached from the "
-"internet over IPv4."
+msgid "This line has a shared address (%s): the provider translates addresses for many customers (carrier-grade NAT). Port forwards cannot be reached from the internet over IPv4."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5107
@@ -2239,9 +2181,7 @@ msgid "This line is down or has no default route now."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:183
-msgid ""
-"This page cannot tell what is open. Reload it; if that does not help, check "
-"the firewall pages."
+msgid "This page cannot tell what is open. Reload it; if that does not help, check the firewall pages."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5055
@@ -2321,9 +2261,7 @@ msgid "Traffic Rules"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:256
-msgid ""
-"Traffic from the internet that no forwarding covers still reaches your other "
-"networks. Set Forward to reject in General Settings."
+msgid "Traffic from the internet that no forwarding covers still reaches your other networks. Set Forward to reject in General Settings."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:3021
@@ -2344,9 +2282,7 @@ msgid "UDP port %d"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:345
-msgid ""
-"UPnP is installed: devices on your network can open ports on their own while "
-"it runs, and those are not listed here."
+msgid "UPnP is installed: devices on your network can open ports on their own while it runs, and those are not listed here."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/names.js:289
@@ -2445,29 +2381,15 @@ msgid "Vantage add-on not installed on it"
 msgstr ""
 
 #: luci-app-vantage/root/usr/share/rpcd/acl.d/luci-app-vantage.json:25
-msgid ""
-"Vantage dashboard: client names from reverse DNS (lets the holder make the "
-"device send DNS PTR queries to any DNS server and port it names)"
+msgid "Vantage dashboard: client names from reverse DNS (lets the holder make the device send DNS PTR queries to any DNS server and port it names)"
 msgstr ""
 
 #: luci-app-vantage/root/usr/share/rpcd/acl.d/luci-app-vantage.json:33
-msgid ""
-"Vantage dashboard: name stations and keep a station's weak signal out of the "
-"warnings (luci.vantage set_alias and set_quiet: validated names and quiet "
-"MACs in /etc/config/vantage only, at most 512 each)"
+msgid "Vantage dashboard: name stations and keep a station's weak signal out of the warnings (luci.vantage set_alias and set_quiet: validated names and quiet MACs in /etc/config/vantage only, at most 512 each)"
 msgstr ""
 
 #: luci-app-vantage/root/usr/share/rpcd/acl.d/luci-app-vantage.json:3
-msgid ""
-"Vantage dashboard: read-only status of the device, uplink, radios and "
-"stations (wireless configuration without keys, through luci.vantage "
-"wireless), its temperature sensors (luci.vantage thermal), the wired hosts "
-"its bridges have learned (luci.vantage wired: MAC, port and when last heard, "
-"and which switch ports a port's VLAN has), the link state of those switch "
-"ports (luci getSwconfigPortState), the default route the kernel takes to the "
-"internet (luci.vantage routes: family, device and metric, no gateways) and "
-"each radio's noise floor (luci.vantage survey: the channel survey read "
-"through nl80211)"
+msgid "Vantage dashboard: read-only status of the device, uplink, radios and stations (wireless configuration without keys, through luci.vantage wireless), its temperature sensors (luci.vantage thermal), the wired hosts its bridges have learned (luci.vantage wired: MAC, port and when last heard, and which switch ports a port's VLAN has), the link state of those switch ports (luci getSwconfigPortState), the default route the kernel takes to the internet (luci.vantage routes: family, device and metric, no gateways) and each radio's noise floor (luci.vantage survey: the channel survey read through nl80211)"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2700
@@ -2624,9 +2546,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/firewall.js:221
-msgid ""
-"What is open depends on how firewall4 handles %s, which this page does not "
-"follow. Check the firewall pages."
+msgid "What is open depends on how firewall4 handles %s, which this page does not follow. Check the firewall pages."
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:110
