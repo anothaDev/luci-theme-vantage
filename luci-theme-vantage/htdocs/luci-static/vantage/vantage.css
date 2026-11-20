@@ -1807,7 +1807,11 @@ table { border-collapse: separate; border-spacing: 0; width: 100%; }
 }
 
 .td.cbi-value-field.inactive { visibility: hidden; }
-.td.cbi-section-actions, .th.cbi-section-actions { text-align: right; white-space: nowrap; width: 1%; }
+.td.cbi-section-actions, .th.cbi-section-actions { white-space: nowrap; width: 1%; }
+/* the buttons end the row, the filter row's Reset with them; a title
+   over them (Static Lease) starts where they start, as every other
+   column's title does */
+.td.cbi-section-actions, .cbi-section-table-filter > .th.cbi-section-actions { text-align: right; }
 .td.cbi-section-actions > div:not(.btn, .cbi-button) { display: inline-flex; gap: 4px; flex-wrap: nowrap; align-items: center; }
 .td.cbi-section-actions .btn, .td.cbi-section-actions .cbi-button { padding: 0 10px; }
 /* three or more row actions: the main one plus ⋯ (menu-vantage.js
