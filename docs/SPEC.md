@@ -444,6 +444,11 @@ text around it so it looks the same size.
   in the mt798x builds) it kills rpcd (#124), and no group grants it. The
   host hints (DHCP leases, ARP) every 30 s, and on each of the three
   polls after a station or wired host first appears.
+- **Speed units**, under the theme's Appearance with the dashboard, bits
+  by default: the dashboard reads its traffic (the live rates, the charts'
+  axes, the client rows and the cards) in bytes instead — the same numbers
+  ÷8, in decimal B/s steps. Link and PHY rates stay bitrates: they are
+  negotiated speeds, not traffic. Saved like the other picks.
 - **Low-power router** (#101), under the theme's Appearance with the
   dashboard, off by default: the live numbers as always (the 2 s lane and
   the 5 s poll); Wi-Fi state, the radios' `iwinfo`, client capabilities,

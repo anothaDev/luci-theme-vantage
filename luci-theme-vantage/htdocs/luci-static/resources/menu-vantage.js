@@ -41,6 +41,9 @@ const POWER_EVENT = 'vantage:power';
    the browser drawing; on, they go on. The dashboard reads
    data-vt-unfocused and listens for UNFOCUSED_EVENT */
 const UNFOCUSED_EVENT = 'vantage:unfocused';
+/* Speed units (the dashboard's traffic, the Appearance group the app reads
+   too): the dashboard reads data-vt-units and listens for UNITS_EVENT */
+const UNITS_EVENT = 'vantage:units';
 /* The refresh dot's pulse is a CSS animation; running on the compositor it
    makes the browser draw a frame on every display refresh, sixty a second,
    on every page that polls, for a pulse five seconds long. Paused through
@@ -80,7 +83,9 @@ const LOOK = {
 	power: { own: 'vantage.power.own', before: 'vantage.power', ok: [ 'normal', 'low' ] },
 	unfocused: { own: 'vantage.unfocused.own', before: 'vantage.unfocused', ok: [ 'still', 'moving' ] },
 	/* what shows next to the logo; the hostname and model come from system board */
-	brand: { own: 'vantage.brand.own', before: 'vantage.brand', ok: [ 'none', 'hostname', 'model' ] }
+	brand: { own: 'vantage.brand.own', before: 'vantage.brand', ok: [ 'none', 'hostname', 'model' ] },
+	/* what the dashboard reads traffic in; the app's own (fmt.setSpeedUnits) */
+	units: { own: 'vantage.units.own', before: 'vantage.units', ok: [ 'bits', 'bytes' ] }
 };
 const LOOK_SYNC = 'vantage.look';         /* another tab saved one: { name, value } */
 const LOOK_SET_EVENT = 'vantage:backdrop-set';   /* the dashboard's own picker hands its pick over */
@@ -233,6 +238,7 @@ function setLookAttr(root, name, value) {
 	else if (name === 'power') root.setAttribute('data-vt-look-power', value);
 	else if (name === 'unfocused') root.setAttribute('data-vt-look-unfocused', value);
 	else if (name === 'brand') root.setAttribute('data-vt-look-brand', value);
+	else if (name === 'units') root.setAttribute('data-vt-look-units', value);
 }
 function storageSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
 
@@ -1758,6 +1764,24 @@ return baseclass.extend({
 		this.syncAppearance();
 	},
 
+	unitsPref() {
+		return this.lookPref('units');
+	},
+
+	setUnitsPref(pref) {
+		this.setLook('units', pref, () => this.applyUnits());
+	},
+
+	/* the dashboard reads the one in force from data-vt-units (fmt) */
+	applyUnits() {
+		const v = this.unitsPref();
+		if (this.root.getAttribute('data-vt-units') !== v) {
+			this.root.setAttribute('data-vt-units', v);
+			window.dispatchEvent(new CustomEvent(UNITS_EVENT));
+		}
+		this.syncAppearance();
+	},
+
 	setupTheme() {
 		const toggle = document.getElementById('vt-theme');
 		if (toggle) toggle.addEventListener('click', () => { if (this.themeNext) this.setTheme(this.themeNext); });
@@ -1796,6 +1820,7 @@ return baseclass.extend({
 			this.applyBackdrop();
 			this.applyPower();
 			this.applyUnfocused();
+			this.applyUnits();
 			this.applyBrand();
 		});
 		/* the dashboard's own picker (Customize), saved as Appearance's */
@@ -1820,6 +1845,7 @@ return baseclass.extend({
 		this.applyBackdrop();
 		this.applyPower();
 		this.applyUnfocused();
+		this.applyUnits();
 		this.applyBrand();
 	},
 
@@ -1852,10 +1878,11 @@ return baseclass.extend({
 		return this.appearGroup('vt-backdrop', _('Network path background'), [ [ 'grid', n.grid ], [ 'stars', n.stars ], [ 'none', n.none ] ], v => this.setBackdropPref(v));
 	},
 
-	/* the dashboard's groups: its network path's background, and the
-	   low-power mode */
+	/* the dashboard's groups: its traffic's unit, its network path's
+	   background, and the low-power mode */
 	dashboardGroups() {
-		return [ this.backdropGroup(),
+		return [ this.appearGroup('vt-units', _('Speed units'), [ [ 'bits', _('Bits/s') ], [ 'bytes', _('Bytes/s') ] ], v => this.setUnitsPref(v)),
+			this.backdropGroup(),
 			this.appearGroup('vt-power', _('Low-power router'), [ [ 'normal', _('Off') ], [ 'low', _('On') ] ], v => this.setPowerPref(v)) ];
 	},
 
@@ -1945,7 +1972,7 @@ return baseclass.extend({
 
 	syncAppearance() {
 		if (!this.appear) return;
-		const now = { 'vt-colour': this.themePref(), 'vt-logo-name': this.brandPref(), 'vt-login': this.loginPref(), 'vt-backdrop': this.backdropPref(), 'vt-power': this.powerPref(), 'vt-unfocused': this.unfocusedPref() };
+		const now = { 'vt-colour': this.themePref(), 'vt-logo-name': this.brandPref(), 'vt-login': this.loginPref(), 'vt-units': this.unitsPref(), 'vt-backdrop': this.backdropPref(), 'vt-power': this.powerPref(), 'vt-unfocused': this.unfocusedPref() };
 		Array.prototype.forEach.call(this.appear.querySelectorAll('input[type="radio"]'), r => { r.checked = (now[r.name] === r.value); });
 		const state = this.lookState();
 		const note = state === 'relogin' ? _('Log in again to save Appearance for every browser.')
