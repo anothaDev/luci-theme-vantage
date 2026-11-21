@@ -235,6 +235,20 @@ SDK.
    committed manifest, and creates the GitHub release with the packages,
    `SHA256SUMS` and `BUILDINFO`.
 
+### Version numbers
+
+Three numbers and nothing else, so that both package managers put every
+release in the same order.
+
+- The third goes up for fixes and for small additions that change no
+  default and no permission (1.1.0 to 1.1.1).
+- The second for a new package, new tiles, a new permission or a changed
+  default (1.0.21 to 1.1.0).
+- A test build before a release takes a fourth number just below it
+  (1.0.99.1 before 1.1.0): a suffix such as `_beta1` sorts above the
+  release for opkg. It goes out as a GitHub pre-release under a tag that
+  does not start with `v`, built by hand, so the feed never carries it.
+
 By contributing you agree that your contribution is licensed under the
 GNU General Public License, version 3 or any later version
 (GPL-3.0-or-later), like the rest of the project.
