@@ -5,63 +5,32 @@ promised; issues and pull requests for any of it are welcome.
 
 ## Next
 
-### Multiple access points (planned for 1.1)
+What 1.1 shipped and left open.
 
-Show the radios, SSIDs and clients of other OpenWrt access points on the
-main dashboard, so a router without Wi-Fi still shows the whole network
+### Other access points
+
+Since 1.1 the optional `luci-app-vantage-aps` shows the radios, SSIDs
+and clients of paired OpenWrt access points on the router's dashboard
 (ideas from [#5](https://github.com/anothaDev/luci-theme-vantage/pull/5)
 by @nhAsif and [#127](https://github.com/anothaDev/luci-theme-vantage/pull/127)
-by @Vikk20). In the tree as the optional `luci-app-vantage-aps`, for
-1.1: each access point is paired once, then the router reads it over SSH
-with a key that can only run a read-only report, against the access
-point's pinned host key (see the spec, "Other access points"). Still
-open: access points without Dropbear; per-port traffic that a switch
-chip forwards without the kernel counting it; the collector under a user
-of its own instead of root; finding a moved access point over IPv6.
+by @Vikk20; see the spec, "Other access points"). Still open: access
+points without Dropbear; per-port traffic that a switch chip forwards
+without the kernel counting it; the collector under a user of its own
+instead of root; finding a moved access point over IPv6.
 
-### WireGuard tile (planned for 1.1)
+### WireGuard tile
 
-Each tunnel's peers with their name, the time since the last handshake
-and their traffic, shown only where a tunnel exists, as the Wi-Fi tiles
-need a radio
-([#129](https://github.com/anothaDev/luci-theme-vantage/issues/129)). In
-the tree for 1.1, from LuCI's own `luci.wireguard getWgInstances`
-(`luci-proto-wireguard`), which is read-only and returns no private or
-preshared keys: the plugin gets no new method and the dashboard's ACL no
-new grant. It shows for a login that holds LuCI's WireGuard group; one
-limited to the dashboard's read group does not get it (see the spec,
-"WireGuard tile"). Still open: what the call costs a router with many
-peers, or with peers configured by host name, which LuCI's plugin looks
-up on every call.
+Since 1.1, from LuCI's own `luci.wireguard getWgInstances`
+([#129](https://github.com/anothaDev/luci-theme-vantage/issues/129);
+see the spec, "WireGuard tile"). Still open: what the call costs a
+router with many peers, or with peers configured by host name, which
+LuCI's plugin looks up on every call.
 
-### Search for clients, radios and networks (planned for 1.1)
+### Search on other pages
 
-In the tree for 1.1: on the dashboard the command palette (Ctrl+K) also
-finds what the dashboard knows:
-
-- clients by alias, resolved name, MAC or IP, opening the client's
-  details (a named device that is offline too);
-- radios by band, channel or name, opening the radio's details;
-- Wi-Fi networks, opening the dashboard filtered to that network;
-- interfaces, opening their LuCI page.
-
-The theme keeps working without the app: while the palette opens it
-asks the page with an event, the dashboard answers with its entries, and
-the theme checks each one and draws it itself, as text (see the spec,
-"Entity search"). Other pages can answer the same way later; none
-does yet.
-
-### Update notice (planned for 1.1)
-
-An opt-in daily check for a newer release, shown as a small dot on the
-gear ([#133](https://github.com/anothaDev/luci-theme-vantage/issues/133)).
-In the tree, for 1.1: **Daily update check** under Appearance, off by
-default and set per browser, never saved on the router. With it on the
-browser asks the project's package list once a day while a Vantage page
-is open and in view, which shows the list's host (GitHub Pages) the
-admin's IP address. The manual "Check for updates" stays, and updating
-stays with the package manager: no update button (see the spec,
-"Updates").
+Since 1.1 the dashboard answers the command palette (Ctrl+K) with its
+clients, radios, Wi-Fi networks and interfaces (see the spec, "Entity
+search"). Other pages can answer the same way; none does yet.
 
 ## Later
 

@@ -1,6 +1,6 @@
 # Vantage — v1 specification
 
-Status: **implemented** (v1, released as 1.0.x). This is the contract
+Status: **implemented** (v1, released as 1.x). This is the contract
 the packages are built and reviewed against; section 5 lists what is
 not built yet.
 

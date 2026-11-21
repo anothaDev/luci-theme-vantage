@@ -6,7 +6,7 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
-## 1.1.0 - unreleased
+## 1.1.0 - 2026-11-21
 
 - **Your other access points on the dashboard** (optional add-on
   `luci-app-vantage-aps`; ideas from #5 by
