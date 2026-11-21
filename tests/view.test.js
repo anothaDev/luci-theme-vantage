@@ -1353,6 +1353,40 @@ test('Low-power router: the same still picture as reduced motion, no backdrop, a
 	}
 });
 
+test('Speed units: fmt reads the pick and a built page is painted again at once', () => {
+	const fmt = load('vantage.fmt');
+	const saved = { document: global.document };
+	let units = 'bytes';
+	global.document = { hidden: false, documentElement: { getAttribute: k => (k === 'data-vt-units' ? units : null) } };
+	const self = Object.create(view);
+	let painted = 0;
+	self.rehealth = () => { painted++; };
+	try {
+		self.applyUnits();
+		assert.equal(fmt.bits(8e6), '1 MB/s');
+		assert.equal(painted, 0, 'before the first build there is nothing to paint');
+		self.el = { root: {} };
+		units = 'bits';
+		self.applyUnits();
+		assert.equal(fmt.bits(8e6), '8 Mbit/s');
+		assert.equal(painted, 1, 'the health cards\' texts and the whole page: no wait for the next poll');
+		units = 'nonsense';
+		self.applyUnits();
+		assert.equal(fmt.bits(8e6), '8 Mbit/s', 'anything but bytes reads as bits');
+	} finally {
+		fmt.setSpeedUnits('bits');
+		if (saved.document === undefined) delete global.document; else global.document = saved.document;
+	}
+	/* every rate axis rounds in the unit its labels show, and the short
+	   rates under a paired access point follow it */
+	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
+	const rehealth = src.slice(src.indexOf('\trehealth: function() {'), src.indexOf('\n\t},', src.indexOf('\trehealth: function() {')));
+	assert.ok(rehealth.includes('st.health = insight.health(') && rehealth.includes('this.paint();'), 'rehealth makes the cards\' texts again and paints');
+	assert.equal(src.split('scale: bitsLabel').length, src.split('scale: bitsLabel, ceil: rateCeil').length, 'no rate sparkline without it');
+	assert.ok(src.includes('series.chartGeom(style, sd.peak, su.peak, rateUnit())'));
+	assert.ok(src.includes('bps /= rateUnit();'));
+});
+
 test('polls: the fast lane is registered before the full poll (#101: no second full poll on load)', () => {
 	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
 	const fast = src.indexOf('poll.add(L.bind(this.refreshFast, this), FAST_S);'), full = src.indexOf('poll.add(L.bind(this.refresh, this), POLL_S);');

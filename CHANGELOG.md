@@ -6,6 +6,16 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
+## 1.1.1 - unreleased
+
+- **Speed units** ([#145](https://github.com/anothaDev/luci-theme-vantage/pull/145),
+  [@m38d1](https://github.com/m38d1)). A new option under Appearance,
+  between the network path's background and Low-power router: the
+  dashboard's traffic in Bits/s, as before, or in Bytes/s (B/s, kB/s,
+  MB/s). The cards, the charts and their axes, the client rows and Top
+  talkers follow it at once; link and Wi-Fi rates stay in bits, since
+  they are negotiated speeds, not traffic.
+
 ## 1.1.0 - 2026-11-21
 
 - **Your other access points on the dashboard** (optional add-on

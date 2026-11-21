@@ -537,6 +537,9 @@ test('Appearance: the templates and the login page read the same keys, in the sa
 	assert.equal(src.split('this.applyUnfocused();').length, 3, 'applied when the page opens and when another tab picks');
 	assert.ok(src.includes("else if (name === 'unfocused') root.setAttribute('data-vt-look-unfocused', value);"), 'a saved pick becomes the page\'s');
 	assert.equal(src.split("'vt-unfocused': 'unfocused'").length, 2, 'a failed save can be tried again');
+	assert.equal(src.split("'vt-units': 'units'").length, 2, 'Speed units too');
+	assert.ok(src.indexOf('this.backdropGroup(),') < src.indexOf("this.appearGroup('vt-units'") && src.indexOf("this.appearGroup('vt-units'") < src.indexOf("this.appearGroup('vt-power'"),
+		'Speed units sits between the network path\'s background and Low-power router');
 	assert.ok(src.includes("'vt-unfocused': this.unfocusedPref()"), 'the panel shows the pick in force');
 	for (const [ name, k ] of Object.entries(LOOK)) {
 		assert.match(k.own, /^vantage\.[a-z]+\.own$/, name);
@@ -1068,7 +1071,7 @@ test('daily update check: this browser\'s alone: never saved for every browser, 
 	/* it is not one of the looks: setLook, the router's attributes and the other-tab sync never see it */
 	const table = /\nconst LOOK = (\{[\s\S]*?\n\});\n/.exec(src);
 	const LOOK = new Function('THEME_KEY', 'LOGIN_KEY', 'BACKDROP_KEY', 'return ' + table[1])('vantage.theme', 'vantage.login', 'vantage.backdrop.v1');
-	assert.deepEqual(Object.keys(LOOK), [ 'theme', 'login', 'backdrop', 'power', 'unfocused', 'brand' ]);
+	assert.deepEqual(Object.keys(LOOK), [ 'theme', 'login', 'backdrop', 'power', 'unfocused', 'brand', 'units' ]);
 	assert.doesNotMatch(JSON.stringify(LOOK), /update/);
 	const setPref = src.slice(src.indexOf('\tsetUpdatePref(pref) {'), src.indexOf('\tupdateGroup() {'));
 	assert.doesNotMatch(setPref, /setLook|lookWrite|callLook|LOOK_SYNC/);
@@ -1306,7 +1309,7 @@ test('daily update check: setupTheme applies what is kept, and another tab\'s st
 	const proto = new Function('baseclass', 'ui', 'rpc', 'host', 'E', 'L', '_', 'document', 'window', 'localStorage', src)(
 		{ extend: x => x }, {}, { declare: () => () => Promise.resolve({}) }, {}, () => ({}), {}, t => t, document, window, localStorage);
 	const shell = Object.assign(Object.create(proto), { root: { getAttribute: () => null, setAttribute() {} } });
-	for (const k of [ 'applyTheme', 'applyBackdrop', 'applyPower', 'applyUnfocused', 'applyBrand' ]) shell[k] = () => {};
+	for (const k of [ 'applyTheme', 'applyBackdrop', 'applyPower', 'applyUnfocused', 'applyUnits', 'applyBrand' ]) shell[k] = () => {};
 	shell.setupTheme();
 	assert.ok(gear.hasAttribute('data-vt-update'), 'applied with the theme, at page load');
 	delete store['vantage.update.auto'];

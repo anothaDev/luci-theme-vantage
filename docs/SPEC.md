@@ -110,7 +110,8 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   changes the page; it saves as Appearance does. Appearance sits under
   the gear next to it. Appearance (this mode, what
   shows next to the logo after login, the login and network path
-  backgrounds, Motion when not in focus and, with the dashboard, Low-power router) is saved on the router for every
+  backgrounds, Motion when not in focus and, with the dashboard, Speed
+  units and Low-power router) is saved on the router for every
   browser, in `/etc/config/vantage_theme` (section `appearance`), by
   sessions holding the theme's rpcd group `luci-theme-vantage` (uci `set`,
   `commit` and `revert` on that config only; rpcd refuses commit and
@@ -686,7 +687,10 @@ text around it so it looks the same size.
   by default: the dashboard reads its traffic (the live rates, the charts'
   axes, the client rows and the cards) in bytes instead — the same numbers
   ÷8, in decimal B/s steps. Link and PHY rates stay bitrates: they are
-  negotiated speeds, not traffic. Saved like the other picks.
+  negotiated speeds, not traffic. Saved like the other picks. A pick
+  paints the page again at once, and a rate axis is round in the unit
+  its labels show (`series.chartGeom`'s unit, 8 for bytes: 200 kB/s
+  where 1.5 Mbit/s would read 188).
 - **Low-power router** (#101), under the theme's Appearance with the
   dashboard, off by default: the live numbers as always (the 2 s lane and
   the 5 s poll); Wi-Fi state, the radios' `iwinfo`, client capabilities,

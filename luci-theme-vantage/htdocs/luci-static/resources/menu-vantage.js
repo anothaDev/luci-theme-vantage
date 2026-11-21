@@ -2011,7 +2011,7 @@ return baseclass.extend({
 	   scrolling the page close it. */
 	/* one of Appearance's radio groups */
 	appearGroup(name, legend, opts, set) {
-		const look = { 'vt-colour': 'theme', 'vt-logo-name': 'brand', 'vt-login': 'login', 'vt-backdrop': 'backdrop', 'vt-power': 'power', 'vt-unfocused': 'unfocused' }[name];
+		const look = { 'vt-colour': 'theme', 'vt-logo-name': 'brand', 'vt-login': 'login', 'vt-backdrop': 'backdrop', 'vt-units': 'units', 'vt-power': 'power', 'vt-unfocused': 'unfocused' }[name];
 		return E('fieldset', { 'class': 'vt-appear-set' }, [
 			E('legend', {}, [ legend ]),
 			E('div', { 'class': 'vt-appear-track' }, opts.map(o => {
@@ -2032,11 +2032,11 @@ return baseclass.extend({
 		return this.appearGroup('vt-backdrop', _('Network path background'), [ [ 'grid', n.grid ], [ 'stars', n.stars ], [ 'none', n.none ] ], v => this.setBackdropPref(v));
 	},
 
-	/* the dashboard's groups: its traffic's unit, its network path's
-	   background, and the low-power mode */
+	/* the dashboard's groups: its network path's background, its traffic's
+	   unit, and the low-power mode */
 	dashboardGroups() {
-		return [ this.appearGroup('vt-units', _('Speed units'), [ [ 'bits', _('Bits/s') ], [ 'bytes', _('Bytes/s') ] ], v => this.setUnitsPref(v)),
-			this.backdropGroup(),
+		return [ this.backdropGroup(),
+			this.appearGroup('vt-units', _('Speed units'), [ [ 'bits', _('Bits/s') ], [ 'bytes', _('Bytes/s') ] ], v => this.setUnitsPref(v)),
 			this.appearGroup('vt-power', _('Low-power router'), [ [ 'normal', _('Off') ], [ 'low', _('On') ] ], v => this.setPowerPref(v)) ];
 	},
 
@@ -2225,7 +2225,7 @@ return baseclass.extend({
 
 	syncAppearance() {
 		if (!this.appear) return;
-		const now = { 'vt-colour': this.themePref(), 'vt-logo-name': this.brandPref(), 'vt-login': this.loginPref(), 'vt-units': this.unitsPref(), 'vt-backdrop': this.backdropPref(), 'vt-power': this.powerPref(), 'vt-unfocused': this.unfocusedPref(), 'vt-update': this.updatePref() };
+		const now = { 'vt-colour': this.themePref(), 'vt-logo-name': this.brandPref(), 'vt-login': this.loginPref(), 'vt-backdrop': this.backdropPref(), 'vt-units': this.unitsPref(), 'vt-power': this.powerPref(), 'vt-unfocused': this.unfocusedPref(), 'vt-update': this.updatePref() };
 		Array.prototype.forEach.call(this.appear.querySelectorAll('input[type="radio"]'), r => { r.checked = (now[r.name] === r.value); });
 		const state = this.lookState();
 		const note = state === 'relogin' ? _('Log in again to save Appearance for every browser.')

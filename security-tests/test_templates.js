@@ -392,6 +392,13 @@ test('Appearance saved for every browser: only values the theme knows reach the 
 		assert.equal(unfocused(renderLogin({ path: ADMIN, look: { unfocused: odd } }).html), '', `login unfocused ${JSON.stringify(odd)}`);
 		assert.equal(unfocused(renderPage({ path: ADMIN, authed: true, look: { unfocused: odd } }).html), '', `header unfocused ${JSON.stringify(odd)}`);
 	}
+	/* Speed units: the dashboard's traffic in bits or bytes; the login page has no use for it */
+	const units = html => attrOf(html, 'html', 'data-vt-look-units');
+	assert.equal(units(renderPage({ path: ADMIN, authed: true, look: { units: 'bytes' } }).html), 'bytes');
+	assert.equal(units(renderPage({ path: ADMIN, look: { units: 'bytes' } }).html), '', 'not on a page without a login');
+	assert.equal(units(renderLogin({ path: ADMIN, look: { units: 'bytes' } }).html), undefined, 'the login page does not carry it');
+	for (const odd of [ HOSTILE, 'Bytes', ' bytes', 'octets', '' ])
+		assert.equal(units(renderPage({ path: ADMIN, authed: true, look: { units: odd } }).html), '', `header units ${JSON.stringify(odd)}`);
 	assert.deepEqual(looks(renderPage({ path: ADMIN, authed: true, look }).html),
 		{ 'data-vt-look-theme': 'dark', 'data-vt-look-login': 'stars', 'data-vt-look-backdrop': 'none', 'data-vt-look-brand': 'hostname' });
 	for (const odd of [ HOSTILE, 'Dark', ' dark', 'stars ', [ 'dark' ], {}, 1, '' ]) {
