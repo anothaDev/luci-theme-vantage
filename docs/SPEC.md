@@ -348,7 +348,9 @@ text around it so it looks the same size.
   entries to list, nobody is said to be offline. A wired
   host alone on its port gets the port's link speed and traffic as its
   own; hosts sharing a port (a switch or another access point behind it)
-  show the port as shared, with no speed or traffic of their own; their
+  show the port as shared, with no speed or traffic of their own (but for
+  one a paired access point has alone on a port of its own: see Other
+  access points); their
   details give the port's total, labelled as the port's. A port that is
   a VLAN on a swconfig switch (`eth1.1`; the plugin maps it from
   `/etc/board.json` and the `switch_vlan` sections, or board.json's roles
@@ -966,7 +968,13 @@ dashboard package itself stays read-only.
   one of this device's) and that the access point lists as its station
   is shown as that access point's Wi-Fi client, not as a wired host of
   this device. A host the access point lists as wired behind it gets a
-  note saying so. An access point plugged into another paired one is
+  note saying so. Where the access point has it alone on that port (its
+  report counts one wired host there), the port's traffic the access
+  point reports is the host's in the Clients list (Live, its sort) and
+  in its details, said to be counted by the access point on its port;
+  one that shares that port there stays without traffic of its own, as
+  on a shared port of this device. Top talkers does not rank it. An
+  access point plugged into another paired one is
   drawn under it: its branch further in (three steps at most), its wire
   from that one, the port in its tooltip. For that this device must
   hear both MACs on one port of its own, and the other must list this

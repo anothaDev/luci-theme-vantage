@@ -3952,8 +3952,17 @@ return view.extend({
 		return c.shared ? null : this.st.devRates[c.port] || null;
 	},
 
+	/* what the Clients list shows for a wired host: portRate's, except
+	   for one sharing its port here that a paired access point has alone
+	   on a port of its own: the rate that access point reports for it
+	   (null where it shares that port too). Top talkers keeps portRate:
+	   a paired access point's hosts are not ranked */
+	listRate: function(c) {
+		return c.shared && c.behind ? c.behind.rate || null : this.portRate(c);
+	},
+
 	sortValue: function(c, key) {
-		var r = typeof c.port === 'string' ? this.portRate(c) : this.st.staRates[c.mac];
+		var r = typeof c.port === 'string' ? this.listRate(c) : this.st.staRates[c.mac];
 		switch (key) {
 		case 'name': return String(c.name).toLowerCase();
 		case 'signal': return c.signal == null ? -999 : c.signal;
@@ -4152,7 +4161,7 @@ return view.extend({
 		if (ui.chip === 'new') gone = [];
 
 		var maxRate = 0;
-		all.forEach(function(c) { var r = wired ? self.portRate(c) : st.staRates[c.mac]; if (r && r.rx + r.tx > maxRate) maxRate = r.rx + r.tx; });
+		all.forEach(function(c) { var r = wired ? self.listRate(c) : st.staRates[c.mac]; if (r && r.rx + r.tx > maxRate) maxRate = r.rx + r.tx; });
 
 		var keep = new Set(), at = 0;
 		this.rowSig = this.rowSig || new Map();
@@ -4230,9 +4239,11 @@ return view.extend({
 
 	/* a wired host's row. Its link is its port's when it has the port to
 	   itself; on a shared port (a switch or another access point behind
-	   it) neither the speed nor the traffic is its own */
+	   it) neither the speed nor the traffic is its own, unless a paired
+	   access point it is behind has it alone on a port (listRate) */
 	wiredCells: function(c, maxRate) {
-		var r = this.portRate(c), total = r ? r.rx + r.tx : 0;
+		var r = this.listRate(c), total = r ? r.rx + r.tx : 0;
+		var theirs = c.shared && r ? c.behind : null;
 		var bar = E('span', { 'class': 'vt-mini-fill' });
 		setW(bar, maxRate > 0 ? total / maxRate * 100 : 0);
 		var tags = [];
@@ -4257,11 +4268,12 @@ return view.extend({
 			this.whoCell(c, tags),
 			link,
 			E('td', { 'class': 'vt-td-net', 'data-title': _('Network') }, [ E('div', { 'class': 'vt-net' }, [ E('span', { 'class': 'vt-net-ssid' }, [ c.network || c.bridge || fmt.DASH ]) ]) ]),
-			E('td', { 'class': 'vt-td-live', 'data-title': _('Live') }, c.shared ? [
+			E('td', { 'class': 'vt-td-live', 'data-title': _('Live') }, c.shared && !theirs ? [
 				E('span', { 'class': 'vt-muted', 'title': _('Not counted per device on a shared port') }, [ fmt.DASH ])
 			] : [
 				E('div', { 'class': 'vt-live-cell' }, [
-					E('span', { 'class': 'vt-tn vt-live-total' }, [ r ? fmt.bits(total) : fmt.DASH ]),
+					/* no title (null: no attribute) on any other row */
+					E('span', { 'class': 'vt-tn vt-live-total', 'title': theirs ? _('Counted by %s on its port %s').format(theirs.name, theirs.port) : null }, [ r ? fmt.bits(total) : fmt.DASH ]),
 					E('span', { 'class': 'vt-mini' }, [ bar ]),
 					E('span', { 'class': 'vt-live-split vt-tn', 'title': r ? _('To device %s, from device %s').format(fmt.bits(r.tx), fmt.bits(r.rx)) : '' }, [ r ? fmt.rates(r.tx, r.rx) : '' ])
 				])
@@ -4853,7 +4865,8 @@ return view.extend({
 	},
 
 	drawerWired: function(c) {
-		var self = this, r = this.portRate(c), shared = c.shared ? this.st.devRates[c.port] : null;
+		var self = this, r = this.listRate(c), shared = c.shared ? this.st.devRates[c.port] : null;
+		var theirs = c.shared && r ? c.behind : null;
 		var title = this.drawerWho(c);
 		var rename = this.canWrite ? E('button', { 'type': 'button', 'class': 'vt-btn vt-btn-ghost', 'click': function() { self.startRename(c); } }, [ icon('pencil'), E('span', {}, [ c.alias ? _('Rename', 'vantage') : _('Name this device') ]) ]) : '';
 		var speed = c.speed ? model.speedLabel(c.speed) : fmt.DASH;
@@ -4874,7 +4887,11 @@ return view.extend({
 					E('small', {}, [ c.switch ? _('behind %s, VLAN %d').format(c.switch.name, c.switch.vlan) : _('the port: %s').format(speed) ]) ]
 					: c.switchPort ? [ speed, E('small', {}, [ _('switch port %s').format(c.switchPort) ]) ] : speed),
 				c.switch ? kv(_('Switch ports'), switchLines(c.switch).map(function(l) { return E('div', {}, [ l ]); })) : '',
-				kv(_('Traffic'), c.shared ? [
+				kv(_('Traffic'), theirs ? [
+					'↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx),
+					E('small', {}, [ _('Counted by %s on its port %s').format(theirs.name, theirs.port) ]),
+					shared ? E('small', {}, [ _('the port in total: %s').format('↓ ' + fmt.bits(shared.tx) + ' · ↑ ' + fmt.bits(shared.rx)) ]) : ''
+				] : c.shared ? [
 					E('span', { 'class': 'vt-muted' }, [ _('Not counted per device on a shared port') ]),
 					shared ? E('small', {}, [ _('the port in total: %s').format('↓ ' + fmt.bits(shared.tx) + ' · ↑ ' + fmt.bits(shared.rx)) ]) : ''
 				] : r ?'↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx) : _('measuring')),

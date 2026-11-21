@@ -20,6 +20,14 @@ Each release ships both packages, `luci-theme-vantage` and
   first, so such a failure costs the dashboard its data and nothing
   else. OpenWrt 24.10 and 25.12 were not affected. See
   [Troubleshooting](docs/INSTALL.md#no-login-works-after-installing-the-dashboard).
+- **Other access points: a device wired to one shows its traffic where
+  it has a port to itself there** (#110). The Clients list had "Shared
+  port" and no traffic for every device behind a paired access point,
+  because the router sees only the access point's port. Where the access
+  point has the device alone on one of its own ports, the list and the
+  device's details now show the rate the access point counts there, and
+  say so. Top talkers still ranks none of a paired access point's
+  devices.
 
 ## 1.1.1 - 2026-11-21
 
