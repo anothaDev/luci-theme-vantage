@@ -812,6 +812,15 @@ text around it so it looks the same size.
   and commits config `vantage` only. The plugin's regular expressions
   are module constants: ucode compiles a literal each time it is
   reached, and a counted repeat costs milliseconds on a router.
+  It imports rtnl and nl80211 before uci, ubus and fs, the modules
+  LuCI's own rpcd script loads too (#134): rpcd frees a script that
+  fails to load, and ucode before late 2024 (OpenWrt 23.05 and vendor
+  firmware built on it) keeps those modules' types in variables the last
+  script to load them sets, so a plugin that loaded them and then failed
+  on a module that cannot load (from another distribution's feed) would
+  leave LuCI's script on freed memory, which can crash rpcd and with it
+  every login (the likely cause of #134). Failing first leaves them
+  untouched; `tests/plugin.test.js` keeps the order.
 
 ### Other access points (`luci-app-vantage-aps`)
 
