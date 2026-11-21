@@ -6,6 +6,21 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
+## 1.1.2 - unreleased
+
+- **Dashboard: a module that cannot load no longer costs LuCI its
+  login** (#134, [@HachiMiku39](https://github.com/HachiMiku39)). The
+  dashboard's rpcd plugin needs two netlink modules of ucode. Where one
+  of them cannot load (taken from another distribution's feed, on vendor
+  firmware), the plugin fails, and on ucode from before late 2024
+  (OpenWrt 23.05 and firmware built on it) that failure could leave
+  LuCI's own rpcd script on freed memory and bring rpcd down, and every
+  login with it. This is read from that ucode's source; I could not
+  reproduce it on a device. The plugin now loads those two modules
+  first, so such a failure costs the dashboard its data and nothing
+  else. OpenWrt 24.10 and 25.12 were not affected. See
+  [Troubleshooting](docs/INSTALL.md#no-login-works-after-installing-the-dashboard).
+
 ## 1.1.1 - 2026-11-21
 
 - **Speed units** ([#145](https://github.com/anothaDev/luci-theme-vantage/pull/145),
