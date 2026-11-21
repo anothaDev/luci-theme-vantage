@@ -1711,10 +1711,11 @@ return view.extend({
 	render: function(data) {
 		var self = this;
 		this.initState(data);
+		/* before the first texts are made and the first build: the rates
+		   read in the picked unit */
+		this.applyUnits();
 		this.ingest(data.raw);
 		this.st.lastOk = Date.now();
-		/* before the first build: the tiles' rates read in the picked unit */
-		this.applyUnits();
 
 		this.el = {};
 		/* .vt-body is the size container for the layout; the drawer stays

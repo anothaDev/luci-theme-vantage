@@ -538,6 +538,14 @@ test('Appearance: the templates and the login page read the same keys, in the sa
 	assert.ok(src.includes("else if (name === 'unfocused') root.setAttribute('data-vt-look-unfocused', value);"), 'a saved pick becomes the page\'s');
 	assert.equal(src.split("'vt-unfocused': 'unfocused'").length, 2, 'a failed save can be tried again');
 	assert.equal(src.split("'vt-units': 'units'").length, 2, 'Speed units too');
+	/* Speed units: handed over like the others, and the dashboard hears a pick */
+	assert.ok(header.includes("look('units', 'vantage.units.own', 'vantage.units', [ 'bits', 'bytes' ])"), 'this browser\'s pick, before the first paint');
+	assert.ok(!/units/.test(login) && !/units/.test(loginJs), 'the login page has no use for it');
+	assert.equal(src.split('this.applyUnits();').length, 3, 'applied when the page opens and when another tab picks');
+	assert.ok(src.includes("else if (name === 'units') root.setAttribute('data-vt-look-units', value);"), 'a saved pick becomes the page\'s');
+	assert.ok(src.includes("'vt-units': this.unitsPref()"), 'the panel shows the pick in force');
+	assert.ok(src.includes("this.root.setAttribute('data-vt-units', v);\n\t\t\twindow.dispatchEvent(new CustomEvent(UNITS_EVENT));"), 'and tells the dashboard');
+	assert.ok(src.includes("const UNITS_EVENT = 'vantage:units';"));
 	assert.ok(src.indexOf('this.backdropGroup(),') < src.indexOf("this.appearGroup('vt-units'") && src.indexOf("this.appearGroup('vt-units'") < src.indexOf("this.appearGroup('vt-power'"),
 		'Speed units sits between the network path\'s background and Low-power router');
 	assert.ok(src.includes("'vt-unfocused': this.unfocusedPref()"), 'the panel shows the pick in force');

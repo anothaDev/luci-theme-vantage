@@ -18,8 +18,9 @@ Each release ships both packages, `luci-theme-vantage` and
 - **Login page: a switch to stay on HTTP** (#137,
   [@qiyuey](https://github.com/qiyuey)). Opened over plain HTTP, the
   login page moves to HTTPS where the browser accepts the router's
-  certificate, as LuCI's own login page does. An administrator can now
-  switch that off: `uci set luci.main.vantage_https='stay'`, then
+  certificate, as LuCI's base login page does (Bootstrap's does not). An
+  administrator can now switch that off:
+  `uci set luci.main.vantage_https='stay'`, then
   `uci commit luci`. The default is unchanged. See
   [Troubleshooting](docs/INSTALL.md#the-login-page-moves-from-http-to-https).
 

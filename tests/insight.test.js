@@ -81,6 +81,21 @@ test('health: weak client, slow uplink, disabled radio, high memory', () => {
 	assert.equal(s.count, 4);
 });
 
+test('health: the uplink card reads its traffic in the unit picked, its link speed in bits', () => {
+	const fmt = load('vantage.fmt');
+	const card = () => { const m = baseModel(); m.uplink.speed = { mbps: 2500, duplex: 'full' }; return byId(insight.health(m, { cpu: { pct: 7, cores: [ 1 ] }, uplinkRate: { rx: 16e6, tx: 8e5 } }), 'uplink'); };
+	try {
+		fmt.setSpeedUnits('bytes');
+		const c = card();
+		assert.equal(c.value, '↓ 2 MB/s');
+		assert.match(c.reason, /↑\u00a0100\u00a0kB\/s/);
+		assert.match(c.reason, /2\.5\u00a0?[ \u00a0]?Gbit\/s/, 'the link is a negotiated speed');
+	} finally {
+		fmt.setSpeedUnits('bits');
+	}
+	assert.equal(card().value, '↓ 16.0 Mbit/s');
+});
+
 test('health: a link under 1 Gbit/s warns only when the port and its partner offer more, or that is not known', () => {
 	const up = (mbps, linkMax, duplex) => {
 		const m = baseModel();

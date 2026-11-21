@@ -49,7 +49,9 @@ add-on to it) plus offline tooling. No npm, no
    `entityencode(v, true)`, and `striptags()` for titles. Never output
    `fuser`. On pages for visitors who are not logged in (login, 404,
    CSRF) the theme adds nothing about the device, only the login page's
-   hostname heading (encoded), colour mode, background, whether
+   hostname heading (encoded), the HTTPS ports its script may move to
+   (none where `luci.main.vantage_https` is `stay`), colour mode,
+   background, whether
    Low-power router is on (which stills that background) and Motion when
    not in focus (which lets it move without the focus) (LuCI's core header
    still prints its `L.env` script; that is upstream, see

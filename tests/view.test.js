@@ -1385,6 +1385,10 @@ test('Speed units: fmt reads the pick and a built page is painted again at once'
 	assert.equal(src.split('scale: bitsLabel').length, src.split('scale: bitsLabel, ceil: rateCeil').length, 'no rate sparkline without it');
 	assert.ok(src.includes('series.chartGeom(style, sd.peak, su.peak, rateUnit())'));
 	assert.ok(src.includes('bps /= rateUnit();'));
+	/* the theme's event reaches the page, and a reload starts in the unit picked:
+	   it is set before the first texts are made */
+	assert.ok(src.includes("window.addEventListener('vantage:units', function() { self.applyUnits(); });"));
+	assert.ok(src.indexOf('\t\tthis.applyUnits();\n\t\tthis.ingest(data.raw);') > 0, 'before the first ingest');
 });
 
 test('polls: the fast lane is registered before the full poll (#101: no second full poll on load)', () => {

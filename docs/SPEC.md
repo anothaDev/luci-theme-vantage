@@ -225,10 +225,11 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   (the login page has no LuCI runtime; luci-plugin-2fa needs none).
   Opened over HTTP it moves to HTTPS where the browser already accepts
   the router's certificate (a probe image on each `listen_https` port,
-  as LuCI's own login page has it), unless an administrator set
-  `luci.main.vantage_https` to `stay` (#137). That option is not in the
-  theme's config, which a login holding only the theme's group can
-  write: turning the move off is not an Appearance pick.
+  as LuCI's base login page has it; Bootstrap's has none), unless an
+  administrator set `luci.main.vantage_https` to `stay` (#137). That
+  option is not in the theme's config, which a login holding only the
+  theme's group can write: turning the move off is not an Appearance
+  pick. The theme's removal deletes it.
 - All core widgets per contract §5 (dropdown state machine, tabs, modals
   incl. apply countdown, tooltips, dynlist, progress bars, file browser,
   notifications with real fade-out transition, changes dialog).
@@ -694,7 +695,9 @@ text around it so it looks the same size.
   axes, the client rows and the cards) in bytes instead — the same numbers
   ÷8, in decimal B/s steps. Link and PHY rates stay bitrates: they are
   negotiated speeds, not traffic. Saved like the other picks. A pick
-  paints the page again at once, and a rate axis is round in the unit
+  paints the page again at once (details held still by selected text or
+  an open rename follow when that ends, as after a poll), and a rate
+  axis is round in the unit
   its labels show (`series.chartGeom`'s unit, 8 for bytes: 200 kB/s
   where 1.5 Mbit/s would read 188).
 - **Low-power router** (#101), under the theme's Appearance with the
@@ -1057,7 +1060,9 @@ dashboard package itself stays read-only.
 
 - Templates escape everything request-derived; never echo `fuser`; the
   theme's own markup for unauthenticated renders (login, 404, CSRF) adds
-  nothing about the device but the login page's hostname, and of the
+  nothing about the device but the login page's hostname and the HTTPS
+  ports its script may move to (none with `luci.main.vantage_https`
+  `stay`), and of the
   Appearance only the colour mode, the login background, whether
   Low-power router is on and Motion when not in focus. Not in the theme's control: LuCI's core
   `header.ut` prints `L = new LuCI({...})` after the theme header on every
