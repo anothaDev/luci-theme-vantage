@@ -1383,6 +1383,7 @@ test('Speed units: fmt reads the pick and a built page is painted again at once'
 	const rehealth = src.slice(src.indexOf('\trehealth: function() {'), src.indexOf('\n\t},', src.indexOf('\trehealth: function() {')));
 	assert.ok(rehealth.includes('st.health = insight.health(') && rehealth.includes('this.paint();'), 'rehealth makes the cards\' texts again and paints');
 	assert.equal(src.split('scale: bitsLabel').length, src.split('scale: bitsLabel, ceil: rateCeil').length, 'no rate sparkline without it');
+	assert.equal(src.split('scale: bitsLabel, ceil: rateCeil').length, 5, 'the four of them: the radio tiles and the details of a client, a radio and the uplink');
 	assert.ok(src.includes('series.chartGeom(style, sd.peak, su.peak, rateUnit())'));
 	assert.ok(src.includes('bps /= rateUnit();'));
 	/* the theme's event reaches the page, and a reload starts in the unit picked:
