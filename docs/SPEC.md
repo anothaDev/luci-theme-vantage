@@ -223,6 +223,12 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   their fields and guidance (an error once a wrong code was sent), their
   own HTML as Bootstrap prints it, and their scripts as plain script tags
   (the login page has no LuCI runtime; luci-plugin-2fa needs none).
+  Opened over HTTP it moves to HTTPS where the browser already accepts
+  the router's certificate (a probe image on each `listen_https` port,
+  as LuCI's own login page has it), unless an administrator set
+  `luci.main.vantage_https` to `stay` (#137). That option is not in the
+  theme's config, which a login holding only the theme's group can
+  write: turning the move off is not an Appearance pick.
 - All core widgets per contract §5 (dropdown state machine, tabs, modals
   incl. apply countdown, tooltips, dynlist, progress bars, file browser,
   notifications with real fade-out transition, changes dialog).

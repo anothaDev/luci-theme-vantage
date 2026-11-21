@@ -1021,6 +1021,25 @@ Status → Channel Analysis is a stock LuCI page. Its scan takes each radio
 off its channel for a moment, so clients may notice a short hiccup while the
 page is open. The Vantage dashboard never scans.
 
+### The login page moves from http:// to https://
+
+Opened over plain HTTP, the login page looks whether the router's HTTPS
+port answers with a certificate the browser accepts, and moves there if
+it does, so that the password is not typed over plain HTTP where HTTPS
+works. LuCI's own login page does the same. It happens only where the
+browser trusts the certificate or has stored an exception for it, and it
+is not `uhttpd`'s `redirect_https`, which forces every request. To stay
+on HTTP all the same:
+
+```sh
+uci set luci.main.vantage_https='stay'
+uci commit luci
+```
+
+`uci delete luci.main.vantage_https` and `uci commit luci` bring the move
+back. The switch sits in LuCI's own config on purpose: a login that may
+only save Vantage's Appearance cannot set it.
+
 ### Get back to Bootstrap from SSH
 
 If the web interface is unusable, switch the theme without it:

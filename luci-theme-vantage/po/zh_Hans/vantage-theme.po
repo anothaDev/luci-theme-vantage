@@ -83,7 +83,7 @@ msgctxt "vantage-theme"
 msgid "Appearance"
 msgstr "外观"
 
-#: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:61
+#: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:65
 msgid "Authorization Required"
 msgstr "需要授权"
 
@@ -330,7 +330,7 @@ msgstr "输入"
 msgid "Interfaces"
 msgstr "接口"
 
-#: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:65
+#: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:69
 msgid "Invalid username and/or password! Please try again."
 msgstr "用户名或密码错误，请重试。"
 
@@ -348,8 +348,8 @@ msgctxt "vantage-theme"
 msgid "Light"
 msgstr "浅色"
 
-#: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:41
-#: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:97
+#: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:45
+#: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:101
 msgid "Log in"
 msgstr "登录"
 
@@ -512,7 +512,7 @@ msgctxt "vantage-theme"
 msgid "Passes unmatched"
 msgstr "放行未匹配流量"
 
-#: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:74
+#: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:78
 msgid "Password"
 msgstr "密码"
 
@@ -670,7 +670,7 @@ msgstr "使用浅色主题"
 msgid "Used"
 msgstr "已用"
 
-#: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:70
+#: luci-theme-vantage/ucode/template/themes/vantage/sysauth.ut:74
 msgid "Username"
 msgstr "用户名"
 

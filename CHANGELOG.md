@@ -15,6 +15,13 @@ Each release ships both packages, `luci-theme-vantage` and
   MB/s). The cards, the charts and their axes, the client rows and Top
   talkers follow it at once; link and Wi-Fi rates stay in bits, since
   they are negotiated speeds, not traffic.
+- **Login page: a switch to stay on HTTP** (#137,
+  [@qiyuey](https://github.com/qiyuey)). Opened over plain HTTP, the
+  login page moves to HTTPS where the browser accepts the router's
+  certificate, as LuCI's own login page does. An administrator can now
+  switch that off: `uci set luci.main.vantage_https='stay'`, then
+  `uci commit luci`. The default is unchanged. See
+  [Troubleshooting](docs/INSTALL.md#the-login-page-moves-from-http-to-https).
 
 ## 1.1.0 - 2026-11-21
 
