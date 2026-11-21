@@ -6,7 +6,7 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
-## 1.1.1 - unreleased
+## 1.1.1 - 2026-11-21
 
 - **Speed units** ([#145](https://github.com/anothaDev/luci-theme-vantage/pull/145),
   [@m38d1](https://github.com/m38d1)). A new option under Appearance,
