@@ -234,6 +234,15 @@ SDK.
 4. CI rebuilds the tag, refuses to publish unless its hashes match the
    committed manifest, and creates the GitHub release with the packages,
    `SHA256SUMS` and `BUILDINFO`.
+5. The job "Publish signed package repositories" then publishes the
+   package feeds on GitHub Pages; until it passes, the feeds still serve
+   the previous release. A failed deploy is tried once more 30 seconds
+   later (the run's artifact list can lag the upload). If the job still
+   fails, read the error, delete that run's `github-pages` artifact on
+   the run's page (a re-run uploads another, and the deploy refuses two
+   of the name), then use "Re-run failed jobs", not "Re-run all jobs"
+   (that builds again and needs the approval again). Leave the
+   `vantage-*` artifacts: the re-run publishes from them.
 
 ### Version numbers
 
