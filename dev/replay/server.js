@@ -857,7 +857,6 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
-	console.error(`[replay] http://127.0.0.1:${port}/  theme=${theme}${shellTheme ? ' (built-in shell templates)' : ''}`);
 	console.error(`[replay] templates: ${engine.roots.join(', ')}`);
 	console.error(`[replay] static: ${[ themeDir, ...appDirs.map(d => path.join(d, 'htdocs')), ...store.staticDirs, path.join(rootfs, 'www') ].filter(Boolean).join(', ')}`);
 	if (appDirs.length) console.error(`[replay] apps: ${appDirs.join(', ')} (menu: ${Object.keys(appMenu).join(', ') || 'none'})`);
@@ -867,4 +866,7 @@ server.listen(port, '127.0.0.1', () => {
 	if (store.plugins.size) console.error(`[replay] plugins: ${[ ...store.plugins.keys() ].join(', ')}`);
 	if (fixtures.dirs.length) console.error(`[replay] fixtures: ${fixtures.dirs.join(', ')} (${fixtures.pluginFiles().length} plugin files, ${fixtures.configs().length} uci configs, ${fixtures.exec.size} exec outputs)`);
 	if (preview) console.error(`[replay] language ${preview.code} (${preview.lc}): catalogues from ${preview.dirs.join(', ')} over the recorded one`);
+	/* the address comes last: whoever waits for it (the tests do) has every
+	   line above it */
+	console.error(`[replay] http://127.0.0.1:${port}/  theme=${theme}${shellTheme ? ' (built-in shell templates)' : ''}`);
 });
