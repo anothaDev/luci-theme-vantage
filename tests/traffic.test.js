@@ -440,6 +440,10 @@ test('traffic plugin: an entry one whole read did not see counts its growth when
 	assert.equal(flows(), 1, 'not seen by the read before, not seen for KEEP_MS: ended');
 	const [ again ] = calls([ call([ back, line(other) ], KEEP_MS + 5000) ], dir);
 	assert.equal(of(again, M1).rx - of(gone[2], M1).rx, 1000000100, 'were it back, it would count whole: the limit');
+	/* a new connection with the addresses and ports of one kept: smaller
+	   counters count from 0, and are no reset by another program */
+	const reuse = calls([ call([ line(big), line(other) ], 0), call([ line(other) ], 5000), call([ line(at(big, { ob: 300, rb: 700 })), line(other) ], 10000) ]);
+	assert.deepEqual([ of(reuse[2], M1), reuse[2].reply.zeroed ], [ { mac: M1, rx: 1000000300, tx: 4000000700 }, 0 ]);
 });
 
 test('traffic plugin: every entry the read before saw is kept, at the most entries a read takes, and the state is read back', { skip: NO_UCODE }, () => {

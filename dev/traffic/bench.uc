@@ -189,7 +189,7 @@ function feed(f, neigh, now, stop, st) {
 				dob -= prev[0];
 				drb -= prev[1];
 			}
-			else
+			else if (prev[2] == before)
 				zeroed++;
 			prev[0] = ob;
 			prev[1] = rb;

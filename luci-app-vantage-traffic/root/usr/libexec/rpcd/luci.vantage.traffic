@@ -44,9 +44,12 @@
 //     hw         entries offloaded to hardware ([HW_OFFLOAD]): their
 //                counters run only where the driver reports flow
 //                statistics, so their traffic may be missing
-//     zeroed     entries whose counters went down since the last read:
-//                another program resets them (nlbwmon does on every
-//                refresh); what passed before the reset is lost here
+//     zeroed     entries the last read saw whose counters went down
+//                since: another program resets them (nlbwmon does on
+//                every refresh); what passed before the reset is lost
+//                here. One the last read did not see that comes back
+//                smaller counts from 0 too, but not here: most likely a
+//                new connection with the old one's addresses and ports
 //     dropped    hosts not counted, past MAX_HOSTS
 //
 // {} instead when there is no answer to give: the state directory is not
@@ -327,7 +330,7 @@ function feed(f, neigh, now, stop, st) {
 				dob -= prev[0];
 				drb -= prev[1];
 			}
-			else
+			else if (prev[2] == before)
 				zeroed++;
 			prev[0] = ob;
 			prev[1] = rb;

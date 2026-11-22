@@ -1428,13 +1428,16 @@ measured on few devices so far.
   entry missed by two reads more than 150 s apart, or pushed out by
   16,384 others, counts whole when it is seen again; and a new
   connection with the protocol, addresses and ports of one that ended
-  less than 150 s before (a client that reuses its source port to the
-  same server and port: rare, as clients pick ports at random, and
-  then mostly a lookup of a few hundred bytes) is taken for the old
-  one: with smaller counters it counts from 0, as after a reset (and
-  counts in `zeroed`), with larger ones the old one's last counts are
-  left out of it. The price is a larger state where connections come
-  and go: it holds those that ended in the last 150 s, 16,384 at most.
+  less than 150 s before is taken for the old one: with smaller
+  counters it counts from 0, as it should (`zeroed`, the resets the
+  dashboard points out, counts only entries the read before saw), with
+  larger ones the old one's last counts are left out of it. That takes
+  a client reusing its source port to the same server and port: DNS
+  lookups do now and then (random ports: a client making one lookup a
+  second meets a kept one every few minutes, ten a second every few
+  seconds), a few hundred bytes each; anything larger seldom. The price
+  is a larger state where connections come and go: it holds those that
+  ended in the last 150 s, 16,384 at most.
 - **Measured** with `dev/traffic/bench.uc`, a read that finds every
   entry again (state loaded and checked, table counted, state saved): on
   a desktop's ucode 7 ms at 500 entries, 25 ms at 2,000, 94 ms at 8,000,
