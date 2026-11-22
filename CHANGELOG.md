@@ -87,6 +87,26 @@ Each release ships both packages, `luci-theme-vantage` and
   changes and nothing is started. The counters are known for the
   mt7530, qca8k, mv88e6xxx, b53, lantiq_gswip and rtl8366rb drivers. See
   [Packages on the router](docs/INSTALL.md#packages-on-the-router).
+- **Other access points: a device wired behind one counts in its
+  branch** (#153, [@Vikk20](https://github.com/Vikk20)). For the router
+  such a device sits on the port that leads to the access point, so the
+  router's Wired node counted it and listed it under a shared port. It
+  now belongs to the access point's own Wired node, and the router's
+  count and list leave it out.
+- **Network path: "+n more" opens the rest** (#154,
+  [@Vikk20](https://github.com/Vikk20)). A Wi-Fi or Wired node lists
+  five clients; the "+n more" line under them is now a button that shows
+  the rest in place, and "Show fewer" folds them back.
+- **Other access points: their clients' Wi-Fi standard and channel
+  width** (#155, [@Vikk20](https://github.com/Vikk20)). A paired access
+  point's report now carries each station's link as the access point
+  sees it, so its clients show their Wi-Fi generation like the router's
+  own, once the access point runs this version of the add-on too.
+- **WireGuard tile: no long silence after the computer slept.** After a
+  slow answer the tile waits ten times as long before it asks again. A
+  call that was out while the computer slept counted as slow and could
+  leave the tile unasked for hours; such a call no longer counts, and
+  the wait is four minutes at most.
 
 ## 1.1.1 - 2026-11-21
 
