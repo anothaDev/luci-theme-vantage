@@ -987,7 +987,9 @@ the contract. For provider authors: [`docs/TILES.md`](TILES.md).
   `max`, the page's own five minutes of a `trend` value as a bare line
   from its lowest to its highest value (90 points at most an item). Title, note and labels are looked up in
   LuCI's catalogues (`_()`), so a provider's own catalogue translates
-  them; a `text` value is shown as it came. An answer that cannot be
+  them (fixed words: LuCI matches a text by a 32-bit hash of it, and a
+  label keys its item's rate and line); a `text` value is shown as it
+  came. An answer that cannot be
   read keeps the tile's last title, icon and link. The page keeps
   `model.tile`'s reading of the last answer, never the answer itself.
 - **Layouts.** A provider tile is `x<id>` in a layout (`xdns`), which

@@ -146,6 +146,15 @@ English texts); the dashboard looks them up in every catalogue LuCI
 loads for the language. Where none has a string, it shows in English.
 Numbers and units are the dashboard's own and need nothing.
 
+So the title, the note and the labels are for fixed words. LuCI finds
+a translation by a 32-bit hash of the text alone, without comparing the
+text, so a text that changes with your data (a count, a name, an
+address) is looked up anew with every answer and may, rarely, come out
+as the translation of some other string. A label is also how the tile
+knows an item from one answer to the next (its rate and its line): a
+label that changes starts the item over. Data goes in a value, or in
+`text`, which is shown as it came.
+
 ## A complete example
 
 `dev/replay/tiles/` holds an example provider: the DNS numbers dnsmasq
