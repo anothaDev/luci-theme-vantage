@@ -168,8 +168,8 @@ MT7988; from Linux 6.16 it puts them in the kernel's counters itself),
 (`rtl8365mb`, `ksz`, `felix`, `ar9331`, `xrs700x`) count the chip's
 traffic there already.
 
-Space: the download is about 200 KB in total, and the two packages take
-about 730 KB once installed (less on a compressed overlay).
+Space: the download is about 250 KB in total, and the two packages take
+about 900 KB once installed (less on a compressed overlay).
 
 ### Browser
 
@@ -757,7 +757,7 @@ ARM access point about 0.4 s at 2,000 entries and 1.5 s at 8,000 (beyond
 about 12,500 entries the 2 s limit ends the read); on an x86 VM 22 ms at
 2,000 entries and 0.2 s at 16,384. It is shared by everyone
 looking, one at a time, every 5 s at most; a slow one makes the next wait
-ten times as long as it took, so the reads take a tenth of one core at
+ten times as long as it took, so the reads take about a tenth of one core at
 most, and the table is read for 2 s at most. `cat /proc/net/nf_conntrack
 | wc -l` tells how many entries your router has now;
 `dev/traffic/bench.uc` in the source measures what a read costs it.
@@ -793,6 +793,10 @@ apk del luci-app-vantage-traffic        # OpenWrt 25.12
 opkg remove luci-app-vantage-traffic    # OpenWrt 24.10
 ```
 
+Where its translation is installed, name that package in the same
+command (`luci-i18n-vantage-traffic-<lang>`): neither package manager
+removes a package that another one still needs.
+
 Nothing stays behind on the router: the removal deletes
 `/var/run/vantage-traffic` and has rpcd let go of the plugin (a reload,
 as installing a LuCI package does). The dashboard stops asking at the
@@ -826,12 +830,14 @@ dashboard shows under any theme.
 ## Languages
 
 Vantage's texts go through LuCI's translation system. A translation ships
-as up to two small packages per language, one for each Vantage package:
+as small packages per language, one for each Vantage package you have:
 
 | Package | Translates |
 |---|---|
 | `luci-i18n-vantage-<lang>` | the dashboard (`luci-app-vantage`) |
 | `luci-i18n-vantage-theme-<lang>` | the theme (`luci-theme-vantage`) |
+| `luci-i18n-vantage-aps-<lang>` | the access points add-on (`luci-app-vantage-aps`) |
+| `luci-i18n-vantage-traffic-<lang>` | the traffic add-on (`luci-app-vantage-traffic`) |
 
 `<lang>` is LuCI's language suffix, the same as in OpenWrt's own
 `luci-i18n-base-<lang>`: for example `de`, `fr`, `pt-br`, or `zh-cn` for
@@ -862,8 +868,8 @@ Then choose the language in LuCI: **System → System → Language and Style
 language. Installing a language package adds its language to that list.
 
 A language package contains only the compiled catalogue
-(`/usr/lib/lua/luci/i18n/vantage.<lang>.lmo` or
-`vantage-theme.<lang>.lmo`) and a first-boot script that registers the
+(`/usr/lib/lua/luci/i18n/vantage.<lang>.lmo`, or `vantage-theme`,
+`vantage-aps` or `vantage-traffic` in that name) and a first-boot script that registers the
 language (`luci.languages.<lang>`). Texts that are not translated yet stay
 in English. `apk upgrade` upgrades installed language packages with the
 rest; if you upgrade by package name, name them too; with files, install the new language packages together with the new
@@ -1229,9 +1235,10 @@ Then reload the page. To remove Vantage entirely, see
 - **Per-device traffic.** `luci-app-vantage-traffic` (optional,
   experimental) reads the router's connection table and neighbour tables,
   in a process rpcd runs for it, and writes nothing but its counters'
-  state in `/var/run/vantage-traffic`, readable by root alone. Its answer,
-  and that state, hold a MAC address and byte counts per device, never
-  the addresses they talk to. It is a permission of
+  state in `/var/run/vantage-traffic`, readable by root alone. Its answer
+  holds a MAC address and byte counts per device, never the addresses
+  they talk to; the state also keeps each connection's addresses and
+  ports, as the kernel's own table does. It is a permission of
   its own (`luci-app-vantage-traffic`), since it shows how much each
   device sends and receives. See
   [Per-device traffic](#per-device-traffic-optional-experimental).

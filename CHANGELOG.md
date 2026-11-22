@@ -1,8 +1,9 @@
 # Changelog
 
 User-visible changes per release, newest first. Dates are the tag dates.
-Each release ships both packages, `luci-theme-vantage` and
-`luci-app-vantage`, at the same version; the packages are listed at
+Each release ships all packages, `luci-theme-vantage`,
+`luci-app-vantage` and the optional add-ons, at the same version; the
+packages are listed at
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
@@ -51,15 +52,15 @@ Each release ships both packages, `luci-theme-vantage` and
   It reads in a process of its own, so LuCI keeps answering meanwhile,
   whatever the size of the router's connection table; one read serves
   every open dashboard, and a slow read makes the next wait longer, so
-  it takes a tenth of one core at most. A device's own port and a paired
+  it takes about a tenth of one core at most. A device's own port and a paired
   access point's count still come first, and Top talkers is unchanged.
   Seeing it needs a permission of its own, `luci-app-vantage-traffic`.
   Install it on the router: `apk add luci-app-vantage-traffic` (24.10:
   `opkg install luci-app-vantage-traffic`). See
   [Per-device traffic](docs/INSTALL.md#per-device-traffic-optional-experimental).
-- **Dashboard: a compact network path** (#157,
+- **Dashboard: a compact network path** (in answer to #157,
   [@Vikk20](https://github.com/Vikk20)). With several access points and
-  many ports, the network path ran several screens long. Under
+  many ports, the network path runs several screens long. Under
   Customize, beside the throughput chart's style, **Network path** now
   offers **Compact, one line each**: every Wi-Fi network, every
   Ethernet port and every access point becomes one line with its name,
@@ -85,7 +86,8 @@ Each release ships both packages, `luci-theme-vantage` and
   more for it. `ethtool` is not a dependency: `apk add ethtool` (24.10:
   `opkg install ethtool`). Without it, or without a DSA switch, nothing
   changes and nothing is started. The counters are known for the
-  mt7530, qca8k, mv88e6xxx, b53, lantiq_gswip and rtl8366rb drivers. See
+  mt7530, qca8k, mv88e6xxx, b53, bcm_sf2, lantiq_gswip and rtl8366rb
+  drivers. See
   [Packages on the router](docs/INSTALL.md#packages-on-the-router).
 - **Other access points: a device wired behind one counts in its
   branch** (#153, [@Vikk20](https://github.com/Vikk20)). For the router

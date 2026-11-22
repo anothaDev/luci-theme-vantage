@@ -34,7 +34,7 @@ port in one click, finding anything by typing — not from their look.
 | Package | Contents | Depends |
 |---|---|---|
 | `luci-theme-vantage` | ucode templates, CSS, icons, `menu-vantage.js` (shell: rail, top bar, palette, tabs, indicators), login page, its rpcd ACL (`/etc/config/vantage_theme` only), that config | `+luci-base` |
-| `luci-app-vantage` | dashboard + inspector views under `admin/dashboard` (landing page), its rpcd ACL (reads + its own config only), its rpcd ucode plugin `luci.vantage` (key-free wireless status, temperatures, the bridges' wired hosts, the radios' channel survey, validated alias writes), `/etc/config/vantage` | `+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-nl80211` (rpcd-mod-iwinfo, ucode-mod-fs, ucode-mod-rtnl and ucode-mod-nl80211 beyond luci-base; Wi-Fi images already have rtnl and nl80211, as wifi-scripts needs them); reverse DNS (`rpcd-mod-rrdns`), mDNS (`umdns`) and hostapd's ubus objects are optional and degrade |
+| `luci-app-vantage` | dashboard + inspector views under `admin/dashboard` (landing page), its rpcd ACL (reads + its own config only), its rpcd ucode plugin `luci.vantage` (key-free wireless status, temperatures, the bridges' wired hosts, the radios' channel survey, validated alias writes), its executable rpcd plugin `luci.vantage.ports` (a DSA switch's own port counters, read with `ethtool -S`), `/etc/config/vantage` | `+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-nl80211` (rpcd-mod-iwinfo, ucode-mod-fs, ucode-mod-rtnl and ucode-mod-nl80211 beyond luci-base; Wi-Fi images already have rtnl and nl80211, as wifi-scripts needs them); reverse DNS (`rpcd-mod-rrdns`), mDNS (`umdns`), `ethtool` (a DSA switch's own counters) and hostapd's ubus objects are optional and degrade |
 | `luci-app-vantage-aps` (optional) | the access points a router's dashboard shows, over SSH (section "Other access points"): the Network → Access points page, its rpcd ACL and ucode plugin `luci.vantage.pair` (pairing), the collector service (router) and the report command (access point) | `+luci-app-vantage +rpcd-mod-ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci +ucode-mod-uloop`; Dropbear at run time (server on the access points, `dbclient` on the router), not as a dependency |
 | `luci-app-vantage-traffic` (optional, experimental) | per-device traffic for hosts that share a port of the router, from its connection tracking (section "Per-device traffic"): its rpcd ACL and an executable rpcd plugin, `luci.vantage.traffic`, which rpcd runs as a process of its own | `+luci-app-vantage +rpcd +ucode +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-uci`; `kmod-nf-conntrack` with accounting at run time (a router's default), not as a dependency |
 
@@ -1364,7 +1364,7 @@ measured on few devices so far.
   read runs at a time (the lock): a call while one runs gets the last
   answer, never waits. Each read is timed, the state's load and save
   included: the next waits ten times as long as it took when that is
-  longer (2 minutes at most), so reading takes a tenth of one core at
+  longer (2 minutes at most), so reading takes about a tenth of one core at
   most, and the answer says so (`took`, `every`, `slow`). The table is
   read for 2 s and 16,384 entries at most; an entry a read did not reach
   is known for 10 minutes, so that it does not count twice. At most 512

@@ -178,8 +178,10 @@ ready-made prompt for installing with a coding agent.
 Vantage is built to read your router, not change it. The full rules are in
 the [spec](docs/SPEC.md#6-security-requirements).
 
-- **The dashboard only reads.** Its permissions cover read methods and
-  can't run commands. Its one write is device names, stored in
+- **The dashboard only reads.** Its permissions cover read methods. The
+  one program they can start is `ethtool -S` for the device's own DSA
+  switch ports, where `ethtool` is installed, with nothing from the
+  browser on its command line. Its one write is device names, stored in
   `/etc/config/vantage`.
 - **Wi-Fi keys stay out.** Wireless settings come through Vantage's own
   plugin, which leaves out Wi-Fi keys, SAE passwords and RADIUS secrets.

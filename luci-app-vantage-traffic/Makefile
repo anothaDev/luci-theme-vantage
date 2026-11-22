@@ -43,9 +43,10 @@ PKG_PO_VERSION:=$(PKG_VERSION)-r$(PKG_RELEASE)
 
 # The counters' state is RAM (gone at a reboot) and goes with the package.
 # rpcd keeps an executable plugin's object until it starts again: a hangup
-# makes it, as luci.mk's postinst does on an install. Not on an upgrade
-# (opkg runs the old package's postrm then, "postrm upgrade"): the new
-# plugin starts over without the old state.
+# makes it, as luci.mk's postinst does on an install. No hangup on an
+# upgrade. opkg runs the old package's postrm then ("postrm upgrade"), so
+# the new plugin starts over; apk runs none, and the new plugin reads the
+# old state, whose format carries a version.
 define Package/luci-app-vantage-traffic/postrm
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {

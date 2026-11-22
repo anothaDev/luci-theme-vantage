@@ -28,7 +28,7 @@
 //     every      ms from at to the next read: WINDOW_MS, LOW_MS where the
 //                theme's Low-power router is on for every browser (low),
 //                or SLOW_FACTOR times took when that is longer (slow), so
-//                that reading takes a tenth of one core at most;
+//                that reading takes about a tenth of one core at most;
 //                MAX_EVERY_MS at most. A call before then gets this
 //                answer again: all viewers share one read
 //     acct       true: accounting on; false: off (nf_conntrack_acct 0, or
