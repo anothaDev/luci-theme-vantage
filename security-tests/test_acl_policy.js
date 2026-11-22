@@ -1345,7 +1345,7 @@ function programFiles(files) {
 		if (/^[^/]+\/root\/usr\/libexec\//.test(f.rel)) out.libexec.push(f.rel);
 		/* data: uci defaults, menu and ACL files */
 		if (/\.json$/.test(f.rel) || /^[^/]+\/root\/etc\/config\/[a-z_]+$/.test(f.rel)) continue;
-		/* the theme's uci-defaults script: the package manager runs it once, at install */
+		/* the uci-defaults scripts: the package manager runs them once, at install */
 		if (f.text.startsWith('#!/bin/sh\n')) { out.shell.push(f.rel); continue; }
 		/* the rest is ucode: templates, rpcd plugins, scripts */
 		if (STARTS.test(f.text)) out.starts.push(f.rel);
@@ -1358,7 +1358,10 @@ test('switch counters: of the dashboard\'s and the theme\'s files, the plugin al
 	assert.ok(files.some(f => f.rel.endsWith('/luci.vantage')) && files.some(f => f.rel.endsWith('/sysauth.ut')), 'found the files');
 	assert.deepEqual(found.starts, [ 'luci-app-vantage/' + PORTS_REL ]);
 	assert.deepEqual(found.libexec, [ 'luci-app-vantage/' + PORTS_REL ]);
-	assert.deepEqual(found.shell, [ 'luci-theme-vantage/root/etc/uci-defaults/30_luci-theme-vantage' ]);
+	assert.deepEqual(found.shell, [ 'luci-app-vantage/root/etc/uci-defaults/30_luci-app-vantage', 'luci-theme-vantage/root/etc/uci-defaults/30_luci-theme-vantage' ]);
+	/* the dashboard's removes the packaged copy of its config that an upgrade leaves, and does nothing else */
+	assert.deepEqual(files.find(f => f.rel.endsWith('/30_luci-app-vantage')).text.split('\n').filter(l => l && !l.startsWith('# ')),
+		[ '#!/bin/sh', 'rm -f /etc/config/vantage-opkg /etc/config/vantage.apk-new', 'exit 0' ]);
 	/* a second program anywhere else is caught: in luci.vantage, a template, a new script */
 	const plus = (rel, text) => programFiles(files.concat([ { rel, text } ]));
 	assert.notDeepEqual(plus('luci-app-vantage/root/usr/share/rpcd/ucode/luci.vantage2', 'import { popen } from \'fs\';\n').starts, found.starts);

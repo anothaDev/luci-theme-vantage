@@ -912,13 +912,13 @@ apk add --no-network --allow-untrusted /tmp/vantage/luci-theme-vantage-[0-9]*.ap
 ```
 
 apk replaces the installed version. Your theme choice is kept (the
-upgrade never selects a theme), and so are your device names: when
-`/etc/config/vantage` has been changed, apk keeps your file and saves the
-packaged one next to it as `/etc/config/vantage.apk-new`, which you can
-delete. The same goes for your Appearance in `/etc/config/vantage_theme`
-(`vantage_theme.apk-new`). On 24.10, opkg keeps your file too, saves the
-packaged one as `vantage_theme-opkg`, and prints a harmless error line about
-it. Log out and in once after upgrading.
+upgrade never selects a theme), and so are your device names in
+`/etc/config/vantage` and your Appearance in `/etc/config/vantage_theme`.
+The packaged copy that apk saves next to a changed file
+(`vantage.apk-new`, `vantage_theme.apk-new`; on 24.10 opkg's
+`vantage-opkg`, `vantage_theme-opkg`) holds no setting, and since 1.2.0
+the install removes it. opkg may print a harmless error line about it.
+Log out and in once after upgrading.
 
 ### Downgrade
 
@@ -951,8 +951,7 @@ and `luci-app-vantage-traffic`. What happens:
   modified `/etc/config/vantage` in place; delete it with
   `rm /etc/config/vantage` if you don't want to keep it.
 - **Appearance:** a saved `/etc/config/vantage_theme` stays behind the same
-  way; `rm /etc/config/vantage_theme` removes it (and
-  `vantage_theme.apk-new` or `vantage_theme-opkg`, if an upgrade left one).
+  way; `rm /etc/config/vantage_theme` removes it.
   The login page's switch, `luci.main.vantage_https`, is removed with the
   theme.
 - **Signing key and repository:** these stay, so your router keeps trusting
@@ -1171,7 +1170,7 @@ page is open. The Vantage dashboard never scans.
 Seen on vendor firmware with an older ucode (the one OpenWrt 23.05 has),
 with netlink modules taken from another distribution's feed, on Vantage
 1.1.1 and older: the dashboard's rpcd plugin could not load them, and
-rpcd went down with it, so LuCI refused every login (#134). From 1.1.2
+rpcd went down with it, so LuCI refused every login (#134). From 1.2.0
 on the plugin fails without touching LuCI. To get LuCI back over SSH,
 remove the dashboard and restart rpcd:
 

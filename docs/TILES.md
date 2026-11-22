@@ -3,7 +3,7 @@
 Another package can put a read-only tile of its own on the Vantage
 dashboard. It answers one ubus call with data; the dashboard checks the
 answer and draws it, as text, in its own look. Nothing of the package
-runs in the browser. Since 1.1.2
+runs in the browser. Since 1.2.0
 ([#129](https://github.com/anothaDev/luci-theme-vantage/issues/129)).
 
 This page is for people who write such a package (a provider). The

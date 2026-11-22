@@ -358,15 +358,17 @@ test('add-on: it ships exactly these files, the ones the device runs executable'
 	assert.deepEqual(Object.keys(mk.script).filter(k => mk.script[k] != null), [], 'no install or removal scripts of its own');
 });
 
-test('dashboard: it ships exactly these root files, one of them a program: rpcd\'s plugin for the switch counters', () => {
+test('dashboard: it ships exactly these root files, two of them run on the device: the install\'s cleanup and rpcd\'s plugin for the switch counters', () => {
 	/* The dashboard package reads; it has no service and no init script. (An earlier form of the access points
 	   feature had put a root service here: such a file must not come in unseen.) The one file the device runs
 	   is the executable rpcd plugin luci.vantage.ports (#156), which rpcd starts for a call; it must be
-	   executable, or rpcd does not register it */
+	   executable, or rpcd does not register it. The uci-defaults script runs once, at install (its
+	   one line is pinned in test_acl_policy.js), and is executable like every uci-defaults script */
 	const APP = path.join(ROOT, 'luci-app-vantage');
 	const files = tree(path.join(APP, 'root'), path.join(APP, 'root'));
 	assert.deepEqual(files, [
 		'etc/config/vantage',
+		'etc/uci-defaults/30_luci-app-vantage',
 		'usr/libexec/rpcd/luci.vantage.ports',
 		'usr/share/luci/menu.d/zz-luci-app-vantage.json',
 		'usr/share/rpcd/acl.d/luci-app-vantage.json',
@@ -375,7 +377,7 @@ test('dashboard: it ships exactly these root files, one of them a program: rpcd\
 	for (const f of files) {
 		const st = fs.lstatSync(path.join(APP, 'root', f));
 		assert.ok(st.isFile(), f + ' is a plain file');
-		if (f === 'usr/libexec/rpcd/luci.vantage.ports') assert.equal(st.mode & 0o111, 0o111, f + ' must be executable');
+		if (f === 'usr/libexec/rpcd/luci.vantage.ports' || f === 'etc/uci-defaults/30_luci-app-vantage') assert.equal(st.mode & 0o111, 0o111, f + ' must be executable');
 		else assert.equal(st.mode & 0o111, 0, f + ' must not be executable');
 	}
 	const mk = V.parseMakefile(fs.readFileSync(path.join(APP, 'Makefile'), 'utf8'), 'luci-app-vantage/Makefile');

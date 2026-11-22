@@ -20,7 +20,7 @@ instead of root; finding a moved access point over IPv6.
 
 ### Per-device traffic (experimental)
 
-Since 1.1.2 the optional `luci-app-vantage-traffic` counts the traffic
+Since 1.2.0 the optional `luci-app-vantage-traffic` counts the traffic
 through a router of each device that shares a port, from connection
 tracking, without firewall rules
 ([#110](https://github.com/anothaDev/luci-theme-vantage/issues/110) by
@@ -47,7 +47,7 @@ search"). Other pages can answer the same way; none does yet.
 
 ### Provider tiles (experimental)
 
-Since 1.1.2 another package can put a read-only tile on the dashboard
+Since 1.2.0 another package can put a read-only tile on the dashboard
 ([#129](https://github.com/anothaDev/luci-theme-vantage/issues/129);
 for authors [`docs/TILES.md`](TILES.md), see also the spec, "Provider
 tiles"). Experimental: the contract may change in any release. Still

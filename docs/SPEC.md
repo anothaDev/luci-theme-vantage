@@ -927,7 +927,7 @@ text around it so it looks the same size.
 
 ### Provider tiles (experimental)
 
-Since 1.1.2 (#129) another package (a provider) can put a read-only
+Since 1.2.0 (#129) another package (a provider) can put a read-only
 tile on the dashboard: it answers one ubus call with data, and the
 dashboard checks the answer and draws it as text in its own look.
 **Experimental**: the object and group names, the method, the fields
@@ -1328,7 +1328,7 @@ measured on few devices so far.
 - **What is counted.** The plugin reads `/proc/net/nf_conntrack` line by
   line, with both directions' bytes of each entry: split once at its
   spaces and taken apart by a table of where each protocol's fields are
-  (five builtin calls a line, against about thirty before 1.1.2), a line
+  (five builtin calls a line, against about thirty before 1.2.0), a line
   that does not fit the table searched as before. A host is the MAC the
   router's IPv4 or IPv6 neighbour table gives an address: the one that
   opened the connection, and the one it was opened to (a port forward,
@@ -1539,7 +1539,7 @@ measured on few devices so far.
   may make a switch such as the MT7531 walk its hardware table on every
   poll; measure on such a router before changing `wired`.
 - **Live per-device traffic for wired and mesh clients** (#110): since
-  1.1.2 the experimental `luci-app-vantage-traffic` (section 4,
+  1.2.0 the experimental `luci-app-vantage-traffic` (section 4,
   "Per-device traffic"), from connection tracking, without firewall
   rules. Open: what a read costs small routers, whether Top talkers
   ranks these hosts, and the names of a router's clients on an access

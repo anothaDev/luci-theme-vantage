@@ -168,7 +168,7 @@ function kv(s, key) {
 // zone of one direction) puts another field there, and the line goes to
 // parse_slow. A line costs feed six builtin calls (the read, then here
 // split, slice, join and two substr) and one function call, this one;
-// before 1.1.2 it cost about 30 builtin calls (26 in parse_slow) and 8
+// before 1.2.0 it cost about 30 builtin calls (26 in parse_slow) and 8
 // function calls.
 function parse(l, e) {
 	let t = split(l, ' '), p = PROTO[t[6]];

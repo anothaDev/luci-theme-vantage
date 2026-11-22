@@ -14,7 +14,7 @@ add-ons to it) plus offline tooling. No npm, no
 | Path | What |
 |---|---|
 | `luci-theme-vantage/` | Theme: ucode templates (`ucode/template/themes/vantage/*.ut`), CSS and icons (`htdocs/luci-static/vantage/`), shell script (`htdocs/luci-static/resources/menu-vantage.js`, `vantage-theme/host.js`), `root/etc/uci-defaults/30_luci-theme-vantage`, `postrm` in the `Makefile` |
-| `luci-app-vantage/` | Dashboard at `admin/dashboard`: views (`htdocs/.../view/vantage/overview.js`; `firewall.js`, the Network → Firewall → Overview tab), modules (`htdocs/.../vantage/*.js`), `app.css`, menu entry, rpcd ACL (`root/usr/share/rpcd/acl.d/`), rpcd ucode plugin `luci.vantage` (`root/usr/share/rpcd/ucode/luci.vantage`), executable rpcd plugin `luci.vantage.ports` (`root/usr/libexec/rpcd/luci.vantage.ports`: a DSA switch's own port counters, through `ethtool`), default `/etc/config/vantage` |
+| `luci-app-vantage/` | Dashboard at `admin/dashboard`: views (`htdocs/.../view/vantage/overview.js`; `firewall.js`, the Network → Firewall → Overview tab), modules (`htdocs/.../vantage/*.js`), `app.css`, menu entry, rpcd ACL (`root/usr/share/rpcd/acl.d/`), rpcd ucode plugin `luci.vantage` (`root/usr/share/rpcd/ucode/luci.vantage`), executable rpcd plugin `luci.vantage.ports` (`root/usr/libexec/rpcd/luci.vantage.ports`: a DSA switch's own port counters, through `ethtool`), default `/etc/config/vantage`, `root/etc/uci-defaults/30_luci-app-vantage` (removes the packaged copy an upgrade leaves beside it) |
 | `luci-app-vantage-aps/` | Optional add-on: the access points a router's dashboard shows, read over SSH. Pairing page (`htdocs/.../view/vantage/aps.js`, Network → Access points), rpcd ucode plugin `luci.vantage.pair` (`root/usr/share/rpcd/ucode/luci.vantage-pair`), shared checks (`root/usr/share/ucode/vantage/aps.uc`), the collector daemon and the report command (`root/usr/libexec/vantage/`), init script, its own ACL groups and catalogue |
 | `luci-app-vantage-traffic/` | Optional, experimental add-on: per-device traffic from the router's connection tracking. Executable rpcd plugin `luci.vantage.traffic` (`root/usr/libexec/rpcd/luci.vantage.traffic`, a ucode script rpcd runs as a process), its removal script (`postrm` in the `Makefile`), its own ACL group and catalogue; nothing in `htdocs/` (the dashboard draws it); `dev/traffic/bench.uc` measures a read on a device |
 | `dev/replay/` | Offline LuCI server that replays a recording; see its README |
@@ -93,8 +93,9 @@ add-ons to it) plus offline tooling. No npm, no
    ports, the name rule (no character the shell reads), the caps and
    that command line are pinned in
    `test_acl_policy.js`, and `luci.vantage` and every other file of the
-   dashboard and the theme start nothing (but the theme's uci-defaults
-   script, which the package manager runs at install). Apart from that, the add-on
+   dashboard and the theme start nothing (but their two uci-defaults
+   scripts, which the package manager runs at install; the dashboard's
+   only removes the packaged copy of its config, pinned there too). Apart from that, the add-on
    (`luci-app-vantage-aps`) is the one place that runs programs, and it
    writes files outside uci (as the traffic add-on does its counters'
    state, below), each listed line by line in
