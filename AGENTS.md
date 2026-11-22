@@ -93,8 +93,9 @@ add-ons to it) plus offline tooling. No npm, no
    `test_acl_policy.js`, and `luci.vantage` and every other file of the
    dashboard and the theme start nothing (but the theme's uci-defaults
    script, which the package manager runs at install). Apart from that, the add-on
-   (`luci-app-vantage-aps`) is the one place that runs programs, and the
-   one that writes files outside uci, each listed line by line in
+   (`luci-app-vantage-aps`) is the one place that runs programs, and it
+   writes files outside uci (as the traffic add-on does its counters'
+   state, below), each listed line by line in
    `test_acl_policy.js` (the pairing plugin, the report, the collector):
    changing one of those lines means changing the test with it, and saying
    why. Its group (`luci-app-vantage-aps`) is for administrators; seeing
