@@ -19,10 +19,11 @@ const mkTmp = require('./tmpdir');
    a time; stop reading the table after its time budget and wait longer
    after a slow read; know an entry a read did not see when one sees it
    again, for a while, within what it reads back; keep its files to itself
-   (0700, 0600) and refuse a directory it did not make and a state it did
-   not write; and hand out nothing but MACs and byte counts. The lean
-   parse must give what the slower one gives, on every kind of line, and
-   leave lines it does not fit to it.
+   (0700, 0600), refuse a directory it did not make and a state it did not
+   write, and give no answer without the state it comes from; and hand out
+   nothing but MACs and byte counts. The lean parse must give what the
+   slower one gives, on every kind of line, and leave lines it does not
+   fit to it.
 
    Each call runs the plugin as rpcd would, a ucode process with the
    arguments rpcd passes, under a host ucode binary ($UCODE, else `ucode`
@@ -590,6 +591,29 @@ test('traffic plugin: one read at a time; a call while one runs gets the last an
 	/* free again: a new read */
 	const [ next ] = calls([ call(t, 9000) ], dir);
 	assert.equal(next.reply.at, 9000);
+});
+
+test('traffic plugin: no answer without the state it comes from, and nothing left beside a file it could not write', { skip: NO_UCODE }, () => {
+	const dir = setup(), state = path.join(dir, 'state');
+	/* state.json a directory: its text written, then not put in its place */
+	fs.mkdirSync(state, { mode: 0o700 });
+	fs.mkdirSync(path.join(state, 'state.json'));
+	const [ none ] = calls([ call([ line(at(OUT, { ob: 1, rb: 2 })) ], 0) ], dir);
+	assert.deepEqual(none.reply, {}, 'none yet: none');
+	assert.deepEqual(fs.readdirSync(state).sort(), [ 'lock', 'state.json' ]);
+	fs.rmdirSync(path.join(state, 'state.json'));
+	calls([ call([ line(at(OUT, { ob: 1, rb: 2 })) ], 5000) ], dir);
+	fs.renameSync(path.join(state, 'state.json'), path.join(state, 'kept.json'));
+	fs.mkdirSync(path.join(state, 'state.json'));
+	const [ failed ] = calls([ call([ line(at(OUT, { ob: 9, rb: 9 })) ], 10000) ], dir);
+	assert.deepEqual(failed.reply, {}, 'none: not the last again, whose rates a dashboard would show as current');
+	assert.deepEqual(fs.readdirSync(state).sort(), [ 'answer.json', 'kept.json', 'lock', 'state.json' ], 'no .new left');
+	assert.equal(JSON.parse(fs.readFileSync(path.join(state, 'answer.json'), 'utf8')).at, 5000, 'the answer of the last state written');
+	/* written again: counted from the state the last answer came from */
+	fs.rmdirSync(path.join(state, 'state.json'));
+	fs.renameSync(path.join(state, 'kept.json'), path.join(state, 'state.json'));
+	const [ next ] = calls([ call([ line(at(OUT, { ob: 9, rb: 9 })) ], 15000) ], dir);
+	assert.deepEqual([ next.reply.at, of(next, M1) ], [ 15000, { mac: M1, rx: 9, tx: 9 } ]);
 });
 
 test('traffic plugin: a module that cannot load ends the call with no answer and no state, in its own process', { skip: NO_UCODE }, () => {

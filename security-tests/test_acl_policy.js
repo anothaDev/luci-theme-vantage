@@ -2172,13 +2172,14 @@ test('negative controls: another form, method, argument or place of the traffic 
    that mentions one of these names, as for the add-on (checkPins) */
 const TRAFFIC_PINS = [
 	/* files: the table and the switch read; its own directory and files, nothing else */
-	[ '\\b(?:open|readfile|writefile|chmod|rename|mkdir|lstat)\\b', [
-		'import { chmod, lstat, mkdir, open, readfile, rename, writefile } from \'fs\';',
+	[ '\\b(?:open|readfile|writefile|chmod|rename|mkdir|lstat|unlink)\\b', [
+		'import { chmod, lstat, mkdir, open, readfile, rename, unlink, writefile } from \'fs\';',
 		'let v = readfile(ACCT, 8);',
 		'let st = lstat(DIR);',
 		'mkdir(DIR, 0700);',
 		'st = lstat(DIR);',
-		'return writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true;',
+		'if (writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true)',
+		'unlink(tmp);',
 		'let text = readfile(DIR + \'/state.json\', MAX_STATE + 1), st = null;',
 		'let text = readfile(DIR + \'/answer.json\', MAX_ANSWER), a = null;',
 		'let acct = acct_on(), f = (acct !== false) ? open(TABLE, \'r\') : null;',
@@ -2202,11 +2203,13 @@ const TRAFFIC_PINS = [
 	] ],
 	/* the directory: its own (a directory, not a link, root's, closed to others) or none */
 	[ '\\bst(?:\\?)?\\.(?:type|mode|uid)\\b', [ 'return st?.type == \'directory\' && st.uid === 0 && !(st.mode & 0077);' ] ],
-	/* writes: whole, 0600, then in place, of these two files only */
+	/* writes: whole, 0600, then in place, of these two files only; what a
+	   failed one left beside the file removed */
 	[ '\\b(?:put|tmp)\\b', [
 		'function put(name, text) {',
 		'let tmp = DIR + \'/\' + name + \'.new\', file = DIR + \'/\' + name;',
-		'return writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true;',
+		'if (writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true)',
+		'unlink(tmp);',
 		'return put(\'state.json\', sprintf(\'%J\', { v: 2, at: now, flows, totals }));',
 		'put(\'answer.json\', text);'
 	] ],
@@ -2251,8 +2254,9 @@ const TRAFFIC_PINS = [
 function checkTrafficSource(src) {
 	assert.ok(src.startsWith('#!/usr/bin/ucode -S\n'), 'an executable ucode script');
 	const code = codeOf(src.replace(/^#![^\n]*\n/, ''), 'the traffic plugin');
-	assert.deepEqual(linesWith(code, 'import'), [ 'import * as rtnl from \'rtnl\';', 'import { cursor } from \'uci\';', 'import { chmod, lstat, mkdir, open, readfile, rename, writefile } from \'fs\';' ]);
-	const word = /\b(system|popen|exec|require|loadfile|loadstring|include|render|unlink|symlink|rmdir|global|getenv|stdin|sleep|exit)\b/.exec(code);
+	assert.deepEqual(linesWith(code, 'import'), [ 'import * as rtnl from \'rtnl\';', 'import { cursor } from \'uci\';', 'import { chmod, lstat, mkdir, open, readfile, rename, unlink, writefile } from \'fs\';' ]);
+	/* unlink is pinned above (the temporary file only) */
+	const word = /\b(system|popen|exec|require|loadfile|loadstring|include|render|symlink|rmdir|global|getenv|stdin|sleep|exit)\b/.exec(code);
 	assert.equal(word, null, word && `"${word[1]}" is banned in the traffic plugin`);
 	assert.doesNotMatch(code, /(^|[^.\w])call\s*\(/m, 'the call() builtin is banned in the traffic plugin');
 	for (const name of [ 'TABLE', 'ACCT', 'THEME', 'DIR' ])
@@ -2273,7 +2277,7 @@ test('traffic: the plugin rules catch each breach', () => {
 		'another file written': add('writefile(\'/etc/config/vantage\', \'\');'),
 		'a write past put': add('writefile(DIR + \'/hosts.txt\', \'\');'),
 		'a second import': swap('import { cursor } from \'uci\';', 'import { cursor } from \'uci\';\nimport { connect } from \'ubus\';'),
-		'its input read': swap('import { chmod, lstat, mkdir, open, readfile, rename, writefile } from \'fs\';', 'import { chmod, lstat, mkdir, open, readfile, rename, stdin, writefile } from \'fs\';'),
+		'its input read': swap('import { chmod, lstat, mkdir, open, readfile, rename, unlink, writefile } from \'fs\';', 'import { chmod, lstat, mkdir, open, readfile, rename, stdin, unlink, writefile } from \'fs\';'),
 		'another file read': add('let pw = readfile(\'/etc/shadow\', 8);'),
 		'the table opened for writing': swap('open(TABLE, \'r\')', 'open(TABLE, \'w\')'),
 		'a shadowed path': add('let TABLE = \'/etc/shadow\';'),
@@ -2285,7 +2289,9 @@ test('traffic: the plugin rules catch each breach', () => {
 		'another account\'s directory taken': swap('return st?.type == \'directory\' && st.uid === 0 && !(st.mode & 0077);', 'return st?.type == \'directory\' && !(st.mode & 0077);'),
 		'files others may read': swap('chmod(tmp, 0600)', 'chmod(tmp, 0644)'),
 		'a lock file others may read': swap('open(DIR + \'/lock\', \'a\', 0600)', 'open(DIR + \'/lock\', \'a\')'),
-		'a file written in place': swap('return writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true;', 'return writefile(file, text) == length(text) && chmod(file, 0600);'),
+		'a file written in place': swap('if (writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true)', 'if (writefile(file, text) == length(text) && chmod(file, 0600))'),
+		'another file removed': add('unlink(DIR + \'/../vantage\');'),
+		'the file removed, not what is beside it': swap('unlink(tmp);', 'unlink(file);'),
 		'a third file': swap('put(\'answer.json\', text);', 'put(\'answer.json\', text);\n\tput(\'flows.json\', sprintf(\'%J\', flows));'),
 		'the entries in the answer file': swap('put(\'answer.json\', text);', 'put(\'answer.json\', sprintf(\'%J\', flows));'),
 		'the state read unbounded': swap('readfile(DIR + \'/state.json\', MAX_STATE + 1)', 'readfile(DIR + \'/state.json\')'),

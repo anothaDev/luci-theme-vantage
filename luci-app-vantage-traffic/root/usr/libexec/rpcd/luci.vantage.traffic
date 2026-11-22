@@ -50,7 +50,8 @@
 //     dropped    hosts not counted, past MAX_HOSTS
 //
 // {} instead when there is no answer to give: the state directory is not
-// what this plugin made, or no read has finished yet and one is running.
+// what this plugin made, no read has finished yet and one is running, or
+// the read's state could not be written.
 //
 // Counted: what passes this router's connection tracking, routed or
 // addressed to it, both ways, for the hosts its neighbour tables give a
@@ -71,7 +72,8 @@
 //                when the read that wrote it began; about 100 bytes an
 //                entry, never more than MAX_STATE (one that is larger or
 //                not of this form is not used: the counting starts over)
-//   answer.json  the last answer, as printed
+//   answer.json  the last answer, as printed, written only after the
+//                state it comes from
 // DIR is made 0700 and the files 0600, root's: no other account can read
 // which hosts are counted, let alone how much. Runs nothing.
 
@@ -79,7 +81,7 @@
 
 import * as rtnl from 'rtnl';
 import { cursor } from 'uci';
-import { chmod, lstat, mkdir, open, readfile, rename, writefile } from 'fs';
+import { chmod, lstat, mkdir, open, readfile, rename, unlink, writefile } from 'fs';
 
 const TABLE = '/proc/net/nf_conntrack';
 const ACCT = '/proc/sys/net/netfilter/nf_conntrack_acct';
@@ -401,10 +403,14 @@ function dir_ok() {
 }
 
 // text written whole beside the file, then put in its place: a call that
-// rpcd kills midway leaves the file before it
+// rpcd kills midway leaves the file before it, and a write that fails
+// (a full /tmp) leaves nothing beside it
 function put(name, text) {
 	let tmp = DIR + '/' + name + '.new', file = DIR + '/' + name;
-	return writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true;
+	if (writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true)
+		return true;
+	unlink(tmp);
+	return false;
 }
 
 // an entry as this plugin writes it: two counts and a time, numbers not
@@ -491,8 +497,7 @@ function read(t0) {
 	for (let k in sort(keys(totals)))
 		push(out, { mac: k, rx: totals[k][0], tx: totals[k][1] });
 
-	save_state(t0);
-	return { acct, st, hosts: out };
+	return { acct, st, hosts: out, saved: save_state(t0) };
 }
 
 // the answer's text: the last one while it is fresh or another read runs
@@ -517,7 +522,12 @@ function hosts() {
 	if (fresh(last, now_ms()))
 		return last.text;
 
+	// no answer without the state it comes from (the next read would
+	// count from an older one), nor the last one again (a dashboard would
+	// show its rates as current)
 	let low = low_power(), r = read(t0), took = now_ms() - t0;
+	if (!r.saved)
+		return null;
 	let every = min(max(low ? LOW_MS : WINDOW_MS, took * SLOW_FACTOR), MAX_EVERY_MS);
 
 	let text = sprintf('%J', {

@@ -253,7 +253,10 @@ function feed(f, neigh, now, stop, st) {
 
 function put(name, text) {
 	let tmp = DIR + '/' + name + '.new', file = DIR + '/' + name;
-	return writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true;
+	if (writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true)
+		return true;
+	unlink(tmp);
+	return false;
 }
 
 function entry_ok(v) {
