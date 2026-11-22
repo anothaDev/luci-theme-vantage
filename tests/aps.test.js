@@ -854,7 +854,8 @@ test('report: SSIDs, stations, and the wired hosts past the uplink', { skip: NO_
 		stations: [
 			{ mac: MAC(32), ifname: 'phy0-ap0', signal: -55, rx_rate: 866000, tx_rate: 650000, rx_bytes: 1000, tx_bytes: 2000, connected: 60,
 				rx_phy: { mhz: 80, mcs: 9, nss: 2, ht: false, vht: true, he: false, eht: false, sgi: true },
-				tx_phy: { mhz: 80, mcs: 7, nss: 2, ht: false, vht: false, he: true, eht: false, sgi: true } },
+				/* he_gi 1 is 1.6 µs, the middle one of HE's three: not a short guard interval */
+				tx_phy: { mhz: 80, mcs: 7, nss: 2, ht: false, vht: false, he: true, eht: false, sgi: false } },
 			/* a driver that says nothing of the link: every number unknown */
 			{ mac: MAC(34), ifname: 'ra0', signal: -60, rx_rate: 72000, tx_rate: 72000, rx_bytes: 5, tx_bytes: 6, connected: null,
 				rx_phy: { mhz: null, mcs: null, nss: null, ht: false, vht: false, he: false, eht: false, sgi: false },

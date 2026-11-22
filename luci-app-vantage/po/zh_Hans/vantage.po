@@ -962,7 +962,7 @@ msgid "Everything looks healthy"
 msgstr "一切正常"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:191
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:117
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:119
 msgctxt "vantage"
 msgid "Excellent"
 msgstr "极好"
@@ -973,7 +973,7 @@ msgid "Experience"
 msgstr "体验"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:191
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:119
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:121
 msgctxt "vantage"
 msgid "Fair"
 msgstr "一般"
@@ -1105,7 +1105,7 @@ msgid "Globally unique · %s"
 msgstr "全局唯一 · %s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:191
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:118
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:120
 msgctxt "vantage"
 msgid "Good"
 msgstr "良好"
@@ -1621,7 +1621,7 @@ msgid ""
 "No rule or port forward opens anything; the warnings above say what does."
 msgstr "没有规则或端口转发开放任何内容；上方的警告说明了开放的内容。"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:116
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:118
 msgid "No signal"
 msgstr "无信号"
 
@@ -2740,7 +2740,7 @@ msgctxt "vantage"
 msgid "Warnings"
 msgstr "警告"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:120
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:122
 msgid "Weak"
 msgstr "弱"
 
@@ -3116,7 +3116,7 @@ msgstr "路由器端口 %s"
 msgid "sent on %s"
 msgstr "在 %s 上发送"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:108
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:110
 msgid "short GI"
 msgstr "短 GI"
 

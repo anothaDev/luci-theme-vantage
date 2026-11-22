@@ -128,6 +128,10 @@ test('wifi.phy: friendly PHY label and details', () => {
 	const p = wifi.phy({ rate: 576400, mhz: 160, eht: true, mcs: 3, nss: 2, eht_gi: 0 });
 	assert.equal(p.label, '576 Mbit/s · 160 MHz · EHT');
 	assert.equal(p.detail, 'MCS 3 · 2×2');
+	/* "short GI" is HT and VHT's; HE and EHT's guard intervals count up from the shortest */
+	assert.equal(wifi.phy({ rate: 866000, mhz: 80, vht: true, mcs: 9, nss: 2, short_gi: true }).detail, 'MCS 9 · 2×2 · short GI');
+	assert.equal(wifi.phy({ rate: 650000, mhz: 80, he: true, mcs: 7, nss: 2, he_gi: 1 }).detail, 'MCS 7 · 2×2');
+	assert.equal(wifi.phy({ rate: 650000, mhz: 80, eht: true, mcs: 7, nss: 2, eht_gi: 2 }).detail, 'MCS 7 · 2×2');
 	assert.equal(wifi.phy({ rate: 1000, mhz: 20 }).label, '1 Mbit/s · 20 MHz · legacy');
 	assert.equal(wifi.phy(null), null);
 });

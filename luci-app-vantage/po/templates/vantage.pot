@@ -936,7 +936,7 @@ msgid "Everything looks healthy"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:191
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:117
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:119
 msgctxt "vantage"
 msgid "Excellent"
 msgstr ""
@@ -947,7 +947,7 @@ msgid "Experience"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:191
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:119
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:121
 msgctxt "vantage"
 msgid "Fair"
 msgstr ""
@@ -1077,7 +1077,7 @@ msgid "Globally unique · %s"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:191
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:118
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:120
 msgctxt "vantage"
 msgid "Good"
 msgstr ""
@@ -1583,7 +1583,7 @@ msgstr ""
 msgid "No rule or port forward opens anything; the warnings above say what does."
 msgstr ""
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:116
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:118
 msgid "No signal"
 msgstr ""
 
@@ -2626,7 +2626,7 @@ msgctxt "vantage"
 msgid "Warnings"
 msgstr ""
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:120
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:122
 msgid "Weak"
 msgstr ""
 
@@ -3001,7 +3001,7 @@ msgstr ""
 msgid "sent on %s"
 msgstr ""
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:108
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:110
 msgid "short GI"
 msgstr ""
 

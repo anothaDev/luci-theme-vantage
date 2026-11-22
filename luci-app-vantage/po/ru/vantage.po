@@ -1016,7 +1016,7 @@ msgid "Everything looks healthy"
 msgstr "Всё выглядит исправно"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:191
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:117
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:119
 msgctxt "vantage"
 msgid "Excellent"
 msgstr "Отлично"
@@ -1027,7 +1027,7 @@ msgid "Experience"
 msgstr "Качество связи"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:191
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:119
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:121
 msgctxt "vantage"
 msgid "Fair"
 msgstr "Средне"
@@ -1163,7 +1163,7 @@ msgid "Globally unique · %s"
 msgstr "Глобально уникальный · %s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:191
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:118
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:120
 msgctxt "vantage"
 msgid "Good"
 msgstr "Хорошо"
@@ -1689,7 +1689,7 @@ msgstr ""
 "Ни одно правило или проброс порта ничего не открывает; что открывает — "
 "сказано в предупреждениях выше."
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:116
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:118
 msgid "No signal"
 msgstr "Нет сигнала"
 
@@ -2838,7 +2838,7 @@ msgctxt "vantage"
 msgid "Warnings"
 msgstr "Предупреждения"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:120
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:122
 msgid "Weak"
 msgstr "Слабый"
 
@@ -3219,7 +3219,7 @@ msgstr "порт маршрутизатора %s"
 msgid "sent on %s"
 msgstr "отправлено на %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:108
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:110
 msgid "short GI"
 msgstr "короткий GI"
 

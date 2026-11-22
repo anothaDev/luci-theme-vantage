@@ -109,6 +109,10 @@ packages are listed at
   call that was out while the computer slept counted as slow and could
   leave the tile unasked for hours; such a call no longer counts, and
   the wait is four minutes at most.
+- **Client details: "short GI" only where it is one.** Wi-Fi 6 and 7
+  links on their longer guard intervals (1.6 and 3.2 µs) were labelled
+  "short GI". The label now stands for Wi-Fi 4 and 5's short interval
+  alone.
 
 ## 1.1.1 - 2026-11-21
 

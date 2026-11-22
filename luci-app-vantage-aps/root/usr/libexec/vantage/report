@@ -76,7 +76,7 @@ function phy(r) {
 	return {
 		mhz: int_in(r.mhz, 1, 640), mcs: int_in(r.mcs, 0, 31), nss: int_in(r.nss, 1, 16),
 		ht: r.ht === true, vht: r.vht === true, he: r.he === true, eht: r.eht === true,
-		sgi: r.short_gi === true || int_in(r.he_gi, 1, 3) != null || int_in(r.eht_gi, 1, 3) != null
+		sgi: r.short_gi === true
 	};
 }
 

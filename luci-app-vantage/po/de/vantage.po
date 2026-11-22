@@ -1013,7 +1013,7 @@ msgid "Everything looks healthy"
 msgstr "Alles in Ordnung"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:191
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:117
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:119
 msgctxt "vantage"
 msgid "Excellent"
 msgstr "Ausgezeichnet"
@@ -1024,7 +1024,7 @@ msgid "Experience"
 msgstr "Qualität"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:191
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:119
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:121
 msgctxt "vantage"
 msgid "Fair"
 msgstr "Mittelmäßig"
@@ -1159,7 +1159,7 @@ msgid "Globally unique · %s"
 msgstr "Global eindeutig · %s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:191
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:118
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:120
 msgctxt "vantage"
 msgid "Good"
 msgstr "Gut"
@@ -1686,7 +1686,7 @@ msgstr ""
 "Keine Regel oder Portweiterleitung gibt Zugriffe frei; die Warnungen oben "
 "nennen die Ursachen für offene Zugriffe."
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:116
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:118
 msgid "No signal"
 msgstr "Kein Signal"
 
@@ -2855,7 +2855,7 @@ msgctxt "vantage"
 msgid "Warnings"
 msgstr "Warnungen"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:120
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:122
 msgid "Weak"
 msgstr "Schwach"
 
@@ -3236,7 +3236,7 @@ msgstr "Router-Port %s"
 msgid "sent on %s"
 msgstr "gesendet auf %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:108
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/wifi.js:110
 msgid "short GI"
 msgstr "kurzes Schutzintervall"
 
