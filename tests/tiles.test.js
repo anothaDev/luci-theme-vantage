@@ -186,6 +186,10 @@ test('contract: items of the form only, at most eight, one a label; units, rates
 	assert.deepEqual(many.map(x => x.label), [ 'n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7' ]);
 	assert.deepEqual(model.tile({ v: 1, title: 'T', items: [ { label: 'Rx', value: 1 }, { label: 'rx', value: 2 } ] }).items.map(x => x.value), [ 1 ], 'one item a label');
 	assert.deepEqual(model.tile({ v: 1, title: 'T', items: 'x' }).items, []);
+	/* of the first 32 looked at: 32 not of the form, then good ones, give none */
+	const late = Array.from({ length: 32 }, () => ({ label: 'x' })).concat([ { label: 'a', value: 1 }, { label: 'b', value: 2 } ]);
+	assert.deepEqual(model.tile({ v: 1, title: 'T', items: late }).items, []);
+	assert.deepEqual(model.tile({ v: 1, title: 'T', items: late.slice(1) }).items.map(x => x.label), [ 'a' ], 'the 32nd is looked at');
 });
 
 test('contract: state and icon from fixed lists; every within 5-300 s; a page only as a LuCI menu path', () => {
@@ -491,6 +495,30 @@ test('a provider whose first answer comes after the poll\'s 2 s and says it is n
 	});
 }));
 
+test('a provider is asked with the slow part of the poll only: every 30 s on a Low-power router, its last answer between', () => tilePolls(async c => {
+	const saved = global.document;
+	let low = true;
+	global.document = { hidden: false, documentElement: { getAttribute: k => k === 'data-vt-power' && low ? 'low' : null } };
+	try {
+		c.acl = dump({ 'vantage.tile.dns': [ 'status' ] });
+		c.answer.dns = () => Promise.resolve({ v: 1, title: 'T', items: [ { label: 'a', value: c.t } ] });
+		/* the slow part kept only where these three answered */
+		REPLIES['luci.vantage wireless'] = () => Promise.resolve({});
+		REPLIES['luci.vantage thermal'] = () => Promise.resolve([]);
+		REPLIES['luci.vantage wired'] = () => Promise.resolve({ hosts: [] });
+		const poll = async ms => { c.t += ms; return JSON.parse(JSON.stringify((await c.self.fetch()).provided)); };
+		const first = await poll(0);
+		for (let i = 1; i < 6; i++) assert.deepEqual(await poll(5e3), first, 'poll ' + i + ': the last answer');
+		assert.equal(c.asked('dns'), 1);
+		await poll(5e3);
+		assert.equal(c.asked('dns'), 2, '30 s on');
+		/* not Low-power: every poll is a slow one */
+		low = false;
+		await poll(5e3); await poll(5e3);
+		assert.equal(c.asked('dns'), 4);
+	} finally { global.document = saved; }
+}));
+
 test('a provider\'s call holds up a poll for 2 s at most; while it is out no second one is made and no later poll waits', () => tilePolls(async c => {
 	c.acl = dump({ 'vantage.tile.dns': [ 'status' ] });
 	let release;
@@ -569,6 +597,31 @@ test('a tile drawn from an answer: its name, icon, dot, link, note and items, al
 	assert.deepEqual(Object.keys(self.st.ext.dns.rates), [ 'Queries', 'Forwarded' ]);
 }));
 
+test('a trend keeps five minutes, 90 points at most, and only for labels still sent', () => withDom(() => {
+	const reply = labels => ({ v: 1, title: 'T', items: labels.map((l, i) => ({ label: l, value: i, trend: true })) });
+	const self = page({ abc: ans(reply([ 'a', 'b' ])) });
+	const feed = (n, step, labels) => { for (let k = 1; k <= n; k++) { const at = self.st.ext.abc.at + step; self.noteTiles(self.m, { abc: ans(reply(labels), { at }) }, at); } };
+	/* an answer a second (faster than any poll): 90 points */
+	feed(200, 1e3, [ 'a', 'b' ]);
+	assert.equal(self.st.ext.abc.hist.a.length, 90);
+	/* 15 s apart for ten minutes: the last five */
+	feed(40, 15e3, [ 'a', 'b' ]);
+	const h = self.st.ext.abc.hist.a;
+	assert.ok(h.length === 21 && h[h.length - 1][0] - h[0][0] === 5 * 60e3, h.length + ' points');
+	/* a label no longer sent takes its points with it */
+	feed(1, 15e3, [ 'a' ]);
+	assert.deepEqual(Object.keys(self.st.ext.abc.hist), [ 'a' ]);
+}));
+
+test('a provider\'s state and levels are never a health check, warn and err included', () => withDom(() => {
+	for (const state of [ 'ok', 'warn', 'err', 'off' ]) {
+		const self = page({ abc: ans({ v: 1, title: 'T', state, items: [ { label: 'a', value: 1, level: state }, { label: 'b', value: 2, level: 'err' } ] }) });
+		self.noteTiles(self.m, { abc: ans({ v: 1, title: 'T', state: 'err', items: [] }, { at: 1e12 + 5e3 }) }, 1e12 + 5e3);
+		self.paintTiles();
+		assert.deepEqual([ self.st.health, self.st.summary ], [ 'kept', 'kept' ], state);
+	}
+}));
+
 test('units are the dashboard\'s own formats; levels colour the value, and say so in words', () => withDom(() => {
 	const self = page({ modem: ans({ v: 1, title: 'Mobile', state: 'warn', items: [
 		{ label: 'RSRP', value: -103, unit: 'dBm', level: 'warn' }, { label: 'SINR', value: 4.5, unit: 'dB', level: 'err' }, { label: 'RTT', value: 23.456, unit: 'ms' },
@@ -599,6 +652,24 @@ test('hostile text stays text: no markup, handler, style or link from an answer;
 		const s = page({ dns: ans(Object.assign({}, reply, { page: p })) }, menuView);
 		assert.deepEqual(s.tiles.xdns.find('vt-link').map(a => a.getAttribute('href')), p === 'admin/network' ? [ '/cgi-bin/luci/admin/network' ] : [], p);
 	}
+}));
+
+test('a provider\'s page: no link to a menu node without a title; every step satisfied and the node\'s own child', () => withDom(() => {
+	const tree = { children: { admin: { satisfied: true, children: { network: { satisfied: true, title: 'Network', children: { untitled: { satisfied: true } } } } } } };
+	const self = page({ dns: ans({ v: 1, title: 'T', page: 'admin/network/untitled' }) }, viewWithMenu(tree));
+	assert.deepEqual(self.tiles.xdns.find('vt-link'), [], 'no name to give it');
+	/* menuPage itself, over trees the link's own check (hasPage) would let pass */
+	const at = VIEW_SRC.indexOf('function menuPage(page) {');
+	const menuPage = tree => new Function('menuTree', '_', VIEW_SRC.slice(at, VIEW_SRC.indexOf('\n}\n', at) + 3) + 'return menuPage;')(tree, s => s);
+	const node = (title, satisfied, children) => Object.assign({ satisfied, title }, children ? { children } : {});
+	const t = { children: { admin: node('Admin', true, { network: node('Network', true, { dhcp: node('DHCP', true), hidden: node('Hidden', false) }), off: node('Off', false, { x: node('X', true) }) }) } };
+	assert.equal(menuPage(t)([ 'admin', 'network', 'dhcp' ]), 'DHCP');
+	assert.equal(menuPage(t)([ 'admin', 'network', 'hidden' ]), null, 'the page not satisfied');
+	assert.equal(menuPage(t)([ 'admin', 'off', 'x' ]), null, 'a step on the way not satisfied');
+	/* a child the node does not have itself (inherited) is none */
+	const inherited = { children: { admin: node('Admin', true, Object.create({ evil: node('Evil', true) })) } };
+	assert.equal(menuPage(inherited)([ 'admin', 'evil' ]), null);
+	assert.equal(menuPage(t)([ 'admin', 'constructor' ]), null);
 }));
 
 /* the view with LuCI's menu tree as load() leaves it (menuTree, a module variable) */
