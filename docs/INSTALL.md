@@ -137,9 +137,36 @@ from your configured package feeds.
 | `rpcd-mod-iwinfo` | app | lists radios and connected stations | yes (with `luci-mod-status`) |
 | `rpcd-mod-rrdns` | app, optional | client names from reverse DNS | yes (with `luci-light`) |
 | `umdns` | app, optional | client names from mDNS (`.local` announcements) | no |
+| `ethtool` | app, optional | a DSA switch's own byte counters for its ports | no |
 
 When an optional package is missing, the dashboard leaves that name source
 out and keeps working.
+
+`ethtool` matters on a router or access point whose Ethernet ports are a
+switch chip's under DSA (most with several LAN ports since OpenWrt 21.02;
+`ls /sys/class/net/*/dsa` lists the chip's link to the CPU there). The
+kernel counts on such a port only what passes the device's CPU: what the
+chip forwards from one of its ports to another (a computer on `lan1`
+fetching from a NAS on `lan2`, an access point on `lan3` and the devices
+behind it) never shows there, and the Ports tile and the Wired branch
+read near zero for it (#156). With `ethtool` installed the dashboard
+reads the chip's own counters instead, one `ethtool -S <port>` a port at
+each poll, and a paired access point's report carries its own. Without
+it nothing changes and nothing is started for it. Install it, then
+reload the dashboard:
+
+```sh
+apk add ethtool        # OpenWrt 25.12
+opkg install ethtool   # OpenWrt 24.10
+```
+
+(`ethtool-full` works as well.) The chip's counters are read for the
+switch drivers whose names the dashboard knows: `mt7530` (MT7530, MT7531,
+MT7988; from Linux 6.16 it puts them in the kernel's counters itself),
+`qca8k`, `mv88e6xxx`, `b53` and `bcm_sf2`, `lantiq_gswip` and
+`rtl8366rb`. For any other driver the kernel's counters stay; some
+(`rtl8365mb`, `ksz`, `felix`, `ar9331`, `xrs700x`) count the chip's
+traffic there already.
 
 Space: the download is about 200 KB in total, and the two packages take
 about 730 KB once installed (less on a compressed overlay).
@@ -561,7 +588,7 @@ a new one, then log in). Two reasons:
 
 | | `luci-theme-vantage` | `luci-app-vantage` |
 |---|---|---|
-| Files | `/www/luci-static/vantage/` (CSS, icons, logo), `/www/luci-static/resources/menu-vantage.js`, `/www/luci-static/resources/vantage-theme/`, `/usr/share/ucode/luci/template/themes/vantage/` | `/www/luci-static/resources/view/vantage/`, `/www/luci-static/resources/vantage/`, `/usr/share/luci/menu.d/zz-luci-app-vantage.json`, `/usr/share/rpcd/acl.d/luci-app-vantage.json`, `/etc/config/vantage` |
+| Files | `/www/luci-static/vantage/` (CSS, icons, logo), `/www/luci-static/resources/menu-vantage.js`, `/www/luci-static/resources/vantage-theme/`, `/usr/share/ucode/luci/template/themes/vantage/` | `/www/luci-static/resources/view/vantage/`, `/www/luci-static/resources/vantage/`, `/usr/share/luci/menu.d/zz-luci-app-vantage.json`, `/usr/share/rpcd/acl.d/luci-app-vantage.json`, `/usr/libexec/rpcd/luci.vantage.ports`, `/etc/config/vantage` |
 | Configuration | Registers the theme as `luci.themes.Vantage`. Makes it the active theme (`luci.main.mediaurlbase=/luci-static/vantage`) **only on a first install**, never on an upgrade or reinstall. Adds `/etc/config/vantage_theme` (Appearance, and the dashboard's layout and chart style) and the rpcd group `luci-theme-vantage`. | None besides its own `/etc/config/vantage` (client names). |
 | Menu | – | Adds **Dashboard** (`admin/dashboard`) as the first menu entry, so it is the page LuCI opens after login. Status → Overview is unchanged. With `luci-mod-dashboard` also installed, which uses the same entry, Dashboard opens Vantage's and LuCI's moves to Status → Dashboard. With the Vantage theme installed but not selected, Dashboard opens LuCI's own page instead (see [Switch themes](#switch-themes)). |
 | After install | Clears LuCI's caches (`/tmp/luci-indexcache.*`, `/tmp/luci-modulecache/`) and reloads rpcd. | Same. |
@@ -1178,7 +1205,11 @@ Then reload the page. To remove Vantage entirely, see
   `/proc/stat`, the kernel's route to the internet and the link state of a
   swconfig switch's ports. It cannot
   run commands; for that link state LuCI's own method runs `swconfig dev
-  <switch> show`, read-only. Its only write permission, in a
+  <switch> show`, read-only. One program it starts itself, for a DSA
+  switch's own port counters: `/usr/sbin/ethtool -S <port>`, where
+  `ethtool` is installed, for each of the device's own DSA ports by its
+  kernel name, in a process of rpcd's own (the plugin
+  `luci.vantage.ports`, which takes nothing from the caller). Its only write permission, in a
   separate group (`luci-app-vantage-names`), is the plugin methods
   `luci.vantage set_alias` and `set_quiet`, which check each name and
   station on the device and write nothing but `/etc/config/vantage` (at

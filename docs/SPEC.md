@@ -536,9 +536,9 @@ text around it so it looks the same size.
   with hosts opens the Clients tile's wired list on them, as its node on
   the path does. An access point with one port has no tile: that port
   is on the path already, as the uplink's.
-  Nothing is asked of the device for it, and no grant is added: the
-  ports are read from `network.device status`, which the poll has
-  anyway. A port is a device netifd reports with `devtype` `dsa` (a
+  The ports are read from `network.device status`, which the poll has
+  anyway; the one call added is for a DSA switch's own counters (below).
+  A port is a device netifd reports with `devtype` `dsa` (a
   switch's port under DSA), or with `devtype` `ethernet` (netifd's word
   for an Ethernet device the kernel gives no other type, so never a
   bridge, a VLAN, a bond, a tunnel or a WireGuard device) whose driver
@@ -570,11 +570,26 @@ text around it so it looks the same size.
   device, not counted on the port; and a port's
   counters are the kernel's, so what a switch chip forwards on its own
   (between two of its ports, or with hardware flow offloading) is not in
-  them. Two ports seen once keep the tile for the session, saying so
+  them, but where the chip's own counters are read (below). Two ports seen once keep the tile for the session, saying so
   when a poll lists none. Its layout is the others': the same stored
   layouts, and one that does not mention the tile gets it where the
   default has it, after every other tile: as wide as Clients on a wide
   screen with Wi-Fi, the full width otherwise.
+- **A DSA switch's own counters** (#156): the kernel counts on a DSA
+  port only what passes the CPU. Every poll the dashboard asks
+  `luci.vantage.ports counters` (below) in a request of its own, waits
+  2 s for it at most and makes no second call while one is out, and
+  takes a port's traffic from its chip's counters where that poll has
+  them: the Ports tile, the Wired branch and the wired hosts that have
+  the port to themselves. Not for a line's own device, whose rate the
+  line, the throughput chart and the fast lane take from the kernel's.
+  A rate is only ever of two readings of one source: a port whose
+  chip's counters stayed out of a poll has no rate for that step, nor
+  for the step back. The first answer that says there is nothing to
+  get (no DSA port, no `ethtool`, or every port read with names the
+  plugin does not know) or that there is no such object ends the asking
+  for the page, so a device without such a switch starts no process for
+  it every poll. Nothing is shown about traffic the counters miss.
 - **Throughput chart**: one row per line, then each radio, each
   with its own scale. Under "Customize", the viewer picks how download and
   upload share a row: overlaid on one scale (the default), overlaid on a
@@ -769,7 +784,8 @@ text around it so it looks the same size.
 - ACL: three groups for the app, and the theme's own, below. `luci-app-vantage` (read): `system info/board`,
   `network.interface dump`, `network.device status`, `iwinfo
   info/assoclist`, `hostapd.* get_status/get_clients`, `luci-rpc
-  getHostHints`, `luci.vantage wireless/thermal/wired/routes/survey`, `umdns hosts`, `file read` of
+  getHostHints`, `luci.vantage wireless/thermal/wired/routes/survey`,
+  `luci.vantage.ports counters` (it starts `ethtool`, below), `umdns hosts`, `file read` of
   `/proc/stat`, `uci get` for `vantage`, and LuCI's own `luci
   getSwconfigPortState` (the link state of a swconfig switch's ports: LuCI
   runs `swconfig dev <switch> show`, the switch name quoted; the view asks
@@ -857,6 +873,31 @@ text around it so it looks the same size.
   leave LuCI's script on freed memory, which can crash rpcd and with it
   every login (the likely cause of #134). Failing first leaves them
   untouched; `tests/plugin.test.js` keeps the order.
+- Executable rpcd plugin `luci.vantage.ports`
+  (`/usr/libexec/rpcd/luci.vantage.ports`, #156), the one file of the
+  dashboard and the theme that starts a program. rpcd runs it as a
+  process of its own for each call (and once with `list` when rpcd
+  starts), kills it after its own timeout (30 s as OpenWrt sets it) and
+  answers others meanwhile. Its one method, `counters`, takes nothing:
+  the call's arguments are not read. It lists the device's DSA ports,
+  the entries of `/sys/class/net` whose `uevent` says `DEVTYPE=dsa`, by
+  a name of letters, digits, `_` and `-` (not first, 15 at most), 32 at
+  most in name order; where there is none, or no `/usr/sbin/ethtool`
+  (not a dependency), it starts nothing and says so (`state` `none`,
+  `no-ethtool`). Otherwise it runs `ethtool -S <port>` for each, none
+  after its first second (`time`), reads 32 KiB of each run at most
+  and keeps a run only when it exits 0 and starts with `NIC
+  statistics:`; ucode reads a program's output only through `popen`,
+  which hands the line to `/bin/sh`, so the name rule keeps the line to
+  three plain words. A port's counters are the first pair of a fixed
+  table of switch drivers' names found once each (`RxBytes`/`TxBytes`
+  of mt7530, `RxGoodByte`/`TxByte` of qca8k, `in_good_octets`/
+  `out_octets` of mv88e6xxx, `RxOctets`/`TxOctets` of b53 and bcm_sf2,
+  `RxGoodBytes`/`TxGoodBytes` of lantiq_gswip, `IfInOctets`/`IfOutOctets`
+  of rtl8366rb), never the four of the CPU's path the DSA core puts
+  first (`rx_bytes`, ...); none of them is `unknown`, a run that failed
+  `failed`. `test_acl_policy.js` pins the program, its path, its option,
+  the name rule and the caps.
 
 ### Provider tiles (experimental)
 
@@ -1099,12 +1140,19 @@ dashboard package itself stays read-only.
   rates, byte counts, time connected; iwinfo, as the dashboard reads its
   own); and the wired hosts behind its ports other than the ones towards
   its gateway or the router (none when those are not found), with the
-  ports' speed and byte counts. Nothing from configuration, no keys; it
+  ports' speed and byte counts: the kernel's, and on a DSA switch its
+  chip's own beside them (#156), as the access point's own
+  `luci.vantage.ports` reads them; the report asks it, as it asks
+  `luci.vantage wired`, and runs nothing itself. Nothing from configuration, no keys; it
   takes no input and changes nothing, and runs one at a time (a lock on
   its own file, so many sessions of one key cannot pile up). The router checks every field
   again (types, ranges, MAC form, UTF-8 without control characters; at
   most 16 SSIDs, 256 stations, 128 wired hosts and 32 ports an access
-  point, 1024 stations in a reply) and turns byte counts into rates. The
+  point, 1024 stations in a reply) and turns byte counts into rates: a
+  port's from its chip's counters where both reports carry them, from
+  the kernel's where neither does, and none across the two (an access
+  point of an earlier version sends the kernel's only, and a router of
+  an earlier version reads only those). The
   MAC it places the access point by is the one from pairing, never the
   one in the report.
 - **Its place on the dashboard.** What an access point reports adds
@@ -1423,8 +1471,18 @@ measured on few devices so far.
   Invented locally administered MACs use the 02:00:5E:xx:xx:xx prefix
   (IANA OUI with the U/L bit set; e.g. the replay's synthetic BSSIDs);
   no other MACs pass.
-- `luci-app-vantage-aps` (optional) is the only Vantage package that runs
-  programs or writes outside its own config: its pairing plugin runs
+- The dashboard starts one program, from its executable rpcd plugin
+  `luci.vantage.ports` (#156), in a process of rpcd's: `/usr/sbin/ethtool
+  -S` and the name of one of the device's own DSA ports, which the plugin
+  finds in `/sys/class/net` and holds to letters, digits, `_` and `-`
+  (never first), at most 32 ports, none after its first second and 32
+  KiB of each run read; nothing the caller sends reaches the command,
+  and without a DSA port or `ethtool` nothing is started. Its read group
+  grants the call and no other group of a Vantage package names it;
+  `luci.vantage` starts nothing. `test_acl_policy.js` pins all of it.
+- Apart from that, `luci-app-vantage-aps` (optional) is the only Vantage
+  package that runs programs, and the only one that writes outside its own
+  config: its pairing plugin runs
   `dropbearkey` once and the collector's init script with fixed words,
   writes `/etc/vantage/aps.json` and its own lines of
   `/etc/dropbear/authorized_keys`, each limited to the report command;

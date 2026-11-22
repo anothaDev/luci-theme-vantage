@@ -44,6 +44,10 @@ In scope:
 - the rpcd ACLs: permissions broader than documented, or writes outside
   `/etc/config/vantage` (the dashboard) and `/etc/config/vantage_theme`
   (the theme)
+- the dashboard's one program: its rpcd plugin `luci.vantage.ports`
+  starting anything but `/usr/sbin/ethtool -S` with the name of one of
+  the device's own DSA ports, or anything a caller sends reaching that
+  command line
 - the optional access point add-on (`luci-app-vantage-aps`): a router's
   key doing more on an access point than fetching its report, a router
   accepting another device's report as a paired access point's, pairing

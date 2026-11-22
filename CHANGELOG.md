@@ -69,6 +69,24 @@ Each release ships both packages, `luci-theme-vantage` and
   is saved like the chart style: on the router for every browser where
   your login may, otherwise in this browser. **Full**, the path as
   before, stays the default.
+- **Ports tile and Wired branch: a DSA switch's ports count what the
+  switch passes on by itself** (#156,
+  [@Vikk20](https://github.com/Vikk20)). On a router whose Ethernet
+  ports are a switch chip's under DSA, the kernel counts on each port
+  only what passes the router's CPU, so a port whose traffic the chip
+  forwards to another port (an access point plugged into it, a NAS)
+  read near zero. Where `ethtool` is installed, the dashboard now reads
+  the chip's own counters for its ports, one `ethtool -S` a port at
+  each poll, and shows those in the Ports tile, the Wired branch and
+  for a device that has a port to itself; a paired access point's
+  report carries its own. This is the one program the dashboard starts,
+  in a process of rpcd's, with nothing from the browser on its command
+  line, and the read permission `luci-app-vantage` grants the one call
+  more for it. `ethtool` is not a dependency: `apk add ethtool` (24.10:
+  `opkg install ethtool`). Without it, or without a DSA switch, nothing
+  changes and nothing is started. The counters are known for the
+  mt7530, qca8k, mv88e6xxx, b53, lantiq_gswip and rtl8366rb drivers. See
+  [Packages on the router](docs/INSTALL.md#packages-on-the-router).
 
 ## 1.1.1 - 2026-11-21
 
