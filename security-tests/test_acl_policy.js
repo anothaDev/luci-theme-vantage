@@ -256,7 +256,7 @@ const TILE_HELPER = "var tileCalls = {};\nfunction tileCall(id) {\n\tvar obj = '
 	"\tif (!tileCalls[obj]) tileCalls[obj] = rpc.declare({ object: obj, method: 'status', expect: { '': {} }, reject: true, nobatch: true });\n\treturn tileCalls[obj]();\n}\n";
 const TILE_ACLS = "var callAcls = rpc.declare({ object: 'session', method: 'access', expect: { '': {} } });";
 /* where the ids come from, and the one call: in askTiles and askTile */
-const TILE_FROM_ACL = "\t\tif (!this.tilesMay) this.tilesMay = L.resolveDefault(callAcls(), null).then(tileIds, function() { return []; });\n";
+const TILE_FROM_ACL = "\t\tif (!this.tilesMay) this.tilesMay = callAcls().then(tileIds, function() { self.tilesMay = null; return []; });\n";
 const TILE_ASK = '\t\ts.call = tileCall(id).then(';
 const READ_FILES = { '/proc/stat': [ 'read' ] };
 const RDNS_UBUS = { 'network.rrdns': [ 'lookup' ] };
@@ -985,7 +985,7 @@ test('negative controls: another form, object, method or argument of the provide
 		[ 'a provider object named elsewhere', add(DASH, "var callT = rpc.declare({ object: 'vantage.tile.dns', method: 'status' });"), /overview\.js: var callT = rpc\.declare\(\{ object: 'vantage\.tile\.dns'/ ],
 		[ 'the ACL asked about an object', edit(TILE_ACLS, TILE_ACLS.replace("method: 'access',", "method: 'access', params: [ 'scope', 'object' ],")), /overview\.js: var callAcls = .*params|0 declares of the session's ACL/ ],
 		[ 'the ACL read twice', add(DASH, 'callAcls();'), /overview\.js: callAcls\(\)/ ],
-		[ 'the ACL with an argument', edit('L.resolveDefault(callAcls(), null)', "L.resolveDefault(callAcls('ubus'), null)"), /overview\.js: callAcls\('ubus'\)/ ],
+		[ 'the ACL with an argument', edit('callAcls().then(tileIds', "callAcls('ubus').then(tileIds"), /overview\.js: callAcls\('ubus'\)/ ],
 		[ 'another session method', add(DASH, "var callSess = rpc.declare({ object: 'session', method: 'get' });"), /overview\.js: var callSess = /],
 		[ 'the helper\'s declares filled elsewhere', add(DASH, "tileCalls['vantage' + '.tile.dns'] = callRead;"), /overview\.js: tileCalls used outside the helper/ ],
 		[ 'the id check changed', add(DASH, 'TILE_OBJ.test = function() { return true; };'), /overview\.js: TILE_OBJ\.test = function/ ]

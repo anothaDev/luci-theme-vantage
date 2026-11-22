@@ -268,6 +268,49 @@ test('the providers a session may ask: named exactly and granted status in its A
 	assert.equal(c.calls.filter(x => x[0] === 'acl').length, 1);
 }));
 
+test('a read of the ACL that failed is made again at the next slow poll; an answer is the page\'s, and its provider gets its tile then', () => tilePolls(async c => {
+	c.acl = dump({ 'vantage.tile.dns': [ 'status' ] });
+	c.answer.dns = () => Promise.resolve(DNS());
+	const real = REPLIES['session access'];
+	let fails = 2;
+	REPLIES['session access'] = (o, ...args) => fails-- > 0 ? (c.calls.push([ 'acl failed' ]), Promise.reject(new Error('XHR request timed out'))) : real(o, ...args);
+	const first = await c.poll(0);
+	assert.deepEqual(first, {});
+	/* the page as render() builds it: no provider tile */
+	const self = c.self, observed = [];
+	withDom(() => {
+		self.st = { ext: Object.create(null) };
+		self.m = { wired: false };
+		self.noteTiles(self.m, first, c.t);
+		self.tiles = {}; self.tileNames = {}; self.ov = {};
+		self.tileList = layout.TILES.concat(self.buildProvided());
+		assert.deepEqual(self.tileList, layout.TILES);
+		self.el = { grid: new FNode('div') };
+		self.tileRo = { observe: n => observed.push(n) };
+	});
+	assert.deepEqual(await c.poll(5e3), {}, 'failed again');
+	const later = await c.poll(5e3);
+	assert.deepEqual(c.calls.map(x => x[0]), [ 'acl failed', 'acl failed', 'acl', 'dns' ]);
+	assert.ok(later.dns.data);
+	/* the next paint makes its tile, as buildTiles makes them, and the page watches it */
+	withDom(() => {
+		self.noteTiles(self.m, later, c.t);
+		assert.deepEqual(self.m.extra, [ 'xdns' ]);
+		self.addProvided();
+		const t = self.tiles.xdns;
+		assert.ok(t && self.el.grid.childNodes.includes(t), 'in the grid');
+		assert.ok(t.classList.contains('vt-cell') && t.find('vt-ov').length === 1, 'a cell with its Customize controls');
+		assert.deepEqual(self.tileList.slice(-1), [ 'xdns' ]);
+		assert.ok(observed.includes(t) && t.children.filter(n => !n.classList.contains('vt-ov')).every(n => observed.includes(n)), 'watched for its size');
+		self.addProvided();
+		assert.equal(self.tileList.length, layout.TILES.length + 1, 'once');
+	});
+	assert.match(VIEW_SRC, /\tpaint: function\(\) \{\n\t\tthis\.addProvided\(\);\n/);
+	/* read, it is not read again */
+	for (let i = 0; i < 20; i++) await c.poll(5e3);
+	assert.equal(c.calls.filter(x => x[0] === 'acl').length, 1);
+}));
+
 test('a provider whose first answer says it is not there is never asked again on this page and has no tile', () => tilePolls(async c => {
 	c.acl = dump({ 'vantage.tile.dns': [ 'status' ] });
 	for (const e of [ GONE, 'RPC call to vantage.tile.dns/status failed with error -32002: Access denied', 'RPC call to vantage.tile.dns/status failed with ubus code 3: Method not found' ]) {

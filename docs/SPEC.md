@@ -943,8 +943,9 @@ the contract. For provider authors: [`docs/TILES.md`](TILES.md).
   a grant by pattern names no provider. Without a provider package, or
   for a login without its group, that is the only call: no provider is
   asked and the page is as before (the dump rides the first poll's
-  batch: one call more, no request more). The ACL is not read again on
-  that page.
+  batch: one call more, no request more). A read that fails is made
+  again at the next slow poll, and a provider found then gets its tile;
+  an answer, with providers or without, is not read again on that page.
 - **The call.** One helper, `tileCall(id)`, makes the object from the
   fixed prefix and the id, checks it again against
   `^vantage\.tile\.[a-z]{1,7}$`, and declares only `status`, without

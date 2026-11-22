@@ -193,8 +193,8 @@ var callAccess = rpc.declare({ object: 'session', method: 'access', params: [ 's
 /* the session's own ACL as rpcd keeps it: session access without an
    object and a function answers all of it, { scope: { object: [ method ]
    } } (the call LuCI's dispatcher makes for every request). Read once a
-   page, for the providers this login may ask (tileIds), and for nothing
-   else */
+   page (again only after a read that failed), for the providers this
+   login may ask (tileIds), and for nothing else */
 var callAcls = rpc.declare({ object: 'session', method: 'access', expect: { '': {} } });
 
 var hostapdCalls = {};
@@ -1252,18 +1252,21 @@ return view.extend({
 	   itself is not kept: only what the reading holds, capped.
 	   Which providers this login may ask comes from rpcd once a page
 	   (session access without an object, read by tileIds): without a
-	   provider package no group grants one, and none is asked. A
+	   provider package no group grants one, and none is asked. A read
+	   that failed is made again at the next slow poll (a provider found
+	   then gets its tile: addProvided); an answer, with providers or
+	   without, is not read again. A
 	   provider whose first answer says it is not there (WG_ABSENT's
 	   answers: no such object, access denied) is not asked again on this
 	   page and has no tile (tileState[id].off); one that went away
 	   later, once a minute; one whose call failed otherwise, ever less
 	   often (askTile). One whose tile the layout hides is not asked once
-	   it has answered. The poll waits for them TILE_WAIT_MS at most; a call that
-	   stays out is not made again beside itself and no later poll waits
-	   for it: its answer, late, is the next poll's */
+	   it has answered. The poll waits for them TILE_WAIT_MS at most; a
+	   call that stays out is not made again beside itself and no later
+	   poll waits for it: its answer, late, is the next poll's */
 	askTiles: function() {
 		var self = this;
-		if (!this.tilesMay) this.tilesMay = L.resolveDefault(callAcls(), null).then(tileIds, function() { return []; });
+		if (!this.tilesMay) this.tilesMay = callAcls().then(tileIds, function() { self.tilesMay = null; return []; });
 		return this.tilesMay.then(function(ids) {
 			self.tileIds = ids;
 			var now = Date.now(), asks = ids.map(function(id) { return self.askTile(id, now); }).filter(Boolean);
@@ -2143,6 +2146,8 @@ return view.extend({
 		if (window.ResizeObserver) {
 			var ro = new ResizeObserver(function() { self.scheduleLayout(); });
 			ro.observe(this.el.grid);
+			/* and a provider's tile made later (addProvided) */
+			this.tileRo = ro;
 			this.tileList.forEach(function(id) {
 				ro.observe(self.tiles[id]);
 				/* a held min-height keeps the tile's box still while its
@@ -2161,6 +2166,7 @@ return view.extend({
 	},
 
 	paint: function() {
+		this.addProvided();
 		this.el.root.classList.toggle('vt-wired', !!this.m.wired);
 		this.paintHead();
 		this.paintHealth();
@@ -5125,13 +5131,13 @@ return view.extend({
 	/* --------------------------------------------------- provider tiles */
 
 	/* A tile for each provider this login may ask (tileIds; not one whose
-	   first answer said it is not there): its layout id ('x' and the
-	   provider's id) in a list. Its name, icon and dot come with its
+	   first answer said it is not there) that has none yet: its layout
+	   id ('x' and the provider's id) in a list. Its name, icon and dot come with its
 	   answers (paintTile); before one it goes by the provider's id */
 	buildProvided: function() {
-		var self = this, ts = this.tileState || {}, out = [], els = this.extEls = Object.create(null);
+		var self = this, ts = this.tileState || {}, out = [], els = this.extEls || (this.extEls = Object.create(null));
 		(this.tileIds || []).forEach(function(id) {
-			if (ts[id] && ts[id].off) return;
+			if (els[id] || (ts[id] && ts[id].off)) return;
 			var e = els[id] = { head: E('h3', { 'class': 'vt-tile-title' }), extra: E('div', { 'class': 'vt-tile-extra' }), body: E('div', { 'class': 'vt-ext' }) };
 			e.tile = self.tiles['x' + id] = E('section', { 'class': 'vt-tile vt-ext-tile' }, [
 				E('header', { 'class': 'vt-tile-head' }, [ e.head, e.extra ]),
@@ -5141,6 +5147,21 @@ return view.extend({
 			out.push('x' + id);
 		});
 		return out;
+	},
+
+	/* the tiles of providers the page learnt of after it was built (its
+	   first read of the ACL failed: askTiles), made as buildTiles makes
+	   tiles and watched as render watches them */
+	addProvided: function() {
+		var self = this, ro = this.tileRo;
+		this.buildProvided().forEach(function(lid) {
+			var t = self.tiles[lid];
+			t.classList.add('vt-cell');
+			t.appendChild(self.buildOverlay(lid));
+			self.tileList.push(lid);
+			self.el.grid.appendChild(t);
+			if (ro) [ t ].concat(Array.prototype.slice.call(t.children)).forEach(function(c) { if (!c.classList.contains('vt-ov')) ro.observe(c); });
+		});
 	},
 
 	/* Provenance: whose tile it is, so that no provider passes for a tile

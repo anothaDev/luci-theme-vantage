@@ -94,8 +94,9 @@ those characters.
 
 ## How the dashboard asks
 
-- Once a page it reads the login's ACL. With no provider granted, that
-  is the only thing it does: no other call, no tile.
+- Once a page it reads the login's ACL (again at the next slow poll
+  only where the read failed). With no provider granted, that is the
+  only thing it does: no other call, no tile.
 - At most three providers a page, the first three by id. A fourth is
   not asked and has no tile, without a word.
 - It asks with the slow part of its poll (every 5 s; every 30 s on a
