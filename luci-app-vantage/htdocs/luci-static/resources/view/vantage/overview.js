@@ -81,13 +81,20 @@ var COLLECTOR_RETRY_MS = 60 * 1000;
 /* how long a poll waits for a switch chip's own counters (askSwitch):
    the plugin reads no port after its first second */
 var SWITCH_WAIT_MS = 2 * 1000;
+/* After a slow answer (slowWait) the next call waits ten times as long as
+   that one took, SLOW_WAIT_MAX_MS at most. A call measured over
+   REQUEST_MAX_MS (LuCI gives a request up after 20 s) was out while the
+   computer slept or the tab was frozen: it says nothing of the router
+   and makes no wait */
+var REQUEST_MAX_MS = 30 * 1000;
+var SLOW_WAIT_MAX_MS = 4 * 60 * 1000;
 /* LuCI's WireGuard status (luci.wireguard getWgInstances) has the router
    run `wg show all dump` and, for each peer whose endpoint is configured
    by name, look that name up: inside rpcd, which answers nothing else
    meanwhile. So after an answer that took longer than WG_SLOW_MS (or no
    answer after as long) it is asked again only after ten times that,
-   WG_RETRY_MS at most: a resolver that does not answer cannot keep the
-   router busy for this tile. WG_RETRY_MS also when the object went away
+   SLOW_WAIT_MAX_MS at most: a resolver that does not answer cannot keep
+   the router busy for this tile. WG_RETRY_MS when the object went away
    under an open page */
 var WG_SLOW_MS = 1000;
 var WG_RETRY_MS = 60 * 1000;
@@ -105,8 +112,9 @@ var WG_PEERS = 5;                     /* peers a tunnel lists before "+n more" *
    session's own ACL (askTiles). A provider is asked with the slow part
    of the poll, in a request of its own, and the poll waits for it
    TILE_WAIT_MS at most; an answer that took over TILE_SLOW_MS makes the
-   next wait ten times as long, as LuCI's WireGuard status does: a
-   provider answers inside rpcd, which answers nothing else meanwhile */
+   next wait ten times as long (slowWait), as LuCI's WireGuard status
+   does: a provider answers inside rpcd, which answers nothing else
+   meanwhile */
 var TILE_OBJ = /^vantage\.tile\.[a-z]{1,7}$/;
 var TILE_WAIT_MS = 2 * 1000;
 var TILE_SLOW_MS = 500;
@@ -221,6 +229,13 @@ function tileIds(acl) {
 		if (TILE_OBJ.test(obj) && Array.isArray(ubus[obj]) && ubus[obj].indexOf('status') >= 0) out.push(obj.slice(13));
 	});
 	return out.sort().slice(0, layout.EXTRA_MAX);
+}
+
+/* the wait after a call that took `took` ms, where over `slow` ms is
+   slow: ten times as long, SLOW_WAIT_MAX_MS at most; none for one
+   measured longer than a request can take (REQUEST_MAX_MS) */
+function slowWait(took, slow) {
+	return took > slow && took <= REQUEST_MAX_MS ? Math.min(10 * took, SLOW_WAIT_MAX_MS) : 0;
 }
 
 /* versioned as LuCI versions its scripts (LuCI's version and the time
@@ -1224,7 +1239,7 @@ return view.extend({
 				   WG_RETRY_MS old */
 				var last = self.wgLast;
 				self.wgLast = a.reply ? { reply: a.reply, at: at } : !a.absent && last && at - last.at < WG_RETRY_MS ? last : null;
-				var wait = a.absent ? WG_RETRY_MS : took > WG_SLOW_MS ? 10 * took : 0;
+				var wait = a.absent ? WG_RETRY_MS : slowWait(took, WG_SLOW_MS);
 				self.wgWait = wait ? { from: at, until: at + wait } : null;
 				return self.wgLast;
 			});
@@ -1279,8 +1294,8 @@ return view.extend({
 			if (a.reply) { s.answered = true; s.last = { data: d, at: at }; }
 			s.failed = !a.reply;
 			/* asked again: a minute on when it went away; ten times as late
-			   as a slow answer took; else when its data changes (every) */
-			var wait = a.absent ? TILE_RETRY_MS : took > TILE_SLOW_MS ? 10 * took : d && d.every ? d.every * 1000 - POLL_S * 500 : 0;
+			   as a slow answer took (slowWait); else when its data changes (every) */
+			var wait = a.absent ? TILE_RETRY_MS : slowWait(took, TILE_SLOW_MS) || (d && d.every ? d.every * 1000 - POLL_S * 500 : 0);
 			s.wait = wait > 0 ? { from: at, until: at + wait } : null;
 		});
 		return s.call;

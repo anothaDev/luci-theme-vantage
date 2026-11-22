@@ -103,8 +103,9 @@ those characters.
   own, and waits for the answer 2 s at most. An answer still out is not
   asked again beside itself; it shows when it comes.
 - An answer that took over half a second makes it wait ten times as
-  long before it asks again: rpcd runs a ucode method inside its own
-  process and answers nobody else meanwhile.
+  long before it asks again, four minutes at most: rpcd runs a ucode
+  method inside its own process and answers nobody else meanwhile. A
+  call that was out over 30 s (the computer slept) makes no wait.
 - A first answer that says the object is not there (not found, access
   denied) means no tile on that page. An object that goes away later is
   asked once a minute; its last answer stays for that minute, then the

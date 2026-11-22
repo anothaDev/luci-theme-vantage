@@ -2895,6 +2895,25 @@ test('WireGuard: an object that went away under an open page is asked for again 
 	assert.equal(c.asked, asked + 1);
 }));
 
+test('WireGuard: after a slow answer the wait is four minutes at most; a call that was out while the computer slept makes none', () => wgPolls(async c => {
+	const reply = wgReply([ wgPeer('A', 'phone') ]);
+	c.answer = () => Promise.resolve(reply);
+	await c.poll(0);
+	/* 28 s: ten times as long would be 280 s */
+	c.took = 28e3;
+	const slow = await c.poll(5e3);
+	for (let i = 0; i < 47; i++) assert.equal(await c.poll(5e3), slow, 'poll ' + i);
+	assert.equal(c.asked, 2);
+	await c.poll(5e3);
+	assert.equal(c.asked, 3, 'four minutes on');
+	/* an answer an hour after the question: the machine slept, the router did not take an hour */
+	c.took = 3600e3;
+	await c.poll(5e3);
+	assert.equal(c.asked, 4);
+	assert.deepEqual(await c.poll(5e3), { reply, at: c.t });
+	assert.equal(c.asked, 5, 'asked again at the next poll');
+}));
+
 /* what a poll's answer becomes: this.st.wg, the rates, and whether the tile exists (m.wg) */
 function wgState(self, reply, at, now) {
 	const m = {};

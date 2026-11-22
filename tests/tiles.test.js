@@ -311,6 +311,26 @@ test('a provider is asked with the slow poll, no more often than its data change
 	assert.equal(c.asked('dns'), 9);
 }));
 
+test('after a slow answer the wait is four minutes at most; a call that was out while the computer slept makes none', () => tilePolls(async c => {
+	c.acl = dump({ 'vantage.tile.dns': [ 'status' ] });
+	c.answer.dns = () => Promise.resolve({ v: 1, title: 'T', items: [ { label: 'a', value: c.t } ] });
+	await c.poll(0);
+	/* 28 s: ten times as long would be 280 s */
+	c.took = 28e3;
+	const slow = await c.poll(5e3);
+	for (let i = 0; i < 47; i++) assert.deepEqual(await c.poll(5e3), slow, 'poll ' + i);
+	assert.equal(c.asked('dns'), 2);
+	await c.poll(5e3);
+	assert.equal(c.asked('dns'), 3, 'four minutes on');
+	/* an answer an hour after the question: the machine slept, the router did not take an hour */
+	c.took = 3600e3;
+	await c.poll(5e3);
+	assert.equal(c.asked('dns'), 4);
+	const next = await c.poll(5e3);
+	assert.equal(c.asked('dns'), 5, 'asked again at the next poll');
+	assert.equal(next.dns.at, c.t, 'the answer shown is the new one');
+}));
+
 test('a provider\'s call holds up a poll for 2 s at most; while it is out no second one is made and no later poll waits', () => tilePolls(async c => {
 	c.acl = dump({ 'vantage.tile.dns': [ 'status' ] });
 	let release;

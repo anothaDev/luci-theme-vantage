@@ -510,7 +510,8 @@ text around it so it looks the same size.
   a minute. LuCI's plugin runs `wg`, and looks up the host name of each
   peer configured by name, on every call and inside rpcd: after an
   answer that took over a second the next call waits ten times as long,
-  with the last answer shown until then. A call that fails otherwise
+  four minutes at most (none after a call that was out over 30 s: the
+  computer slept), with the last answer shown until then. A call that fails otherwise
   (a timeout, rpcd busy) is not "no tunnel": the last answer stands
   while it is under a minute old. The tile
   exists once a tunnel was seen and then stays for the session (an
@@ -956,7 +957,9 @@ the contract. For provider authors: [`docs/TILES.md`](TILES.md).
   `every`, and not while its call is out; the poll waits for it 2 s at
   most (also at page load, so a slow provider delays the first paint by
   up to 2 s), and a late answer is the next poll's. After an answer
-  that took over 500 ms the next call waits ten times as long. A first
+  that took over 500 ms the next call waits ten times as long, four
+  minutes at most (none after a call that was out over 30 s: the
+  computer slept). A first
   answer that says the call is not there (no object or method, access
   denied) means no tile and no further call on that page; an object
   that goes away later is asked once a minute, its last answer shown
