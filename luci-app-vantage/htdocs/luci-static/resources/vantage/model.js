@@ -1672,6 +1672,13 @@ return baseclass.extend({
 				h.behind = { id: a.id, name: a.name, addr: a.addr, port: w.port, speed: w.speed ? { mbps: w.speed, duplex: null } : null, rate: traffic(w) };
 			});
 		});
+		/* the access points themselves, by MAC, where this device hears
+		   them (portOf): the path names the port's host by its pairing
+		   name; the host's entry is unchanged */
+		var apHosts = Object.create(null);
+		aps.forEach(function(a) {
+			if (portOf[a.id] && a.mac) apHosts[a.mac] = { id: a.id, name: a.name, port: portOf[a.id] };
+		});
 		/* An access point plugged into another paired one is listed under
 		   it (parent, depth). This device must hear both MACs on one port
 		   of its own, and the other must list this one's among its wired
@@ -1785,7 +1792,8 @@ return baseclass.extend({
 			/* its Ethernet ports (ports): the Ports tile's */
 			ports: this.ports(devs, raw.switches, raw.switchState, wlNames, wired, uplinks),
 			/* the paired access points (collectorAps), [] without any */
-			accessPoints: aps
+			accessPoints: aps,
+			apHosts: apHosts
 		};
 	},
 

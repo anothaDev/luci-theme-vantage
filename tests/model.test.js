@@ -1472,6 +1472,16 @@ test('build: a host heard on the port an access point\'s own MAC is heard on, th
 	assert.equal(r.wiredHosts.filter(h => h.mac === '00:00:5e:00:53:32')[0].behind, undefined);
 });
 
+test('build: apHosts names each access point by its MAC where this device hears it, its port with it; none for one heard nowhere or not alone', () => {
+	const m = model.build(apDevice({ aps: [ ap(AP1, 'ap-hall', report({ stations: [], wired: [ { mac: '00:00:5e:00:53:31', port: 'lan2' } ] })) ] }));
+	const port = m.wiredHosts.filter(h => h.mac === HALL_MAC)[0].port;
+	assert.deepEqual({ ...m.apHosts }, { [HALL_MAC]: { id: AP1, name: 'ap-hall', port } });
+	assert.equal(m.wiredHosts.filter(h => h.mac === HALL_MAC)[0].behind, undefined, 'its own entry gets no note');
+	assert.deepEqual({ ...model.build(apDevice(null)).apHosts }, {});
+	/* two paired under one MAC: neither is placed */
+	assert.deepEqual({ ...model.build(apDevice({ aps: [ ap(AP1, 'ap-hall', report({})), ap(AP2, 'ap-den', report({ mac: HALL_MAC })) ] })).apHosts }, {});
+});
+
 /* a router with wired access points: its bridge hears their stations on
    the access point's port; the one it reports as its station moves */
 const roam = (mac, signal, ifname) => ({ mac, ifname: ifname || 'phy1-ap0', signal, rxRate: 72200, txRate: 144400, rx: 8000, tx: 64000, connected: 30 });

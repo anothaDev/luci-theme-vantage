@@ -3378,18 +3378,22 @@ return view.extend({
 
 	/* the Wired branch of the path: its hosts, and per port the one host
 	   with its link speed or how many share the port, and the port's
-	   traffic: all of its hosts' together, never split between them */
+	   traffic: all of its hosts' together, never split between them. A
+	   host behind a paired access point is counted in that one's branch,
+	   not here; the access point itself goes by its pairing name */
 	updateWiredBranch: function(b) {
-		var st = this.st, hosts = this.m.wiredHosts || [], n = 0, rx = 0, tx = 0, seen = false;
+		var st = this.st, hosts = (this.m.wiredHosts || []).filter(function(c) { return !c.behind; }), n = 0, rx = 0, tx = 0, seen = false;
+		var apHosts = this.m.apHosts || {};
 		b.ssids.forEach(function(sn) {
 			var on = hosts.filter(function(c) { return c.port === sn.port; }), r = st.devRates[sn.port], one = on.length === 1 ? on[0] : null;
+			var peer = one && apHosts[one.mac], oneName = one ? (peer && peer.port === one.port ? peer.name : one.name) : null;
 			var sw = on.length ? on[0].switch : null;
 			n += on.length;
 			if (r) { rx += r.rx; tx += r.tx; seen = true; }
 			setClass(sn.el, 'vt-node vt-node-ssid' + (on.length ? '' : ' vt-node-idle'));
 			setTitle(sn.el, _('Show the devices on %s').format(sn.port) + (r ? '\n' + _('Port total: %s').format('↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx)) : '') +
 				(sw ? '\n' + switchNote(sw) : ''));
-			txt(sn.name, one ? sn.port + ' · ' + one.name : sn.port);
+			txt(sn.name, one ? sn.port + ' · ' + oneName : sn.port);
 			txt(sn.count, one ? (one.speed ? fmt.phyRate(one.speed.mbps * 1000) : fmt.DASH) : _('%d devices').format(on.length));
 			txt(sn.rate, r ? fmt.rates(r.tx, r.rx) : fmt.DASH);
 			sn.active = !!(r && r.rx + r.tx > 50e3);

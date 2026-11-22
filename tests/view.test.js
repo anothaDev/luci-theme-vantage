@@ -262,6 +262,30 @@ test('wired branch: each port node shows its traffic, all its hosts\' together',
 	assert.equal(b.sub.textContent, '↓ 12.3 Mbit/s');
 });
 
+test('wired branch: hosts behind a paired access point count in its branch, not here; the access point itself goes by its pairing name', () => {
+	const self = Object.create(view);
+	const el = () => ({ textContent: '', attrs: {}, getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }, setAttribute(k, v) { this.attrs[k] = v; } });
+	const node = port => ({ port, el: el(), name: el(), count: el(), rate: el() });
+	const host = (mac, port, extra) => Object.assign({ mac, port, name: 'h' + mac.slice(-2), speed: { mbps: 1000 } }, extra);
+	const behind = { id: '0123456789abcdef', name: 'ap-hall' };
+	self.m = { wiredHosts: [
+		host('00:00:5e:00:53:a1', 'lan1'),
+		host('00:00:5e:00:53:31', 'lan1', { behind }),
+		host('00:00:5e:00:53:32', 'lan1', { behind }),
+		host('00:00:5e:00:53:a2', 'lan2'),
+		host('00:00:5e:00:53:33', 'lan3')
+	], apHosts: {
+		'00:00:5e:00:53:a1': { id: '0123456789abcdef', name: 'ap-hall', port: 'lan1' },
+		/* heard on another port than the one it was placed on: not named */
+		'00:00:5e:00:53:a2': { id: 'fedcba9876543210', name: 'ap-den', port: 'lan4' }
+	} };
+	self.st = { devRates: {} };
+	const b = { ssids: [ node('lan1'), node('lan2'), node('lan3') ], title: el(), sub: el() };
+	self.updateWiredBranch(b);
+	assert.deepEqual(b.ssids.map(n => n.name.textContent), [ 'lan1 · ap-hall', 'lan2 · ha2', 'lan3 · h33' ]);
+	assert.equal(b.title.textContent, '3 devices', 'the two behind ap-hall are in its branch');
+});
+
 test('names beyond a poll: reverse DNS and the vendor table for wired hosts too', async () => {
 	const self = Object.create(view);
 	const asked = [];
