@@ -630,17 +630,25 @@ text around it so it looks the same size.
   radio or an access point not reporting is dimmed and dashed, an idle
   network flat, as their cards are; the wires carry traffic as before. A
   line is the card's control, with its click and tooltip, named for a
-  screen reader with all it shows and both rates. Left out: the client
-  rows and "+n more", a dot per client, a radio's generation, a
-  network's protocol, an access point's address and uptime (in its
-  tooltip, with its stations and wired hosts counted apart). The lines are stacked at every width, a
+  screen reader with all it shows and both rates; its tooltip starts
+  with its full name, which the line may cut, unless what the card's
+  tooltip says names it already (an access point that is not reporting:
+  its name, then why). Left out: the client rows and "+n more", a dot
+  per client, a radio's generation, a network's protocol, an access
+  point's address and uptime (in its tooltip, with its stations and
+  wired hosts counted apart). The lines are stacked at every width, a
   radio, the Wired node or an access point above what it leads to, and
-  share their columns (subgrid), each as wide as its widest text; below
-  the wide layout the path takes the phone's single column. The tree is
-  at most 640 px wide; narrower than 500 px it shows ↓ only, narrower
-  than 400 px in the client rows' short form (62.2k). Switching builds
-  the path again, and its tile takes its new height at once, not after
-  the 30 s a shrinking tile is held.
+  share their columns (subgrid), each as wide as its widest text; a line
+  without a count (a radio, a network, an access point not reporting)
+  gives its name the count's cell too. The tree is as wide as its
+  longest name needs, a name 36em at most (about 60 characters), so the
+  rates stay readable across from the names; on the wide layout the
+  path gives it the room it gives access points' branches, and below
+  it takes the phone's single column. With less than 500 px for the
+  tree it shows ↓ only; with less than 400 px, in the client rows'
+  short form (62.2k), set in 26 px instead of 34 and with less padding.
+  Switching builds the path again, and its tile takes its new height at
+  once, not after the 30 s a shrinking tile is held.
 - **Network path background**: behind the path, on its dot grid, one
   canvas in the style picked under the theme's Appearance (or under
   "Customize" when the dashboard runs without the Vantage theme), the

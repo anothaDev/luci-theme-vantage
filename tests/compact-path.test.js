@@ -137,7 +137,10 @@ test('compact path: every node of the branches is one line of four cells, name, 
 	const p = self.el.path;
 	assert.equal(p.getAttribute('class'), 'vt-path vt-path-mesh vt-path-compact');
 	for (const n of self.hero.branches.find('vt-node'))
-		assert.deepEqual(n.children.map(c => c.getAttribute('class')), [ 'vt-cl-name', 'vt-cl-num vt-tn', 'vt-cl-dn vt-tn', 'vt-cl-up vt-tn' ], n.textContent);
+		assert.deepEqual(n.children.map(c => c.getAttribute('class')).slice(1), [ 'vt-cl-num vt-tn', 'vt-cl-dn vt-tn', 'vt-cl-up vt-tn' ], n.textContent);
+	/* a line without a count (a radio) lets its name have that cell too */
+	assert.deepEqual(self.hero.branches.find('vt-node').map(n => n.children[0].getAttribute('class')), [ 'vt-cl-name vt-cl-wide', 'vt-cl-name', 'vt-cl-name vt-cl-wide',
+		'vt-cl-name', 'vt-cl-name', 'vt-cl-name', 'vt-cl-name', 'vt-cl-name', 'vt-cl-name', 'vt-cl-name' ]);
 	assert.doesNotMatch(self.hero.branches.html(), /vt-leaf-row|vt-node-body|vt-leaf-more/, 'no rows, no card bodies');
 	assert.deepEqual(lines(self).map(c => [ c[0], c[1], c[3] ]), [
 		[ '5 GHz Ch 36 · 80 MHz', '', '↑ 3 kbit/s' ],
@@ -192,6 +195,43 @@ test('compact path: a line is one control named with all it shows, and a click d
 	const peer = self.el.path.find('vt-node-peer')[0];
 	assert.equal(peer.getAttribute('class'), 'vt-node vt-node-peer vt-node-off');
 	assert.deepEqual(peer.children.map(c => c.textContent), [ 'ap-hall Not reachable over SSH', '', '', '' ]);
+}));
+
+test('compact path: a line\'s tooltip carries its full name first, unless it names it already; what it said stays, written once a change', () => withPage({}, () => {
+	const m = routerModel([ hall() ]);
+	const self = hero(m, 'compact', RATES);
+	const titles = () => self.hero.branches.find('vt-node').map(n => n.getAttribute('title'));
+	assert.deepEqual(titles(), [
+		'5 GHz Ch 36 · 80 MHz',
+		'Show the clients of Home\nOpen network',
+		'2.4 GHz Ch 6 · 20 MHz',
+		'Wired',
+		'lan1 · ap-hall\nShow the devices on lan1\nPort total: ↓ 12.3 Mbit/s · ↑ 1 kbit/s',
+		'Show the devices on lan2\nPort total: ↓ 0 bit/s · ↑ 0 bit/s',
+		'Show the clients of ap-hall\n2 clients · 2 wired\nCalls itself OpenWrt\nExample AP\n192.0.2.10\nLast report 3 s ago',
+		'5 GHz Hall\nphy1-ap0 · 02:00:5E:10:00:11 · channel 36 · 5180 MHz',
+		'2.4 GHz Hall-IoT\nphy0-ap0 · 02:00:5E:10:00:12 · channel 6 · 2437 MHz',
+		'Wired\nShow the wired devices of ap-hall'
+	]);
+	/* a poll that changes nothing writes no title; a new name is written once */
+	let writes = 0;
+	self.hero.branches.find('vt-node').forEach(n => { const set = n.setAttribute; n.setAttribute = function(k, v) { if (k === 'title') writes++; return set.call(this, k, v); }; });
+	self.updateHero();
+	assert.equal(writes, 0);
+	m.accessPoints[0].nodes[0].ssid = 'Hall-Upstairs';
+	self.updateHero();
+	assert.equal(writes, 1);
+	assert.equal(titles()[7], '5 GHz Hall-Upstairs\nphy1-ap0 · 02:00:5E:10:00:11 · channel 36 · 5180 MHz');
+	/* not reporting: its name, then why */
+	const off = hero(routerModel([ hall({ state: 'offline', error: 'unreachable', age: 120, report: null }) ]), 'compact', RATES);
+	assert.equal(off.el.path.find('vt-node-peer')[0].getAttribute('title'), 'ap-hall\nNot reachable over SSH\nOffline · last report 2 min ago\n192.0.2.10');
+	assert.equal(off.el.path.find('vt-node-peer')[0].children[0].getAttribute('class'), 'vt-cl-name vt-cl-wide', 'its name and why take the count\'s cell');
+	/* the full path's tooltips are as they were */
+	const full = hero(m, 'full', RATES);
+	assert.deepEqual(full.hero.branches.find('vt-node-ssid').map(n => n.getAttribute('title').split('\n')[0]),
+		[ 'Show the clients of Home', 'Show the devices on lan1', 'Show the devices on lan2', 'phy1-ap0 · 02:00:5E:10:00:11 · channel 36 · 5180 MHz',
+			'phy0-ap0 · 02:00:5E:10:00:12 · channel 6 · 2437 MHz', 'Show the wired devices of ap-hall' ]);
+	assert.equal(full.hero.branches.find('vt-node-radio')[0].getAttribute('title'), null);
 }));
 
 test('compact path: a weak signal shows as one red dot before the count, set-quiet clients left out; fair and good ones show none', () => withPage({}, () => {
@@ -325,12 +365,32 @@ test('compact path: its styles apply under .vt-path-compact only; a narrower tre
 	assert.ok(mine.length > 10);
 	for (const r of mine) for (const s of r.sel.split(',')) assert.match(s, /\.vt-path\.vt-path-compact\b/, s);
 	const block = (at) => { const i = css.indexOf(at); assert.ok(i >= 0, at); return css.slice(i, css.indexOf('\n}', i)); };
-	assert.match(block('@container vtlines (max-width: 500px)'), /\.vt-cl-up \{ display: none; \}/);
-	const narrow = block('@container vtlines (max-width: 400px)');
+	/* below the wide layout the tree has the tile's width but 34 px: under 500 px of it the rate up goes, under 400 px the short form */
+	assert.match(block('@container vthero (max-width: 533px)'), /\.vt-cl-up \{ display: none; \}/);
+	const narrow = block('@container vthero (max-width: 433px)');
 	assert.match(narrow, /\.vt-cl-long \{ display: none; \}/);
 	assert.match(narrow, /\.vt-cl-short \{ display: inline; \}/);
+	/* and the names more room: set in 26 px, not 34 */
+	assert.match(narrow, /\.vt-branches \{ --vt-nest: 26px; \}/);
+	assert.match(narrow, /\.vt-branch-ssids \{ padding-left: 26px; \}/);
 	assert.match(block('@container vthero (max-width: 1020px) {\n\t.vt-app .vt-path.vt-path-compact {'), /grid-template-columns: minmax\(0, 1fr\)/);
-	assert.match(css, /\.vt-app \.vt-path\.vt-path-compact \.vt-branches \{[^}]*container: vtlines \/ inline-size;/);
+	/* the wide layout: the tree has the room access points' branches have */
+	assert.match(block('@container vthero (min-width: 1021px) {\n\t.vt-app .vt-path.vt-path-compact {'), /grid-template-columns: minmax\(150px, \.7fr\) minmax\(90px, \.4fr\) minmax\(184px, \.85fr\) minmax\(0, 3\.4fr\)/);
+	/* as wide as its longest name needs (a name 36em at most), no fixed cap; a line without a count lends its name that cell */
+	const tree = rules.find(r => r.sel === '.vt-app .vt-path.vt-path-compact .vt-branches' && /display: flex/.test(r.body)).body;
+	assert.match(tree, /width: fit-content;/);
+	assert.match(tree, /max-width: 100%;/);
+	assert.doesNotMatch(css, /vtlines|max-width: 640px/);
+	assert.match(rules.find(r => r.sel === '.vt-app .vt-path.vt-path-compact .vt-cl-name').body, /max-width: 36em;/);
+	assert.match(css, /\.vt-app \.vt-path\.vt-path-compact \.vt-cl-wide \{ grid-column: span 2; \}/);
+	assert.match(css, /\.vt-app \.vt-path\.vt-path-compact \.vt-cl-wide \+ \.vt-cl-num \{ display: none; \}/);
+	/* 26 px in still turns the wire's corner into the line's edge, as 34 px does */
+	const wires = load('vantage.wires');
+	for (const indent of [ 26, 34 ]) {
+		const d = wires.curve({ l: 0, r: 300, t: 0, b: 28, cy: 14 }, { l: indent, r: 300, t: 32, b: 60, cy: 46 }).d;
+		assert.match(d, /Q/, indent + ': a corner');
+		assert.ok(d.endsWith('H' + indent + '.0'), d);
+	}
 	/* subgrid: every line shares the tree's columns */
 	assert.match(css, /@supports \(grid-template-columns: subgrid\) \{\s*\.vt-app \.vt-path\.vt-path-compact \.vt-branches \{ display: grid; grid-template-columns: minmax\(6em, 1fr\) repeat\(3, auto\);/);
 });

@@ -490,7 +490,12 @@ var CHECK_ICONS = { uplink: 'port', cpu: 'cpu', memory: 'memory', radios: 'wifi'
    node, and its layout, alone */
 function txt(el, s) { s = (s == null ? '' : String(s)); if (el.textContent !== s) el.textContent = s; return el; }
 function setClass(el, c) { if (el.getAttribute('class') !== c) el.setAttribute('class', c); }
-function setTitle(el, v) { if (el.getAttribute('title') !== v) el.setAttribute('title', v); }
+/* a line of the compact path (paintLine) puts its full name, which its
+   cell may cut, above what the node's tooltip says, unless that names it */
+function setTitle(el, v) {
+	if (el.vtTip != null) { el.vtTitle = v; if (el.vtTip && String(v || '').indexOf(el.vtTip) < 0) v = el.vtTip + (v ? '\n' + v : ''); }
+	if (el.getAttribute('title') !== v) el.setAttribute('title', v);
+}
 /* a line's own IPv4 address, without its prefix length */
 function lineAddr(x) { return x && x.ipv4 && x.ipv4[0] ? String(x.ipv4[0]).split('/')[0] : null; }
 /* the address this device has on its own network: lan's; without a
@@ -3645,7 +3650,7 @@ return view.extend({
 		   a node's rate is what its rows would have added up to */
 		var all = a.clients + a.wired;
 		txt(b.cstate, ok ? '' : this.apState(a));
-		txt(b.ccount, ok ? (all === 1 ? _('1 device') : _('%d devices').format(all)) : '');
+		txt(b.cnum, ok ? (all === 1 ? _('1 device') : _('%d devices').format(all)) : '');
 		this.paintLine(b, ok ? r : null, ok ? null : '');
 		b.ssids.forEach(function(sn) {
 			var list = (sn.wiredNode ? given.wired[a.id] : given.sta[a.id + ' ' + sn.node]) || [];
@@ -3667,6 +3672,8 @@ return view.extend({
 		function span(cls) { return E('span', { 'class': cls }); }
 		function oneLine(x, name, num, weak) {
 			x.cname = E('span', { 'class': 'vt-cl-name' }, name);
+			/* its tooltip carries the name from now on (setTitle) */
+			x.el.vtTip = '';
 			x.weak = weak ? span('vt-dots') : null;
 			x.cnum = E('span', { 'class': 'vt-cl-num vt-tn' }, (x.weak ? [ x.weak ] : []).concat(num));
 			/* the rate down in full, and short for a narrow tree (app.css) */
@@ -3680,8 +3687,9 @@ return view.extend({
 		h.radios.forEach(function(b) {
 			if (b.ap) {
 				b.cstate = span('vt-cl-state');
-				b.ccount = E('span');
-				oneLine(b, [ icon('ap', 'vt-ico-sm'), b.title, ' ', b.cstate ], [ b.ccount ]);
+				oneLine(b, [ icon('ap', 'vt-ico-sm'), b.title, ' ', b.cstate ], []);
+				/* its name in the tooltip, not why it is not reporting: that follows there */
+				b.tip = b.title;
 			}
 			else if (b.wired) oneLine(b, [ E('span', { 'class': 'vt-node-kicker' }, [ _('Wired') ]) ], [ b.title ]);
 			else if (b.badge) oneLine(b, [ b.badge, ' ', b.title ], []);
@@ -3711,6 +3719,11 @@ return view.extend({
 				dom.content(x.weak, tip ? [ E('span', { 'class': 'vt-dot vt-lvl-crit', 'title': tip }) ] : []);
 			}
 		}
+		/* without a count (a radio, a network, an access point not
+		   reporting) the name takes the count's cell too (app.css) */
+		setClass(x.cname, 'vt-cl-name' + (x.cnum.textContent ? '' : ' vt-cl-wide'));
+		var tip = (x.tip || x.cname).textContent.replace(/\s+/g, ' ').trim();
+		if (x.el.vtTip !== tip) { x.el.vtTip = tip; setTitle(x.el, x.el.vtTitle || ''); }
 		var label = [ x.cname.textContent.trim(), x.cnum.textContent, state != null ? state : r ? fmt.rates(r.tx, r.rx) : '',
 			weak && weak.length ? _('%d weak').format(weak.length) : '' ].filter(Boolean).join(', ');
 		if (x.el.getAttribute('aria-label') !== label) x.el.setAttribute('aria-label', label);
