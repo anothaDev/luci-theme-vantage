@@ -52,8 +52,9 @@ In scope:
   service's boot links and `/var/run/vantage-collector`
 - the optional per-device traffic add-on (`luci-app-vantage-traffic`):
   its answer giving away more than a MAC and byte counts per device (an
-  address of either end), the call answered without its permission, or
-  the add-on changing anything on the device
+  address of either end), the call answered without its permission, its
+  state in `/var/run/vantage-traffic` readable by another account, or
+  the add-on writing anything else on the device
 - packaging: the install and removal scripts, file permissions
 - the dev tooling that handles recorded device data (`dev/replay/`),
   for example real identifiers leaking into demo output or the

@@ -716,14 +716,23 @@ What it counts and what it doesn't:
   router).
 
 What it changes: nothing but its files
-(`/usr/share/rpcd/ucode/luci.vantage-traffic` and
-`/usr/share/rpcd/acl.d/luci-app-vantage-traffic.json`). No firewall rule,
-no sysctl setting, no service, no config file; its counters live in
-rpcd's memory and start over when rpcd restarts. It reads the kernel's
-connection table, which costs the router some work at each read: the
-read is shared by everyone looking, and a slow one makes the next wait
-longer. `dev/traffic/bench.uc` in the source measures what a read costs
-your router.
+(`/usr/libexec/rpcd/luci.vantage.traffic` and
+`/usr/share/rpcd/acl.d/luci-app-vantage-traffic.json`) and its counters'
+state in `/var/run/vantage-traffic`: RAM, readable by root alone, gone at
+a reboot (the counting then starts over). No firewall rule, no sysctl
+setting, no service, no config file, and nothing runs while no dashboard
+is open.
+
+What it costs: rpcd runs the plugin as a process of its own when a
+dashboard asks, and goes on answering LuCI meanwhile, so a read never
+holds LuCI up. A read takes the router's CPU for a moment: on a quad-core
+ARM access point **[to be measured: ms a read at 2,000 and 16,384
+entries]**; on an x86 VM **[to be measured]**. It is shared by everyone
+looking, one at a time, every 5 s at most; a slow one makes the next wait
+ten times as long as it took, so the reads take a tenth of one core at
+most, and the table is read for 2 s at most. `cat /proc/net/nf_conntrack
+| wc -l` tells how many entries your router has now;
+`dev/traffic/bench.uc` in the source measures what a read costs it.
 
 Things that make the numbers low, which the device's details point out:
 
@@ -756,10 +765,10 @@ apk del luci-app-vantage-traffic        # OpenWrt 25.12
 opkg remove luci-app-vantage-traffic    # OpenWrt 24.10
 ```
 
-Nothing stays behind on the router. The dashboard stops asking at the
-next reload of the page; rpcd itself lets go of the plugin when it
-restarts (a reboot, or `/etc/init.d/rpcd restart`, which also logs every
-LuCI user out).
+Nothing stays behind on the router: the removal deletes
+`/var/run/vantage-traffic` and has rpcd let go of the plugin (a reload,
+as installing a LuCI package does). The dashboard stops asking at the
+next reload of the page.
 
 ## Switch themes
 
@@ -1186,9 +1195,11 @@ Then reload the page. To remove Vantage entirely, see
   permission does not include it. See
   [Other access points](#other-access-points-optional).
 - **Per-device traffic.** `luci-app-vantage-traffic` (optional,
-  experimental) reads the router's connection table and neighbour tables
-  and writes nothing. Its answer holds a MAC address and two byte counts
-  per device, never the addresses they talk to. It is a permission of
+  experimental) reads the router's connection table and neighbour tables,
+  in a process rpcd runs for it, and writes nothing but its counters'
+  state in `/var/run/vantage-traffic`, readable by root alone. Its answer,
+  and that state, hold a MAC address and byte counts per device, never
+  the addresses they talk to. It is a permission of
   its own (`luci-app-vantage-traffic`), since it shows how much each
   device sends and receives. See
   [Per-device traffic](#per-device-traffic-optional-experimental).

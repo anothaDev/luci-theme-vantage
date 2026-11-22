@@ -16,7 +16,7 @@ add-ons to it) plus offline tooling. No npm, no
 | `luci-theme-vantage/` | Theme: ucode templates (`ucode/template/themes/vantage/*.ut`), CSS and icons (`htdocs/luci-static/vantage/`), shell script (`htdocs/luci-static/resources/menu-vantage.js`, `vantage-theme/host.js`), `root/etc/uci-defaults/30_luci-theme-vantage`, `postrm` in the `Makefile` |
 | `luci-app-vantage/` | Dashboard at `admin/dashboard`: views (`htdocs/.../view/vantage/overview.js`; `firewall.js`, the Network → Firewall → Overview tab), modules (`htdocs/.../vantage/*.js`), `app.css`, menu entry, rpcd ACL (`root/usr/share/rpcd/acl.d/`), rpcd ucode plugin `luci.vantage` (`root/usr/share/rpcd/ucode/luci.vantage`), default `/etc/config/vantage` |
 | `luci-app-vantage-aps/` | Optional add-on: the access points a router's dashboard shows, read over SSH. Pairing page (`htdocs/.../view/vantage/aps.js`, Network → Access points), rpcd ucode plugin `luci.vantage.pair` (`root/usr/share/rpcd/ucode/luci.vantage-pair`), shared checks (`root/usr/share/ucode/vantage/aps.uc`), the collector daemon and the report command (`root/usr/libexec/vantage/`), init script, its own ACL groups and catalogue |
-| `luci-app-vantage-traffic/` | Optional, experimental add-on: per-device traffic from the router's connection tracking. rpcd ucode plugin `luci.vantage.traffic` (`root/usr/share/rpcd/ucode/luci.vantage-traffic`), its own ACL group and catalogue; nothing in `htdocs/` (the dashboard draws it); `dev/traffic/bench.uc` measures a read on a device |
+| `luci-app-vantage-traffic/` | Optional, experimental add-on: per-device traffic from the router's connection tracking. Executable rpcd plugin `luci.vantage.traffic` (`root/usr/libexec/rpcd/luci.vantage.traffic`, a ucode script rpcd runs as a process), its removal script (`postrm` in the `Makefile`), its own ACL group and catalogue; nothing in `htdocs/` (the dashboard draws it); `dev/traffic/bench.uc` measures a read on a device |
 | `dev/replay/` | Offline LuCI server that replays a recording; see its README |
 | `dev/build/` | `sdk-build.sh`: reproducible build in the OpenWrt SDK image (podman) |
 | `dev/icons/build.js` | Generates the status icon set; edit the generator, not the SVGs |
@@ -94,10 +94,11 @@ add-ons to it) plus offline tooling. No npm, no
    the access points (`vantage.collector report`) is its second group,
    `luci-app-vantage-aps-view`. The dashboard's groups grant nothing of
    the add-on. The traffic add-on (`luci-app-vantage-traffic`) runs
-   nothing and writes nothing: its plugin's reads are listed line by line
-   in `test_acl_policy.js`, its answer holds MACs and byte counts only,
-   and its one call is its own group's; the dashboard's groups grant
-   nothing of it.
+   nothing and writes only its counters' state in
+   `/var/run/vantage-traffic` (0700, files 0600): its plugin's reads and
+   writes are listed line by line in `test_acl_policy.js`, its answer
+   holds MACs and byte counts only, and its one call is its own group's;
+   the dashboard's groups grant nothing of it.
 7. **Theme and app stay independent.** The app is styled only through the
    theme's `--v-*` custom properties, each with a fallback, and its classes
    are `vt-*` scoped under `.vt-app`. The theme doesn't style app

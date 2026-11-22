@@ -36,7 +36,7 @@ port in one click, finding anything by typing — not from their look.
 | `luci-theme-vantage` | ucode templates, CSS, icons, `menu-vantage.js` (shell: rail, top bar, palette, tabs, indicators), login page, its rpcd ACL (`/etc/config/vantage_theme` only), that config | `+luci-base` |
 | `luci-app-vantage` | dashboard + inspector views under `admin/dashboard` (landing page), its rpcd ACL (reads + its own config only), its rpcd ucode plugin `luci.vantage` (key-free wireless status, temperatures, the bridges' wired hosts, the radios' channel survey, validated alias writes), `/etc/config/vantage` | `+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-nl80211` (rpcd-mod-iwinfo, ucode-mod-fs, ucode-mod-rtnl and ucode-mod-nl80211 beyond luci-base; Wi-Fi images already have rtnl and nl80211, as wifi-scripts needs them); reverse DNS (`rpcd-mod-rrdns`), mDNS (`umdns`) and hostapd's ubus objects are optional and degrade |
 | `luci-app-vantage-aps` (optional) | the access points a router's dashboard shows, over SSH (section "Other access points"): the Network → Access points page, its rpcd ACL and ucode plugin `luci.vantage.pair` (pairing), the collector service (router) and the report command (access point) | `+luci-app-vantage +rpcd-mod-ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci +ucode-mod-uloop`; Dropbear at run time (server on the access points, `dbclient` on the router), not as a dependency |
-| `luci-app-vantage-traffic` (optional, experimental) | per-device traffic for hosts that share a port of the router, from its connection tracking (section "Per-device traffic"): its rpcd ACL and ucode plugin `luci.vantage.traffic` | `+luci-app-vantage +rpcd-mod-ucode +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-uci`; `kmod-nf-conntrack` with accounting at run time (a router's default), not as a dependency |
+| `luci-app-vantage-traffic` (optional, experimental) | per-device traffic for hosts that share a port of the router, from its connection tracking (section "Per-device traffic"): its rpcd ACL and an executable rpcd plugin, `luci.vantage.traffic`, which rpcd runs as a process of its own | `+luci-app-vantage +rpcd +ucode +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-uci`; `kmod-nf-conntrack` with accounting at run time (a router's default), not as a dependency |
 
 The theme is useful alone; the app alone works under any theme but is
 designed for Vantage. With both installed and another theme selected, the
@@ -1219,12 +1219,17 @@ split per device (#110). It counts from the kernel's connection
 tracking, which a router accounts already (`kmod-nf-conntrack` installs
 `/etc/sysctl.d/11-nf-conntrack.conf` with
 `net.netfilter.nf_conntrack_acct=1`): no firewall rule, no sysctl
-change, no daemon, init script, cron job or config file. Installing and
-removing it is its files and an rpcd reload. Experimental: what it costs
-a router is measured on few devices so far.
+change, no daemon, init script, cron job or config file. Its counters'
+state is in `/var/run/vantage-traffic` (RAM). Installing it is its files
+and an rpcd reload; removing it is the same, and its removal script
+deletes that directory. Experimental: what it costs a router is
+measured on few devices so far.
 
 - **What is counted.** The plugin reads `/proc/net/nf_conntrack` line by
-  line, with both directions' bytes of each entry. A host is the MAC the
+  line, with both directions' bytes of each entry: split once at its
+  spaces and taken apart by a table of where each protocol's fields are
+  (five builtin calls a line, against about thirty before 1.1.2), a line
+  that does not fit the table searched as before. A host is the MAC the
   router's IPv4 or IPv6 neighbour table gives an address: the one that
   opened the connection, and the one it was opened to (a port forward,
   a host of another of the router's networks; a connection between two
@@ -1264,22 +1269,49 @@ a router is measured on few devices so far.
   no entry carries byte counts), nothing is counted and `hosts` is
   empty; the plugin never switches it on. null: there is no connection
   table. `partial`: false, or why the read stopped early (`time`,
-  `entries`). No remote address, port or destination ever leaves the
-  router: a MAC and two numbers a host.
-- **Costs and bounds.** rpcd answers nothing else while the plugin
-  reads, so one read serves every caller: for 5 s, or 30 s where the
-  theme's Low-power router is on for every browser (a browser that
-  picked it for itself asks every 30 s, with its slow poll), less 500 ms
-  so that a dashboard polling every 5 s gets a new read each time. Each
-  read is timed: one longer than 100 ms makes the next wait 50 times as
-  long (2 minutes at most), so the plugin takes at most about 2 % of
-  rpcd's time, and the answer says so (`took`, `every`, `slow`). The
-  table is read for 500 ms and 16,384 entries at most; an entry a read
-  did not reach is known for 10 minutes, so that it does not count
-  twice. At most 512 hosts (`dropped`: the rest) and 4,096 neighbour
-  entries. The state stays in rpcd's memory, updated in place: on a
-  desktop's ucode about 0.36 KiB an entry (6 MiB at 16,384) and 14 µs an
-  entry a read; `dev/traffic/bench.uc` measures a router.
+  `entries`). `{}` when there is no answer to give: no read has finished
+  yet and one is running, or the state directory is not the plugin's.
+  No remote address, port or destination ever leaves the router: a MAC
+  and two numbers a host.
+- **Out of rpcd.** The plugin is an executable rpcd plugin
+  (`/usr/libexec/rpcd/luci.vantage.traffic`, a ucode script): rpcd runs
+  it as a process of its own for each call and goes on answering
+  everyone else meanwhile, so no read, whatever the table's size, holds
+  LuCI up; it kills a call after its own timeout (30 s as OpenWrt sets
+  it). Nothing runs while nobody asks. Between calls the plugin keeps its
+  state in `/var/run/vantage-traffic`, which it makes 0700 and refuses
+  when it is anything else (a link, a file, open to others): `state.json`
+  (`{ v, flows: { key: [ orig bytes, reply bytes, read at ] }, totals: {
+  mac: [ rx, tx, counted at ] } }`, about 100 bytes an entry, 1.5 MiB at
+  16,384 entries, not read past 4 MiB: the counting starts over),
+  `answer.json` (the last answer) and a lock file; both files are
+  written 0600 beside the one they replace, then put in its place, so a
+  call rpcd kills leaves the last whole one. Nothing in them is readable
+  by any account but root's. A reboot clears them; the package's removal
+  script deletes the directory and has rpcd let go of the plugin.
+- **Costs and bounds.** One read serves every caller: for 5 s, or 30 s
+  where the theme's Low-power router is on for every browser (a browser
+  that picked it for itself asks every 30 s, with its slow poll), less
+  500 ms so that a dashboard polling every 5 s gets a new read each
+  time; a call in between gets the last answer from `answer.json`. One
+  read runs at a time (the lock): a call while one runs gets the last
+  answer, never waits. Each read is timed, the state's load and save
+  included: the next waits ten times as long as it took when that is
+  longer (2 minutes at most), so reading takes a tenth of one core at
+  most, and the answer says so (`took`, `every`, `slow`). The table is
+  read for 2 s and 16,384 entries at most; an entry a read did not reach
+  is known for 10 minutes, so that it does not count twice. At most 512
+  hosts (`dropped`: the rest) and 4,096 neighbour entries. Measured
+  with `dev/traffic/bench.uc`, a read that finds every entry again
+  (state loaded, table counted, state saved): on a desktop's ucode 7 ms
+  at 500 entries, 22 ms at 2,000, 81 ms at 8,000, 162 ms at 16,384, about
+  10 µs an entry, the state's load and save 19 ms of it at 16,384; the
+  process's memory about 19 MiB at 16,384 entries, 5 MiB at 2,000 (a
+  router's table is sized by its RAM: 2,048 to 4,096 entries at
+  128 MiB). On a router: **[to be measured: quad-core ARM access point
+  (25.12) and x86 VM (24.10), ms a read at 500, 2,000, 8,000 and 16,384
+  entries]**. Before 1.1.2, inside rpcd, the same ARM device took 139 ms
+  at 500 entries and 515 ms at 2,000, during which rpcd answered no one.
 - **On the dashboard.** In the Clients list (Live, its sort and bars)
   and in the host's details, for a wired host on a shared port of this
   device whose traffic this device routes: not the gateway, not a host
@@ -1296,8 +1328,9 @@ a router is measured on few devices so far.
   too), then this. Top talkers does not rank these hosts; whether it
   should is open. The dashboard asks rpcd once a page, in the batch it
   sends when it loads, whether the login holds the package's group, and
-  calls only then, with the slow part of each poll, in that batch; a
-  failed call keeps the last rates two slow polls, then none. Without
+  calls only then, with the slow part of each poll, in a request of its
+  own that no poll waits for: its answer is the next poll's (one call at
+  a time); a failed call keeps the last rates two slow polls, then none. Without
   the package, or for a login without its group, the dashboard makes
   that one check and nothing else, and looks as before.
 - **Permission.** Its own group, `luci-app-vantage-traffic` (read
@@ -1305,13 +1338,19 @@ a router is measured on few devices so far.
   receives, so no group of the dashboard grants it. `test_acl_policy.js`
   pins the group and its one read, that no group of the dashboard or the
   access points add-on grants it, the dashboard's one declare (no
-  parameters) and its one call behind the check, and the plugin's
-  reads: rtnl, uci's cursor and fs's open and readfile only, the table
-  opened for reading, the accounting switch read bounded, the two
-  neighbour dumps, the one theme option, and an answer of MACs and
-  counts; altered copies of the plugin are refused.
-  `tests/traffic.test.js` runs the plugin under a host ucode (counting,
-  caps, the shared read, the time budget, the module order of #134),
+  parameters, a request of its own) and its one call behind the check,
+  and the plugin's reads and writes: rtnl, uci's cursor and fs's chmod,
+  lstat, mkdir, open, readfile, rename and writefile only, its two
+  answers to rpcd ("list": the one method, no arguments; "call hosts")
+  and no input read, the table opened for reading, the accounting switch
+  and its own files read bounded, the two neighbour dumps, the one theme
+  option, writes to its own directory only, 0700 and 0600, through a
+  file beside, the lock, and an answer of MACs and counts; altered
+  copies of the plugin are refused. `tests/traffic.test.js` runs the
+  plugin as rpcd does, a process a call, under a host ucode (both
+  parses on every kind of line, counting from call to call, caps, the
+  shared read and the lock, the time budget, the state directory and
+  its modes), `tests/package.test.js` its removal script and
   `tests/traffic-view.test.js` the dashboard's side.
 
 ## 5. Later
@@ -1397,12 +1436,13 @@ a router is measured on few devices so far.
   `test_acl_policy.js` holds each of these to that list, and
   `tests/aps.test.js` runs them against hostile codes and reports.
 - `luci-app-vantage-traffic` (optional, experimental) changes nothing on
-  the device: its plugin reads the connection table, the accounting
-  switch, the neighbour tables and the theme's Low-power option, keeps
-  its counters in rpcd's memory, and answers MACs and byte counts, never
-  an address. Its group (`luci-app-vantage-traffic`) is the only one
+  the device: its plugin, a process rpcd runs, reads the connection
+  table, the accounting switch, the neighbour tables and the theme's
+  Low-power option, keeps its counters in `/var/run/vantage-traffic`
+  (0700, files 0600: root's alone), and answers MACs and byte counts,
+  never an address. Its group (`luci-app-vantage-traffic`) is the only one
   that grants the call; `test_acl_policy.js` holds the plugin to those
-  reads and the dashboard to one call behind the check.
+  reads and writes and the dashboard to one call behind the check.
 - Built-package verification (`security-tests/verify_built_apk.js`, run by
   `dev/build/sdk-build.sh` before anything reaches `dist/`) and a
   reproducible release manifest (`dist/<release>/BUILDINFO`: commit, SDK

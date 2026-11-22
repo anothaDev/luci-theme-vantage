@@ -47,13 +47,15 @@ Each release ships both packages, `luci-theme-vantage` and
   add-on on the router, the list and a device's details show the traffic
   that passes the router for each of them, counted from the router's own
   connection tracking, and say so: what devices of one network send each
-  other is not in it. It adds no firewall rule and changes no setting;
-  one read serves every open dashboard, and a slow read makes the next
-  wait longer. A device's own port and a paired access point's count
-  still come first, and Top talkers is unchanged. Seeing it needs a
-  permission of its own, `luci-app-vantage-traffic`. Install it on the
-  router: `apk add luci-app-vantage-traffic` (24.10: `opkg install
-  luci-app-vantage-traffic`). See
+  other is not in it. It adds no firewall rule and changes no setting.
+  It reads in a process of its own, so LuCI keeps answering meanwhile,
+  whatever the size of the router's connection table; one read serves
+  every open dashboard, and a slow read makes the next wait longer, so
+  it takes a tenth of one core at most. A device's own port and a paired
+  access point's count still come first, and Top talkers is unchanged.
+  Seeing it needs a permission of its own, `luci-app-vantage-traffic`.
+  Install it on the router: `apk add luci-app-vantage-traffic` (24.10:
+  `opkg install luci-app-vantage-traffic`). See
   [Per-device traffic](docs/INSTALL.md#per-device-traffic-optional-experimental).
 - **Dashboard: a compact network path** (#157,
   [@Vikk20](https://github.com/Vikk20)). With several access points and

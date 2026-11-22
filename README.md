@@ -196,9 +196,10 @@ the [spec](docs/SPEC.md#6-security-requirements).
   router log in to them with that key; the dashboard's own read
   permission does not include it.
 - **Per-device traffic is opt-in.** The experimental
-  `luci-app-vantage-traffic` only reads: the router's connection table
-  and neighbour tables, never changing a setting. Its answer is a MAC
-  address and two byte counts per device, and it has its own permission
+  `luci-app-vantage-traffic` reads the router's connection table and
+  neighbour tables, in a process of its own, never changing a setting;
+  it keeps its counters in RAM, readable by root alone. Its answer is a
+  MAC address and two byte counts per device, and it has its own permission
   (`luci-app-vantage-traffic`), since it shows how much each device
   sends and receives.
 - **Extras are separate permissions.** Renaming devices
