@@ -8,7 +8,7 @@ Nothing is forwarded anywhere; there is no upstream.
         [--theme-dir <pkg>/htdocs/luci-static/<name>] [--theme <name>] \
         [--templates <pkg>/ucode/template] [--rootfs <device rootfs dump>] \
         [--app-dir <luci-app package dir>]... [--keep-uniwrt] [--no-synthetic] \
-        [--demo] [--wired | --big] [--multiwan] [--fullvpn] [--aps] [--wg] [--tiles] [--traffic] [--lang <lang>] [--fixtures <dir>]...
+        [--demo] [--wired | --big] [--dsa] [--multiwan] [--fullvpn] [--aps] [--wg] [--tiles] [--traffic] [--lang <lang>] [--fixtures <dir>]...
 
 Open <http://127.0.0.1:8025/>. Any username/password logs in; the session
 lasts until the replay restarts (log in again after a restart).
@@ -216,6 +216,19 @@ documentation addresses and growing counters are added. The switch ports
 `lan1` and `lan2` list the link modes they support, as netifd does for a
 port, so with the recorded `eth0` the dashboard's Ports tile has three
 (the recording alone has one port, and no tile). Combine it with
+`--demo` as usual.
+
+## A DSA switch (`--dsa`)
+
+With `--wired`, makes `lan1` and `lan2` the ports of a switch chip under
+DSA (`dsa.js`), to see the dashboard count such ports by the chip's own
+counters (#156): netifd types them `dsa`, their kernel counters see a
+fiftieth of their traffic (what passes the CPU), and `luci.vantage.ports
+counters` answers as the dashboard's plugin does on a router, with the
+chip's counters at the ports' full rates. The Ports tile and the Wired
+branch then show `lan1` at about 18 Mbit/s down, not a fiftieth of it.
+Without `--dsa` that call answers as on a device without a DSA port
+(`state: 'none'`), and the dashboard asks no more. Combine it with
 `--demo` as usual.
 
 ## A bigger access point (`--big`)

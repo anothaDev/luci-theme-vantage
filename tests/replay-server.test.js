@@ -289,3 +289,47 @@ test('replay server: --lang previews the package catalogues', { skip, timeout: 6
 	assert.equal(code, 2);
 	assert.match(err, /--lang xx: not a LuCI language/);
 });
+
+/* --dsa: --wired's ports as a DSA switch's, the dashboard's switch counters plugin answering with the chip's own (#156) */
+test('replay server: --dsa types --wired\'s ports dsa and answers luci.vantage.ports counters with the chip\'s counters', { skip, timeout: 60000 }, async () => {
+	const start = async extra => {
+		const port = await freePort();
+		const srv = spawn(process.execPath, [ path.join(ROOT, 'dev/replay/server.js'), '--mirror', MIRROR, '--rootfs', ROOTFS, '--port', String(port),
+			'--app-dir', path.join(ROOT, 'luci-app-vantage'), '--demo', '--wired' ].concat(extra), { stdio: [ 'ignore', 'ignore', 'pipe' ] });
+		let log = '';
+		srv.stderr.on('data', d => { log += d; });
+		for (let i = 0; i < 200 && !log.includes('[replay] http://'); i++) await new Promise(r => setTimeout(r, 50));
+		assert.match(log, /\[replay\] http:\/\//, log);
+		const login = await request(port, 'POST', '/cgi-bin/luci/', { headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: `http://127.0.0.1:${port}` }, body: 'luci_username=root&luci_password=x' });
+		const sid = login.headers['set-cookie'][0].split(';')[0].split('=')[1];
+		const call = async (s, object, method, args) => JSON.parse((await request(port, 'POST', '/ubus/', { headers: JSONH, body: rpc(s, object, method, args) })).body);
+		return { srv, sid, call };
+	};
+	const a = await start([ '--dsa' ]);
+	try {
+		const devs = (await a.call(a.sid, 'network.device', 'status')).result[1];
+		assert.deepEqual([ devs.lan1.devtype, devs.lan2.devtype ], [ 'dsa', 'dsa' ]);
+		const r = await a.call(a.sid, 'luci.vantage.ports', 'counters');
+		assert.equal(r.result[0], 0);
+		assert.deepEqual([ r.result[1].v, r.result[1].state, Object.keys(r.result[1].ports) ], [ 1, 'ok', [ 'lan1', 'lan2' ] ]);
+		/* the chip counts what the kernel's counters miss */
+		assert.ok(r.result[1].ports.lan1.tx_bytes > devs.lan1.statistics.tx_bytes * 10);
+		assert.equal((await a.call(ZERO, 'luci.vantage.ports', 'counters')).error.code, -32002, 'not without the login');
+	}
+	finally {
+		const gone = new Promise(r => a.srv.once('exit', r));
+		a.srv.kill('SIGTERM');
+		await gone;
+	}
+	/* without it: a device without a DSA port */
+	const b = await start([]);
+	try {
+		assert.deepEqual((await b.call(b.sid, 'luci.vantage.ports', 'counters')).result, [ 0, { v: 1, state: 'none', took: 0, more: false, ports: {} } ]);
+		assert.equal((await b.call(b.sid, 'network.device', 'status')).result[1].lan1.devtype, 'ethernet');
+	}
+	finally {
+		const gone = new Promise(r => b.srv.once('exit', r));
+		b.srv.kill('SIGTERM');
+		await gone;
+	}
+});

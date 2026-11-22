@@ -10,7 +10,7 @@
    usage: node server.js --mirror <dir> [--port 8025] [--theme-dir <htdocs/luci-static/name>]
                          [--theme <name>] [--templates <ucode/template dir>] [--rootfs <dir>]
                          [--app-dir <package dir>]... [--keep-uniwrt] [--[no-]synthetic] [--demo]
-                         [--wired | --big] [--multiwan] [--fullvpn] [--aps] [--wg] [--tiles] [--traffic]
+                         [--wired | --big] [--dsa] [--multiwan] [--fullvpn] [--aps] [--wg] [--tiles] [--traffic]
                          [--lang <LuCI language, e.g. de or zh_Hans>] [--fixtures <dir>]...
 
    Pages are rendered like the device does: the dispatcher logic below
@@ -23,6 +23,11 @@
 
    --wired serves the device as a router without Wi-Fi (wired.js): no
    radios, the uplink renamed wan, synthetic lan/vpn/guest interfaces.
+
+   --dsa (with --wired) makes lan1 and lan2 a DSA switch's ports, whose
+   kernel counters see a trickle, and answers luci.vantage.ports counters
+   with the chip's own (dsa.js). Without it that call answers as on a
+   device without a DSA port.
 
    --big serves the device as a larger access point (big.js): four radios,
    ten networks, 74 stations, five wired ports with hosts behind them.
@@ -94,6 +99,7 @@ const aps = require('./aps');
 const wg = require('./wg');
 const tiles = require('./tiles');
 const traffic = require('./traffic');
+const dsa = require('./dsa');
 
 /* ------------------------------------------------------------ arguments */
 
@@ -102,6 +108,7 @@ function parseArgs(argv) {
 	for (let i = 0; i < argv.length; i++) {
 		const m = /^--(mirror|port|theme-dir|theme|templates|rootfs|app-dir|lang|fixtures)(?:=(.*))?$/.exec(argv[i]);
 		if (argv[i] === '--traffic') { o.traffic = true; continue; }
+		if (argv[i] === '--dsa') { o.dsa = true; continue; }
 		if (!m) { if (argv[i] === '--keep-uniwrt') o.keepUniwrt = true; else if (argv[i] === '--synthetic') o.synthetic = true; else if (argv[i] === '--no-synthetic') o.synthetic = false; else if (argv[i] === '--demo') o.demo = true; else if (argv[i] === '--wired') o.wired = true; else if (argv[i] === '--big') o.big = true; else if (argv[i] === '--multiwan') o.multiwan = true; else if (argv[i] === '--fullvpn') o.fullvpn = true; else if (argv[i] === '--aps') o.aps = true; else if (argv[i] === '--wg') o.wg = true; else if (argv[i] === '--tiles') o.tiles = true; else if (argv[i] === '-h' || argv[i] === '--help') o.help = true; else o.bad = argv[i]; continue; }
 		const v = (m[2] !== undefined) ? m[2] : argv[++i];
 		if (m[1] === 'app-dir') (o.appDirs = o.appDirs || []).push(v);
@@ -111,13 +118,14 @@ function parseArgs(argv) {
 	return o;
 }
 
-const USAGE = 'usage: server.js --mirror <dir> [--port 8025] [--theme-dir <htdocs/luci-static/name>] [--theme <name>] [--templates <dir>] [--rootfs <dir>] [--app-dir <pkg>]... [--keep-uniwrt] [--no-synthetic] [--demo] [--wired | --big] [--multiwan] [--fullvpn] [--aps] [--wg] [--tiles] [--traffic] [--lang <lang>] [--fixtures <dir>]...';
+const USAGE = 'usage: server.js --mirror <dir> [--port 8025] [--theme-dir <htdocs/luci-static/name>] [--theme <name>] [--templates <dir>] [--rootfs <dir>] [--app-dir <pkg>]... [--keep-uniwrt] [--no-synthetic] [--demo] [--wired | --big] [--dsa] [--multiwan] [--fullvpn] [--aps] [--wg] [--tiles] [--traffic] [--lang <lang>] [--fixtures <dir>]...';
 const opts = parseArgs(process.argv.slice(2));
 if (opts.help || opts.bad || !opts.mirror) {
 	console.error(opts.bad ? `unknown argument ${opts.bad}\n${USAGE}` : USAGE);
 	process.exit(2);
 }
 if (opts.wired && opts.big) { console.error(`--wired and --big are two different devices\n${USAGE}`); process.exit(2); }
+if (opts.dsa && !opts.wired) { console.error(`--dsa makes --wired's ports a switch's\n${USAGE}`); process.exit(2); }
 function readText(file) { try { return fs.readFileSync(file, 'utf8'); } catch (e) { return ''; } }
 
 const port = parseInt(opts.port, 10);
@@ -690,12 +698,18 @@ function ubusReply(msg) {
 	}
 	if (opts.wg && object === 'luci.wireguard' && method === 'getWgInstances')
 		return Object.assign(reply, wg.transform(object, method, args, null));
+	/* the dashboard's switch counters plugin (luci.vantage.ports): with
+	   --dsa the chip's counters for --wired's ports (dsa.js), else the
+	   plugin's answer on a device without a DSA port */
+	if (object === 'luci.vantage.ports')
+		return Object.assign(reply, method === 'counters' ? { result: [ 0, opts.dsa ? dsa.counters(Date.now() / 1000) : dsa.NONE ] } : { error: { code: -32601, message: 'Method not found' } });
 	/* the collector service runs only with an access point paired:
 	   without --aps the object is absent, as uhttpd answers one */
 	if (object === 'vantage.collector')
 		return Object.assign(reply, opts.aps ? aps.transform(object, method, args, null) : { error: { code: -32000, message: 'Object not found' } });
 	const r = store.call(object, method, args || {});
-	const dev = opts.wired ? wired.transform(object, method, args, r) : opts.big ? big.transform(object, method, args, r) : r;
+	const dev0 = opts.wired ? wired.transform(object, method, args, r) : opts.big ? big.transform(object, method, args, r) : r;
+	const dev = opts.dsa ? dsa.transform(object, method, args, dev0) : dev0;
 	const lines = opts.multiwan ? multiwan.transform(object, method, args, dev) : dev;
 	const vpn = opts.fullvpn ? fullvpn.transform(object, method, args, lines) : lines;
 	return Object.assign(reply, opts.aps ? aps.transform(object, method, args, vpn) : vpn);
