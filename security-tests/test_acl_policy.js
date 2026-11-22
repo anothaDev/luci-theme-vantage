@@ -1833,7 +1833,7 @@ const COLLECTOR_PINS = [
 		'const DBCLIENT = \'/usr/bin/dbclient\';',
 		'const KILL = \'/bin/kill\';',
 		'const REPORT = \'/usr/libexec/vantage/report\';',
-		'const RUN_SH = \'ulimit -c 0; ulimit -f 272; exec "$@" >"$VT_OUT" 2>"$VT_ERR" </dev/null\';',
+		'const RUN_SH = \'ulimit -c 0; ulimit -f 544; exec "$@" >"$VT_OUT" 2>"$VT_ERR" </dev/null\';',
 		'let p = uloop.process(SH, [ \'-c\', RUN_SH, \'sh\', DBCLIENT, \'-T\',',
 		'\'-i\', KEY, \'-p\', \'\' + a.port, \'-I\', \'\' + TIMEOUT_S, \'root@\' + to, REPORT ],',
 		's.timer = uloop.timer(TIMEOUT_S * 1000, () => {',
@@ -1963,6 +1963,11 @@ function checkCollectorSource(src) {
 		assert.equal([ ...src.matchAll(new RegExp('\\b' + name + '\\s*=(?!=)', 'g')) ].length, 1, name + ' is defined once and never assigned');
 	}
 	checkPins(src, 'the collector', COLLECTOR_PINS);
+	/* a report is read up to MAX_OUT bytes, and the shell lets dbclient write just over that (1/16 more), not less */
+	assert.match(src, /\nconst MAX_OUT = 262144;\n/, 'MAX_OUT = 262144');
+	assert.equal([ ...src.matchAll(/\bMAX_OUT\s*=(?!=)/g) ].length, 1, 'MAX_OUT is defined once and never assigned');
+	const blocks = /ulimit -f (\d+);/.exec(src);
+	assert.ok(blocks && +blocks[1] * 512 === 262144 + 262144 / 16, 'ulimit -f: just over MAX_OUT');
 	const spawn = /let p = uloop\.process\([\s\S]*?\(code\) => done\(a, s, home, code\)\);/.exec(src);
 	assert.ok(spawn, 'the dbclient process');
 	assert.equal(spawn[0].replace(/\s+/g, ' '), COLLECTOR_SPAWN, 'dbclient\'s arguments and environment, exactly');
@@ -1982,7 +1987,9 @@ test('add-on: the collector pins the host key and runs nothing but dbclient', ()
 		'a proxy command': collectorSrc.replace('DBCLIENT, \'-T\',', 'DBCLIENT, \'-T\', \'-J\', \'sh -c id\','),
 		'root\'s own known_hosts': collectorSrc.replace('{ HOME: home,', '{ HOME: \'/root\','),
 		'a shell word': collectorSrc.replace('exec "$@" >"$VT_OUT"', 'exec "$@" $VT_X >"$VT_OUT"'),
-		'no size limit': collectorSrc.replace('ulimit -f 272; ', ''),
+		'no size limit': collectorSrc.replace('ulimit -f 544; ', ''),
+		'a report read past its limit': collectorSrc.replace('const MAX_OUT = 262144;', 'const MAX_OUT = 1048576;'),
+		'a file limit below the report\'s': collectorSrc.replace('ulimit -f 544; ', 'ulimit -f 256; '),
 		'another program': collectorSrc.replace('system([ KILL, \'\' + p.pid() ]);', 'system([ KILL, \'\' + p.pid() ]);\n\t\t\tsystem(\'reboot\');'),
 		'another publish': collectorSrc.replace('uloop.run();', 'ubus.publish(\'x\', {});\nuloop.run();'),
 		'an argument taken from the caller': collectorSrc.replace('args: { ubus_rpc_session: \'\' }', 'args: { ubus_rpc_session: \'\', addr: \'\' }'),

@@ -1353,3 +1353,17 @@ test('collector: an access point that starts sending the switch\'s counters give
 	/* 1250000 bytes more in 10 s on the chip's counters: 1 Mbit/s, not the kernel's 800 bit/s */
 	assert.deepEqual([ at(8).rx, at(8).tx ], [ 1000000, 2000000 ]);
 });
+
+/* The collector reads a report up to 256 KiB: twice what the fullest takes now (#156 review), so that a field an access
+   point adds later is not refused; the shell's file limit lets dbclient write just over that, never far more */
+test('collector: a report over 128 KiB is read, a field an access point may add later in it; one over 256 KiB is refused', { skip: NO_UCODE }, () => {
+	for (const [ size, state, error ] of [ [ 200000, 'ok', null ], [ 261500, 'ok', null ], [ 300000, 'error', 'invalid' ] ]) {
+		const out = apReport(1, 1000, { later: 'x'.repeat(size) });
+		const { results, sb } = runCollector({ hosts: { '192.0.2.10': { out } } }, [ ASK, wait(2), ASK ]);
+		const a = results[2].aps[0];
+		assert.deepEqual([ a.state, a.error ], [ state, error ], out.length + ' bytes');
+		if (state === 'ok') assert.deepEqual([ a.report.name, a.report.wired.length ], [ 'calls-itself-1', 1 ], 'the rest of it, as ever');
+		/* what dbclient wrote is gone, and was never more than the file limit */
+		assert.ok(!fs.existsSync(sb.p('run/' + AP1.id + '/out')));
+	}
+});

@@ -1096,8 +1096,12 @@ dashboard package itself stays read-only.
   fetches only while someone looks: each `vantage.collector report` call
   (the dashboard's slow poll, the pairing page) keeps it fetching for
   60 s, at most every 10 s per access point, each fetch killed after 15 s
-  and its output capped by the shell (`ulimit -f`, just above the 128 KiB
-  a report may have: the files are in RAM). The call takes nothing from
+  and its output capped by the shell (`ulimit -f`, just above the 256 KiB
+  a report may have: the files are in RAM). That is twice what the
+  fullest report takes now (about 130,500 bytes), so that a field an
+  access point adds later is not refused; a router of 1.1.0 or 1.1.1
+  refuses a report over 131,072 bytes, so what an access point sends
+  must stay under that while such routers are about. The call takes nothing from
   its caller: the method names one field, the session rpcd adds to a
   request that comes from a browser (ucode's ubus turns away a call that
   carries a field its method does not name), and never reads it.
