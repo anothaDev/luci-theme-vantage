@@ -566,6 +566,20 @@ function rateLine(down, up, cls) {
 	]);
 }
 
+/* a rate in few characters, so columns fit every card alike: 176, 62.2k,
+   3.42M (bit/s, or B/s where the traffic reads in bytes) */
+function shortBits(bps) {
+	var u = [ '', 'k', 'M', 'G' ], i = 0;
+	bps /= rateUnit();
+	while (bps >= 1000 && i < u.length - 1) { bps /= 1000; i++; }
+	return (i ? (bps >= 100 ? bps.toFixed(0) : bps >= 10 ? bps.toFixed(1) : bps.toFixed(2)) : bps.toFixed(0)) + u[i];
+}
+
+/* several rates ({ rx, tx } or null) added up; null when none is known */
+function sumRates(list) {
+	return list.reduce(function(out, r) { return r ? { rx: (out ? out.rx : 0) + r.rx, tx: (out ? out.tx : 0) + r.tx } : out; }, null);
+}
+
 /* a switch VLAN's ports, a line each: "LAN 2 · 2.5 Gbit/s" (model.switchOf) */
 function switchLines(sw) {
 	return sw.ports.map(function(p) {
@@ -843,7 +857,7 @@ var UNSAVED_KEY = 'vantage.view.unsaved';
 function readUnsaved() {
 	var v = null;
 	try { v = JSON.parse(window.localStorage.getItem(UNSAVED_KEY) || 'null'); } catch (e) { v = null; }
-	return Array.isArray(v) ? v.filter(function(k) { return /^(chart|layout_(wide|mid|narrow)(_wired)?)$/.test(k); }) : [];
+	return Array.isArray(v) ? v.filter(function(k) { return /^(chart|path|layout_(wide|mid|narrow)(_wired)?)$/.test(k); }) : [];
 }
 
 function writeUnsaved(list) {
@@ -905,6 +919,35 @@ function writeChartStyle(v) {
 		/* the default needs no entry, unless the router has another */
 		if (v === series.CHART_STYLES[0] && !lookAttr('data-vt-look-chart')) window.localStorage.removeItem(CHART_KEY);
 		else window.localStorage.setItem(CHART_KEY, v);
+	} catch (e) {}
+}
+
+/* The network path's form, picked under Customize beside the chart
+   style (#157): full, its cards as always (the default), or compact,
+   every node of its branches one line. Kept as the chart style is:
+   this browser's copy of it and the router's */
+var PATH_KEY = 'vantage.path.v1';
+var PATH_FORMS = [ 'full', 'compact' ];
+
+/* the pick in force, as series.chartPick decides the chart style's: the
+   router's first for a login that may save there, for any other only
+   where this browser has none */
+function lookPick(ok, saved, mine, first) {
+	if (ok.indexOf(saved) >= 0 && (first || ok.indexOf(mine) < 0)) return saved;
+	return ok.indexOf(mine) >= 0 ? mine : ok[0];
+}
+
+function readPathForm() {
+	var v = null;
+	try { v = window.localStorage.getItem(PATH_KEY); } catch (e) { v = null; }
+	return lookPick(PATH_FORMS, lookAttr('data-vt-look-path'), v, lookSaves() && readUnsaved().indexOf('path') < 0);
+}
+
+function writePathForm(v) {
+	try {
+		/* the default needs no entry, unless the router has another */
+		if (v === PATH_FORMS[0] && !lookAttr('data-vt-look-path')) window.localStorage.removeItem(PATH_KEY);
+		else window.localStorage.setItem(PATH_KEY, v);
 	} catch (e) {}
 }
 
@@ -1435,6 +1478,7 @@ return view.extend({
 		this.foldBtns = {};
 		this.layouts = readLayouts();
 		this.chartStyle = readChartStyle();
+		this.pathForm = readPathForm();
 		this.backdropStyle = readBackdrop();
 		/* picked under the theme's Appearance (menu-vantage.js), here or
 		   in another tab */
@@ -2303,7 +2347,7 @@ return view.extend({
 
 	/* the options of /etc/config/vantage_theme this dashboard stands for */
 	viewValues: function() {
-		var self = this, out = { chart: this.chartStyle };
+		var self = this, out = { chart: this.chartStyle, path: this.pathForm };
 		[ 'wide', 'mid', 'narrow' ].forEach(function(tier) {
 			[ false, true ].forEach(function(wired) {
 				var k = layout.key(tier, wired);
@@ -2355,6 +2399,18 @@ return view.extend({
 		return E('div', { 'class': 'vt-edit-field' }, [ E('label', { 'for': 'vt-chart-style' }, [ _('Throughput chart') ]), pick ]);
 	},
 
+	/* the network path's form, picked beside the chart style */
+	buildPathPick: function() {
+		var self = this, names = {
+			'full': _('Full', 'vantage'),
+			'compact': _('Compact, one line per node')
+		};
+		var pick = E('select', { 'class': 'vt-select', 'id': 'vt-path-form', 'change': function(ev) { self.setPathForm(ev.target.value); } },
+			PATH_FORMS.map(function(k) { return E('option', { 'value': k }, [ names[k] ]); }));
+		pick.value = this.pathForm;
+		return E('div', { 'class': 'vt-edit-field' }, [ E('label', { 'for': 'vt-path-form' }, [ _('Network path') ]), pick ]);
+	},
+
 	/* the network path's backdrop, picked under Customize; under the
 	   Vantage theme it is in Appearance instead (menu-vantage.js) */
 	buildBackdropPick: function() {
@@ -2392,6 +2448,18 @@ return view.extend({
 		this.paintChart();
 	},
 
+	/* the path built again in the other form; its tile takes its new
+	   height at once, not after the 30 s a shrinking tile is held */
+	setPathForm: function(v) {
+		if (PATH_FORMS.indexOf(v) < 0 || v === this.pathForm) return;
+		this.pathForm = v;
+		writePathForm(v);
+		this.viewChanged('path');
+		if (this.held) delete this.held.hero;
+		if (this.m && this.hero) this.paintHero();
+		if (!this.wireRo) this.scheduleWires();
+	},
+
 	buildEditBar: function() {
 		var self = this, el = this.el;
 		el.editHint = E('span', { 'class': 'vt-hint' });
@@ -2401,7 +2469,7 @@ return view.extend({
 		el.editBar = E('div', { 'class': 'vt-editbar', 'role': 'region', 'aria-label': _('Customize the dashboard'), 'hidden': 'hidden' }, [
 			E('div', { 'class': 'vt-editbar-text' }, [ E('strong', {}, [ _('Customize the dashboard') ]), el.editHint, el.editNote ]),
 			el.editHidden,
-			E('div', { 'class': 'vt-edit-picks' }, [ this.buildChartPick(), this.buildBackdropPick() ]),
+			E('div', { 'class': 'vt-edit-picks' }, [ this.buildChartPick(), this.buildPathPick(), this.buildBackdropPick() ]),
 			E('div', { 'class': 'vt-editbar-actions' }, [
 				E('button', { 'type': 'button', 'class': 'vt-btn', 'click': function() {
 					var l = self.lay;
@@ -2916,7 +2984,7 @@ return view.extend({
 	heroKey: function() {
 		/* an SSID node by its interface, 's:' before it: never the wired node's 'w' */
 		var m = this.m, aps = this.aps().map(function(a) { return a.id + (a.parent ? '<' + a.parent.id : '') + '=' + a.nodes.map(function(n) { return 's:' + n.id; }).concat(a.wired ? [ 'w' ] : []).join(','); }).join(';');
-		var tail = '\nwired=' + this.wiredPorts().join(',') + '\nlines=' + this.extraLines().map(function(x) { return x.iface; }).join(',') + (aps ? '\naps=' + aps : '');
+		var tail = (this.pathForm === 'compact' ? '\ncompact' : '') + '\nwired=' + this.wiredPorts().join(',') + '\nlines=' + this.extraLines().map(function(x) { return x.iface; }).join(',') + (aps ? '\naps=' + aps : '');
 		if (m.wired) return 'w\n' + m.networks.filter(function(n) { return n.up; }).slice(0, 8).map(function(n) { return n.name; }).join('\n') + tail;
 		return 'r\n' + m.radios.map(function(r) {
 			return r.id + '=' + m.ssids.filter(function(s) { return s.radio === r.id; }).map(function(s) { return s.id; }).join(',');
@@ -3109,7 +3177,8 @@ return view.extend({
 		   path is as it was). On an access point the others are its
 		   siblings, wired from the gateway, this device's node at the top */
 		var mesh = this.aps().length > 0, sib = mesh && !(m.uplink && m.uplink.isWan);
-		setClass(path, 'vt-path' + (extra.length ? ' vt-path-lines' : '') + (mesh ? ' vt-path-mesh' : '') + (sib ? ' vt-path-sib' : ''));
+		h.compact = this.pathForm === 'compact';
+		setClass(path, 'vt-path' + (extra.length ? ' vt-path-lines' : '') + (mesh ? ' vt-path-mesh' : '') + (sib ? ' vt-path-sib' : '') + (h.compact ? ' vt-path-compact' : ''));
 
 		h.dnVal = E('b'); h.dnUnit = E('small'); h.upVal = E('b'); h.upUnit = E('small'); h.linkMeta = span('vt-link-meta');
 		/* a full-tunnel VPN over the line: named on the link it runs through */
@@ -3220,6 +3289,7 @@ return view.extend({
 			ab.wrap = E('div', { 'class': 'vt-branch vt-branch-peer' + (a.parent ? ' vt-branch-d' + Math.min(a.depth, 3) : '') }, [ ab.el, acol ]);
 			h.radios.push(ab);
 		});
+		if (h.compact) this.lineNodes(h);
 		/* the paired access points after this device's own branches,
 		   under a label of their own */
 		var firstPeer = true;
@@ -3324,6 +3394,7 @@ return view.extend({
 				txt(b.sub, r ? fmt.rates(r.tx, r.rx) : fmt.DASH);
 				b.active = !!(r && r.rx + r.tx > 50e3);
 				b.rate = r ? r.rx + r.tx : 0;
+				if (h.compact) self.paintLine(b, r || null);
 			});
 			return;
 		}
@@ -3344,6 +3415,7 @@ return view.extend({
 			txt(b.sub, r.disabled ? _('Disabled') : !r.up ? _('Down', 'vantage') : rr ? '↓ ' + fmt.bits(rr.tx) : fmt.DASH);
 			b.active = !!(rr && rr.rx + rr.tx > 50e3);
 			b.rate = rr ? rr.rx + rr.tx : 0;
+			if (h.compact) self.paintLine(b, rr || null, r.disabled ? _('Disabled') : !r.up ? _('Down', 'vantage') : null);
 			b.ssids.forEach(function(sn) {
 				var s = ssids[sn.id];
 				if (!s) return;
@@ -3372,6 +3444,7 @@ return view.extend({
 				}), false);
 				var sr = st.ssidRates[s.id];
 				sn.active = !!(sr && sr.rx + sr.tx > 50e3);
+				if (h.compact) self.paintLine(sn, sr || null, null, self.weakOf(m.clients.filter(function(c) { return c.ssidId === s.id; })));
 			});
 		});
 	},
@@ -3402,6 +3475,9 @@ return view.extend({
 		txt(b.sub, seen ? '↓ ' + fmt.bits(tx) : fmt.DASH);
 		b.active = !!(seen && rx + tx > 50e3);
 		b.rate = seen ? rx + tx : 0;
+		if (!b.dn) return;
+		this.paintLine(b, seen ? { rx: rx, tx: tx } : null);
+		b.ssids.forEach(function(sn) { this.paintLine(sn, st.devRates[sn.port] || null); }, this);
 	},
 
 	/* a paired access point's branch: its pairing name, address, uptime
@@ -3416,7 +3492,8 @@ return view.extend({
 		var nodes = Object.create(null);
 		a.nodes.forEach(function(n) { nodes[n.id] = n; });
 		/* what it calls itself only as a detail: the name is the pairing's */
-		setTitle(b.el, [ ok ? _('Show the clients of %s').format(a.name) : this.apState(a), ok ? null : this.apStateMore(a),
+		/* the compact line counts all in one: the split in its tooltip */
+		setTitle(b.el, [ ok ? _('Show the clients of %s').format(a.name) : this.apState(a), ok ? (b.dn ? this.apCounts(a) : null) : this.apStateMore(a),
 			info.name && info.name !== a.name ? _('Calls itself %s').format(info.name) : null, info.model, a.addr,
 			a.parent ? _('Wired to %s on %s').format(a.parent.name, a.parent.port) : null,
 			ok && a.age != null ? _('Last report %s').format(fmt.ago(a.age * 1000)) : null ].filter(Boolean).join('\n'));
@@ -3454,6 +3531,88 @@ return view.extend({
 		});
 		b.active = !!(ok && r && r.rx + r.tx > 50e3);
 		b.rate = ok && r ? r.rx + r.tx : 0;
+		if (!b.dn) return;
+		/* compact: all it has in one count, its state beside its name;
+		   a node's rate is what its rows would have added up to */
+		var all = a.clients + a.wired;
+		txt(b.cstate, ok ? '' : this.apState(a));
+		txt(b.ccount, ok ? (all === 1 ? _('1 device') : _('%d devices').format(all)) : '');
+		this.paintLine(b, ok ? r : null, ok ? null : '');
+		b.ssids.forEach(function(sn) {
+			var list = (sn.wiredNode ? given.wired[a.id] : given.sta[a.id + ' ' + sn.node]) || [];
+			/* none there: nothing moves */
+			var rate = list.length ? sumRates(list.map(function(c) { return (c.ap || c.behind).rate; })) : { rx: 0, tx: 0 };
+			self.paintLine(sn, rate, null, sn.wiredNode ? null : self.weakOf(list));
+		});
+	},
+
+	/* The compact path (Customize, #157): every node of the branches one
+	   line. A node keeps its element, its click, its classes and the
+	   spans a poll writes; instead of a card's body it holds cells: its
+	   name, how many (after a dot where a client there has a weak
+	   signal), and its rate down and up, in columns every line shares
+	   (app.css). Left out: the client rows, the signal dot of every
+	   client, a radio's generation, a network's protocol, an access
+	   point's address and uptime (in its tooltip) */
+	lineNodes: function(h) {
+		function span(cls) { return E('span', { 'class': cls }); }
+		function oneLine(x, name, num, weak) {
+			x.cname = E('span', { 'class': 'vt-cl-name' }, name);
+			x.weak = weak ? span('vt-dots') : null;
+			x.cnum = E('span', { 'class': 'vt-cl-num vt-tn' }, (x.weak ? [ x.weak ] : []).concat(num));
+			/* the rate down in full, and short for a narrow tree (app.css) */
+			x.dnl = span('vt-cl-long');
+			x.dns = span('vt-cl-short');
+			x.dn = E('span', { 'class': 'vt-cl-dn vt-tn' }, [ x.dnl, x.dns ]);
+			x.up = span('vt-cl-up vt-tn');
+			x.rows = null;
+			dom.content(x.el, [ x.cname, x.cnum, x.dn, x.up ]);
+		}
+		h.radios.forEach(function(b) {
+			if (b.ap) {
+				b.cstate = span('vt-cl-state');
+				b.ccount = E('span');
+				oneLine(b, [ icon('ap', 'vt-ico-sm'), b.title, ' ', b.cstate ], [ b.ccount ]);
+			}
+			else if (b.wired) oneLine(b, [ E('span', { 'class': 'vt-node-kicker' }, [ _('Wired') ]) ], [ b.title ]);
+			else if (b.badge) oneLine(b, [ b.badge, ' ', b.title ], []);
+			else oneLine(b, [ b.title, ' ', b.addr ], []);
+			b.ssids.forEach(function(sn) {
+				if (sn.data) oneLine(sn, [ sn.title ], [ sn.count ], true);
+				else oneLine(sn, [ E('span', { 'class': 'vt-node-title vt-ssid-name' }, sn.badge ? [ sn.badge, ' ', sn.name ] : [ sn.name ]) ], [ sn.count ], !!sn.badge);
+			});
+		});
+	},
+
+	/* a compact line's rate, its weak-signal dot and its label: one
+	   control, named with every cell's text and both directions of the
+	   rate (the narrow layouts show only the first). r: { rx, tx } as the
+	   node counts them, ↓ what went towards its devices as the cards
+	   read; null before the first counters. state: words in the rate's
+	   place ('' for none). weak: the clients there whose signal is weak */
+	paintLine: function(x, r, state, weak) {
+		var idle = !!r && r.rx === 0 && r.tx === 0, word = state != null ? state : !r ? fmt.DASH : idle ? _('idle') : null;
+		txt(x.dnl, word != null ? word : '↓ ' + fmt.bits(r.tx));
+		txt(x.dns, word != null ? word : '↓' + shortBits(r.tx));
+		txt(x.up, state != null || !r || idle ? '' : '↑ ' + fmt.bits(r.rx));
+		if (x.weak) {
+			var tip = (weak || []).slice(0, 8).map(function(c) { return c.name + ' · ' + fmt.dbm(c.signal); }).join('\n');
+			if (x.weakSig !== tip) {
+				x.weakSig = tip;
+				dom.content(x.weak, tip ? [ E('span', { 'class': 'vt-dot vt-lvl-crit', 'title': tip }) ] : []);
+			}
+		}
+		var label = [ x.cname.textContent.trim(), x.cnum.textContent, state != null ? state : r ? fmt.rates(r.tx, r.rx) : '',
+			weak && weak.length ? _('%d weak').format(weak.length) : '' ].filter(Boolean).join(', ');
+		if (x.el.getAttribute('aria-label') !== label) x.el.setAttribute('aria-label', label);
+	},
+
+	/* the clients whose signal the Signal check would call weak, those
+	   set quiet left out (#110); a paired access point's too, on its own
+	   lines, where its rows would have shown them red */
+	weakOf: function(list) {
+		var quiet = this.quiet || {};
+		return list.filter(function(c) { return c.signal != null && c.signal < insight.WEAK_DBM && !quiet[c.mac]; });
 	},
 
 	/* the devices at the end of a branch (only with paired access points),
@@ -3461,6 +3620,7 @@ return view.extend({
 	   traffic; the busiest first, at most five.
 	   list: [ { mac, name, ips, signal, level, speed, rate: { rx, tx } } ] */
 	paintLeaf: function(el, list, wired) {
+		if (!el) return;
 		var self = this, MAX = 5;
 		var rows = list.slice().sort(function(a, b) {
 			var va = a.rate ? a.rate.rx + a.rate.tx : -1, vb = b.rate ? b.rate.rx + b.rate.tx : -1;
@@ -3470,19 +3630,11 @@ return view.extend({
 		   (a click like the rows' own); "Show fewer" closes it again */
 		el.vtAll = el.vtAll === true && rows.length > MAX;
 		var shown = el.vtAll ? rows : rows.slice(0, MAX), more = rows.length - shown.length;
-		/* compact, so the columns fit every card alike: 176, 62.2k, 3.42M
-		   (bit/s, or B/s where the traffic reads in bytes) */
-		function short(bps) {
-			var u = [ '', 'k', 'M', 'G' ], i = 0;
-			bps /= rateUnit();
-			while (bps >= 1000 && i < u.length - 1) { bps /= 1000; i++; }
-			return (i ? (bps >= 100 ? bps.toFixed(0) : bps >= 10 ? bps.toFixed(1) : bps.toFixed(2)) : bps.toFixed(0)) + u[i];
-		}
 		var cells = shown.map(function(c) {
 			var r = c.rate, live = !!(r && r.rx + r.tx > 0);
 			var mid = wired ? (c.speed ? fmt.phyRate(c.speed.mbps * 1000) : '') : (c.signal != null ? String(c.signal) : '');
-			return [ c.mac, c.name, mid, c.level || '', live ? '↓' + short(r.tx) : '', (c.ips || []).filter(function(ip) { return model.parseIPv4(ip); })[0] || '',
-				live ? '↑' + short(r.rx) : '', live ? '↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx) : '' ];
+			return [ c.mac, c.name, mid, c.level || '', live ? '↓' + shortBits(r.tx) : '', (c.ips || []).filter(function(ip) { return model.parseIPv4(ip); })[0] || '',
+				live ? '↑' + shortBits(r.rx) : '', live ? '↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx) : '' ];
 		});
 		var sig = JSON.stringify([ cells, more, el.vtAll ]);
 		if (el.vtSig === sig) return;
