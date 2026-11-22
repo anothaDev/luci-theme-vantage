@@ -759,11 +759,12 @@ about 12,500 entries the 2 s limit ends the read); on an x86 VM 22 ms at
 looking, one at a time, every 5 s at most; a slow one makes the next wait
 ten times as long as it took, so the reads take about a tenth of one core at
 most, and the table is read for 2 s at most. Where connections come and
-go quickly a read costs a little more: the add-on keeps those of 64 KiB
-or more that ended in the last 150 s (16,384 at most), so that one a
-read missed does not count twice; on a desktop, 2,000 entries of which
-80 end each second, a tenth of them large, take 29 ms a read instead of
-22 ms. A smaller connection a read missed can count twice, by less than
+go quickly a read costs a little more: the add-on keeps the connections
+that ended since the read before, and those of 64 KiB or more that ended
+in the last 150 s (16,384 at most), so that one a read missed does not
+count twice; on a desktop, 2,000 entries of which 80 end each second, a
+tenth of them large, take 30 ms a read instead of 22 ms. A smaller
+connection missed by two reads running can count twice, by less than
 64 KiB, for one step of the rate. `cat /proc/net/nf_conntrack
 | wc -l` tells how many entries your router has now;
 `dev/traffic/bench.uc` in the source measures what a read costs it

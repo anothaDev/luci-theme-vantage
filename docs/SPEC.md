@@ -1421,21 +1421,23 @@ measured on few devices so far.
   again at each read() of about a page, so that an entry removed behind
   that place hides the next one. Forgotten, such an entry would count
   whole again when a read sees it. So an entry a read did not see is
-  kept where that would matter: one that carried 64 KiB or more, both
+  kept: every one the read before saw, whatever its size and however
+  long ago that was (no read runs while nobody looks), which covers a
+  single miss; past that read, one that carried 64 KiB or more, both
   ways together, or any after a partial read (what it did not reach is
-  many entries, mostly still there). Of those, every one the read
-  before saw is kept, however long ago that was (no read runs while
-  nobody looks), then those seen less than 150 s ago (longer than the
-  2-minute wait after a slow read); 16,384 at most, those the read
-  before saw first, so all of them. What remains: a smaller entry a
-  whole read missed counts twice when a read sees it again, by what it
-  had carried: less than 64 KiB, so a host's rate is too high for one
-  step by about 100 kbit/s at most (17 kbit/s at 30 s). A whole read
-  misses about one entry for every two that end while it runs: with
-  80 connections ending a second, about one a read where a read takes
-  25 ms (a desktop, 2,000 entries), a dozen where it takes 0.3 s (an
-  ARM access point), most of them lookups of a few hundred bytes. An
-  entry missed by two reads more than 150 s apart, or pushed out by
+  many entries, mostly still there), while it was seen less than 150 s
+  ago (longer than the 2-minute wait after a slow read); 16,384 at
+  most, those the read before saw first, so all of them. What remains:
+  a smaller entry missed by two whole reads running counts twice when a
+  read sees it again, by what it had carried: less than 64 KiB, so a
+  host's rate is too high for one step by about 100 kbit/s at most
+  (17 kbit/s at 30 s). A whole read misses about one entry for every
+  two that end while it runs: with 80 connections ending a second,
+  about one a read where a read takes 25 ms (a desktop, 2,000 entries),
+  a dozen where it takes 0.3 s (an ARM access point); the same entry
+  twice running, about once a minute there and once in hours on the
+  desktop, most of them lookups of a few hundred bytes. An entry
+  missed by two reads more than 150 s apart, or pushed out by
   16,384 others, counts whole when it is seen again. A new connection
   with the protocol, addresses and ports of a kept one that ended less
   than 150 s before is taken for the old one: with smaller counters it
@@ -1444,8 +1446,9 @@ measured on few devices so far.
   ones the old one's last counts are left out of it; that takes a
   client reusing its source port to the same server and port after a
   connection of 64 KiB or more, seldom (clients pick ports at random).
-  The price is a larger state where large connections come and go: it
-  holds those that ended in the last 150 s, 16,384 at most.
+  The price is a larger state where connections come and go: it holds
+  those that ended since the read before, and the large ones that
+  ended in the last 150 s, 16,384 at most.
 - **Measured** with `dev/traffic/bench.uc`, a read that finds every
   entry again (state loaded and checked, table counted, state saved): on
   a desktop's ucode 7 ms at 500 entries, 25 ms at 2,000, 94 ms at 8,000,
@@ -1456,12 +1459,12 @@ measured on few devices so far.
   128 MiB). With churn (`bench.uc <dir> churn <entries> <percent>
   [reads] [large]`: that share of the table ends and as many new
   entries begin between reads 5 s apart, a tenth of them of 64 KiB or
-  more), 2,000 entries: 5 % (20 a second) keeps 2,290 entries in the
-  state, 209 KiB, a read 24 ms; 20 % (80 a second) 3,160 entries,
-  291 KiB, 29 ms, the process's memory 8 MiB; 50 % 4,900 entries,
-  453 KiB, 39 ms, 10 MiB. 8,000 entries at 20 %: 12,640 entries,
-  1.1 MiB, 113 ms, 23 MiB; 16,384 at 20 %: 21,145 entries, 1.9 MiB,
-  216 ms, 33 MiB. Kept whatever their size, the same tables held
+  more), 2,000 entries: 5 % (20 a second) keeps 2,380 entries in the
+  state, 217 KiB, a read 26 ms; 20 % (80 a second) 3,520 entries,
+  322 KiB, 30 ms, the process's memory 9 MiB; 50 % 5,800 entries,
+  533 KiB, 41 ms, 13 MiB. 8,000 entries at 20 %: 14,080 entries,
+  1.3 MiB, 121 ms, 24 MiB; 16,384 at 20 %: 24,094 entries, 2.1 MiB,
+  234 ms, 41 MiB. Kept whatever their size, the same tables held
   4,900, 13,600 and 18,384 entries at 2,000 (20 %: 1.2 MiB, 70 ms,
   24 MiB) and 32,768 at 16,384 (2.9 MiB, 279 ms, 53 MiB); kept only
   after a partial read, 2,000 entries at 20 % took 22 ms and 6 MiB. On
