@@ -194,6 +194,11 @@ the [spec](docs/SPEC.md#6-security-requirements).
   their own groups, so you can leave them out. The firewall overview only
   appears for users who already hold LuCI's firewall permission, and the
   WireGuard tile for those who hold LuCI's WireGuard one.
+- **Tiles from other packages are text.** A package may add a read-only
+  tile (experimental, [`docs/TILES.md`](docs/TILES.md)). The dashboard
+  asks it one fixed question, only for logins that hold that package's
+  own permission, and draws the answer itself, as text, with the
+  package's id beside the tile's name.
 - **Checked by tests.** They reject HTML built from data, render the
   theme's templates with hostile input, confirm the permissions match what
   the code calls, and keep real addresses, MACs and SSIDs out of the
@@ -256,6 +261,8 @@ node dev/replay/server.js --mirror ../vantage-mirror --port 8106 --demo \
 [`docs/SPEC.md`](docs/SPEC.md) describes the product, and
 [`docs/luci-contract.md`](docs/luci-contract.md) lists what LuCI expects
 from a theme. Coding agents should read [`AGENTS.md`](AGENTS.md).
+To put a tile of your own package on the dashboard, see
+[`docs/TILES.md`](docs/TILES.md) (experimental).
 
 ## Contributing
 

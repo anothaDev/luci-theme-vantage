@@ -22,7 +22,7 @@ add-on to it) plus offline tooling. No npm, no
 | `dev/i18n/` | `update.sh`: translation templates and catalogues (`po/`) with LuCI's i18n tools; `catalog.js`: LuCI's catalogue format (tests, replay `--lang`) |
 | `tests/`, `security-tests/` | `node:test` suite and the four security checks |
 | `prototypes/` | Design references. Do not edit or ship them |
-| `docs/` | `SPEC.md` (product), `luci-contract.md` (what LuCI needs from a theme), `INSTALL.md` |
+| `docs/` | `SPEC.md` (product), `luci-contract.md` (what LuCI needs from a theme), `INSTALL.md`, `TILES.md` (provider tiles, experimental) |
 
 ## Hard rules
 
@@ -60,11 +60,17 @@ add-on to it) plus offline tooling. No npm, no
    enforces this.
 6. **The ACL stays minimal and matches the code.** Every `rpc.declare` in
    the app must be granted in `luci-app-vantage.json`, and every grant must
-   be used (two calls are granted elsewhere instead: `vantage.collector
-   report` by the add-on, see the end of this rule, and LuCI's own
+   be used (three calls are granted elsewhere instead: `vantage.collector
+   report` by the add-on, see the end of this rule; LuCI's own
    `luci.wireguard getWgInstances` by `luci-proto-wireguard`, so that
-   only a login holding LuCI's group for it sees the WireGuard tile;
-   `test_acl_policy.js` pins both). The read group is read-only and never reads Wi-Fi keys
+   only a login holding LuCI's group for it sees the WireGuard tile; and
+   the provider tiles' `vantage.tile.<id> status` (experimental,
+   `docs/TILES.md`) by the provider package's own group
+   `vantage-tile-<id>`, so that only a login holding that group sees its
+   tile, called without arguments for ids the view reads from the
+   session's own ACL (`session access` without an object, once a page),
+   and granted by no group of the app or the add-on;
+   `test_acl_policy.js` pins all three). The read group is read-only and never reads Wi-Fi keys
    (wireless data comes from the plugin's `wireless` method; LuCI's own
    groups, such as `luci-base-network-status`, can); reverse DNS
    sits in its own optional group (`luci-app-vantage-rdns`); the names

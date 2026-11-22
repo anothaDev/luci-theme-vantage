@@ -313,7 +313,8 @@ in its ACL. Without `--tiles` no group grants them and the objects are
 absent, as on a router without a provider package; a `--fixtures` plugin
 that answers a `vantage.tile.*` object answers it in either case (its
 grant comes from an `--app-dir`'s ACL file). Numbers and names are
-invented. Combine it with the other modes.
+invented. Combine it with the other modes. The contract, and how to try
+a provider of your own here: [`docs/TILES.md`](../../docs/TILES.md).
 
 ## Translation preview (`--lang`)
 

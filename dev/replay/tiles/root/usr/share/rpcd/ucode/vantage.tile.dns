@@ -1,9 +1,10 @@
 // An example provider tile for the Vantage dashboard (#129): the DNS
 // numbers dnsmasq keeps, from its ubus metrics. Not shipped: it shows what
 // a provider package holds, this rpcd ucode plugin and its ACL group
-// (acl.d/vantage-tile-dns.json). The replay answers the same object with
-// its stand-in (dev/replay/tiles.js, --tiles); tests/tiles.test.js runs
-// this file and holds the two to the same answers.
+// (acl.d/vantage-tile-dns.json); docs/TILES.md has the contract. The
+// replay answers the same object with its stand-in (dev/replay/tiles.js,
+// --tiles); tests/tiles.test.js runs this file and holds the two to the
+// same answers.
 //
 // The dashboard asks `vantage.tile.dns status` with the slow part of its
 // poll, only for a login whose ACL grants that call by name, and draws the

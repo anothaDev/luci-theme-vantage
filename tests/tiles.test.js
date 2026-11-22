@@ -637,3 +637,9 @@ test('example provider: its ACL group grants its one call to read, and nothing e
 	assert.deepEqual(tiles.transform('vantage.tile.dns', 'set').result, [ 3 ]);
 	assert.equal(tiles.transform('vantage.tile.x', 'status').error.code, -32000);
 });
+
+test('docs/TILES.md shows the example provider\'s two files as they are', () => {
+	const doc = fs.readFileSync(path.join(ROOT, 'docs/TILES.md'), 'utf8');
+	assert.ok(doc.includes('```json\n' + fs.readFileSync(ACL, 'utf8') + '```\n'), 'its ACL file');
+	assert.ok(doc.includes('```js\n' + fs.readFileSync(PLUGIN, 'utf8') + '```\n'), 'its plugin');
+});

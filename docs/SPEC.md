@@ -824,6 +824,123 @@ text around it so it looks the same size.
   every login (the likely cause of #134). Failing first leaves them
   untouched; `tests/plugin.test.js` keeps the order.
 
+### Provider tiles (experimental)
+
+Since 1.1.2 (#129) another package (a provider) can put a read-only
+tile on the dashboard: it answers one ubus call with data, and the
+dashboard checks the answer and draws it as text in its own look.
+**Experimental**: the object and group names, the method, the fields
+and their limits, the `x` layout ids and the cap may change in any
+release until the project says otherwise here and in the changelog.
+The dashboard's own tiles (ids, sizes, order, defaults) are no part of
+the contract. For provider authors: [`docs/TILES.md`](TILES.md).
+
+- **Contract.** A provider is a ubus object `vantage.tile.<id>` (`<id>`
+  1 to 7 letters a-z) with one method, `status`, which takes no
+  arguments, changes nothing and answers `{ v: 1, title, icon?, state?,
+  note?, every?, page?, items: [ { label, value | text, unit?, rate?,
+  max?, level?, trend? } ] }`; its package ships an rpcd ACL group,
+  `vantage-tile-<id>`, granting that call to read and nothing else. The
+  view's `model.tile` reads an answer field by field and keeps nothing
+  else: `v` must be 1 and `title` 1-32 characters, else the answer is
+  unreadable ("Sent a report that could not be read"); `icon` one of
+  eleven of the dashboard's own icon names (else the first); `state`
+  and `level` `ok`/`warn`/`err`/`off`; `note` up to 64 characters,
+  `text` up to 48, `label` 1-32 (one item a label, compared without
+  case); `every` a whole 5-300 s; `page` `admin` and 1-4 steps of
+  `[A-Za-z0-9_-]{1,32}`; `value` a finite number under 10^15 either way,
+  written out by `unit` (`''`, `%`, `ms`, `s`, `dBm`, `dB`, `MHz`, `B`,
+  `bit/s`, else the item is left out) in the dashboard's own formats;
+  `rate` only on a counter of `''` or `B` that is not negative; `max`
+  above 0 and not with `rate`; `trend` values only. At most 8 items of
+  the first 32; unknown keys are ignored, an item not of the form is
+  left out alone. Text goes through `fmt.safeText` (control,
+  bidirectional and invisible characters replaced, cut with an
+  ellipsis).
+- **Discovery.** Once a page the view calls `session access` without an
+  object and a function: rpcd then answers the session's own ACL,
+  `{ scope: { object: [ method ] } }` (`session.c`,
+  `rpc_session_dump_acls`), and grants the call to every session
+  (`unauthenticated` group), as for the group probes. The view takes the
+  `ubus` entries named exactly `vantage.tile.<id>` with `status` granted
+  by name, the first three by id, and reads nothing else of the answer;
+  a grant by pattern names no provider. Without a provider package, or
+  for a login without its group, that is the only call: no provider is
+  asked and the page is as before (the dump rides the first poll's
+  batch: one call more, no request more). The ACL is not read again on
+  that page.
+- **The call.** One helper, `tileCall(id)`, makes the object from the
+  fixed prefix and the id, checks it again against
+  `^vantage\.tile\.[a-z]{1,7}$`, and declares only `status`, without
+  parameters, so no argument can be sent; `nobatch` (a request of its
+  own: a slow provider holds back no other reply) and `reject`. It is
+  called in one place, for ids from the session's ACL. No group of the
+  dashboard or the add-on grants a `vantage.tile.` object.
+- **Cost.** A provider is asked with the slow part of the poll (every
+  poll; every 30 s on a Low-power router), no more often than its
+  `every`, and not while its call is out; the poll waits for it 2 s at
+  most (also at page load, so a slow provider delays the first paint by
+  up to 2 s), and a late answer is the next poll's. After an answer
+  that took over 500 ms the next call waits ten times as long. A first
+  answer that says the call is not there (no object or method, access
+  denied) means no tile and no further call on that page; an object
+  that goes away later is asked once a minute, its last answer shown
+  for that minute, then "Did not answer in time" (also after any other
+  failure). A tile hidden under Customize is not asked after its first
+  answer.
+- **Drawing.** The view draws the tile from its own parts: the icon
+  and title, then the provider's id in a source tag (`vt-src`, the
+  look of a client's name source), so that no provider passes for a
+  tile of the dashboard's own: none of those has one, and the id comes
+  from the object's name, never from the answer. Customize, its hidden
+  tiles' list, its announcements and the tile's `aria-label` say
+  "title (id)"; the controls are not rebuilt for a new title while
+  Customize is open. Then the state's dot (never a health check, never
+  the page title's mark), a link to `page` where this login's menu has
+  that node satisfied, named with LuCI's own title of it (`L.url` from
+  the checked steps), the note, and the items in a grid: a label over
+  its value, a counter as its rate between two answers, a meter for
+  `max`, the page's own five minutes of a `trend` value as a bare line
+  (90 points at most an item). Title, note and labels are looked up in
+  LuCI's catalogues (`_()`), so a provider's own catalogue translates
+  them; a `text` value is shown as it came. An answer that cannot be
+  read keeps the tile's last title, icon and link. The page keeps
+  `model.tile`'s reading of the last answer, never the answer itself.
+- **Layouts.** A provider tile is `x<id>` in a layout (`xdns`), which
+  fits the theme's stored form (`[a-z]{1,8}`); no tile of the
+  dashboard's own starts with `x`. At most three, so that nine of the
+  dashboard's own and three stay within the twelve entries the theme
+  keeps. Like the WireGuard tile they make no layouts of their own: a
+  stored layout that does not mention one gets it where the default has
+  it (one column wide at the end of the right-hand column), and a
+  layout arranged while a provider is not answering keeps its stored
+  entry, hidden or not, while there is room among the three. A page
+  without providers lays out exactly as before (`tests/tiles.test.js`
+  over every screen class, wired or not, with and without a tunnel and
+  ports).
+- **What the tests pin.** `security-tests/test_acl_policy.js`: the
+  helper's exact text and its `TILE_OBJ` line, in the dashboard only and
+  once; `TILE_OBJ` only tested, never changed; the helper's declares its
+  own; `tileCall` called once, in `askTile`, with an id; the ACL dump
+  declared once without parameters and called once, where it feeds
+  `tileIds`; no other declare naming `vantage.tile`, no other `session`
+  method; the call granted by no group of the dashboard or the add-on,
+  and no `vantage-tile-` group there; 18 mutations, each caught.
+  `tests/tiles.test.js`: the contract's bounds, the polling rules, the
+  drawing as text against hostile answers, provenance, the layouts, and
+  the example provider (`dev/replay/tiles/`) run under ucode.
+  `check_dom_sinks.js` passes the view as it is, with no suppression.
+- **Known limits.** A slow `status` blocks rpcd for every caller while
+  it runs (rpcd runs a ucode method in its own process): the dashboard
+  backs off, but cannot stop other callers. The dashboard cannot verify
+  that `status` has no side effects; it is called with the session of
+  whoever has the dashboard open, so installing a provider is trusting
+  it, like any LuCI package (which could also replace the dashboard, or
+  retranslate its strings through its catalogue). The browser parses a
+  whole answer before the view sees it (up to ubus' message size). A
+  fourth provider has no tile, without a word. A provider installed or
+  granted while the dashboard is open shows after a reload.
+
 ### Other access points (`luci-app-vantage-aps`)
 
 An optional package shows the network's other OpenWrt access points on a
@@ -1111,6 +1228,12 @@ dashboard package itself stays read-only.
   `luci-base-network-status`); the only writes are the plugin's
   `set_alias` and `set_quiet`, whose validation `tests/plugin.test.js`
   checks against the view's and the replay's.
+- Provider tiles (experimental, above): the dashboard calls only
+  `vantage.tile.<id> status`, without arguments, for ids its session's
+  own ACL grants by name, and draws the answer as text after checking
+  it; no group of the dashboard or the add-on grants such a call
+  (`test_acl_policy.js`). A provider tile always shows its provider's
+  id.
 - No private addresses or MACs in committed files
   (`security-tests/check_private_addresses.js`, which also looks for the
   hostnames/SSIDs recorded in the mirror when it is present); fixtures are

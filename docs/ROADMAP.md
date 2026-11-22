@@ -32,6 +32,19 @@ Since 1.1 the dashboard answers the command palette (Ctrl+K) with its
 clients, radios, Wi-Fi networks and interfaces (see the spec, "Entity
 search"). Other pages can answer the same way; none does yet.
 
+### Provider tiles (experimental)
+
+Since 1.1.2 another package can put a read-only tile on the dashboard
+([#129](https://github.com/anothaDev/luci-theme-vantage/issues/129);
+for authors [`docs/TILES.md`](TILES.md), see also the spec, "Provider
+tiles"). Experimental: the contract may change in any release. Still
+open: a provider of the project's own, before the contract is called
+stable; what reading the session's ACL costs a router with many LuCI
+apps (once a page); more than three such tiles or longer ids, which
+need the theme's stored-layout form widened in its script and its
+template together; letting that one ACL read answer the dashboard's
+four group probes too; OpenWrt 24.10, not tried.
+
 ## Later
 
 - **Proxies in the network path:** a full-tunnel VPN already shows on its

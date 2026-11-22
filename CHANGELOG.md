@@ -28,6 +28,17 @@ Each release ships both packages, `luci-theme-vantage` and
   device's details now show the rate the access point counts there, and
   say so. Top talkers still ranks none of a paired access point's
   devices.
+- **Tiles from other packages, experimental** (#129,
+  [@nubbhr](https://github.com/nubbhr)). Another package can put a
+  read-only tile on the dashboard: it answers one ubus call with numbers
+  and short texts, and the dashboard draws them in its own look, with
+  the package's id in a small tag beside the tile's name, so that it
+  cannot pass for one of the dashboard's own tiles. The tile shows only
+  for logins that hold that package's own permission; the dashboard's
+  permissions are unchanged, and without such a package the dashboard
+  makes one call more per page and looks as before. Experimental: what
+  a package sends and how the dashboard shows it may change in any
+  release. For package authors: [Provider tiles](docs/TILES.md).
 
 ## 1.1.1 - 2026-11-21
 
