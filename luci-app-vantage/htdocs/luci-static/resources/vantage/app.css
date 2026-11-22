@@ -1539,13 +1539,16 @@ html[data-darkmode="true"] .vt-app {
 /* Provider tiles (#129): another package's data, drawn here: a note,
    then its items, as many in a row as fit, each a label over its value
    with a meter or the page's values of it under it */
-.vt-app .vt-ext { display: flex; flex-direction: column; gap: var(--vt-sp-2); }
+/* nothing of the provider's reaches past its tile: a note without a
+   break (non-breaking spaces) wraps anywhere, and the body is clipped
+   sideways (not downwards: a line's stroke at the bottom stays whole) */
+.vt-app .vt-ext { display: flex; flex-direction: column; gap: var(--vt-sp-2); overflow-x: clip; }
 /* its name gives way to its provider's id (the source tag), never the
    other way round: a long name is cut, the tag stays */
 .vt-app .vt-ext-tile .vt-tile-title { max-width: 100%; }
 .vt-app .vt-ext-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .vt-app .vt-ext-src { flex: none; }
-.vt-app .vt-ext-note { margin: 0; }
+.vt-app .vt-ext-note { margin: 0; overflow-wrap: anywhere; }
 .vt-app .vt-ext-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 112px), 1fr)); gap: var(--vt-sp-3) var(--vt-sp-4); }
 .vt-app .vt-ext-item { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .vt-app .vt-ext-item .vt-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
