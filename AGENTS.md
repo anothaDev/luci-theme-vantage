@@ -105,10 +105,10 @@ add-ons to it) plus offline tooling. No npm, no
    `luci-app-vantage-aps-view`. The dashboard's groups grant nothing of
    the add-on. The traffic add-on (`luci-app-vantage-traffic`) runs
    nothing and writes only its counters' state in
-   `/var/run/vantage-traffic` (0700, files 0600): its plugin's reads and
-   writes are listed line by line in `test_acl_policy.js`, its answer
-   holds MACs and byte counts only, and its one call is its own group's;
-   the dashboard's groups grant nothing of it.
+   `/var/run/vantage-traffic` (root's, 0700, files 0600): its plugin's
+   reads and writes are listed line by line in `test_acl_policy.js`, its
+   answer holds MACs and byte counts only, and its one call is its own
+   group's; the dashboard's groups grant nothing of it.
 7. **Theme and app stay independent.** The app is styled only through the
    theme's `--v-*` custom properties, each with a fallback, and its classes
    are `vt-*` scoped under `.vt-app`. The theme doesn't style app

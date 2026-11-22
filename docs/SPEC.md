@@ -1370,7 +1370,8 @@ measured on few devices so far.
   empty; the plugin never switches it on. null: there is no connection
   table. `partial`: false, or why the read stopped early (`time`,
   `entries`). `{}` when there is no answer to give: no read has finished
-  yet and one is running, or the state directory is not the plugin's.
+  yet and one is running, the state directory is not the plugin's, or
+  the read's state could not be written (a full `/tmp`).
   No remote address, port or destination ever leaves the router: a MAC
   and two numbers a host.
 - **Out of rpcd.** The plugin is an executable rpcd plugin
@@ -1380,15 +1381,28 @@ measured on few devices so far.
   LuCI up; it kills a call after its own timeout (30 s as OpenWrt sets
   it). Nothing runs while nobody asks. Between calls the plugin keeps its
   state in `/var/run/vantage-traffic`, which it makes 0700 and refuses
-  when it is anything else (a link, a file, open to others): `state.json`
-  (`{ v, flows: { key: [ orig bytes, reply bytes, read at ] }, totals: {
-  mac: [ rx, tx, counted at ] } }`, about 100 bytes an entry, 1.5 MiB at
-  16,384 entries, not read past 4 MiB: the counting starts over),
-  `answer.json` (the last answer) and a lock file; both files are
-  written 0600 beside the one they replace, then put in its place, so a
-  call rpcd kills leaves the last whole one. Nothing in them is readable
-  by any account but root's. A reboot clears them; the package's removal
-  script deletes the directory and has rpcd let go of the plugin.
+  when it is anything else (a link, a file, another account's, open to
+  others): `state.json` (`{ v, at, flows: { key: [ orig bytes, reply
+  bytes, read at ] }, totals: { mac: [ rx, tx, counted at ] } }`, `at`
+  when the read that wrote it began; about 100 bytes an entry, 1.5 MiB
+  at 16,384 entries), `answer.json` (the last answer) and a lock file,
+  0600 too. Both files are written 0600 beside the one they replace,
+  then put in its place, so a call rpcd kills leaves the last whole one;
+  a write that fails leaves nothing beside it, and the answer is written
+  only after the state it comes from (without it the call gets `{}`, and
+  the next read counts from the state the last answer came from). The
+  largest state the plugin can write is its bound for reading one back,
+  `MAX_STATE`, about 7.4 MiB: 2 × 16,384 entries with keys of 160
+  characters (the table's are 115 at most; a longer one is not counted)
+  and every number 20 characters, 512 hosts. A state larger than that,
+  or with anything the plugin does not write (an entry that is not three
+  numbers of at least 0, a key longer than 160 characters, a host that
+  is not a MAC, more than 512 hosts), is not used: the counting starts
+  over. Nothing in them is readable by any account but root's. A reboot
+  clears them; the package's removal script deletes the directory and
+  has rpcd let go of the plugin. A call already running then can make
+  the directory again after the script deleted it: RAM, until the next
+  reboot.
 - **Costs and bounds.** One read serves every caller: for 5 s, or 30 s
   where the theme's Low-power router is on for every browser (a browser
   that picked it for itself asks every 30 s, with its slow poll), less
@@ -1399,21 +1413,50 @@ measured on few devices so far.
   included: the next waits ten times as long as it took when that is
   longer (2 minutes at most), so reading takes about a tenth of one core at
   most, and the answer says so (`took`, `every`, `slow`). The table is
-  read for 2 s and 16,384 entries at most; an entry a read did not reach
-  is known for 10 minutes, so that it does not count twice. At most 512
-  hosts (`dropped`: the rest) and 4,096 neighbour entries. Measured
-  with `dev/traffic/bench.uc`, a read that finds every entry again
-  (state loaded, table counted, state saved): on a desktop's ucode 7 ms
-  at 500 entries, 22 ms at 2,000, 81 ms at 8,000, 162 ms at 16,384, about
-  10 µs an entry, the state's load and save 19 ms of it at 16,384; the
+  read for 2 s and 16,384 entries at most. At most 512 hosts
+  (`dropped`: the rest) and 4,096 neighbour entries.
+- **Entries a read does not see.** A read may not see an entry that is
+  still there: it stops short (`partial`), and even a whole read misses
+  some, since the kernel lists the table by position, from the start
+  again at each read() of about a page, so that an entry removed behind
+  that place hides the next one. Forgotten, such an entry would count
+  whole again when a read sees it. So an entry a read did not see is
+  kept: every one the read before saw, however long ago that was (no
+  read runs while nobody looks), then those seen less than 150 s ago
+  (longer than the 2-minute wait after a slow read); 16,384 at most,
+  those the read before saw first, so all of them. What remains: an
+  entry missed by two reads more than 150 s apart, or pushed out by
+  16,384 others, counts whole when it is seen again; and a new
+  connection with the protocol, addresses and ports of one that ended
+  less than 150 s before (a client that reuses its source port to the
+  same server and port: rare, as clients pick ports at random, and
+  then mostly a lookup of a few hundred bytes) is taken for the old
+  one: with smaller counters it counts from 0, as after a reset (and
+  counts in `zeroed`), with larger ones the old one's last counts are
+  left out of it. The price is a larger state where connections come
+  and go: it holds those that ended in the last 150 s, 16,384 at most.
+- **Measured** with `dev/traffic/bench.uc`, a read that finds every
+  entry again (state loaded and checked, table counted, state saved): on
+  a desktop's ucode 7 ms at 500 entries, 25 ms at 2,000, 94 ms at 8,000,
+  190 ms at 16,384, about 11 µs an entry, the state's load and save 45
+  ms of it at 16,384 (checking the state, about 1.7 µs an entry); the
   process's memory about 19 MiB at 16,384 entries, 5 MiB at 2,000 (a
   router's table is sized by its RAM: 2,048 to 4,096 entries at
-  128 MiB). On a quad-core ARM access point (25.12): 106 ms at 500
-  entries, 383 ms at 2,000, 1,511 ms at 8,000, about 190 µs an entry, and
-  the 2 s limit ends a read near 12,500 entries. On an x86 VM (24.10):
-  6 ms, 22 ms, 90 ms and 179 ms at 16,384, about 11 µs an entry. Before
-  the read left rpcd's process, the same ARM device took 139 ms
-  at 500 entries and 515 ms at 2,000, during which rpcd answered no one.
+  128 MiB). With churn (`bench.uc <dir> churn <entries> <percent>`: that
+  share of the table ends and as many new entries begin between reads
+  5 s apart), 2,000 entries: 5 % (20 a second) keeps 4,900 entries in
+  the state, 466 KiB, a read 35 ms (23 ms when only a partial read kept
+  entries, as before); 20 % (80 a second) 13,600 entries, 1.3 MiB, 78 ms
+  (22 ms), the process's memory 24 MiB (6 MiB); 50 % reaches the
+  16,384 kept, 1.7 MiB, 101 ms. 16,384 entries at 20 %: 32,768, 3.1 MiB,
+  292 ms (165 ms), 52 MiB (26 MiB). On a quad-core ARM access point
+  (25.12), before the state was checked and entries kept after a whole
+  read: 106 ms at 500 entries, 383 ms at 2,000, 1,511 ms at 8,000, about
+  190 µs an entry, and the 2 s limit ends a read near 12,500 entries.
+  On an x86 VM (24.10): 6 ms, 22 ms, 90 ms and 179 ms at 16,384, about
+  11 µs an entry. Before the read left rpcd's process, the same ARM
+  device took 139 ms at 500 entries and 515 ms at 2,000, during which
+  rpcd answered no one.
 - **On the dashboard.** In the Clients list (Live, its sort and bars)
   and in the host's details, for a wired host on a shared port of this
   device whose traffic this device routes: not the gateway, not a host
@@ -1442,17 +1485,19 @@ measured on few devices so far.
   access points add-on grants it, the dashboard's one declare (no
   parameters, a request of its own) and its one call behind the check,
   and the plugin's reads and writes: rtnl, uci's cursor and fs's chmod,
-  lstat, mkdir, open, readfile, rename and writefile only, its two
-  answers to rpcd ("list": the one method, no arguments; "call hosts")
-  and no input read, the table opened for reading, the accounting switch
-  and its own files read bounded, the two neighbour dumps, the one theme
-  option, writes to its own directory only, 0700 and 0600, through a
-  file beside, the lock, and an answer of MACs and counts; altered
-  copies of the plugin are refused. `tests/traffic.test.js` runs the
-  plugin as rpcd does, a process a call, under a host ucode (both
-  parses on every kind of line, counting from call to call, caps, the
-  shared read and the lock, the time budget, the state directory and
-  its modes), `tests/package.test.js` its removal script and
+  lstat, mkdir, open, readfile, rename, unlink (of its own file beside,
+  only) and writefile only, its two answers to rpcd ("list": the one
+  method, no arguments; "call hosts") and no input read, the table
+  opened for reading, the accounting switch and its own files read
+  bounded, the two neighbour dumps, the one theme option, writes to its
+  own directory only, root's, 0700 and 0600, through a file beside, the
+  lock, 0600, and an answer of MACs and counts; altered copies of the
+  plugin are refused. `tests/traffic.test.js` runs the plugin as rpcd
+  does, a process a call, under a host ucode (both parses on every kind
+  of line, counting from call to call, caps, the shared read and the
+  lock, the time budget, entries a read did not see, the largest state,
+  states it did not write, a write that fails, the state directory, its
+  owner and its modes), `tests/package.test.js` its removal script and
   `tests/traffic-view.test.js` the dashboard's side.
 
 ## 5. Later

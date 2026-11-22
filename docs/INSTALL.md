@@ -758,9 +758,14 @@ about 12,500 entries the 2 s limit ends the read); on an x86 VM 22 ms at
 2,000 entries and 0.2 s at 16,384. It is shared by everyone
 looking, one at a time, every 5 s at most; a slow one makes the next wait
 ten times as long as it took, so the reads take about a tenth of one core at
-most, and the table is read for 2 s at most. `cat /proc/net/nf_conntrack
+most, and the table is read for 2 s at most. Where connections come and
+go quickly a read costs more: the add-on keeps those that ended in the
+last 150 s (16,384 at most), so that one a read missed does not count
+twice; on a desktop, 2,000 entries of which 80 end each second take
+78 ms a read instead of 22 ms. `cat /proc/net/nf_conntrack
 | wc -l` tells how many entries your router has now;
-`dev/traffic/bench.uc` in the source measures what a read costs it.
+`dev/traffic/bench.uc` in the source measures what a read costs it
+(`bench.uc <dir> churn` with connections coming and going).
 
 Things that make the numbers low, which the device's details point out:
 
@@ -799,8 +804,9 @@ removes a package that another one still needs.
 
 Nothing stays behind on the router: the removal deletes
 `/var/run/vantage-traffic` and has rpcd let go of the plugin (a reload,
-as installing a LuCI package does). The dashboard stops asking at the
-next reload of the page.
+as installing a LuCI package does); a read running at that moment can
+make the folder again, in RAM until the next reboot. The dashboard
+stops asking at the next reload of the page.
 
 ## Switch themes
 
