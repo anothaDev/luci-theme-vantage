@@ -149,6 +149,23 @@ test('contract: an answer of version 1 with a title, read field by field; text m
 	assert.deepEqual([ t.items[0].label, Array.from(t.items[0].text).length ], [ 'L�', 48 ]);
 });
 
+test('contract: a title, note, label or text with nothing to see is none; one with something to see keeps what it has', () => {
+	/* alone, each shows nothing: zero-width joiners, the Braille blank, variation selectors, spaces, a combining mark */
+	const blank = [ '\u200d', '\u200c', '\u2800', '\ufe0f', '\u{E0100}', '\u200d\u200c\u2800\ufe0f\u{E0100}', '\u00a0\u3000', '\u0301', '\u{1D173}', '\ue000' ];
+	for (const s of blank) {
+		const at = JSON.stringify(s);
+		assert.equal(model.tile({ v: 1, title: s }), null, 'title ' + at);
+		const t = model.tile({ v: 1, title: 'T', note: s, items: [ { label: s, value: 1 }, { label: 'a', text: s }, { label: 'b', value: 2 } ] });
+		assert.equal(t.note, null, 'note ' + at);
+		assert.deepEqual(t.items.map(x => x.label), [ 'b' ], 'label and text ' + at);
+	}
+	/* something to see: a letter, a digit, punctuation, a symbol (an emoji, the mark for what safeText replaced) */
+	for (const s of [ 'a', '7', '-', '\u{1F600}', '\u200b', '\u0301a' ]) assert.ok(model.tile({ v: 1, title: s }), JSON.stringify(s));
+	assert.equal(model.tile({ v: 1, title: '\u200b' }).title, '\ufffd', 'replaced, and that shows');
+	/* invisible characters beside visible ones stay: two labels can look alike (TILES.md says so) */
+	assert.deepEqual(model.tile({ v: 1, title: 'T', items: [ { label: 'Signal', value: 1 }, { label: 'Signal\u200d', value: 2 } ] }).items.map(x => x.value), [ 1, 2 ]);
+});
+
 test('contract: items of the form only, at most eight, one a label; units, rates, meters and levels from fixed lists', () => {
 	const it = x => model.tile({ v: 1, title: 'T', items: [ x ] }).items[0] || null;
 	assert.equal(it({ label: 'a' }), null, 'neither value nor text');

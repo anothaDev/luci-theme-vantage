@@ -930,9 +930,12 @@ the contract. For provider authors: [`docs/TILES.md`](TILES.md).
   `rate` only on a counter of `''` or `B` that is not negative; `max`
   above 0 and not with `rate`; `trend` values only. At most 8 items of
   the first 32; unknown keys are ignored, an item not of the form is
-  left out alone. Text goes through `fmt.safeText` (control,
-  bidirectional and invisible characters replaced, cut with an
-  ellipsis).
+  left out alone. Text goes through `fmt.safeText` (control and
+  bidirectional characters and a list of zero-width ones replaced, not
+  every character that shows nothing: U+200C, U+200D, U+FE0E, U+FE0F and
+  U+E0100-E01EF stay; cut with an ellipsis), and a text with nothing to
+  see is none: `TILE_VISIBLE`, one character outside `\p{Z}`, `\p{C}`,
+  `\p{M}` and U+2800.
 - **Discovery.** Once a page the view calls `session access` without an
   object and a function: rpcd then answers the session's own ACL,
   `{ scope: { object: [ method ] } }` (`session.c`,

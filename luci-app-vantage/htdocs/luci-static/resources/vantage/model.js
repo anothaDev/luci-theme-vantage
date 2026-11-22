@@ -79,6 +79,12 @@ var TILE_PAGE = /^admin(\/[A-Za-z0-9_-]{1,32}){1,4}$/;
 var TILE_EVERY_MIN = 5, TILE_EVERY_MAX = 300;
 /* |value| below this: a counter of bytes or events, never a float's noise */
 var TILE_NUM_MAX = 1e15;
+/* a text with something to see, after fmt.safeText (whose U+FFFD
+   counts): a letter, digit, punctuation mark or symbol, but not the
+   Braille blank (U+2800, a symbol that shows nothing). Spaces (Z),
+   control, format and private-use characters (C) and combining marks (M)
+   alone do not count */
+var TILE_VISIBLE = /[^\p{Z}\p{C}\p{M}\u2800]/u;
 
 /* the Ethernet ports the Ports tile lists at most: a 48-port switch with
    its uplinks fits */
@@ -1005,15 +1011,16 @@ return baseclass.extend({
 	   A key it does not know is left out, so a later version can add
 	   one; an item not of this form is left out, and an answer without
 	   v 1 and a title is none. Text is made safe and cut to its length
-	   (fmt.safeText). -> { title, icon, state, note, every, page: [ step ]
-	   | null, items: [ { label, value, text, unit, rate, max, level,
-	   trend } ] }; value is null for a text, text null for a value */
+	   (fmt.safeText), and one with nothing to see is none (TILE_VISIBLE).
+	   -> { title, icon, state, note, every, page: [ step ] | null, items:
+	   [ { label, value, text, unit, rate, max, level, trend } ] }; value
+	   is null for a text, text null for a value */
 	TILE_ICONS: TILE_ICONS,
 	tile: function(reply) {
 		function str(v, max) {
 			if (typeof v !== 'string') return null;
 			v = fmt.safeText(v.trim(), max);
-			return v ? v : null;
+			return v && TILE_VISIBLE.test(v) ? v : null;
 		}
 		function level(v) { return TILE_LEVELS.indexOf(v) >= 0 ? v : null; }
 		function value(v) { return finite(v) && Math.abs(v) < TILE_NUM_MAX ? v : null; }

@@ -84,8 +84,15 @@ item: { label, value | text, unit?, rate?, max?, level?, trend? }
 | `level` | `ok`, `warn`, `err` or `off` | The value's colour: amber for `warn`, red for `err`, grey for `off`; `warn` and `err` also as a word for screen readers. |
 | `trend` | `true` | The page keeps this value (5 minutes) and draws a small line of it, from its lowest to its highest value in that time. Values only. |
 
-Text is cut to its length with an ellipsis, and control, bidirectional
-and invisible characters are replaced with `�`. Numbers come out as
+Text is cut to its length with an ellipsis. Control characters, the
+bidirectional controls and a list of characters that show nothing (the
+zero-width space, the word joiner, the soft hyphen, the Hangul fillers,
+tag characters and others) are replaced with `�`. Not every such
+character is: the joiners and variation selectors that scripts and
+emoji need (U+200C, U+200D, U+FE0E, U+FE0F, U+E0100 to U+E01EF) stay,
+so two labels can still look alike. A title, note, label or text with
+nothing to see counts as none: it needs a letter, a digit, punctuation
+or a symbol other than U+2800. Numbers come out as
 the dashboard writes its own: `12 345`, `85%`, `23.5 ms`, `1d 1h`,
 `−97 dBm`, `4.5 dB`, `1800 MHz`, `1.50 KiB`, `2.5 Mbit/s`, a fraction
 with three digits. There is no way to send markup, a style, a colour,
