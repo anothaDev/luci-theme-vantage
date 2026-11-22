@@ -127,6 +127,21 @@
  *   interfaces only, and publishes vantage.collector report only;
  * - the shared checks (vantage.aps) import nothing; the key line is made
  *   and known again there, in one form.
+ *
+ * luci-app-vantage-traffic, the opt-in, experimental per-device traffic
+ * (#110; VANTAGE_TRAFFIC_PKG: another copy of it):
+ *
+ * - one group, `luci-app-vantage-traffic`: luci.vantage.traffic hosts to
+ *   read and nothing else, no write section; no group of the dashboard
+ *   or the add-on grants the call, and it grants nothing of theirs;
+ * - its plugin (luci.vantage-traffic) registers exactly that method,
+ *   which takes no argument; it imports rtnl, uci's cursor and fs's open
+ *   and readfile only, opens /proc/net/nf_conntrack to read it line by
+ *   line, reads the accounting switch (bounded), makes one read-only
+ *   neighbour dump each for IPv4 and IPv6 and reads one uci option, the
+ *   theme's vantage_theme.appearance.power; it writes nothing, runs
+ *   nothing, and its answer holds MACs and counts, never an address;
+ *   altered copies of it check that these rules catch each breach.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -168,6 +183,12 @@ const READ_UBUS = {
    or for a login without that group, the call fails and the dashboard
    shows no access points. */
 const COLLECTOR_CALL = 'vantage.collector report';
+/* And luci-app-vantage-traffic's counters (#110, experimental): the bytes
+   from and to each host as this router's connection tracking counts them,
+   by MAC; the plugin takes no argument and writes nothing. The package's
+   own group grants it (TRAFFIC_GROUP), no group of the dashboard. */
+const TRAFFIC_CALL = 'luci.vantage.traffic hosts';
+const TRAFFIC_GROUP = 'luci-app-vantage-traffic';
 /* And LuCI's own WireGuard status (luci-proto-wireguard's rpcd plugin):
    `wg show all dump` by interface, each with its peers (name, public key,
    endpoint, allowed IPs, last handshake, byte counters, keepalive); the
@@ -1584,5 +1605,130 @@ test('add-on: the shared checks import nothing and call nothing outside themselv
 	})) {
 		assert.notEqual(src, apsModule, name + ': the mutation applies');
 		assert.throws(() => checkModuleSource(src), assert.AssertionError, name);
+	}
+});
+
+/* -------------------------------------------- luci-app-vantage-traffic */
+
+const TRAFFIC_PKG = path.resolve(process.env.VANTAGE_TRAFFIC_PKG || path.join(__dirname, '..', 'luci-app-vantage-traffic'));
+const trafficFile = rel => fs.readFileSync(path.join(TRAFFIC_PKG, rel), 'utf8');
+const trafficAcl = JSON.parse(trafficFile('root/usr/share/rpcd/acl.d/luci-app-vantage-traffic.json'));
+const trafficPlugin = trafficFile('root/usr/share/rpcd/ucode/luci.vantage-traffic');
+
+test('traffic: one group, luci.vantage.traffic hosts to read and nothing else; no group of the dashboard or the add-on grants it', () => {
+	assert.deepEqual(Object.keys(trafficAcl), [ TRAFFIC_GROUP ]);
+	const g = trafficAcl[TRAFFIC_GROUP];
+	assert.deepEqual(Object.keys(g).sort(), [ 'description', 'read' ]);
+	assert.deepEqual(g.read, { ubus: { 'luci.vantage.traffic': [ 'hosts' ] } });
+	assert.match(g.description, /no remote addresses/);
+	assert.match(g.description, /Experimental/);
+	for (const [ name, grp ] of Object.entries(acl).concat(Object.entries(apsAcl))) {
+		assert.notEqual(name, TRAFFIC_GROUP);
+		for (const kind of [ 'read', 'write' ])
+			for (const k of pairs((grp[kind] || {}).ubus)) assert.ok(!k.startsWith('luci.vantage.traffic '), `${name}.${kind}: ${k}`);
+	}
+	assert.ok(!grantedCalls().has(TRAFFIC_CALL));
+});
+
+/* The plugin's source rules: every line of code (comment lines left out)
+   that mentions one of these names, as for the add-on (checkPins) */
+const TRAFFIC_PINS = [
+	[ '\\b(?:open|readfile)\\b', [
+		'import { open, readfile } from \'fs\';',
+		'let v = readfile(ACCT, 8);',
+		'let acct = acct_on(), f = (acct !== false) ? open(TABLE, \'r\') : null;'
+	] ],
+	[ '\\b(?:TABLE|ACCT|THEME)\\b', [
+		'const TABLE = \'/proc/net/nf_conntrack\';',
+		'const ACCT = \'/proc/sys/net/netfilter/nf_conntrack_acct\';',
+		'const THEME = \'vantage_theme\';    // read only: is Low-power router on',
+		'return cursor().get(THEME, \'appearance\', \'power\') == \'low\';',
+		'let v = readfile(ACCT, 8);',
+		'let acct = acct_on(), f = (acct !== false) ? open(TABLE, \'r\') : null;'
+	] ],
+	[ '\\bcursor\\b', [
+		'import { cursor } from \'uci\';',
+		'return cursor().get(THEME, \'appearance\', \'power\') == \'low\';'
+	] ],
+	/* two read-only dumps, the neighbour tables of IPv4 and IPv6 */
+	[ '\\b(?:rtnl|family)\\b', [
+		'import * as rtnl from \'rtnl\';',
+		'for (let family in [ rtnl.const.AF_INET, rtnl.const.AF_INET6 ]) {',
+		'let dump = rtnl.request(rtnl.const.RTM_GETNEIGH, rtnl.const.NLM_F_DUMP, { family });'
+	] ],
+	/* the table: read line by line, closed, nothing else */
+	[ '\\bf\\b', [
+		'const RE_MAC = /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/;',
+		'function feed(f, neigh, now, stop, st) {',
+		'for (let l = f.read(\'line\'); length(l); l = f.read(\'line\')) {',
+		'let acct = acct_on(), f = (acct !== false) ? open(TABLE, \'r\') : null;',
+		'if (f) {',
+		'feed(f, neighbours(), t0, t0 + STOP_MS, st);',
+		'f.close();'
+	] ],
+	/* the answer: a MAC and two counts a host, and the read's numbers */
+	[ '\\bpush\\(out\\b|\\br\\.(?:st|acct|hosts)\\b', [
+		'push(out, { mac: k, rx: totals[k].rx, tx: totals[k].tx });',
+		'v: 1, at: t0, took, every, slow, low, acct: r.acct,',
+		'entries: r.st.entries, partial: r.st.partial, offloaded: r.st.offloaded, hw: r.st.hw,',
+		'zeroed: r.st.zeroed, dropped: r.st.dropped, hosts: r.hosts'
+	] ],
+	/* one method, which takes nothing */
+	[ '\\b(?:call|args)\\b', [ 'call: function() {' ] ]
+];
+
+function checkTrafficSource(src) {
+	const code = codeOf(src, 'the traffic plugin');
+	assert.deepEqual(linesWith(code, 'import'), [ 'import * as rtnl from \'rtnl\';', 'import { cursor } from \'uci\';', 'import { open, readfile } from \'fs\';' ]);
+	const word = /\b(system|popen|exec|require|loadfile|loadstring|include|render|writefile|unlink|rename|mkdir|global|getenv|sleep|exit)\b/.exec(code);
+	assert.equal(word, null, word && `"${word[1]}" is banned in the traffic plugin`);
+	assert.doesNotMatch(code, /(^|[^.\w])call\s*\(/m, 'the call() builtin is banned in the traffic plugin');
+	for (const name of [ 'TABLE', 'ACCT', 'THEME' ])
+		assert.equal([ ...code.matchAll(new RegExp('\\b' + name + '\\s*=(?!=)', 'g')) ].length, 1, name + ' is defined once and never assigned');
+	assert.match(src, /^return \{ 'luci\.vantage\.traffic': methods \};\s*$/m);
+	const table = /^const methods = \{\n([\s\S]*?)\n\};$/m.exec(src);
+	assert.ok(table, 'methods table');
+	assert.deepEqual([ ...table[1].matchAll(/^\t([A-Za-z_]+): \{$/gm) ].map(m => m[1]), [ 'hosts' ]);
+	checkPins(src, 'the traffic plugin', TRAFFIC_PINS);
+}
+
+test('traffic: the plugin registers the granted method, takes nothing, reads only what it lists, writes and runs nothing', () => {
+	checkTrafficSource(trafficPlugin);
+});
+
+test('traffic: the plugin rules catch each breach', () => {
+	const at = '\tlet acct = acct_on(), f = (acct !== false) ? open(TABLE, \'r\') : null;\n';
+	assert.ok(trafficPlugin.includes(at), 'insertion point');
+	const add = code => trafficPlugin.replace(at, at + '\t' + code + '\n');
+	const swap = (from, to) => { assert.ok(trafficPlugin.includes(from), from); return trafficPlugin.replace(from, to); };
+	const MUTANTS = {
+		'fs write': swap('import { open, readfile } from \'fs\';', 'import { open, readfile, writefile } from \'fs\';'),
+		'a second import': swap('import { cursor } from \'uci\';', 'import { cursor } from \'uci\';\nimport { connect } from \'ubus\';'),
+		'another file read': add('let pw = readfile(\'/etc/shadow\', 8);'),
+		'the table opened for writing': swap('open(TABLE, \'r\')', 'open(TABLE, \'w\')'),
+		'a shadowed path': add('let TABLE = \'/etc/shadow\';'),
+		'the switch read unbounded': swap('readfile(ACCT, 8)', 'readfile(ACCT)'),
+		'the switch turned on': add('writefile(ACCT, \'1\');'),
+		'a program': add('system([ \'/sbin/reboot\' ]);'),
+		'the call builtin': add('call(print, null, null, \'x\');'),
+		'a builtin by name': add('global[\'sys\' + \'tem\'](\'reboot\');'),
+		'code from text': add('loadstring(\'return 1\')();'),
+		'the theme config written': swap('return cursor().get(THEME, \'appearance\', \'power\') == \'low\';', 'let c = cursor(); c.set(THEME, \'appearance\', \'power\', \'low\'); c.commit(THEME);\n\treturn false;'),
+		'another config read': add('let lan = cursor().get(\'network\', \'lan\', \'ipaddr\');'),
+		'the cursor by reference': add('let mk = cursor;'),
+		'a netlink write': swap('rtnl.const.RTM_GETNEIGH, rtnl.const.NLM_F_DUMP', 'rtnl.const.RTM_DELNEIGH, rtnl.const.NLM_F_DUMP'),
+		'another netlink request': add('rtnl.request(rtnl.const.RTM_NEWNEIGH, 0, {});'),
+		'the bridge table dumped': swap('[ rtnl.const.AF_INET, rtnl.const.AF_INET6 ]', '[ rtnl.const.AF_INET, rtnl.const.AF_BRIDGE ]'),
+		'rtnl by reference': add('let nl = rtnl;'),
+		'a remote address in the answer': swap('push(out, { mac: k, rx: totals[k].rx, tx: totals[k].tx });', 'push(out, { mac: k, rx: totals[k].rx, tx: totals[k].tx, peers: totals[k].peers });'),
+		'the entries in the answer': swap('zeroed: r.st.zeroed, dropped: r.st.dropped, hosts: r.hosts', 'zeroed: r.st.zeroed, dropped: r.st.dropped, hosts: r.hosts, flows'),
+		'an argument taken': swap('\thosts: {\n\t\tcall: function() {', '\thosts: {\n\t\targs: { cmd: \'cmd\' },\n\t\tcall: function() {'),
+		'a second method': swap('const methods = {\n', 'const methods = {\n\treset: {\n\t\tcall: function() { flows = {}; }\n\t},\n'),
+		'the handle written': add('f?.write(\'x\');'),
+		'the handle passed on': add('let g = f;')
+	};
+	for (const [ name, src ] of Object.entries(MUTANTS)) {
+		assert.notEqual(src, trafficPlugin, name + ': the mutation applies');
+		assert.throws(() => checkTrafficSource(src), assert.AssertionError, name);
 	}
 });

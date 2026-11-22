@@ -118,11 +118,11 @@ test('verify_built_apk: Makefile parsing and generated scripts', () => {
 	assert.equal(V.parseMakefile(floor('rpcd (>=$(PKG_VERSION))'), 'M').minDepends, 'rpcd');
 	for (const bad of [ 'wget (>=$(PKG_VERSION))', 'rpcd (>=1.0)', 'rpcd (=$(PKG_VERSION))', 'rpcd', 'rpcd (>=$(PKG_VERSION)), luci-base (>=$(PKG_VERSION))', '' ])
 		assert.throws(() => V.parseMakefile(floor(bad), 'M'), /LUCI_EXTRA_DEPENDS is not/, bad);
-	for (const name of [ 'luci-theme-vantage', 'luci-app-vantage', 'luci-app-vantage-aps' ]) {
+	for (const name of [ 'luci-theme-vantage', 'luci-app-vantage', 'luci-app-vantage-aps', 'luci-app-vantage-traffic' ]) {
 		const real = V.parseMakefile(fs.readFileSync(path.join(ROOT, name, 'Makefile'), 'utf8'), name);
 		assert.equal(real.name, name);
-		/* the add-on comes with the dashboard, which brings luci-base */
-		assert.ok(real.depends.includes(name === 'luci-app-vantage-aps' ? 'luci-app-vantage' : 'luci-base'));
+		/* the add-ons come with the dashboard, which brings luci-base */
+		assert.ok(real.depends.includes(/^luci-app-vantage-/.test(name) ? 'luci-app-vantage' : 'luci-base'));
 	}
 	assert.equal(V.substituteVersion('<script src="{{ resource }}/cbi.js"></script> "{{ media }}/x.svg"', 'a.ut', '1.2'),
 		'<script src="{{ resource }}/cbi.js?v=1.2"></script> "{{ media }}/x.svg"');
@@ -381,9 +381,33 @@ test('dashboard: it ships exactly these root files, none of them a program', () 
 
 /* luci.mk installs more than root/ and htdocs/: ucode/ goes to /usr/share/ucode/luci, luasrc/ to the Lua tree, and src/
    is built. Neither package has any of them, so that the two lists above are all that reaches a device */
-test('dashboard and add-on: nothing is installed from a directory the file lists do not cover', () => {
+test('dashboard and add-ons: nothing is installed from a directory the file lists do not cover', () => {
 	for (const pkg of [ 'luci-app-vantage', 'luci-app-vantage-aps' ])
 		assert.deepEqual(fs.readdirSync(path.join(ROOT, pkg)).sort(), [ 'Makefile', 'htdocs', 'po', 'root' ], pkg);
+	assert.deepEqual(fs.readdirSync(path.join(ROOT, 'luci-app-vantage-traffic')).sort(), [ 'Makefile', 'po', 'root' ]);
+});
+
+/* luci-app-vantage-traffic (#110, experimental): a plugin and its ACL
+   group, nothing the device runs and nothing it keeps */
+test('traffic: it ships exactly its plugin and ACL, none of them a program, with no scripts of its own', () => {
+	const TRAFFIC = path.join(ROOT, 'luci-app-vantage-traffic');
+	const files = tree(path.join(TRAFFIC, 'root'), path.join(TRAFFIC, 'root'));
+	assert.deepEqual(files, [
+		'usr/share/rpcd/acl.d/luci-app-vantage-traffic.json',
+		'usr/share/rpcd/ucode/luci.vantage-traffic'
+	]);
+	for (const f of files) {
+		const st = fs.lstatSync(path.join(TRAFFIC, 'root', f));
+		assert.ok(st.isFile(), f + ' is a plain file');
+		assert.equal(st.mode & 0o111, 0, f + ' must not be executable');
+	}
+	const mk = V.parseMakefile(fs.readFileSync(path.join(TRAFFIC, 'Makefile'), 'utf8'), 'luci-app-vantage-traffic/Makefile');
+	assert.deepEqual(mk.depends, [ 'luci-app-vantage', 'rpcd-mod-ucode', 'ucode-mod-fs', 'ucode-mod-rtnl', 'ucode-mod-uci' ]);
+	/* the dashboard of its own release or newer, as for the access points add-on */
+	assert.equal(mk.minDepends, 'luci-app-vantage');
+	assert.deepEqual(V.expectedDepends(mk, true), [ 'luci-app-vantage (>=' + mk.version + ')', 'libc', 'luci-app-vantage', 'rpcd-mod-ucode', 'ucode-mod-fs', 'ucode-mod-rtnl', 'ucode-mod-uci' ]);
+	assert.deepEqual(Object.keys(mk.script).filter(k => mk.script[k] != null), [], 'no install or removal scripts of its own');
+	assert.equal(mk.basename, 'vantage-traffic', 'language packages luci-i18n-vantage-traffic-<lang>');
 });
 
 test('add-on: the collector starts only with an access point paired and dbclient there', () => {
