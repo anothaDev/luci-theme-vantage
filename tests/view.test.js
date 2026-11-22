@@ -4210,3 +4210,20 @@ test('details: a poll rebuilds them, but not under a selected text, and the focu
 		assert.equal(made.length, 5);
 	} finally { global.window = saved.window; if (saved.document === undefined) delete global.document; else global.document = saved.document; }
 });
+
+test('leaf rows: five, then "+n more" opens the rest and "Show fewer" closes them again', () => withFakeDom(() => {
+	const v = loadView({ content: (el, kids) => { el.kids = kids; } });
+	const self = Object.create(v);
+	const el = { vtSig: null, kids: [] };
+	const list = [ 1, 2, 3, 4, 5, 6, 7 ].map(n => ({ mac: '00:00:5e:00:53:0' + n, name: 'h' + n, ips: [ '192.0.2.' + n ], signal: -50, rate: { rx: 1, tx: 1 } }));
+	const rows = () => el.kids.filter(k => k.classList.contains('vt-leaf-row')).length;
+	const last = () => el.kids[el.kids.length - 1];
+	self.paintLeaf(el, list, false);
+	assert.equal(rows(), 5);
+	assert.equal(last().textContent, '+2 more');
+	last().on.click({ preventDefault() {}, stopPropagation() {} });
+	assert.equal(rows(), 7);
+	assert.equal(last().textContent, 'Show fewer');
+	last().on.click({ preventDefault() {}, stopPropagation() {} });
+	assert.equal(rows(), 5);
+}));

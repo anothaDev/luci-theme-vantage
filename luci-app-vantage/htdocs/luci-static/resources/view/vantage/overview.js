@@ -3466,7 +3466,10 @@ return view.extend({
 			var va = a.rate ? a.rate.rx + a.rate.tx : -1, vb = b.rate ? b.rate.rx + b.rate.tx : -1;
 			return vb - va || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 		});
-		var shown = rows.slice(0, MAX), more = rows.length - shown.length;
+		/* the "+n more" line opens the rest, as the WireGuard tile's does
+		   (a click like the rows' own); "Show fewer" closes it again */
+		el.vtAll = el.vtAll === true && rows.length > MAX;
+		var shown = el.vtAll ? rows : rows.slice(0, MAX), more = rows.length - shown.length;
 		/* compact, so the columns fit every card alike: 176, 62.2k, 3.42M
 		   (bit/s, or B/s where the traffic reads in bytes) */
 		function short(bps) {
@@ -3481,7 +3484,7 @@ return view.extend({
 			return [ c.mac, c.name, mid, c.level || '', live ? '↓' + short(r.tx) : '', (c.ips || []).filter(function(ip) { return model.parseIPv4(ip); })[0] || '',
 				live ? '↑' + short(r.rx) : '', live ? '↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx) : '' ];
 		});
-		var sig = JSON.stringify([ cells, more ]);
+		var sig = JSON.stringify([ cells, more, el.vtAll ]);
 		if (el.vtSig === sig) return;
 		el.vtSig = sig;
 		/* a row opens the device's details, the click its own, not the
@@ -3498,7 +3501,9 @@ return view.extend({
 				E('span', { 'class': 'vt-leaf-rate vt-tn' }, [ x[4] ]),
 				E('span', { 'class': 'vt-leaf-rate vt-tn' }, [ x[6] ])
 			]);
-		}).concat(more > 0 ? [ E('span', { 'class': 'vt-leaf-more' }, [ _('+%d more').format(more) ]) ] : []));
+		}).concat(more > 0 || el.vtAll ? [ E('span', { 'class': 'vt-leaf-more', 'title': el.vtAll ? _('Show fewer') : _('Show all'),
+			'click': function(ev) { ev.preventDefault(); ev.stopPropagation(); el.vtAll = !el.vtAll; el.vtSig = null; self.paintLeaf(el, list, wired); } },
+			[ el.vtAll ? _('Show fewer') : _('+%d more').format(more) ]) ] : []));
 	},
 
 	scheduleWires: function() {
