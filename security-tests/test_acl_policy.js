@@ -2240,7 +2240,6 @@ test('traffic: the plugin rules catch each breach', () => {
      defineProperty, defineProperties, setPrototypeOf, getPrototypeOf,
      __proto__, __defineGetter__/__defineSetter__ or Reflect. */
 const BROWSER_PKGS = [ PKG, APS_PKG ];
-const THEME_PKG = path.resolve(process.env.VANTAGE_THEME_PKG || path.join(__dirname, '..', 'luci-theme-vantage'));
 const browserFiles = pkgs => pkgs.flatMap(p => fs.existsSync(path.join(p, 'htdocs')) ? jsFiles(path.join(p, 'htdocs')).map(f => ({ file: path.relative(path.dirname(p), f), text: fs.readFileSync(f, 'utf8') })) : []);
 const RPC_EXCEPTIONS = { 'vantage/fmt.js': [ 'no DOM, no rpc. Every' ] };
 const FETCHES = {
