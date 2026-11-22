@@ -544,6 +544,19 @@ test('a model built again between polls (names changed: rerender) keeps the prov
 	assert.equal(JSON.stringify(self.st.ext.dns), hist, 'the same answer again: no new sample, no new rate');
 }));
 
+test('a provider\'s words are looked up in LuCI\'s catalogues (title, note, labels); a text value is shown as it came', () => withDom(() => {
+	const saved = global._;
+	const de = { 'Mobile backup': 'Mobiles Backup', 'Standby: the main line is up': 'Bereitschaft: die Hauptleitung läuft', 'Operator': 'Betreiber', 'Home': 'Startseite' };
+	global._ = s => Object.prototype.hasOwnProperty.call(de, s) ? de[s] : s;
+	try {
+		const self = page({ modem: ans({ v: 1, title: 'Mobile backup', note: 'Standby: the main line is up', items: [ { label: 'Operator', text: 'Home' } ] }) });
+		const tile = self.tiles.xmodem;
+		assert.equal(tile.find('vt-ext-name')[0].textContent, 'Mobiles Backup');
+		assert.equal(tile.find('vt-ext-note')[0].textContent, 'Bereitschaft: die Hauptleitung läuft');
+		assert.deepEqual([ tile.find('vt-label')[0].textContent, tile.find('vt-ext-val')[0].textContent ], [ 'Betreiber', 'Home' ], 'a value, even one that is a word LuCI translates');
+	} finally { global._ = saved; }
+}));
+
 test('a page without providers builds, names and paints no tile beyond the dashboard\'s own', () => withDom(() => {
 	const self = page({});
 	assert.deepEqual([ self.m.extra, Object.keys(self.tiles), Object.keys(self.tileNames) ], [ [], [], [] ]);

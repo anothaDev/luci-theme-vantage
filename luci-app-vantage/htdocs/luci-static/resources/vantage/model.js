@@ -920,7 +920,8 @@ return baseclass.extend({
 	     icon   one of TILE_ICONS, the dashboard's own drawings
 	     state  'ok', 'warn', 'err' or 'off': the dot by its name. Never a
 	            health check, never the page title's mark
-	     note   one line under the name, up to 64 characters
+	     note   one line under the name, up to 64 characters, looked up
+	            as the title is
 	     every  how often its data changes, 5-300 s: it is asked no more
 	            often than that (default: with every slow poll)
 	     page   a LuCI page by its menu path ('admin/network/dhcp'),

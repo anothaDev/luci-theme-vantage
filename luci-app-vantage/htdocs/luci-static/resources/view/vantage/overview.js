@@ -4861,10 +4861,13 @@ return view.extend({
 	   name and icon (the dashboard's own), its dot (never a health check
 	   and never the page title's mark), the link to its LuCI page where
 	   this login's menu has it, under LuCI's name for that page, a note
-	   and its items. A value is written out by its unit, a counter as
-	   its rate between two answers, with a meter or the page's values of
-	   it where it asks for one. Before an answer, after one that cannot
-	   be read and when it does not answer, it says so in words */
+	   and its items. Its words (name, note, labels) are looked up in
+	   LuCI's catalogues, as the dashboard's own are; a text value is a
+	   value (an operator's name) and is shown as it came. A value is
+	   written out by its unit, a counter as its rate between two
+	   answers, with a meter or the page's values of it where it asks
+	   for one. Before an answer, after one that cannot be read and when
+	   it does not answer, it says so in words */
 	paintTile: function(id) {
 		var e = this.extEls[id], t = this.st.ext[id], lid = 'x' + id;
 		if (!e || !t || (this.m.extra || []).indexOf(lid) < 0) return;
@@ -4880,7 +4883,7 @@ return view.extend({
 			return;
 		}
 		patch(e.body, [
-			d.note ? E('p', { 'class': 'vt-hint vt-ext-note' }, [ d.note ]) : '',
+			d.note ? E('p', { 'class': 'vt-hint vt-ext-note' }, [ _(d.note) ]) : '',
 			d.items.length ? E('div', { 'class': 'vt-ext-items' }, d.items.map(function(x) {
 				var r = x.rate ? t.rates[x.label] : null, level = x.level === 'err' ? ' vt-t-err' : x.level === 'warn' ? ' vt-t-warn' : x.level === 'off' ? ' vt-muted' : '';
 				return E('div', { 'class': 'vt-ext-item' }, [
