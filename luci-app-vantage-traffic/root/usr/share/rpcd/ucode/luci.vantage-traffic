@@ -198,7 +198,10 @@ function add(mac, rx, tx, now, st) {
 		if (!rx && !tx)
 			return;
 		if (ntotals >= MAX_HOSTS) {
-			st.dropped++;
+			if (!st.over[mac]) {
+				st.over[mac] = true;
+				st.dropped++;
+			}
 			return;
 		}
 		h = totals[mac] = { rx: 0, tx: 0, at: now };
@@ -282,7 +285,7 @@ function feed(f, neigh, now, stop, st) {
 }
 
 function read(t0) {
-	let st = { entries: 0, counted: 0, noacct: 0, partial: false, offloaded: 0, hw: 0, zeroed: 0, dropped: 0 };
+	let st = { entries: 0, counted: 0, noacct: 0, partial: false, offloaded: 0, hw: 0, zeroed: 0, dropped: 0, over: {} };
 	let acct = acct_on(), f = (acct !== false) ? open(TABLE, 'r') : null;
 
 	if (f) {

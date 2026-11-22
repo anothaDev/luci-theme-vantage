@@ -257,6 +257,15 @@ test('traffic plugin: at most 16384 entries a read and 512 hosts, nothing counte
 	const [ many ] = calls([ call(table(4096, 600, 0), 0, { neigh: neighOf(600) }) ]);
 	assert.equal(many.reply.hosts.length, 512);
 	assert.ok(many.reply.dropped > 0);
+	/* 600 hosts by IPv6 alone, three connections each: 88 left out, each counted once */
+	const six = [], v6 = [];
+	for (let h = 0; h < 600; h++) {
+		const a = '2001:0db8:0000:0000:0000:0000:0001:' + h.toString(16).padStart(4, '0');
+		v6.push(n6('2001:db8::1:' + h.toString(16), '02:00:5e:01:' + (h >> 8).toString(16).padStart(2, '0') + ':' + (h & 255).toString(16).padStart(2, '0')));
+		for (let k = 0; k < 3; k++) six.push(line(at(SIX, { src: a, rdst: a, sport: 20000 + k, ob: 10, rb: 10 })));
+	}
+	const [ cut ] = calls([ call(six, 0, { neigh: { 2: [], 10: v6 } }) ]);
+	assert.deepEqual([ cut.reply.hosts.length, cut.reply.dropped ], [ 512, 88 ], 'hosts, each once, however many entries it has');
 	assert.equal(many.reply.partial, false);
 });
 

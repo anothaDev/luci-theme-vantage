@@ -93,7 +93,10 @@ function add(mac, rx, tx, now, st) {
 		if (!rx && !tx)
 			return;
 		if (ntotals >= MAX_HOSTS) {
-			st.dropped++;
+			if (!st.over[mac]) {
+				st.over[mac] = true;
+				st.dropped++;
+			}
 			return;
 		}
 		h = totals[mac] = { rx: 0, tx: 0, at: now };
@@ -227,7 +230,7 @@ function read(file, neigh, now) {
 	let f = open(file, 'r');
 	if (!f)
 		die(sprintf('cannot read %s\n', file));
-	let st = { entries: 0, counted: 0, noacct: 0, partial: false, offloaded: 0, hw: 0, zeroed: 0, dropped: 0 };
+	let st = { entries: 0, counted: 0, noacct: 0, partial: false, offloaded: 0, hw: 0, zeroed: 0, dropped: 0, over: {} };
 	let t0 = now_ms();
 	feed(f, neigh, now, t0 + 3600000, st);
 	let ms = now_ms() - t0;
