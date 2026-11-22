@@ -1788,9 +1788,12 @@ return view.extend({
 	   trend item's values for the page: the same answer again (between
 	   slow polls, or a model built again: rerender) is no sample */
 	noteTiles: function(m, tiles, now) {
-		var byTile = this.st.ext;
+		var byTile = this.st.ext, ts = this.tileState;
 		m.extra = [];
 		Object.keys(tiles || {}).forEach(function(id) {
+			/* its first answer came after the poll's (which waits 2 s at
+			   most) and said it is not there: no tile (buildProvided) */
+			if (ts && ts[id] && ts[id].off) return;
 			var a = tiles[id], t = byTile[id] || (byTile[id] = { data: null, readable: null, state: 'wait', at: 0, prev: null, rates: Object.create(null), hist: Object.create(null) });
 			m.extra.push('x' + id);
 			if (a.at && a.at !== t.at) {

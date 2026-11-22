@@ -27,10 +27,11 @@ const POLL = { on: true, active() { return this.on; } };
 
 class FNode {
 	constructor(tag) {
-		this.tag = tag; this.attrs = {}; this.childNodes = []; this.on = {}; this.text = null; this.style = {};
+		this.tag = tag; this.attrs = {}; this.childNodes = []; this.on = {}; this.text = null; this.style = { setProperty(k, v) { this[k] = v; } };
 		const self = this;
 		this.classList = {
 			add(c) { const l = (self.attrs.class || '').split(' ').filter(Boolean); if (!l.includes(c)) l.push(c); self.attrs.class = l.join(' '); },
+			remove(c) { self.attrs.class = (self.attrs.class || '').split(' ').filter(x => x && x !== c).join(' '); },
 			toggle(c, on) { const l = (self.attrs.class || '').split(' ').filter(x => x && x !== c); if (on) l.push(c); self.attrs.class = l.join(' '); },
 			contains(c) { return (self.attrs.class || '').split(' ').includes(c); }
 		};
@@ -47,6 +48,7 @@ class FNode {
 	removeChild(n) { this.childNodes.splice(this.childNodes.indexOf(n), 1); return n; }
 	replaceChild(n, o) { this.childNodes[this.childNodes.indexOf(o)] = n; if (n instanceof FNode) n.parent = this; return o; }
 	addEventListener(t, f) { this.on[t] = f; }
+	getBoundingClientRect() { return { height: 100, top: 0, bottom: 100 }; }
 	get textContent() { return this.text != null ? this.text : this.childNodes.map(n => n instanceof FNode ? n.textContent : n.data).join(''); }
 	all() { return [ this ].concat(...this.children.map(c => c.all())); }
 	find(cls) { return this.all().filter(n => (n.attrs.class || '').split(' ').includes(cls)); }
@@ -380,6 +382,53 @@ test('after a slow answer the wait is four minutes at most; a call that was out 
 	const next = await c.poll(5e3);
 	assert.equal(c.asked('dns'), 5, 'asked again at the next poll');
 	assert.equal(next.dns.at, c.t, 'the answer shown is the new one');
+}));
+
+/* the page's grid laid out over tiles made with E() (doLayout), in a window
+   just big enough for it */
+function layOut(self) {
+	const saved = { window: global.window, se: global.document.scrollingElement };
+	global.window = { getComputedStyle: () => ({ getPropertyValue: () => '14' }), setTimeout: () => 1, clearTimeout() {}, requestAnimationFrame: () => 1 };
+	global.document.scrollingElement = { scrollTop: 0 };
+	try { self.doLayout(); }
+	finally { global.window = saved.window; global.document.scrollingElement = saved.se; }
+}
+
+test('a provider whose first answer comes after the poll\'s 2 s and says it is not there, before the page is built: the grid is laid out without it', () => tilePolls(async c => {
+	c.acl = dump({ 'vantage.tile.dns': [ 'status' ], 'vantage.tile.abc': [ 'status' ] });
+	let fail;
+	c.answer.dns = () => new Promise((_, rej) => { fail = rej; });
+	c.answer.abc = () => Promise.resolve({ v: 1, title: 'A' });
+	/* load()'s poll: its answers at the deadline */
+	const p = c.self.askTiles();
+	await new Promise(r => setImmediate(r));
+	c.timers[0].f();
+	const provided = await p;
+	assert.deepEqual(Object.keys(provided), [ 'abc', 'dns' ]);
+	/* the answer comes in while the rest of load() is still out */
+	fail(new Error(GONE));
+	await new Promise(r => setImmediate(r));
+	assert.equal(c.self.tileState.dns.off, true);
+	/* render(): the model from that poll, then the tiles, then the layout */
+	withDom(() => {
+		const self = c.self;
+		self.st = { ext: Object.create(null) };
+		self.m = { wired: false };
+		self.noteTiles(self.m, provided, c.t);
+		assert.deepEqual(self.m.extra, [ 'xabc' ], 'the tiles this page has');
+		self.tiles = {}; self.tileNames = {}; self.ov = {};
+		layout.TILES.forEach(id => { self.tiles[id] = new FNode('section'); });
+		assert.deepEqual(self.buildProvided(), [ 'xabc' ]);
+		const grid = new FNode('div');
+		grid.clientWidth = 1200;
+		grid.setAttribute('class', 'vt-grid vt-grid-wait');
+		self.el = { grid, ghost: new FNode('div') };
+		self.layouts = Object.create(null); self.editing = false; self.drag = null;
+		layOut(self);
+		assert.equal(grid.getAttribute('class'), 'vt-grid', 'the grid is shown');
+		assert.deepEqual(self.lay.list.filter(e => layout.isExtra(e.id)).map(e => e.id), [ 'xabc' ]);
+		assert.deepEqual(self.lay.extra, [ 'xabc' ]);
+	});
 }));
 
 test('a provider\'s call holds up a poll for 2 s at most; while it is out no second one is made and no later poll waits', () => tilePolls(async c => {
