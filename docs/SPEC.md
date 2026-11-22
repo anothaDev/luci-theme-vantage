@@ -1156,9 +1156,13 @@ dashboard package itself stays read-only.
   checked (its version line is quoted in `dbclient`'s error text; a
   disconnect ends `dbclient` with 0) reads as `unreachable`. A report's
   text is counted before it is
-  parsed (at most 1280 objects and arrays and 4096 commas): `json()`
+  parsed (at most 2048 objects and arrays and 8192 commas): `json()`
   builds every value before a check can drop one, and 128 KiB of empty
-  objects took 66 MB. After a pause in looking, the last report stands
+  objects took 66 MB. The fullest report has 949 and 6676 since each
+  station carries its link and each port the switch's counters, and its
+  free text can add 639 to either; routers of 1.1.0 and 1.1.1 refuse
+  more than 1280 and 4096, so an access point with more than about 150
+  stations has its reports refused by them. After a pause in looking, the last report stands
   until the next fetch has ended or could not be started; an access
   point whose fetch before the pause had failed waits for that fetch.
   An upgrade restarts the collector: the init script

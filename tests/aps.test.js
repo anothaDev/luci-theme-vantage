@@ -1243,7 +1243,7 @@ test('collector: a report is counted before it is parsed', { skip: NO_UCODE }, (
 	const head = '{"v":1,"name":"x","ssids":[', objects = n => head + Array(n).fill('{}').join(',') + ']}';
 	const hostile = objects(Math.floor((131072 - head.length - 2 + 1) / 3));
 	assert.ok(hostile.length <= 131072 && hostile.length > 131000 && JSON.parse(hostile).v === 1, 'within the size limit, and JSON');
-	for (const out of [ hostile, objects(1280), '{"v":1,"x":[' + Array(4098).fill('0').join(',') + ']}' ]) {
+	for (const out of [ hostile, objects(2048), '{"v":1,"x":[' + Array(8194).fill('0').join(',') + ']}' ]) {
 		const { results } = runCollector({ hosts: { '192.0.2.10': { out } } }, [ ASK, wait(2), ASK ]);
 		assert.deepEqual([ results[2].aps[0].state, results[2].aps[0].error, results[2].aps[0].report ], [ 'error', 'invalid', null ], out.length + ' bytes');
 	}
@@ -1261,8 +1261,8 @@ test('collector: a report is counted before it is parsed', { skip: NO_UCODE }, (
 	}
 	/* the two counts, to the byte */
 	const P = t => [ 'parseable', t ];
-	assert.deepEqual(runModule([ P('{}'), P('['.repeat(1280)), P('['.repeat(1281)), P('{'.repeat(1281)), P('{'.repeat(640) + 'x' + '['.repeat(641)), P(','.repeat(4096)), P(','.repeat(4097)),
-		P('{}\u0000' + '{'.repeat(2000)), P(null), P(7) ]), [ true, true, false, false, false, true, false, false, false, false ]);
+	assert.deepEqual(runModule([ P('{}'), P('['.repeat(2048)), P('['.repeat(2049)), P('{'.repeat(2049)), P('{'.repeat(1024) + 'x' + '['.repeat(1025)), P(','.repeat(8192)), P(','.repeat(8193)),
+		P('{}\u0000' + '{'.repeat(3000)), P(null), P(7) ]), [ true, true, false, false, false, true, false, false, false, false ]);
 });
 
 test('collector: the paired list is read again when it changes, even within a second; 1024 stations in a reply', { skip: NO_UCODE }, () => {
@@ -1365,5 +1365,25 @@ test('collector: a report over 128 KiB is read, a field an access point may add 
 		if (state === 'ok') assert.deepEqual([ a.report.name, a.report.wired.length ], [ 'calls-itself-1', 1 ], 'the rest of it, as ever');
 		/* what dbclient wrote is gone, and was never more than the file limit */
 		assert.ok(!fs.existsSync(sb.p('run/' + AP1.id + '/out')));
+	}
+});
+
+/* The fullest report since each station carries its link (#155) and each port the switch's counters (#156): 256 stations
+   with rx_phy and tx_phy, 32 ports with hw_rx_bytes and hw_tx_bytes, 16 SSIDs, 128 wired hosts, every number at its
+   longest, and the free text (name, model, SSIDs) full of braces or commas, which the counts take as they stand */
+test('collector: the fullest report an access point can make now passes the counts, whatever its free text holds', { skip: NO_UCODE }, () => {
+	const B = 9007199254740991, PHY = { mhz: 640, mcs: 31, nss: 16, ht: false, vht: false, he: false, eht: false, sgi: false };
+	const full = fill => JSON.stringify({ v: 1, name: fill.repeat(63), model: fill.repeat(64), uptime: 2147483647, mac: MAC(99),
+		ssids: Array.from({ length: 16 }, (_, i) => ({ ifname: 'w' + i, bssid: MAC(i), ssid: fill.repeat(32), freq: 5180, channel: 36 })),
+		stations: Array.from({ length: 256 }, (_, i) => ({ mac: '02:00:5e:00:' + (i >> 8).toString(16).padStart(2, '0') + ':' + (i & 255).toString(16).padStart(2, '0'), ifname: 'w' + (i % 16),
+			signal: -120, rx_rate: 100000000, tx_rate: 100000000, rx_bytes: B, tx_bytes: B, connected: 2147483647, rx_phy: PHY, tx_phy: PHY })),
+		ports: Object.fromEntries(Array.from({ length: 32 }, (_, i) => [ 'lan' + i, { speed: 1000000, rx_bytes: B, tx_bytes: B, hosts: 4, hw_rx_bytes: B, hw_tx_bytes: B } ])),
+		wired: Array.from({ length: 128 }, (_, i) => ({ mac: '02:00:5e:01:00:' + i.toString(16).padStart(2, '0'), port: 'lan' + (i % 32) })) }) + '\n';
+	for (const fill of [ 'x', '{', '[', ',' ]) {
+		const out = full(fill);
+		const { results } = runCollector({ hosts: { '192.0.2.10': { out } } }, [ ASK, wait(2), ASK ]);
+		const a = results[2].aps[0], r = a.report;
+		assert.deepEqual([ a.state, a.error ], [ 'ok', null ], 'full of ' + fill + ': ' + out.length + ' bytes, ' + out.replace(/[^[{]/g, '').length + ' opened, ' + out.replace(/[^,]/g, '').length + ' commas');
+		assert.deepEqual([ r.ssids.length, r.stations.length, r.wired.length, r.stations[255].rxPhy.mhz ], [ 16, 256, 128, 640 ]);
 	}
 });

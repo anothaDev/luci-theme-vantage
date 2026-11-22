@@ -549,10 +549,13 @@ function moved(error) {
 // 1.5 kB (128 KiB of "{}," took 66 MB). So the text may open at most
 // MAX_OPEN objects and arrays and hold at most MAX_COMMAS commas, counted
 // as bytes wherever they stand, in a string too. The fullest report an
-// access point can make has 437 and 2516, and its free text (16 SSIDs,
-// its name and model) could add 639 to either.
-const MAX_OPEN = 1280;
-const MAX_COMMAS = 4096;
+// access point can make has 949 and 6676 since each station carries its
+// link (#155) and each port the switch's counters (#156), and its free
+// text (16 SSIDs, its name and model) could add 639 to either; the
+// counts leave room for a field more. 2048 objects take json() about as
+// much memory as that fullest report does (some 2.5 MB).
+const MAX_OPEN = 2048;
+const MAX_COMMAS = 8192;
 const RE_NOT_OPEN = /[^[{]+/g;
 const RE_NOT_COMMA = /[^,]+/g;
 
