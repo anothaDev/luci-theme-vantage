@@ -97,8 +97,8 @@ packages are listed at
   count and list leave it out.
 - **Network path: "+n more" opens the rest** (#154,
   [@Vikk20](https://github.com/Vikk20)). A Wi-Fi or Wired node lists
-  five clients; the "+n more" line under them is now a button that shows
-  the rest in place, and "Show fewer" folds them back.
+  five clients; a click on the "+n more" line under them now shows the
+  rest in place, and "Show fewer" folds them back.
 - **Other access points: their clients' Wi-Fi standard and channel
   width** (#155, [@Vikk20](https://github.com/Vikk20)). A paired access
   point's report now carries each station's link as the access point
@@ -116,6 +116,10 @@ packages are listed at
   links on their longer guard intervals (1.6 and 3.2 µs) were labelled
   "short GI". The label now stands for Wi-Fi 4 and 5's short interval
   alone.
+- **Theme: no second config file after an upgrade.** Once an Appearance
+  setting was saved, every upgrade left the package's own copy beside it
+  (`/etc/config/vantage_theme-opkg`, or `vantage_theme.apk-new` on 25.12).
+  That copy holds no setting; the theme's install now removes it.
 
 ## 1.1.1 - 2026-11-21
 
