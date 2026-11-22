@@ -1303,7 +1303,7 @@ test('collector: the report is checked again here: ids, the pairing name, states
 	assert.deepEqual(a.nodes.map(n => [ n.id, n.ssid, n.bssid, n.band, n.clients ]), [
 		[ 'phy1-ap0', 'Home', null, '5g', 0 ], [ 'phy2-ap0', 'Guest�', null, '6g', 0 ]
 	], 'one node per interface (a netdev name: no colon, 15 characters), the band from the frequency when unknown');
-	assert.deepEqual(a.sta, [ { mac: '00:00:5e:00:53:21', node: 'phy1-ap0', signal: null, rxRate: null, txRate: null, rx: null, tx: null, connected: null } ]);
+	assert.deepEqual(a.sta, [ { mac: '00:00:5e:00:53:21', node: 'phy1-ap0', signal: null, rxRate: null, txRate: null, rxPhy: null, txPhy: null, rx: null, tx: null, connected: null } ]);
 	assert.deepEqual(a.hosts, [ { mac: '00:00:5e:00:53:41', port: 'lan3', speed: null, rx: null, tx: null } ]);
 	assert.deepEqual([ a.clients, a.wired, a.rate ], [ 0, 0, null ], 'counted by build(), from what it gives it');
 	for (const x of aps.slice(1, 7)) assert.deepEqual([ x.nodes, x.sta, x.hosts, x.clients, x.wired ], [ [], [], [], 0, 0 ], x.id + ': not reporting, nothing of its report');

@@ -795,6 +795,13 @@ return baseclass.extend({
 			if (self.parseIPv4(v)) return v;
 			return v.length <= 39 && v.indexOf(':') >= 0 && /^[0-9a-f:]+$/i.test(v) ? v : null;
 		}
+		/* homenet: a station's link as its access point saw it */
+		function phyOf(p) {
+			if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
+			function int(v, lo, hi) { return finite(v) && v % 1 === 0 && v >= lo && v <= hi ? v : null; }
+			return { mhz: int(p.mhz, 1, 640), mcs: int(p.mcs, 0, 31), nss: int(p.nss, 1, 16),
+				ht: p.ht === true, vht: p.vht === true, he: p.he === true, eht: p.eht === true, short_gi: p.sgi === true };
+		}
 		arr(obj(reply).aps).slice(0, MAX_APS).forEach(function(x) {
 			x = obj(x);
 			if (typeof x.id !== 'string' || !AP_ID.test(x.id) || ids[x.id]) return;
@@ -848,7 +855,8 @@ return baseclass.extend({
 						signal: finite(s.signal) && s.signal >= -120 && s.signal <= -1 ? s.signal : null,
 						rxRate: kbit(s.rxRate), txRate: kbit(s.txRate),
 						rx: bps(s.rx), tx: bps(s.tx),
-						connected: finite(s.connected) && s.connected >= 0 ? s.connected : null
+						connected: finite(s.connected) && s.connected >= 0 ? s.connected : null,
+						rxPhy: phyOf(s.rxPhy), txPhy: phyOf(s.txPhy)
 					});
 				});
 				seen = Object.create(null);
@@ -1636,6 +1644,14 @@ return baseclass.extend({
 			c.band = n.band; c.bandLabel = wifi.bandLabel(n.band);
 			c.signal = s.signal; c.signalAvg = null; c.noise = null; c.std = null; c.gen = null;
 			c.rx = link(s.rxRate); c.tx = link(s.txRate);
+			/* homenet: the standard and width where the access point says them */
+			if (s.rxPhy || s.txPhy) {
+				var rp = s.rxPhy ? Object.assign({ rate: s.rxRate }, s.rxPhy) : null, tp = s.txPhy ? Object.assign({ rate: s.txRate }, s.txPhy) : null;
+				c.std = wifi.clientStd(rp, tp, null);
+				c.gen = wifi.genName(c.std, n.band);
+				if (rp && s.rxRate) c.rx = wifi.phy(rp);
+				if (tp && s.txRate) c.tx = wifi.phy(tp);
+			}
 			c.rxBytes = null; c.txBytes = null; c.rxPackets = 0; c.txPackets = 0; c.txRetries = 0; c.txFailed = 0;
 			c.connected = s.connected; c.inactive = null; c.authorized = true; c.mfp = false; c.wmm = false; c.caps = {};
 			c.level = wifi.signal(c.signal);
