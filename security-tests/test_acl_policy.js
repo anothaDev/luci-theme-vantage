@@ -138,14 +138,21 @@
  * - one group, `luci-app-vantage-traffic`: luci.vantage.traffic hosts to
  *   read and nothing else, no write section; no group of the dashboard
  *   or the add-on grants the call, and it grants nothing of theirs;
- * - its plugin (luci.vantage-traffic) registers exactly that method,
- *   which takes no argument; it imports rtnl, uci's cursor and fs's open
- *   and readfile only, opens /proc/net/nf_conntrack to read it line by
+ * - its plugin, an executable rpcd plugin (/usr/libexec/rpcd/
+ *   luci.vantage.traffic) that rpcd runs as a process of its own, answers
+ *   rpcd's "list" with that one method, without arguments, and "call
+ *   hosts", and nothing else; it reads no input; it imports rtnl, uci's
+ *   cursor and fs's chmod, lstat, mkdir, open, readfile, rename and
+ *   writefile only; it opens /proc/net/nf_conntrack to read it line by
  *   line, reads the accounting switch (bounded), makes one read-only
  *   neighbour dump each for IPv4 and IPv6 and reads one uci option, the
- *   theme's vantage_theme.appearance.power; it writes nothing, runs
- *   nothing, and its answer holds MACs and counts, never an address;
- *   altered copies of it check that these rules catch each breach.
+ *   theme's vantage_theme.appearance.power; it writes only its state in
+ *   /var/run/vantage-traffic, a directory it makes 0700 and refuses when
+ *   others may enter it, through files written 0600 beside the ones they
+ *   replace (state.json, answer.json; a lock file), reads back only those
+ *   (bounded), runs nothing, and its answer holds MACs and counts, never
+ *   an address; altered copies of it check that these rules catch each
+ *   breach.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -1627,7 +1634,7 @@ test('add-on: the shared checks import nothing and call nothing outside themselv
 const TRAFFIC_PKG = path.resolve(process.env.VANTAGE_TRAFFIC_PKG || path.join(__dirname, '..', 'luci-app-vantage-traffic'));
 const trafficFile = rel => fs.readFileSync(path.join(TRAFFIC_PKG, rel), 'utf8');
 const trafficAcl = JSON.parse(trafficFile('root/usr/share/rpcd/acl.d/luci-app-vantage-traffic.json'));
-const trafficPlugin = trafficFile('root/usr/share/rpcd/ucode/luci.vantage-traffic');
+const trafficPlugin = trafficFile('root/usr/libexec/rpcd/luci.vantage.traffic');
 
 test('traffic: one group, luci.vantage.traffic hosts to read and nothing else; no group of the dashboard or the add-on grants it', () => {
 	assert.deepEqual(Object.keys(trafficAcl), [ TRAFFIC_GROUP ]);
@@ -1717,19 +1724,47 @@ test('negative controls: another form, method, argument or place of the traffic 
 /* The plugin's source rules: every line of code (comment lines left out)
    that mentions one of these names, as for the add-on (checkPins) */
 const TRAFFIC_PINS = [
-	[ '\\b(?:open|readfile)\\b', [
-		'import { open, readfile } from \'fs\';',
+	/* files: the table and the switch read; its own directory and files, nothing else */
+	[ '\\b(?:open|readfile|writefile|chmod|rename|mkdir|lstat)\\b', [
+		'import { chmod, lstat, mkdir, open, readfile, rename, writefile } from \'fs\';',
 		'let v = readfile(ACCT, 8);',
-		'let acct = acct_on(), f = (acct !== false) ? open(TABLE, \'r\') : null;'
+		'let st = lstat(DIR);',
+		'mkdir(DIR, 0700);',
+		'st = lstat(DIR);',
+		'return writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true;',
+		'let text = readfile(DIR + \'/state.json\', MAX_STATE + 1), st = null;',
+		'let text = readfile(DIR + \'/answer.json\', MAX_ANSWER), a = null;',
+		'let acct = acct_on(), f = (acct !== false) ? open(TABLE, \'r\') : null;',
+		'let lock = open(DIR + \'/lock\', \'a\');'
 	] ],
-	[ '\\b(?:TABLE|ACCT|THEME)\\b', [
+	[ '\\b(?:TABLE|ACCT|THEME|DIR)\\b', [
 		'const TABLE = \'/proc/net/nf_conntrack\';',
 		'const ACCT = \'/proc/sys/net/netfilter/nf_conntrack_acct\';',
+		'const DIR = \'/var/run/vantage-traffic\';',
 		'const THEME = \'vantage_theme\';    // read only: is Low-power router on',
 		'return cursor().get(THEME, \'appearance\', \'power\') == \'low\';',
 		'let v = readfile(ACCT, 8);',
-		'let acct = acct_on(), f = (acct !== false) ? open(TABLE, \'r\') : null;'
+		'let st = lstat(DIR);',
+		'mkdir(DIR, 0700);',
+		'st = lstat(DIR);',
+		'let tmp = DIR + \'/\' + name + \'.new\', file = DIR + \'/\' + name;',
+		'let text = readfile(DIR + \'/state.json\', MAX_STATE + 1), st = null;',
+		'let text = readfile(DIR + \'/answer.json\', MAX_ANSWER), a = null;',
+		'let acct = acct_on(), f = (acct !== false) ? open(TABLE, \'r\') : null;',
+		'let lock = open(DIR + \'/lock\', \'a\');'
 	] ],
+	/* the directory: its own (a directory, not a link, closed to others) or none */
+	[ '\\bst(?:\\?)?\\.(?:type|mode)\\b', [ 'return st?.type == \'directory\' && !(st.mode & 0077);' ] ],
+	/* writes: whole, 0600, then in place, of these two files only */
+	[ '\\b(?:put|tmp)\\b', [
+		'function put(name, text) {',
+		'let tmp = DIR + \'/\' + name + \'.new\', file = DIR + \'/\' + name;',
+		'return writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true;',
+		'put(\'state.json\', sprintf(\'%J\', { v: 2, flows, totals }));',
+		'put(\'answer.json\', text);'
+	] ],
+	/* one read at a time */
+	[ '\\block\\b', [ 'let lock = open(DIR + \'/lock\', \'a\');', 'if (!lock || lock.lock(\'xn\') !== true)' ] ],
 	[ '\\bcursor\\b', [
 		'import { cursor } from \'uci\';',
 		'return cursor().get(THEME, \'appearance\', \'power\') == \'low\';'
@@ -1744,7 +1779,7 @@ const TRAFFIC_PINS = [
 	[ '\\bf\\b', [
 		'const RE_MAC = /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/;',
 		'function feed(f, neigh, now, stop, st) {',
-		'for (let l = f.read(\'line\'); length(l); l = f.read(\'line\')) {',
+		'for (let l = f.read(\'line\'); l; l = f.read(\'line\')) {',
 		'let acct = acct_on(), f = (acct !== false) ? open(TABLE, \'r\') : null;',
 		'if (f) {',
 		'feed(f, neighbours(), t0, t0 + STOP_MS, st);',
@@ -1752,31 +1787,33 @@ const TRAFFIC_PINS = [
 	] ],
 	/* the answer: a MAC and two counts a host, and the read's numbers */
 	[ '\\bpush\\(out\\b|\\br\\.(?:st|acct|hosts)\\b', [
-		'push(out, { mac: k, rx: totals[k].rx, tx: totals[k].tx });',
-		'v: 1, at: t0, took, every, slow, low, acct: r.acct,',
+		'push(out, { mac: k, rx: totals[k][0], tx: totals[k][1] });',
+		'v: 1, at: t0, took, every, slow: took * SLOW_FACTOR > (low ? LOW_MS : WINDOW_MS), low, acct: r.acct,',
 		'entries: r.st.entries, partial: r.st.partial, offloaded: r.st.offloaded, hw: r.st.hw,',
 		'zeroed: r.st.zeroed, dropped: r.st.dropped, hosts: r.hosts'
 	] ],
-	/* one method, which takes nothing */
-	[ '\\b(?:call|args)\\b', [ 'call: function() {' ] ]
+	/* rpcd's two questions: one method, which takes nothing; nothing read from its input */
+	[ '\\b(?:ARGV|print)\\b', [
+		'if (ARGV[0] == \'list\')',
+		'print(\'{ "hosts": {} }\\n\');',
+		'else if (ARGV[0] == \'call\' && ARGV[1] == \'hosts\')',
+		'print(hosts() ?? \'{}\', \'\\n\');'
+	] ]
 ];
 
 function checkTrafficSource(src) {
-	const code = codeOf(src, 'the traffic plugin');
-	assert.deepEqual(linesWith(code, 'import'), [ 'import * as rtnl from \'rtnl\';', 'import { cursor } from \'uci\';', 'import { open, readfile } from \'fs\';' ]);
-	const word = /\b(system|popen|exec|require|loadfile|loadstring|include|render|writefile|unlink|rename|mkdir|global|getenv|sleep|exit)\b/.exec(code);
+	assert.ok(src.startsWith('#!/usr/bin/ucode -S\n'), 'an executable ucode script');
+	const code = codeOf(src.replace(/^#![^\n]*\n/, ''), 'the traffic plugin');
+	assert.deepEqual(linesWith(code, 'import'), [ 'import * as rtnl from \'rtnl\';', 'import { cursor } from \'uci\';', 'import { chmod, lstat, mkdir, open, readfile, rename, writefile } from \'fs\';' ]);
+	const word = /\b(system|popen|exec|require|loadfile|loadstring|include|render|unlink|symlink|rmdir|global|getenv|stdin|sleep|exit)\b/.exec(code);
 	assert.equal(word, null, word && `"${word[1]}" is banned in the traffic plugin`);
 	assert.doesNotMatch(code, /(^|[^.\w])call\s*\(/m, 'the call() builtin is banned in the traffic plugin');
-	for (const name of [ 'TABLE', 'ACCT', 'THEME' ])
+	for (const name of [ 'TABLE', 'ACCT', 'THEME', 'DIR' ])
 		assert.equal([ ...code.matchAll(new RegExp('\\b' + name + '\\s*=(?!=)', 'g')) ].length, 1, name + ' is defined once and never assigned');
-	assert.match(src, /^return \{ 'luci\.vantage\.traffic': methods \};\s*$/m);
-	const table = /^const methods = \{\n([\s\S]*?)\n\};$/m.exec(src);
-	assert.ok(table, 'methods table');
-	assert.deepEqual([ ...table[1].matchAll(/^\t([A-Za-z_]+): \{$/gm) ].map(m => m[1]), [ 'hosts' ]);
-	checkPins(src, 'the traffic plugin', TRAFFIC_PINS);
+	checkPins(src.replace(/^#![^\n]*\n/, ''), 'the traffic plugin', TRAFFIC_PINS);
 }
 
-test('traffic: the plugin registers the granted method, takes nothing, reads only what it lists, writes and runs nothing', () => {
+test('traffic: the plugin answers the granted method, takes nothing, reads only what it lists, writes only its own state, runs nothing', () => {
 	checkTrafficSource(trafficPlugin);
 });
 
@@ -1786,11 +1823,24 @@ test('traffic: the plugin rules catch each breach', () => {
 	const add = code => trafficPlugin.replace(at, at + '\t' + code + '\n');
 	const swap = (from, to) => { assert.ok(trafficPlugin.includes(from), from); return trafficPlugin.replace(from, to); };
 	const MUTANTS = {
-		'fs write': swap('import { open, readfile } from \'fs\';', 'import { open, readfile, writefile } from \'fs\';'),
+		'another file written': add('writefile(\'/etc/config/vantage\', \'\');'),
+		'a write past put': add('writefile(DIR + \'/hosts.txt\', \'\');'),
 		'a second import': swap('import { cursor } from \'uci\';', 'import { cursor } from \'uci\';\nimport { connect } from \'ubus\';'),
+		'its input read': swap('import { chmod, lstat, mkdir, open, readfile, rename, writefile } from \'fs\';', 'import { chmod, lstat, mkdir, open, readfile, rename, stdin, writefile } from \'fs\';'),
 		'another file read': add('let pw = readfile(\'/etc/shadow\', 8);'),
 		'the table opened for writing': swap('open(TABLE, \'r\')', 'open(TABLE, \'w\')'),
 		'a shadowed path': add('let TABLE = \'/etc/shadow\';'),
+		'a shadowed directory': add('let DIR = \'/tmp\';'),
+		'the state elsewhere': swap('const DIR = \'/var/run/vantage-traffic\';', 'const DIR = \'/tmp/vantage-traffic\';'),
+		'the directory open to others': swap('mkdir(DIR, 0700);', 'mkdir(DIR, 0755);'),
+		'a directory others may enter taken': swap('return st?.type == \'directory\' && !(st.mode & 0077);', 'return st?.type == \'directory\';'),
+		'a link taken': swap('return st?.type == \'directory\' && !(st.mode & 0077);', 'return st?.type != \'file\' && !(st.mode & 0077);'),
+		'files others may read': swap('chmod(tmp, 0600)', 'chmod(tmp, 0644)'),
+		'a file written in place': swap('return writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true;', 'return writefile(file, text) == length(text) && chmod(file, 0600);'),
+		'a third file': swap('put(\'answer.json\', text);', 'put(\'answer.json\', text);\n\tput(\'flows.json\', sprintf(\'%J\', flows));'),
+		'the entries in the answer file': swap('put(\'answer.json\', text);', 'put(\'answer.json\', sprintf(\'%J\', flows));'),
+		'the state read unbounded': swap('readfile(DIR + \'/state.json\', MAX_STATE + 1)', 'readfile(DIR + \'/state.json\')'),
+		'no lock': swap('if (!lock || lock.lock(\'xn\') !== true)', 'if (!lock)'),
 		'the switch read unbounded': swap('readfile(ACCT, 8)', 'readfile(ACCT)'),
 		'the switch turned on': add('writefile(ACCT, \'1\');'),
 		'a program': add('system([ \'/sbin/reboot\' ]);'),
@@ -1804,12 +1854,13 @@ test('traffic: the plugin rules catch each breach', () => {
 		'another netlink request': add('rtnl.request(rtnl.const.RTM_NEWNEIGH, 0, {});'),
 		'the bridge table dumped': swap('[ rtnl.const.AF_INET, rtnl.const.AF_INET6 ]', '[ rtnl.const.AF_INET, rtnl.const.AF_BRIDGE ]'),
 		'rtnl by reference': add('let nl = rtnl;'),
-		'a remote address in the answer': swap('push(out, { mac: k, rx: totals[k].rx, tx: totals[k].tx });', 'push(out, { mac: k, rx: totals[k].rx, tx: totals[k].tx, peers: totals[k].peers });'),
+		'a remote address in the answer': swap('push(out, { mac: k, rx: totals[k][0], tx: totals[k][1] });', 'push(out, { mac: k, rx: totals[k][0], tx: totals[k][1], peers: totals[k][3] });'),
 		'the entries in the answer': swap('zeroed: r.st.zeroed, dropped: r.st.dropped, hosts: r.hosts', 'zeroed: r.st.zeroed, dropped: r.st.dropped, hosts: r.hosts, flows'),
-		'an argument taken': swap('\thosts: {\n\t\tcall: function() {', '\thosts: {\n\t\targs: { cmd: \'cmd\' },\n\t\tcall: function() {'),
-		'a second method': swap('const methods = {\n', 'const methods = {\n\treset: {\n\t\tcall: function() { flows = {}; }\n\t},\n'),
+		'an argument taken': swap('print(\'{ "hosts": {} }\\n\');', 'print(\'{ "hosts": { "cmd": "string" } }\\n\');'),
+		'a second method': swap('else if (ARGV[0] == \'call\' && ARGV[1] == \'hosts\')', 'else if (ARGV[0] == \'call\' && (ARGV[1] == \'hosts\' || ARGV[1] == \'flows\'))'),
 		'the handle written': add('f?.write(\'x\');'),
-		'the handle passed on': add('let g = f;')
+		'the handle passed on': add('let g = f;'),
+		'no first line': trafficPlugin.replace(/^#![^\n]*\n/, '')
 	};
 	for (const [ name, src ] of Object.entries(MUTANTS)) {
 		assert.notEqual(src, trafficPlugin, name + ': the mutation applies');

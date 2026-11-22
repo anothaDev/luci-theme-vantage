@@ -387,27 +387,56 @@ test('dashboard and add-ons: nothing is installed from a directory the file list
 	assert.deepEqual(fs.readdirSync(path.join(ROOT, 'luci-app-vantage-traffic')).sort(), [ 'Makefile', 'po', 'root' ]);
 });
 
-/* luci-app-vantage-traffic (#110, experimental): a plugin and its ACL
-   group, nothing the device runs and nothing it keeps */
-test('traffic: it ships exactly its plugin and ACL, none of them a program, with no scripts of its own', () => {
+/* luci-app-vantage-traffic (#110, experimental): an executable rpcd
+   plugin and its ACL group, and a removal script for its state */
+test('traffic: it ships exactly its plugin, executable, and its ACL; its one script is the removal\'s', () => {
 	const TRAFFIC = path.join(ROOT, 'luci-app-vantage-traffic');
 	const files = tree(path.join(TRAFFIC, 'root'), path.join(TRAFFIC, 'root'));
 	assert.deepEqual(files, [
-		'usr/share/rpcd/acl.d/luci-app-vantage-traffic.json',
-		'usr/share/rpcd/ucode/luci.vantage-traffic'
+		'usr/libexec/rpcd/luci.vantage.traffic',
+		'usr/share/rpcd/acl.d/luci-app-vantage-traffic.json'
 	]);
 	for (const f of files) {
-		const st = fs.lstatSync(path.join(TRAFFIC, 'root', f));
+		const st = fs.lstatSync(path.join(TRAFFIC, 'root', f)), must = /^usr\/libexec\//.test(f);
 		assert.ok(st.isFile(), f + ' is a plain file');
-		assert.equal(st.mode & 0o111, 0, f + ' must not be executable');
+		assert.equal((st.mode & 0o111) !== 0, must, f + (must ? ' must be executable: rpcd runs it' : ' must not be executable'));
 	}
 	const mk = V.parseMakefile(fs.readFileSync(path.join(TRAFFIC, 'Makefile'), 'utf8'), 'luci-app-vantage-traffic/Makefile');
-	assert.deepEqual(mk.depends, [ 'luci-app-vantage', 'rpcd-mod-ucode', 'ucode-mod-fs', 'ucode-mod-rtnl', 'ucode-mod-uci' ]);
+	assert.deepEqual(mk.depends, [ 'luci-app-vantage', 'rpcd', 'ucode', 'ucode-mod-fs', 'ucode-mod-rtnl', 'ucode-mod-uci' ]);
 	/* the dashboard of its own release or newer, as for the access points add-on */
 	assert.equal(mk.minDepends, 'luci-app-vantage');
-	assert.deepEqual(V.expectedDepends(mk, true), [ 'luci-app-vantage (>=' + mk.version + ')', 'libc', 'luci-app-vantage', 'rpcd-mod-ucode', 'ucode-mod-fs', 'ucode-mod-rtnl', 'ucode-mod-uci' ]);
-	assert.deepEqual(Object.keys(mk.script).filter(k => mk.script[k] != null), [], 'no install or removal scripts of its own');
+	assert.deepEqual(V.expectedDepends(mk, true), [ 'luci-app-vantage (>=' + mk.version + ')', 'libc', 'luci-app-vantage', 'rpcd', 'ucode', 'ucode-mod-fs', 'ucode-mod-rtnl', 'ucode-mod-uci' ]);
+	assert.deepEqual(Object.keys(mk.script).filter(k => mk.script[k] != null), [ 'postrm' ], 'no install script of its own');
 	assert.equal(mk.basename, 'vantage-traffic', 'language packages luci-i18n-vantage-traffic-<lang>');
+});
+
+/* its postrm, run as the package managers run it, with the state's
+   directory and killall in places of the test's */
+test('traffic postrm: removes its state directory, that and nothing else, and has rpcd let go of the plugin, but not on an upgrade', () => {
+	const mk = V.parseMakefile(fs.readFileSync(path.join(ROOT, 'luci-app-vantage-traffic/Makefile'), 'utf8'), 'traffic');
+	const POSTRM = mk.script.postrm;
+	assert.equal((POSTRM.match(/\brm\b/g) || []).length, 1, 'the one removal');
+	assert.ok(POSTRM.includes('\n\trm -rf /var/run/vantage-traffic\n'), 'a literal path, the plugin\'s DIR');
+	assert.match(fs.readFileSync(path.join(ROOT, 'luci-app-vantage-traffic/root/usr/libexec/rpcd/luci.vantage.traffic'), 'utf8'), /^const DIR = '\/var\/run\/vantage-traffic';$/m);
+	const run = (args, env) => {
+		const dir = tmp(), state = path.join(dir, 'run', 'vantage-traffic'), log = path.join(dir, 'killall.log');
+		fs.mkdirSync(path.join(dir, 'bin'));
+		fs.mkdirSync(state, { recursive: true });
+		fs.writeFileSync(path.join(state, 'state.json'), '{}');
+		fs.writeFileSync(path.join(dir, 'run', 'beside'), 'kept');
+		fs.writeFileSync(path.join(dir, 'bin', 'killall'), '#!/bin/sh\necho "$*" >> "$KILLALL_LOG"\n', { mode: 0o755 });
+		fs.writeFileSync(path.join(dir, 'postrm'), POSTRM.replace('/var/run/vantage-traffic', state) + '\n', { mode: 0o755 });
+		const r = spawnSync('sh', [ path.join(dir, 'postrm'), ...args ], { env: Object.assign({ PATH: path.join(dir, 'bin') + ':' + process.env.PATH, KILLALL_LOG: log }, env), encoding: 'utf8' });
+		assert.equal(r.status, 0, r.stderr);
+		return { state: fs.existsSync(state), beside: fs.readFileSync(path.join(dir, 'run', 'beside'), 'utf8'), hup: fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim() : null };
+	};
+	/* opkg passes "remove"; apk's post-deinstall gets the old version */
+	assert.deepEqual(run([ 'remove' ]), { state: false, beside: 'kept', hup: '-HUP rpcd' });
+	assert.deepEqual(run([ '1.1.2-r1' ]), { state: false, beside: 'kept', hup: '-HUP rpcd' });
+	assert.deepEqual(run([ 'upgrade', '1.1.3-r1' ]), { state: false, beside: 'kept', hup: null }, 'an upgrade: the state goes, rpcd is left alone');
+	assert.deepEqual(run([ '1.1.2-r1' ], { PKG_UPGRADE: '1' }), { state: false, beside: 'kept', hup: null });
+	/* building an image: nothing */
+	assert.deepEqual(run([ 'remove' ], { IPKG_INSTROOT: '/build/root' }), { state: true, beside: 'kept', hup: null });
 });
 
 test('add-on: the collector starts only with an access point paired and dbclient there', () => {

@@ -1,26 +1,33 @@
 'use strict';
 const mkTmp = require('./tmpdir');
-/* luci-app-vantage-traffic's rpcd plugin (root/usr/share/rpcd/ucode/
-   luci.vantage-traffic, #110): per-host byte counters from the kernel's
-   connection accounting, read from /proc/net/nf_conntrack.
+/* luci-app-vantage-traffic's executable rpcd plugin (root/usr/libexec/rpcd/
+   luci.vantage.traffic, #110): per-host byte counters from the kernel's
+   connection accounting, read from /proc/net/nf_conntrack in a process of
+   its own, with its state in a directory of its own between calls.
 
-   What it must do: know an entry again however its timeout and state
-   move, count both directions the right way round (a host that opened
-   the connection, one a port forward reaches, two hosts of this router's
-   networks), find IPv6 hosts by the neighbour table's spelling, keep
-   counters that only grow whoever reads, count a reset counter (nlbwmon's
-   zero-on-read) from zero, follow an address the neighbour table does
-   not give a host yet so that it does not count whole later, cap entries
-   and hosts, say when accounting is off and when entries are offloaded,
-   share one read among all callers for 5 s (30 s with Low-power router),
-   stop reading the table after its time budget and wait longer after a
-   slow read, and hand out nothing but MACs and byte counts.
+   What it must do: answer rpcd's "list" and "call hosts" and nothing
+   else; know an entry again however its timeout and state move, and when
+   it becomes offloaded (the kernel then prints no timeout); count both
+   directions the right way round (a host that opened the connection, one
+   a port forward reaches, two hosts of this router's networks); find IPv6
+   hosts by the neighbour table's spelling; keep counters that only grow,
+   from one process to the next; count a reset counter (nlbwmon's
+   zero-on-read) from zero; follow an address the neighbour table does not
+   give a host yet so that it does not count whole later; cap entries and
+   hosts; say when accounting is off and when entries are offloaded; share
+   one read among all callers for 5 s (30 s with Low-power router), one at
+   a time; stop reading the table after its time budget and wait longer
+   after a slow read; keep its files to itself (0700, 0600) and refuse a
+   directory it did not make; and hand out nothing but MACs and byte
+   counts. The lean parse must give what the slower one gives, on every
+   kind of line, and leave lines it does not fit to it.
 
-   The real plugin runs under a host ucode binary ($UCODE, else `ucode` on
-   PATH; skipped otherwise) with rtnl and uci replaced by the doubles in
-   tests/ucode/traffic-stubs, its paths pointed at files written here and
-   its clock driven by the test (tests/ucode/traffic-harness.uc). The
-   table is text: nothing here touches a firewall. */
+   Each call runs the plugin as rpcd would, a ucode process with the
+   arguments rpcd passes, under a host ucode binary ($UCODE, else `ucode`
+   on PATH; skipped otherwise), with rtnl and uci replaced by the doubles
+   in tests/ucode/traffic-stubs, its table, accounting switch and state
+   directory in a directory of the test's and its clock driven by the
+   test. The table is text: nothing here touches a firewall. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -29,9 +36,8 @@ const { spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const PKG = path.join(ROOT, 'luci-app-vantage-traffic');
-const PLUGIN = path.join(PKG, 'root/usr/share/rpcd/ucode/luci.vantage-traffic');
+const PLUGIN = path.join(PKG, 'root/usr/libexec/rpcd/luci.vantage.traffic');
 const BENCH = path.join(ROOT, 'dev/traffic/bench.uc');
-const HARNESS = path.join(__dirname, 'ucode/traffic-harness.uc');
 const STUBS = path.join(__dirname, 'ucode/traffic-stubs');
 
 function findUcode() {
@@ -46,47 +52,79 @@ const UCODE = findUcode();
 const NO_UCODE = UCODE ? false : 'no ucode binary (set UCODE=/path/to/ucode)';
 
 const CLOCK_FN = 'function now_ms() {\n\tlet t = clock(true);\n\treturn t[0] * 1000 + int(t[1] / 1000000);\n}';
-const RETURN = "return { 'luci.vantage.traffic': methods };";
+const DISPATCH = "if (ARGV[0] == 'list')\n";
 
-/* the plugin with its paths in dir, the test's clock and parse/norm handed out */
+/* The plugin with its table, switch and state directory in dir, the
+   test's clock (NOW, STEP), the stubs' data from STUB, a mode that hands
+   out both parses, and what the stubs and the clock saw on stderr */
 function pluginCopy(src, dir) {
 	const swaps = [
 		[ /^const TABLE = .*$/m, 'const TABLE = ' + JSON.stringify(path.join(dir, 'nf_conntrack')) + ';' ],
 		[ /^const ACCT = .*$/m, 'const ACCT = ' + JSON.stringify(path.join(dir, 'acct')) + ';' ],
+		[ /^const DIR = .*$/m, 'const DIR = ' + JSON.stringify(path.join(dir, 'state')) + ';' ],
 		[ CLOCK_FN, 'function now_ms() {\n\tglobal.CLOCK.reads++;\n\tlet t = global.CLOCK.t;\n\tglobal.CLOCK.t += global.CLOCK.step;\n\treturn t;\n}' ],
-		[ RETURN, "return { 'luci.vantage.traffic': methods, test: { parse, norm } };" ]
+		[ DISPATCH, "global.STUB = json(readfile(STUB));\nglobal.STUB.dumps = 0;\nglobal.STUB.uci = 0;\nglobal.CLOCK = { t: NOW, step: STEP, reads: 0 };\n" +
+			"if (ARGV[0] == 'test-parse')\n\tprint(sprintf('%J\\n', map(json(readfile(INPUT)), (l) => { let e = []; return [ parse(l, e) ? e : null, parse_slow(l) ]; })));\n" +
+			'else ' + DISPATCH ]
 	];
 	for (const [ from, to ] of swaps) {
 		const next = src.replace(from, () => to);
 		assert.notEqual(next, src, 'the test can change ' + from);
 		src = next;
 	}
-	return src;
+	return src + "warn(sprintf('\\n%J\\n', { dumps: global.STUB.dumps, uci: global.STUB.uci, clock: global.CLOCK.reads }));\n";
 }
 
-/* runs the harness on the plugin (or an altered source of it): its output, parsed */
-function run(input, source) {
+/* a directory for one run of calls: the copy and the files it reads */
+function setup(source) {
 	const dir = mkTmp('vantage-traffic-');
-	const copy = path.join(dir, 'plugin.uc'), inp = path.join(dir, 'input.json');
-	fs.writeFileSync(copy, pluginCopy(source == null ? fs.readFileSync(PLUGIN, 'utf8') : source, dir));
-	fs.writeFileSync(inp, JSON.stringify(input));
-	const r = spawnSync(UCODE, [ '-L', STUBS, '-D', 'PLUGIN=' + copy, '-D', 'INPUT=' + inp, '-D', 'TABLE=' + path.join(dir, 'nf_conntrack'),
-		'-D', 'ACCT=' + path.join(dir, 'acct'), HARNESS ], { encoding: 'utf8', maxBuffer: 64 << 20 });
-	assert.equal(r.status, 0, r.stderr);
-	return JSON.parse(r.stdout);
+	fs.writeFileSync(path.join(dir, 'plugin.uc'), pluginCopy(source == null ? fs.readFileSync(PLUGIN, 'utf8') : source, dir));
+	return dir;
 }
+/* the plugin run as rpcd runs it: argv, what it printed, what the stubs saw */
+function exec(dir, argv, o) {
+	o = o || {};
+	fs.writeFileSync(path.join(dir, 'stub.json'), JSON.stringify({ neigh: o.neigh || {}, power: o.power == null ? null : o.power }));
+	const r = spawnSync(UCODE, [ '-L', STUBS, '-D', 'STUB=' + path.join(dir, 'stub.json'), '-D', 'NOW=' + (o.now || 0), '-D', 'STEP=' + (o.step || 0),
+		'-D', 'INPUT=' + path.join(dir, 'input.json'), path.join(dir, 'plugin.uc') ].concat(argv), { encoding: 'utf8', maxBuffer: 64 << 20, input: '{ "ubus_rpc_session": "x" }' });
+	const seen = r.stderr.trim().split('\n').pop();
+	return { status: r.status, out: r.stdout, stderr: r.stderr, seen: /^\{/.test(seen) ? JSON.parse(seen) : null };
+}
+/* calls of `hosts` one after another, each a process of its own, as rpcd
+   makes them: [ { reply, dumps, uci, clock } ] */
+function calls(list, dir) {
+	dir = dir || setup();
+	return list.map(c => {
+		const table = path.join(dir, 'nf_conntrack'), acct = path.join(dir, 'acct');
+		if (c.table == null) fs.rmSync(table, { force: true }); else fs.writeFileSync(table, c.table.map(l => l + '\n').join(''));
+		if (c.acct == null) fs.rmSync(acct, { force: true }); else fs.writeFileSync(acct, c.acct);
+		const r = exec(dir, [ 'call', 'hosts' ], c);
+		assert.equal(r.status, 0, r.stderr);
+		return Object.assign({ reply: JSON.parse(r.out) }, r.seen);
+	});
+}
+const parses = lines => {
+	const dir = setup();
+	fs.writeFileSync(path.join(dir, 'input.json'), JSON.stringify(lines));
+	const r = exec(dir, [ 'test-parse' ]);
+	assert.equal(r.status, 0, r.stderr);
+	return JSON.parse(r.out);
+};
 
-/* one line as the kernel prints it ("%-8s %u %-8s %u %ld "), accounting on */
-const PROTO = { tcp: 6, udp: 17, icmp: 1, unknown: 47 };
+/* one line as the kernel prints it ("%-8s %u %-8s %u %ld "; no timeout
+   when the entry is offloaded), accounting on */
+const NUM = { tcp: 6, udp: 17, icmp: 1, icmpv6: 58, sctp: 132, dccp: 33, udplite: 136, gre: 47, unknown: 47 };
 function line(o) {
 	const name = o.proto || 'tcp';
-	const head = (o.v6 ? 'ipv6     10 ' : 'ipv4     2 ') + name.padEnd(8) + ' ' + (o.num != null ? o.num : PROTO[name]) + ' ' +
-		(o.timeout || 7438) + ' ' + (o.state === undefined ? 'ESTABLISHED ' : o.state ? o.state + ' ' : '');
-	const ports = o.sport != null ? ` sport=${o.sport} dport=${o.dport}` : '', back = o.sport != null ? ` sport=${o.dport} dport=${o.sport}` : '';
-	const orig = `src=${o.src} dst=${o.dst}${ports}` + (o.acct === false ? '' : ` packets=1 bytes=${o.ob}`);
+	const head = (o.v6 ? 'ipv6     10 ' : 'ipv4     2 ') + name.padEnd(8) + ' ' + (o.num != null ? o.num : NUM[name]) + ' ' +
+		(o.offload || o.hw ? '' : (o.timeout || 7438) + ' ') + (o.state === undefined ? (name === 'tcp' ? 'ESTABLISHED ' : '') : o.state ? o.state + ' ' : '');
+	const ports = o.ports != null ? o.ports : o.sport != null ? ` sport=${o.sport} dport=${o.dport}` : '';
+	const back = o.back != null ? o.back : o.sport != null ? ` sport=${o.dport} dport=${o.sport}` : '';
+	const orig = `src=${o.src} dst=${o.dst}${ports}${o.zone || ''}` + (o.acct === false ? '' : ` packets=1 bytes=${o.ob}`);
 	const reply = `src=${o.rsrc} dst=${o.rdst}${back}` + (o.acct === false ? '' : ` packets=1 bytes=${o.rb}`);
 	/* the kernel prints [HW_OFFLOAD] or [OFFLOAD] in place of [ASSURED] */
-	return `${head}${orig}${o.unreplied ? ' [UNREPLIED]' : ''} ${reply} ${o.hw ? '[HW_OFFLOAD]' : o.offload ? '[OFFLOAD]' : '[ASSURED]'} mark=0 zone=0 use=2`;
+	const flag = o.hw ? '[HW_OFFLOAD] ' : o.offload ? '[OFFLOAD] ' : o.assured === false ? '' : '[ASSURED] ';
+	return `${head}${orig}${o.unreplied ? ' [UNREPLIED]' : ''} ${reply} ${flag}mark=0 zone=0 use=2`;
 }
 const at = (o, x) => Object.assign({}, o, x);
 
@@ -104,12 +142,11 @@ const FWD = { src: '203.0.113.9', dst: '203.0.113.200', sport: 50000, dport: 844
 /* between two of this router's networks: both hosts count it */
 const LAN = { src: '192.0.2.10', dst: '198.51.100.30', sport: 40002, dport: 445, rsrc: '198.51.100.30', rdst: '192.0.2.10' };
 /* this router's own lookup: no host of its networks */
-const OWN = { proto: 'udp', state: '', src: '203.0.113.200', dst: '203.0.113.53', sport: 40003, dport: 53, rsrc: '203.0.113.53', rdst: '203.0.113.200' };
+const OWN = { proto: 'udp', src: '203.0.113.200', dst: '203.0.113.53', sport: 40003, dport: 53, rsrc: '203.0.113.53', rdst: '203.0.113.200' };
 const NEW = { src: '192.0.2.20', dst: '203.0.113.7', sport: 40004, dport: 443, rsrc: '203.0.113.7', rdst: '203.0.113.200' };
 
 /* a call: the table, accounting on, the neighbours above, at `now` ms */
 const call = (table, now, x) => Object.assign({ table, acct: '1\n', neigh: NEIGH, power: null, now }, x || {});
-const calls = list => run({ mode: 'calls', calls: list });
 const of = (r, mac) => r.reply.hosts.find(h => h.mac === mac);
 
 /* a table of n made-up entries (a quarter IPv6) over m hosts, each 100
@@ -140,44 +177,86 @@ function neighOf(m) {
 }
 const sum = (r, k) => r.reply.hosts.reduce((s, h) => s + h[k], 0);
 
-test('traffic plugin: an entry keeps its key while its timeout and state move; the reply is the second src=', { skip: NO_UCODE }, () => {
-	const [ a, b, c, d, e, f, g ] = run({ mode: 'parse', lines: [
-		line(at(OUT, { ob: 1, rb: 2 })),
-		line(at(OUT, { ob: 9, rb: 8, timeout: 12, state: 'TIME_WAIT' })),
-		line(at(NEW, { ob: 3, rb: 0, unreplied: true, state: 'SYN_SENT' })),
-		line(at(SIX, { ob: 5, rb: 6, offload: true })),
-		line(at(OUT, { acct: false })),
-		line(at(SIX, { ob: 5, rb: 6, hw: true })),
-		'ipv4     2 tcp      6 7438 ESTABLISHED'
-	] });
-	assert.equal(a.key, b.key);
-	assert.deepEqual([ a.osrc, a.obytes, a.rsrc, a.rbytes, a.acct, a.off, a.hw ], [ '192.0.2.10', 1, '203.0.113.5', 2, true, false, false ]);
-	assert.deepEqual([ b.obytes, b.rbytes ], [ 9, 8 ]);
-	assert.deepEqual([ c.obytes, c.rsrc, c.rbytes ], [ 3, '203.0.113.7', 0 ], 'unreplied: the reply has no bytes yet');
-	assert.deepEqual([ d.osrc, d.off, d.hw ], [ V6A, true, false ]);
-	assert.equal(e.acct, false, 'no bytes= with accounting off');
-	assert.equal(e.key, a.key, 'the same entry without its counters');
-	assert.deepEqual([ f.off, f.hw ], [ false, true ]);
-	assert.equal(g, null);
-	/* two protocols the kernel has no tracker for print the same name: their numbers tell them apart */
-	const [ gre, ipip, tcp, udp ] = run({ mode: 'parse', lines: [
-		line({ proto: 'unknown', num: 47, state: '', src: '192.0.2.10', dst: '203.0.113.5', rsrc: '203.0.113.5', rdst: '203.0.113.200', ob: 1, rb: 1 }),
-		line({ proto: 'unknown', num: 4, state: '', src: '192.0.2.10', dst: '203.0.113.5', rsrc: '203.0.113.5', rdst: '203.0.113.200', ob: 1, rb: 1 }),
-		line(at(OUT, { ob: 1, rb: 1 })),
-		line(at(OUT, { proto: 'udp', state: '', ob: 1, rb: 1 }))
-	] });
-	assert.notEqual(gre.key, ipip.key);
-	assert.notEqual(tcp.key, udp.key);
-	assert.ok(!/7438|ESTABLISHED|bytes|packets/.test(tcp.key), tcp.key);
-	const junk = run({ mode: 'parse', lines: [ '', 'ipv5 src=1', 'ipv4 src=', 'x'.repeat(5000), 'ipv4     2 tcp      6 1 src=192.0.2.1 dst=192.0.2.2 bytes=-5 src=192.0.2.2 bytes=99999999999999999999' ] });
-	assert.deepEqual(junk.slice(0, 4), [ null, null, null, null ]);
-	assert.deepEqual([ junk[4].obytes, junk[4].rbytes ], [ 0, 0 ], 'a count that is no count is 0');
+/* ------------------------------------------------------------- parse */
+
+/* every kind of line the kernel prints: each the lean parse fits must
+   give what the slower one gives; the others it must leave to it */
+const KINDS = {
+	'tcp': line(at(OUT, { ob: 1, rb: 2 })),
+	'tcp, later timeout and state': line(at(OUT, { ob: 9, rb: 8, timeout: 12, state: 'TIME_WAIT' })),
+	'tcp offloaded (no timeout)': line(at(OUT, { ob: 9, rb: 8, offload: true })),
+	'tcp offloaded to hardware': line(at(OUT, { ob: 9, rb: 8, hw: true })),
+	'tcp unreplied': line(at(NEW, { ob: 3, rb: 0, unreplied: true, state: 'SYN_SENT', assured: false })),
+	'udp (no state)': line(at(OWN, { ob: 70, rb: 90 })),
+	'udp unreplied': line(at(OWN, { ob: 70, rb: 0, unreplied: true, assured: false })),
+	'udp offloaded': line(at(OWN, { ob: 70, rb: 90, offload: true })),
+	'udplite': line(at(OWN, { proto: 'udplite', ob: 5, rb: 6 })),
+	'icmp': line({ proto: 'icmp', src: '192.0.2.10', dst: '203.0.113.5', ports: ' type=8 code=0 id=4660', back: ' type=0 code=0 id=4660', rsrc: '203.0.113.5', rdst: '203.0.113.200', ob: 84, rb: 84, timeout: 29, assured: false }),
+	'icmpv6': line({ proto: 'icmpv6', v6: true, src: V6A, dst: V6R, ports: ' type=128 code=0 id=4660', back: ' type=129 code=0 id=4660', rsrc: V6R, rdst: V6A, ob: 104, rb: 104, timeout: 29, assured: false }),
+	'tcp over IPv6': line(at(SIX, { ob: 5, rb: 6 })),
+	'tcp over IPv6, offloaded': line(at(SIX, { ob: 5, rb: 6, offload: true })),
+	'sctp': line({ proto: 'sctp', state: 'ESTABLISHED', src: '192.0.2.10', dst: '203.0.113.5', sport: 5000, dport: 5001, rsrc: '203.0.113.5', rdst: '203.0.113.200', ob: 7, rb: 8 }),
+	'dccp': line({ proto: 'dccp', state: 'OPEN', src: '192.0.2.10', dst: '203.0.113.5', sport: 5000, dport: 5001, rsrc: '203.0.113.5', rdst: '203.0.113.200', ob: 7, rb: 8 }),
+	'gre (its tracker: two fields of state, keys)': line({ proto: 'gre', state: 'timeout=30, stream_timeout=180', src: '192.0.2.10', dst: '203.0.113.5', ports: ' srckey=0x0 dstkey=0x0', back: ' srckey=0x0 dstkey=0x0', rsrc: '203.0.113.5', rdst: '203.0.113.200', ob: 7, rb: 8 }),
+	'a protocol without a tracker': line({ proto: 'unknown', num: 4, src: '192.0.2.10', dst: '203.0.113.5', rsrc: '203.0.113.5', rdst: '203.0.113.200', ob: 7, rb: 8 }),
+	'large counters': line(at(OUT, { ob: 900719925474099, rb: 123456789012 })),
+	/* these the lean parse must leave to the slower one */
+	'no counters (accounting off)': line(at(OUT, { acct: false })),
+	'no counters, unreplied': line(at(NEW, { acct: false, unreplied: true, state: 'SYN_SENT', assured: false })),
+	'no counters, no ports': line({ proto: 'unknown', num: 4, src: '192.0.2.10', dst: '203.0.113.5', rsrc: '203.0.113.5', rdst: '203.0.113.200', acct: false }),
+	'a zone of the original direction': line(at(OUT, { ob: 1, rb: 2, zone: ' zone-orig=1' })),
+	'a protocol of another name': line(at(OUT, { proto: 'mptcp', num: 6, ob: 1, rb: 2 })),
+	'counters that are no counts': 'ipv4     2 tcp      6 1 src=192.0.2.1 dst=192.0.2.2 bytes=-5 src=192.0.2.2 bytes=99999999999999999999',
+	'not a line': 'ipv4     2 tcp      6 7438 ESTABLISHED'
+};
+const LEFT = [ 'no counters (accounting off)', 'no counters, unreplied', 'no counters, no ports', 'a zone of the original direction', 'a protocol of another name',
+	'counters that are no counts', 'not a line' ];
+/* the lean parse's check (feed's memo): both src fields at their places */
+const fits = e => !!e && /^src=/.test(e[1]) && /^src=/.test(e[3]);
+
+test('traffic plugin: the lean parse gives what the slower one gives, on every kind of line, and leaves it the others', { skip: NO_UCODE }, () => {
+	const names = Object.keys(KINDS), out = parses(names.map(n => KINDS[n]));
+	names.forEach((name, i) => {
+		const [ e, s ] = out[i];
+		if (LEFT.includes(name)) { assert.ok(!fits(e), name + ': left to the slower parse'); return; }
+		assert.ok(fits(e), name + ': fits ' + JSON.stringify(e));
+		assert.ok(s && s.acct, name);
+		assert.deepEqual([ e[1], e[2], e[3], e[4], e[5] === '[HW_OFFLOAD]' ? 2 : e[5] === '[OFFLOAD]' ? 1 : 0 ], [ 'src=' + s.osrc, s.obytes, 'src=' + s.rsrc, s.rbytes, s.hw ? 2 : s.off ? 1 : 0 ], name);
+	});
+	const key = name => out[names.indexOf(name)][0][0];
+	assert.equal(key('tcp'), key('tcp, later timeout and state'), 'one key while the timeout and the state move');
+	assert.equal(key('tcp'), key('tcp offloaded (no timeout)'), 'and once offloaded');
+	assert.equal(key('tcp'), key('tcp offloaded to hardware'));
+	assert.equal(key('udp (no state)'), key('udp offloaded'));
+	assert.equal(key('tcp over IPv6'), key('tcp over IPv6, offloaded'));
+	assert.ok(!/7438|ESTABLISHED|bytes|packets/.test(key('tcp')), key('tcp'));
+	assert.notEqual(key('udp (no state)'), key('udplite'), 'protocols by their numbers');
+	/* the slower parse on what the lean one leaves */
+	const s = name => out[names.indexOf(name)][1];
+	assert.equal(s('no counters (accounting off)').acct, false);
+	assert.equal(s('no counters, unreplied').acct, false);
+	assert.deepEqual([ s('a zone of the original direction').obytes, s('a zone of the original direction').rbytes ], [ 1, 2 ]);
+	assert.deepEqual([ s('counters that are no counts').obytes, s('counters that are no counts').rbytes ], [ 0, 0 ], 'a count that is no count is 0');
+	assert.equal(s('not a line'), null);
 });
 
-test('traffic plugin: counters per MAC, the right way round, as this router counts them, and they only grow', { skip: NO_UCODE }, () => {
+test('traffic plugin: the slower parse, as before: the reply is the second src=; a key without what moves', { skip: NO_UCODE }, () => {
+	const out = parses([ line(at(OUT, { ob: 1, rb: 2 })), line(at(OUT, { ob: 9, rb: 8, timeout: 12, state: 'TIME_WAIT' })),
+		line({ proto: 'unknown', num: 47, src: '192.0.2.10', dst: '203.0.113.5', rsrc: '203.0.113.5', rdst: '203.0.113.200', ob: 1, rb: 1 }),
+		line({ proto: 'unknown', num: 4, src: '192.0.2.10', dst: '203.0.113.5', rsrc: '203.0.113.5', rdst: '203.0.113.200', ob: 1, rb: 1 }),
+		'', 'ipv5 src=1', 'ipv4 src=', 'x'.repeat(5000) ]).map(x => x[1]);
+	assert.equal(out[0].key, out[1].key);
+	assert.deepEqual([ out[0].osrc, out[0].obytes, out[0].rsrc, out[0].rbytes, out[0].acct, out[0].off, out[0].hw ], [ '192.0.2.10', 1, '203.0.113.5', 2, true, false, false ]);
+	assert.notEqual(out[2].key, out[3].key);
+	assert.deepEqual(out.slice(4), [ null, null, null, null ]);
+});
+
+/* ---------------------------------------------------------- counting */
+
+test('traffic plugin: counters per MAC, the right way round, as this router counts them, and they only grow from one call to the next', { skip: NO_UCODE }, () => {
 	const t1 = [ line(at(OUT, { ob: 1000, rb: 5000 })), line(at(SIX, { ob: 200, rb: 800 })), line(at(FWD, { ob: 300, rb: 3000 })),
 		line(at(LAN, { ob: 100, rb: 50 })), line(at(OWN, { ob: 70, rb: 90 })), 'not a line' ];
-	const t2 = [ line(at(OUT, { ob: 1500, rb: 9000, timeout: 7000 })),
+	const t2 = [ line(at(OUT, { ob: 1500, rb: 9000, timeout: 7000, offload: true })),
 		/* the IPv6 entry ended; the forward's counters were reset */
 		line(at(FWD, { ob: 100, rb: 1000 })), line(at(LAN, { ob: 100, rb: 50 })), line(at(NEW, { ob: 10, rb: 20 })) ];
 	const [ r1, r2, r3, r4, r5, r6 ] = calls([ call(t1, 0), call(t2, 5000),
@@ -194,10 +273,10 @@ test('traffic plugin: counters per MAC, the right way round, as this router coun
 		{ mac: M3, rx: 50, tx: 100 }
 	]);
 	assert.deepEqual([ r1.reply.acct, r1.reply.entries, r1.reply.partial, r1.reply.zeroed ], [ true, 6, false, 0 ]);
-	assert.deepEqual(of(r2, M1), { mac: M1, rx: 1300 + 500, tx: 5850 + 4000 });
+	assert.deepEqual(of(r2, M1), { mac: M1, rx: 1300 + 500, tx: 5850 + 4000 }, 'offloaded since: known again');
 	assert.deepEqual(of(r2, M2), { mac: M2, rx: 3000 + 1000 + 10, tx: 300 + 100 + 20 }, 'a reset counter counts from zero; a new entry whole');
 	assert.deepEqual(of(r2, M3), of(r1, M3));
-	assert.equal(r2.reply.zeroed, 1);
+	assert.deepEqual([ r2.reply.zeroed, r2.reply.offloaded ], [ 1, 1 ]);
 	assert.deepEqual(r3.reply, r2.reply, 'read again within 5 s: the last answer');
 	assert.deepEqual([ r3.dumps, r3.uci, r3.clock ], [ 0, 0, 1 ], 'and nothing read for it');
 	assert.deepEqual(r4.reply.hosts, r2.reply.hosts, 'the same table read again adds nothing');
@@ -227,6 +306,14 @@ test('traffic plugin: an address the neighbour table gives no host yet is follow
 	const [ d ] = calls([ call([ line(at(OUT, { ob: 1, rb: 2 })), line(at(SIX, { ob: 3, rb: 4 })) ], 0,
 		{ neigh: { 2: [ n4('192.0.2.10', M1.toUpperCase(), 0x80) ], 10: [ n6('2001:db8::10', M2, 0x04) ] } }) ]);
 	assert.deepEqual(d.reply.hosts, [ { mac: M1, rx: 1, tx: 2 }, { mac: M2, rx: 3, tx: 4 } ]);
+});
+
+test('traffic plugin: lines the lean parse leaves are counted as before', { skip: NO_UCODE }, () => {
+	/* a zone of the original direction moves the fields: the slower parse, the same counts */
+	const z = (ob, rb) => line(at(OUT, { ob, rb, zone: ' zone-orig=1' }));
+	const [ a, b ] = calls([ call([ z(100, 500), line(at(NEW, { ob: 1, rb: 2 })) ], 0), call([ z(150, 900), line(at(NEW, { ob: 1, rb: 2 })) ], 5000) ]);
+	assert.deepEqual(a.reply.hosts, [ { mac: M1, rx: 100, tx: 500 }, { mac: M2, rx: 1, tx: 2 } ]);
+	assert.deepEqual(b.reply.hosts, [ { mac: M1, rx: 150, tx: 900 }, { mac: M2, rx: 1, tx: 2 } ]);
 });
 
 test('traffic plugin: accounting off, no table, offloaded entries', { skip: NO_UCODE }, () => {
@@ -266,7 +353,6 @@ test('traffic plugin: at most 16384 entries a read and 512 hosts, nothing counte
 	}
 	const [ cut ] = calls([ call(six, 0, { neigh: { 2: [], 10: v6 } }) ]);
 	assert.deepEqual([ cut.reply.hosts.length, cut.reply.dropped ], [ 512, 88 ], 'hosts, each once, however many entries it has');
-	assert.equal(many.reply.partial, false);
 });
 
 test('traffic plugin: one read serves every caller for 5 s, 30 s with Low-power router', { skip: NO_UCODE }, () => {
@@ -280,74 +366,127 @@ test('traffic plugin: one read serves every caller for 5 s, 30 s with Low-power 
 	assert.equal(r[1].uci, 0, 'the Low-power option is read only for a read');
 });
 
-test('traffic plugin: the table is read for 500 ms at most; a slow read lengthens the wait before the next', { skip: NO_UCODE }, () => {
-	/* each look at the clock: 10 ms on. A look every 64 entries: the 50th is past 500 ms */
-	const big = table(5000, 100, 0), neigh = neighOf(100);
-	const r = calls([ call(big, 0, { neigh, step: 10 }), call(big, 20000, { neigh, step: 10 }), call(big, 25000, { neigh, step: 10 }) ]);
-	assert.deepEqual([ r[0].reply.partial, r[0].reply.entries ], [ 'time', 64 * 50 ]);
-	assert.deepEqual([ r[0].reply.took, r[0].reply.slow, r[0].reply.every ], [ 510, true, 510 * 50 ], 'slower than 100 ms: the next read 50 times as late');
+test('traffic plugin: the table is read for 2 s at most; a slow read lengthens the wait before the next', { skip: NO_UCODE }, () => {
+	/* each look at the clock: 10 ms on. Two looks before the table, then one every 64 entries: the 199th is past 2 s */
+	const big = table(16000, 100, 0), neigh = neighOf(100);
+	const r = calls([ call(big, 0, { neigh, step: 10 }), call(big, 19000, { neigh, step: 10 }), call(big, 19600, { neigh, step: 10 }) ]);
+	assert.deepEqual([ r[0].reply.partial, r[0].reply.entries ], [ 'time', 64 * 199 ]);
+	assert.deepEqual([ r[0].reply.took, r[0].reply.slow, r[0].reply.every ], [ 2010, true, 2010 * 10 ], 'the next read 10 times as late: a tenth of one core');
 	assert.equal(r[1].reply.at, 0, 'shared until then');
-	assert.equal(r[2].reply.at, 25000);
+	assert.equal(r[2].reply.at, 19600, 'from its every less the 500 ms');
 	/* entries a partial read did not reach: the next read that does counts their growth, not all they carried */
-	const all = calls([ call(table(5000, 100, 0), 0, { neigh }), call(table(5000, 100, 1), 5000, { neigh, step: 10 }), call(table(5000, 100, 2), 30500, { neigh }) ]);
-	assert.deepEqual(all.map(x => [ x.reply.partial, x.reply.entries ]), [ [ false, 5000 ], [ 'time', 3200 ], [ false, 5000 ] ]);
-	assert.equal(sum(all[1], 'rx') - sum(all[0], 'rx'), 3200 * 100);
-	assert.equal(sum(all[2], 'rx') - sum(all[1], 'rx'), 3200 * 100 + 1800 * 200, 'the 1800 the partial read missed: what they added since the read before');
-	/* never read before, they count whole */
-	const late = calls([ call(table(5000, 100, 0), 0, { neigh, step: 10 }), call(table(5000, 100, 1), 30000, { neigh }) ]);
-	let whole = 0;
-	for (let i = 3200; i < 5000; i++) whole += 1000 + i + 100;
-	assert.equal(sum(late[1], 'rx') - sum(late[0], 'rx'), 3200 * 100 + whole);
+	const all = calls([ call(table(16000, 100, 0), 0, { neigh }), call(table(16000, 100, 1), 5000, { neigh, step: 10 }), call(table(16000, 100, 2), 30000, { neigh }) ]);
+	assert.deepEqual(all.map(x => [ x.reply.partial, x.reply.entries ]), [ [ false, 16000 ], [ 'time', 12736 ], [ false, 16000 ] ]);
+	assert.equal(sum(all[1], 'rx') - sum(all[0], 'rx'), 12736 * 100);
+	assert.equal(sum(all[2], 'rx') - sum(all[1], 'rx'), 12736 * 100 + (16000 - 12736) * 200, 'the ones the partial read missed: what they added since the read before');
 	/* fast reads: 5 s; never more than two minutes */
 	const quick = calls([ call(big, 0, { neigh, step: 1 }) ]);
 	assert.deepEqual([ quick[0].reply.partial, quick[0].reply.slow, quick[0].reply.every ], [ false, false, 5000 ]);
-	const stuck = calls([ call(big, 0, { neigh, step: 3000 }) ]);
-	assert.deepEqual([ stuck[0].reply.entries, stuck[0].reply.took, stuck[0].reply.every ], [ 64, 6000, 120000 ]);
+	const stuck = calls([ call(big, 0, { neigh, step: 13000 }) ]);
+	assert.deepEqual([ stuck[0].reply.entries, stuck[0].reply.took, stuck[0].reply.every ], [ 64, 39000, 120000 ]);
 });
 
-/* #134, as for the dashboard's plugin (tests/plugin.test.js): the module
-   that may not load comes before the two LuCI's own script uses too */
-const LUCI_SHARED = [ 'uci', 'ubus', 'fs' ];
-function pluginImports() {
-	const re = /^import\s+(?:\{([^}]*)\}|\*\s+as\s+\w+)\s+from\s+'([^']+)';/gm;
-	return [ ...fs.readFileSync(PLUGIN, 'utf8').matchAll(re) ].map(m =>
-		({ module: m[2], names: m[1] == null ? null : m[1].split(',').map(n => n.trim().split(/\s+/)[0]).filter(Boolean) }));
-}
+/* ------------------------------------------------- process and state */
 
-test('traffic plugin: imports uci and fs after every other module (#134)', () => {
-	const mods = pluginImports().map(i => i.module);
-	assert.deepEqual(mods, [ 'rtnl', 'uci', 'fs' ]);
-	const first = mods.findIndex(m => LUCI_SHARED.includes(m));
-	assert.deepEqual(mods.slice(first).filter(m => !LUCI_SHARED.includes(m)), [], 'imported after uci, ubus or fs: ' + mods.join(', '));
+test('traffic plugin: rpcd\'s list and call, and nothing else', { skip: NO_UCODE }, () => {
+	const dir = setup();
+	const list = exec(dir, [ 'list' ]);
+	assert.deepEqual([ list.status, JSON.parse(list.out) ], [ 0, { hosts: {} } ], 'one method, which takes nothing');
+	for (const argv of [ [], [ 'call' ], [ 'call', 'reset' ], [ 'call', 'Hosts' ], [ 'hosts' ] ]) {
+		const r = exec(dir, argv);
+		assert.deepEqual([ r.status, r.out ], [ 0, '' ], JSON.stringify(argv));
+	}
+	assert.ok(!fs.existsSync(path.join(dir, 'state')), 'nothing made for them');
 });
 
-test('traffic plugin: a module that cannot load stops it before uci and fs are loaded (#134)', { skip: NO_UCODE }, () => {
-	const load = fail => {
-		const dir = mkTmp('vantage-trafficimp-');
-		for (const { module, names } of pluginImports())
-			fs.writeFileSync(path.join(dir, module + '.uc'), "'use strict';\n" + `push(global.LOADED, ${JSON.stringify(module)});\n` +
-				(module === fail ? `die(${JSON.stringify(module + ' stand-in: cannot load')});\n` : '') + 'function f() {}\nconst C = {};\n' +
-				`export { ${(names || [ 'request' ]).map(n => 'f as ' + n).concat(names ? [] : [ "C as 'const'" ]).join(', ')} };\n`);
-		const harness = path.join(dir, 'load.uc');
-		fs.writeFileSync(harness, "'use strict';\nglobal.LOADED = [];\nlet err = null, obj = null;\n" +
-			"try { obj = loadfile(PLUGIN, { raw_mode: true })()?.['luci.vantage.traffic']; } catch (e) { err = e.message; }\n" +
-			"print(sprintf('%J\\n', { loaded: global.LOADED, err, methods: obj ? sort(keys(obj)) : null }));\n");
-		const r = spawnSync(UCODE, [ '-L', dir, '-D', 'PLUGIN=' + PLUGIN, harness ], { encoding: 'utf8' });
-		assert.equal(r.status, 0, r.stderr);
-		return JSON.parse(r.stdout);
+test('traffic plugin: its state in a directory of its own, 0700, its files 0600, from one call to the next', { skip: NO_UCODE }, () => {
+	const dir = setup();
+	calls([ call([ line(at(OUT, { ob: 1, rb: 2 })) ], 0) ], dir);
+	const state = path.join(dir, 'state');
+	assert.equal(fs.statSync(state).mode & 0o777, 0o700);
+	assert.deepEqual(fs.readdirSync(state).sort(), [ 'answer.json', 'lock', 'state.json' ]);
+	for (const f of [ 'answer.json', 'state.json' ]) assert.equal(fs.statSync(path.join(state, f)).mode & 0o777, 0o600, f);
+	const st = JSON.parse(fs.readFileSync(path.join(state, 'state.json'), 'utf8'));
+	assert.deepEqual(Object.keys(st).sort(), [ 'flows', 'totals', 'v' ]);
+	assert.deepEqual(st.totals, { [M1]: [ 1, 2, 0 ] });
+	/* a state that is not this plugin's, or too large: counted afresh, never trusted */
+	const big = '{ "v": 2, "flows": {}, "totals": { "' + M1 + '": [ 1000000, 1000000, 5000 ] }' + ' '.repeat(4194304) + '}';
+	for (const bad of [ '{ "v": 1, "flows": {}, "totals": { "' + M1 + '": [ 1000000, 1000000, 5000 ] } }', 'not json', '[]', big ]) {
+		fs.writeFileSync(path.join(state, 'state.json'), bad);
+		fs.rmSync(path.join(state, 'answer.json'));
+		const [ r ] = calls([ call([ line(at(OUT, { ob: 5, rb: 6 })) ], 5000) ], dir);
+		assert.deepEqual(r.reply.hosts, [ { mac: M1, rx: 5, tx: 6 } ], bad.slice(0, 20));
+	}
+	/* a broken answer: a new read */
+	fs.writeFileSync(path.join(state, 'answer.json'), '{ "at": "soon" }');
+	const [ again ] = calls([ call([ line(at(OUT, { ob: 7, rb: 9 })) ], 6000) ], dir);
+	assert.equal(again.reply.at, 6000);
+});
+
+test('traffic plugin: a state directory it did not make is refused, and nothing is read or written', { skip: NO_UCODE }, () => {
+	for (const make of [
+		d => { fs.mkdirSync(d, { mode: 0o755 }); fs.chmodSync(d, 0o755); },
+		d => { const real = d + '-real'; fs.mkdirSync(real, { mode: 0o700 }); fs.symlinkSync(real, d); },
+		d => fs.writeFileSync(d, 'a file')
+	]) {
+		const dir = setup(), state = path.join(dir, 'state');
+		make(state);
+		const [ r ] = calls([ call([ line(at(OUT, { ob: 1, rb: 2 })) ], 0) ], dir);
+		assert.deepEqual([ r.reply, r.dumps, r.uci ], [ {}, 0, 0 ]);
+		if (fs.lstatSync(state).isDirectory()) assert.deepEqual(fs.readdirSync(state), []);
+		if (fs.existsSync(state + '-real')) assert.deepEqual(fs.readdirSync(state + '-real'), []);
+	}
+});
+
+test('traffic plugin: one read at a time; a call while one runs gets the last answer, or none', { skip: NO_UCODE }, () => {
+	const dir = setup(), state = path.join(dir, 'state');
+	const t = [ line(at(OUT, { ob: 1, rb: 2 })) ];
+	/* the lock held by another process (a read running), through ucode's own flock */
+	const holder = path.join(dir, 'hold.uc');
+	fs.writeFileSync(holder, "'use strict';\nimport { open, readfile } from 'fs';\nlet l = open(LOCK, 'a');\nif (l.lock('xn') !== true) die('cannot lock');\n" +
+		"exit(system(json(readfile(CMD))));\n");
+	const run = argv => {
+		fs.writeFileSync(path.join(dir, 'cmd.json'), JSON.stringify(argv));
+		return spawnSync(UCODE, [ '-D', 'LOCK=' + path.join(state, 'lock'), '-D', 'CMD=' + path.join(dir, 'cmd.json'), holder ], { encoding: 'utf8' });
 	};
-	const ok = load(null);
-	assert.deepEqual([ ok.loaded, ok.methods ], [ [ 'rtnl', 'uci', 'fs' ], [ 'hosts' ] ], ok.err);
-	const r = load('rtnl');
-	assert.match(String(r.err), /rtnl stand-in: cannot load/);
-	assert.deepEqual([ r.loaded, r.methods ], [ [ 'rtnl' ], null ]);
+	const plugin = [ UCODE, '-L', STUBS, '-D', 'STUB=' + path.join(dir, 'stub.json'), '-D', 'NOW=9000', '-D', 'STEP=0', '-D', 'INPUT=x', path.join(dir, 'plugin.uc'), 'call', 'hosts' ];
+	fs.mkdirSync(state, { mode: 0o700 });
+	fs.writeFileSync(path.join(dir, 'acct'), '1\n');
+	fs.writeFileSync(path.join(dir, 'nf_conntrack'), t.join('\n') + '\n');
+	fs.writeFileSync(path.join(dir, 'stub.json'), JSON.stringify({ neigh: NEIGH, power: null }));
+	let r = run(plugin);
+	assert.equal(r.status, 0, r.stderr);
+	assert.deepEqual(JSON.parse(r.stdout), {}, 'no answer yet: none, and no wait');
+	assert.ok(!fs.existsSync(path.join(state, 'state.json')), 'and no read beside the one running');
+	/* an old answer: that one */
+	calls([ call(t, 0) ], dir);
+	r = run(plugin);
+	assert.equal(JSON.parse(r.stdout).at, 0, 'the last answer while the read runs');
+	/* free again: a new read */
+	const [ next ] = calls([ call(t, 9000) ], dir);
+	assert.equal(next.reply.at, 9000);
 });
 
-test('traffic plugin: compiles as rpcd loads it; every regular expression is a module constant', { skip: NO_UCODE }, () => {
+test('traffic plugin: a module that cannot load ends the call with no answer and no state, in its own process', { skip: NO_UCODE }, () => {
+	const dir = setup(), stubs = mkTmp('vantage-trafficmods-');
+	fs.copyFileSync(path.join(STUBS, 'uci.uc'), path.join(stubs, 'uci.uc'));
+	fs.writeFileSync(path.join(stubs, 'rtnl.uc'), "'use strict';\ndie('rtnl stand-in: cannot load');\n");
+	fs.writeFileSync(path.join(dir, 'stub.json'), '{}');
+	const r = spawnSync(UCODE, [ '-L', stubs, '-D', 'STUB=' + path.join(dir, 'stub.json'), '-D', 'NOW=0', '-D', 'STEP=0', path.join(dir, 'plugin.uc'), 'call', 'hosts' ], { encoding: 'utf8' });
+	assert.notEqual(r.status, 0);
+	assert.equal(r.stdout, '');
+	assert.match(r.stderr, /rtnl stand-in: cannot load/);
+	assert.ok(!fs.existsSync(path.join(dir, 'state')));
+});
+
+test('traffic plugin: compiles as ucode runs it; every regular expression is a module constant', { skip: NO_UCODE }, () => {
 	const r = spawnSync(UCODE, [ '-L', STUBS, '-c', '-o', '/dev/null', PLUGIN ], { encoding: 'utf8' });
 	assert.equal(r.status, 0, r.stderr);
+	assert.ok(fs.readFileSync(PLUGIN, 'utf8').startsWith('#!/usr/bin/ucode -S\n'), 'rpcd runs it by its first line');
+	assert.equal(fs.statSync(PLUGIN).mode & 0o111, 0o111, 'executable');
 	const bad = [];
 	fs.readFileSync(PLUGIN, 'utf8').split('\n').forEach((l, i) => {
+		if (!i) return;
 		const code = l.replace(/\/\/.*$/, '');
 		if (/^const RE_[A-Z0-9_]+ = \//.test(code)) return;
 		if (/(?:[(,=:!&|?]|\breturn)\s*\/(?![/*])/.test(code)) bad.push((i + 1) + ': ' + l.trim());
@@ -355,30 +494,32 @@ test('traffic plugin: compiles as rpcd loads it; every regular expression is a m
 	assert.deepEqual(bad, []);
 });
 
+/* ---------------------------------------------------------- benchmark */
+
 /* dev/traffic/bench.uc runs on a router without the package: it carries
-   the plugin's counting code, which must be the plugin's own */
-test('traffic benchmark: its counting code is the plugin\'s, byte for byte', () => {
+   the plugin's counting and state code, which must be the plugin's own */
+test('traffic benchmark: its counting and state code is the plugin\'s, byte for byte', () => {
 	const plugin = fs.readFileSync(PLUGIN, 'utf8'), bench = fs.readFileSync(BENCH, 'utf8');
 	const block = (src, name) => {
 		const m = new RegExp('^function ' + name + '\\([^)]*\\) \\{\\n[\\s\\S]*?\\n\\}$', 'm').exec(src);
 		assert.ok(m, name);
 		return m[0];
 	};
-	for (const name of [ 'now_ms', 'count', 'kv', 'parse', 'norm', 'add', 'feed' ]) assert.equal(block(bench, name), block(plugin, name), name);
-	for (const c of [ 'MAX_ENTRIES', 'MAX_HOSTS', 'STOP_MS', 'CHECK_EVERY', 'KEEP_MS' ])
-		assert.equal(new RegExp('^const ' + c + ' = .*$', 'm').exec(bench)[0], new RegExp('^const ' + c + ' = .*$', 'm').exec(plugin)[0], c);
+	for (const name of [ 'now_ms', 'count', 'kv', 'parse', 'parse_slow', 'norm', 'add', 'feed', 'put', 'load_state' ]) assert.equal(block(bench, name), block(plugin, name), name);
+	for (const c of [ 'MAX_ENTRIES', 'MAX_HOSTS', 'MAX_STATE', 'STOP_MS', 'CHECK_EVERY', 'KEEP_MS', 'PROTO' ])
+		assert.equal(new RegExp('^const ' + c + ' = [^\\n]*(\\n\\t[^\\n]*)*', 'm').exec(bench)[0], new RegExp('^const ' + c + ' = [^\\n]*(\\n\\t[^\\n]*)*', 'm').exec(plugin)[0], c);
 	assert.doesNotMatch(bench, /^import .*'(rtnl|uci|ubus)'/m, 'only what a stock OpenWrt has: ucode and its fs module');
 });
 
-test('traffic benchmark: runs, writes only its own file and prints a line per size', { skip: NO_UCODE }, t => {
+test('traffic benchmark: runs, writes only its own files and prints a line per size', { skip: NO_UCODE }, t => {
 	const dir = mkTmp('vantage-trafficbench-');
 	fs.writeFileSync(path.join(dir, 'kept'), 'x');
 	const r = spawnSync(UCODE, [ BENCH, dir, '500', '2000' ], { encoding: 'utf8' });
 	assert.equal(r.status, 0, r.stderr);
 	const rows = r.stdout.split('\n').filter(l => /^\s*\d+ entries/.test(l));
 	assert.equal(rows.length, 2, r.stdout);
-	for (const l of rows) t.diagnostic(l.trim());
-	assert.deepEqual(fs.readdirSync(dir), [ 'kept' ], 'its table removed, nothing else touched');
+	for (const l of r.stdout.trim().split('\n')) t.diagnostic(l.trim());
+	assert.deepEqual(fs.readdirSync(dir), [ 'kept' ], 'its files removed, nothing else touched');
 	const bad = spawnSync(UCODE, [ BENCH, path.join(dir, 'no-such-dir') ], { encoding: 'utf8' });
 	assert.notEqual(bad.status, 0);
 });
