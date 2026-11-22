@@ -5142,8 +5142,9 @@ return view.extend({
 
 	/* A tile for each provider this login may ask (tileIds; not one whose
 	   first answer said it is not there) that has none yet: its layout
-	   id ('x' and the provider's id) in a list. Its name, icon and dot come with its
-	   answers (paintTile); before one it goes by the provider's id */
+	   id ('x' and the provider's id) in a list. Its name, icon and dot
+	   come with its answers (paintTile); before one it goes by the
+	   provider's id */
 	buildProvided: function() {
 		var self = this, ts = this.tileState || {}, out = [], els = this.extEls || (this.extEls = Object.create(null));
 		(this.tileIds || []).forEach(function(id) {
