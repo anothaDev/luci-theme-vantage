@@ -59,7 +59,7 @@ Each release ships both packages, `luci-theme-vantage` and
   [@Vikk20](https://github.com/Vikk20)). With several access points and
   many ports, the network path ran several screens long. Under
   Customize, beside the throughput chart's style, **Network path** now
-  offers **Compact, one line per node**: every Wi-Fi network, every
+  offers **Compact, one line each**: every Wi-Fi network, every
   Ethernet port and every access point becomes one line with its name,
   how many clients or devices it has and its live rate, and the client
   rows go. A red dot before the count still marks a client with a weak

@@ -698,8 +698,8 @@ msgid "Collisions: %s"
 msgstr "冲突：%s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2406
-msgid "Compact, one line per node"
-msgstr ""
+msgid "Compact, one line each"
+msgstr "紧凑，每项一行"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4796
 msgid "Connected"
@@ -1055,7 +1055,7 @@ msgstr "内容来自防火墙配置。由 UPnP 或自定义规则文件开放的
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2405
 msgctxt "vantage"
 msgid "Full"
-msgstr ""
+msgstr "完整"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:62
 msgctxt "vantage"

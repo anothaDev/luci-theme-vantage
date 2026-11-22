@@ -695,7 +695,7 @@ msgid "Collisions: %s"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2406
-msgid "Compact, one line per node"
+msgid "Compact, one line each"
 msgstr ""
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4796

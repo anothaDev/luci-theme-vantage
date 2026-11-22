@@ -265,7 +265,7 @@ test('path form: picked under Customize beside the chart style; kept, marked for
 	assert.equal(select.getAttribute('id'), 'vt-path-form');
 	assert.deepEqual(pick.children.map(c => c.tag), [ 'label', 'select' ]);
 	assert.deepEqual([ pick.children[0].getAttribute('for'), pick.children[0].textContent ], [ 'vt-path-form', 'Network path' ]);
-	assert.deepEqual(select.children.map(o => [ o.getAttribute('value'), o.textContent ]), [ [ 'full', 'Full' ], [ 'compact', 'Compact, one line per node' ] ]);
+	assert.deepEqual(select.children.map(o => [ o.getAttribute('value'), o.textContent ]), [ [ 'full', 'Full' ], [ 'compact', 'Compact, one line each' ] ]);
 	assert.equal(select.value, 'full');
 	assert.ok(SRC.includes("[ this.buildChartPick(), this.buildPathPick(), this.buildBackdropPick() ]"), 'beside the chart style');
 	let painted = 0;

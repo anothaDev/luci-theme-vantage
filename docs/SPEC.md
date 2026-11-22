@@ -587,7 +587,7 @@ text around it so it looks the same size.
   size and place don't change with it.
 - **Network path, compact** (#157): under "Customize", beside the chart
   style, "Network path" picks Full (the default: the path's cards as
-  they are) or "Compact, one line per node", saved as the chart style
+  they are) or "Compact, one line each", saved as the chart style
   is. Compact makes every node of the branches one line, in the same
   places on the same wires: a radio (its band and channel), the Wired
   node, a network of a device without Wi-Fi (its address), a paired

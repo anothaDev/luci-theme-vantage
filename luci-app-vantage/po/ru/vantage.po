@@ -735,8 +735,8 @@ msgid "Collisions: %s"
 msgstr "Коллизии: %s"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2406
-msgid "Compact, one line per node"
-msgstr ""
+msgid "Compact, one line each"
+msgstr "Компактный, по одной строке"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4796
 msgid "Connected"
@@ -1113,7 +1113,7 @@ msgstr ""
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:2405
 msgctxt "vantage"
 msgid "Full"
-msgstr ""
+msgstr "Полный"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:62
 msgctxt "vantage"

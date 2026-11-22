@@ -2403,7 +2403,7 @@ return view.extend({
 	buildPathPick: function() {
 		var self = this, names = {
 			'full': _('Full', 'vantage'),
-			'compact': _('Compact, one line per node')
+			'compact': _('Compact, one line each')
 		};
 		var pick = E('select', { 'class': 'vt-select', 'id': 'vt-path-form', 'change': function(ev) { self.setPathForm(ev.target.value); } },
 			PATH_FORMS.map(function(k) { return E('option', { 'value': k }, [ names[k] ]); }));
