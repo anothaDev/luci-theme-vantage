@@ -73,9 +73,17 @@
  *   argument can be sent; it is called in one place, for ids that come
  *   only from the session's own ACL (rpcd's `session access` without an
  *   object, declared once in one exact form without parameters and
- *   called once), never another LuCI or OpenWrt object. No group of the
+ *   called once), never another LuCI or OpenWrt object. Those ids are
+ *   tileIds' (its text pinned), handed as they are to askTile, its one
+ *   caller, which hands its id to the call unchanged. No group of the
  *   dashboard or the add-on mentions a `vantage.tile.` object or a
  *   `vantage-tile-` group: a provider's package ships its own;
+ * - beside the declares there is no way to rpcd: the browser files of
+ *   the dashboard and the add-ons use rpc only as `rpc.declare({`, fetch
+ *   only their own CSS and the theme's script, and make no
+ *   XMLHttpRequest, beacon, socket or LuCI request; none of them, nor the
+ *   theme's, assigns a prototype's member or defines a property (which
+ *   could change what the checks above rely on, TILE_OBJ.test);
  * - calls on uci objects name the `vantage` config literally, except the
  *   firewall overview (view/vantage/firewall.js), which reads `firewall`
  *   with uci get, finds the uplink with network.interface dump and
@@ -258,6 +266,21 @@ const TILE_ACLS = "var callAcls = rpc.declare({ object: 'session', method: 'acce
 /* where the ids come from, and the one call: in askTiles and askTile */
 const TILE_FROM_ACL = "\t\tif (!this.tilesMay) this.tilesMay = callAcls().then(tileIds, function() { self.tilesMay = null; return []; });\n";
 const TILE_ASK = '\t\ts.call = tileCall(id).then(';
+/* ...and whole: tileIds reads the ACL's ubus part and nothing else; the
+   ids it gives, as they are, are the only ones askTile is called with
+   (TILE_IDS_TO_ASK follows TILE_FROM_ACL), and askTile hands its id to
+   the call unchanged (TILE_ASK_HEAD, which ends with TILE_ASK) */
+const TILE_IDS = "function tileIds(acl) {\n\tvar ubus = acl && typeof acl === 'object' && !Array.isArray(acl) ? acl.ubus : null, out = [];\n" +
+	"\tif (!ubus || typeof ubus !== 'object' || Array.isArray(ubus)) return out;\n\tObject.keys(ubus).forEach(function(obj) {\n" +
+	"\t\tif (TILE_OBJ.test(obj) && Array.isArray(ubus[obj]) && ubus[obj].indexOf('status') >= 0) out.push(obj.slice(13));\n" +
+	"\t});\n\treturn out.sort().slice(0, layout.EXTRA_MAX);\n}\n";
+const TILE_IDS_TO_ASK = "\t\treturn this.tilesMay.then(function(ids) {\n\t\t\tself.tileIds = ids;\n" +
+	"\t\t\tvar now = Date.now(), asks = ids.map(function(id) { return self.askTile(id, now); }).filter(Boolean);\n";
+const TILE_ASK_DEF = '\taskTile: function(id, now) {';
+const TILE_ASK_HEAD = TILE_ASK_DEF + "\n\t\tvar self = this, ts = this.tileState || (this.tileState = Object.create(null));\n" +
+	"\t\tvar s = ts[id] || (ts[id] = { off: false, answered: false, last: null, failed: false, fails: 0, wait: null, call: null });\n" +
+	"\t\tif (s.off || s.call) return null;\n\t\tif (s.wait && now >= s.wait.from && now < s.wait.until) return null;\n" +
+	"\t\tif (s.answered && this.tileHidden(id)) return null;\n\t\tvar asked = Date.now();\n" + TILE_ASK;
 const READ_FILES = { '/proc/stat': [ 'read' ] };
 const RDNS_UBUS = { 'network.rrdns': [ 'lookup' ] };
 const WRITE_UBUS = { 'luci.vantage': [ 'set_alias', 'set_quiet' ] };
@@ -904,7 +927,7 @@ test('negative controls: any other call no group grants, another method or form 
    other mention of a vantage.tile object in a declare. */
 function tileProblems(srcs) {
 	const out = [];
-	let helpers = 0, objs = 0, prefixes = 0, asks = 0, acls = 0, fromAcl = 0;
+	let helpers = 0, objs = 0, prefixes = 0, asks = 0, acls = 0, fromAcl = 0, idsWhole = 0, askers = 0;
 	for (const { file, text } of srcs) {
 		const dash = file.endsWith('view/vantage/overview.js');
 		const h = text.split(TILE_HELPER).length - 1, o = text.split('\n' + TILE_OBJ_LINE + '\n').length - 1;
@@ -914,6 +937,36 @@ function tileProblems(srcs) {
 		/* the check only tested, never changed (TILE_OBJ.test = ...); the
 		   helper's declares only in the helper (tileCalls[...] = callX) */
 		for (const m of text.matchAll(/^.*\bTILE_OBJ\s*[.[](?!test\(obj\)).*$/gm)) out.push(`${file}: ${m[0].trim()}`);
+		/* and the name is used for nothing else: every mention is the
+		   declaration or TILE_OBJ.test(obj) (an alias, an argument, a
+		   property defined on it would be another use) */
+		for (const m of text.matchAll(/\bTILE_OBJ\b/g)) {
+			const line = text.slice(text.lastIndexOf('\n', m.index) + 1, text.indexOf('\n', m.index));
+			if (line !== TILE_OBJ_LINE && !text.startsWith('TILE_OBJ.test(obj)', m.index)) out.push(`${file}: TILE_OBJ in ${line.trim()}`);
+		}
+		/* where the ids come from: tileIds as it is, defined once; the
+		   read's ids handed as they are to askTile, its one caller; the
+		   read itself (tilesMay) set and used there only; askTile's id
+		   handed to the call unchanged */
+		if (dash && text.includes(TILE_IDS)) idsWhole++;
+		for (const name of [ 'tileIds', 'tileCall' ]) {
+			const defs = (text.match(new RegExp('\\bfunction\\s+' + name + '\\b', 'g')) || []).length;
+			if (defs !== (dash ? 1 : 0)) out.push(`${file}: ${defs} definitions of ${name}`);
+			for (const m of text.matchAll(new RegExp('(?:^|[^.\\w$])' + name + '\\s*=(?!=)', 'g'))) out.push(`${file}: ${name} assigned: ${m[0].trim()}`);
+		}
+		if (dash && !text.includes(TILE_FROM_ACL + TILE_IDS_TO_ASK)) out.push(`${file}: the ACL's ids not handed to askTile as they are`);
+		const mays = (text.match(/\btilesMay\b/g) || []).length, pinnedMays = ((TILE_FROM_ACL + TILE_IDS_TO_ASK).match(/\btilesMay\b/g) || []).length;
+		if (mays !== (dash ? pinnedMays : 0)) out.push(`${file}: tilesMay used ${mays} times`);
+		if (dash && !text.includes(TILE_ASK_HEAD)) out.push(`${file}: askTile does not hand its id to the call as it came`);
+		/* askTile as code (called, read as a property, named in a string,
+		   defined): its definition and the one call in TILE_IDS_TO_ASK */
+		for (const m of text.matchAll(/\baskTile\b/g)) {
+			const before = text[m.index - 1], after = /^\s*(.)/.exec(text.slice(m.index + 7));
+			if (!/[.'"`[]/.test(before) && !(after && /[(:]/.test(after[1]))) continue;
+			const line = text.slice(text.lastIndexOf('\n', m.index) + 1, text.indexOf('\n', m.index) + 1);
+			if (dash && (line === TILE_ASK_DEF + '\n' || TILE_IDS_TO_ASK.endsWith(line))) { askers++; continue; }
+			out.push(`${file}: askTile in ${line.trim()}`);
+		}
 		if ((text.match(/\btileCalls\b/g) || []).length !== h * (TILE_HELPER.match(/\btileCalls\b/g) || []).length) out.push(`${file}: tileCalls used outside the helper`);
 		for (const m of text.matchAll(/^.*['"`]vantage\.tile\b.*$/gm))
 			if (dash && m[0] === "\tvar obj = 'vantage.tile.' + id;") prefixes++;
@@ -939,6 +992,8 @@ function tileProblems(srcs) {
 	if (helpers !== 1 || objs !== 1 || prefixes !== 1) out.push(`${helpers} provider helpers, ${objs} TILE_OBJ, ${prefixes} objects made from the prefix`);
 	if (asks !== 1) out.push(`${asks} provider calls`);
 	if (acls !== 1 || fromAcl !== 1) out.push(`${acls} declares of the session's ACL, ${fromAcl} calls`);
+	if (idsWhole !== 1) out.push(`${idsWhole} tileIds in its pinned form`);
+	if (askers !== 2) out.push(`askTile defined and called ${askers} times, not once each`);
 	return out;
 }
 
@@ -2163,4 +2218,147 @@ test('traffic: the plugin rules catch each breach', () => {
 		assert.notEqual(src, trafficPlugin, name + ': the mutation applies');
 		assert.throws(() => checkTrafficSource(src), assert.AssertionError, name);
 	}
+});
+
+/* ------------------------------------- how the browser files reach rpcd */
+
+/* The checks above read the calls the JavaScript declares; these hold
+   that there is no other way out, in every browser file of the dashboard
+   and of the add-ons (the traffic add-on has none), and that nothing
+   changes the built-ins those checks lean on, in those and in the
+   theme's (which runs in the dashboard's page), as is true today:
+   - rpc only as `'require rpc';` and `rpc.declare({` (or in an object's
+     name, `luci-rpc`): no rpc.call, no alias, no other member; one
+     exception, a comment in fmt.js;
+   - fetch only for the packages' own CSS and the theme's script (the
+     calls in FETCHES, by file), the dashboard's own fetch method, and
+     prose;
+   - no XMLHttpRequest, sendBeacon, WebSocket, EventSource or
+     importScripts, no L.Request / L.request / L.get / L.post, and no
+     'require request' or 'require xhr';
+   - .prototype only as (Object|Array).prototype.<name>.call(, and no
+     defineProperty, defineProperties, setPrototypeOf, getPrototypeOf,
+     __proto__, __defineGetter__/__defineSetter__ or Reflect. */
+const BROWSER_PKGS = [ PKG, APS_PKG ];
+const THEME_PKG = path.resolve(process.env.VANTAGE_THEME_PKG || path.join(__dirname, '..', 'luci-theme-vantage'));
+const browserFiles = pkgs => pkgs.flatMap(p => fs.existsSync(path.join(p, 'htdocs')) ? jsFiles(path.join(p, 'htdocs')).map(f => ({ file: path.relative(path.dirname(p), f), text: fs.readFileSync(f, 'utf8') })) : []);
+const RPC_EXCEPTIONS = { 'vantage/fmt.js': [ 'no DOM, no rpc. Every' ] };
+const FETCHES = {
+	'view/vantage/overview.js': [ "fetch(L.resource('vantage/app.css') + '?v=' + L.env.resource_version).then(", "fetch(L.resource('menu-vantage.js'), { method: 'HEAD', cache: 'no-store' }).then(" ],
+	'view/vantage/firewall.js': [ "fetch(L.resource('vantage/app.css') + '?v=' + L.env.resource_version).then(" ],
+	'view/vantage/aps.js': [ "fetch(L.resource('vantage/app.css') + '?v=' + L.env.resource_version).then(", "fetch(L.resource('vantage/aps.css') + '?v=' + L.env.resource_version).then(" ]
+};
+const OTHER_WAYS = /\b(?:XMLHttpRequest|sendBeacon|WebSocket|EventSource|importScripts)\b|\bL\s*\.\s*(?:Request|request|get|post)\b/g;
+const BUILTIN_CHANGES = /\b(?:defineProperty|defineProperties|setPrototypeOf|getPrototypeOf|__proto__|__defineGetter__|__defineSetter__|Reflect)\b/g;
+
+function lineAt(text, i) { return text.slice(text.lastIndexOf('\n', i) + 1, text.indexOf('\n', i) < 0 ? text.length : text.indexOf('\n', i)).trim(); }
+function keyOf(file) { return Object.keys(Object.assign({}, RPC_EXCEPTIONS, FETCHES)).find(k => file.endsWith('/' + k)) || null; }
+
+function transportProblems(files) {
+	const out = [];
+	for (const { file, text } of files) {
+		const key = keyOf(file);
+		for (const m of text.matchAll(/\brpc\b/g)) {
+			const i = m.index;
+			if (text.startsWith('rpc.declare({', i) || text.slice(i - 5, i) === 'luci-' || lineAt(text, i) === "'require rpc';") continue;
+			if ((RPC_EXCEPTIONS[key] || []).some(x => text.slice(i - x.indexOf('rpc'), i - x.indexOf('rpc') + x.length) === x)) continue;
+			out.push(`${file}: rpc in ${lineAt(text, i)}`);
+		}
+		const fetches = (FETCHES[key] || []).slice();
+		for (const m of text.matchAll(/\bfetch\b/g)) {
+			const i = m.index, k = fetches.findIndex(f => text.startsWith(f, i));
+			if (k >= 0) { fetches.splice(k, 1); continue; }
+			/* the dashboard's own poll, fetch() */
+			if (file.endsWith('view/vantage/overview.js') && (/(?:self|this)\.$/.test(text.slice(i - 5, i)) && text.startsWith('fetch()', i) || lineAt(text, i) === 'fetch: function() {')) continue;
+			/* prose: "the last fetch failed", "fetch's", "(fetch)" closing a comment */
+			if (/[ (]/.test(text[i - 1]) && /^(?: [a-z]|'s |\) \*\/)/.test(text.slice(i + 5, i + 9))) continue;
+			out.push(`${file}: fetch in ${lineAt(text, i)}`);
+		}
+		for (const f of fetches) out.push(`${file}: not found: ${f}`);
+		for (const m of text.matchAll(OTHER_WAYS)) out.push(`${file}: ${m[0]} in ${lineAt(text, m.index)}`);
+		for (const r of requiresOf(text)) if (/^(?:request|xhr)$/.test(r)) out.push(`${file}: 'require ${r}'`);
+	}
+	return out;
+}
+
+function builtinProblems(files) {
+	const out = [];
+	for (const { file, text } of files) {
+		for (const m of text.matchAll(/\.\s*prototype\b|['"`]prototype['"`]/g))
+			if (!/(?:^|[^.\w$])(?:Object|Array)\.prototype\.\w+\.call\($/.test(text.slice(Math.max(0, m.index - 12), m.index) + text.slice(m.index, m.index + 40).replace(/^(\.prototype\.\w+\.call\().*$/s, '$1')))
+				out.push(`${file}: prototype in ${lineAt(text, m.index)}`);
+		for (const m of text.matchAll(BUILTIN_CHANGES)) out.push(`${file}: ${m[0]} in ${lineAt(text, m.index)}`);
+	}
+	return out;
+}
+
+test('the browser files reach rpcd only through rpc.declare; fetch only for the packages\' own static files; nothing changes a built-in', () => {
+	const files = browserFiles(BROWSER_PKGS);
+	assert.ok(files.length >= 14 && files.some(f => f.file.endsWith('view/vantage/aps.js')), 'the dashboard\'s and the add-on\'s');
+	assert.deepEqual(transportProblems(files), []);
+	const all = files.concat(browserFiles([ THEME_PKG ]));
+	assert.ok(all.some(f => f.file.endsWith('menu-vantage.js')), 'and the theme\'s');
+	assert.deepEqual(builtinProblems(all), []);
+});
+
+test('negative controls: ids from anywhere but the session\'s ACL, TILE_OBJ changed, rpc used beside declare, a raw request, a built-in changed: each fails', () => {
+	const DASH = 'view/vantage/overview.js';
+	const dash = () => sources.find(s => s.file.endsWith(DASH)).text;
+	const edit = (from, to) => mutate(DASH, t => { assert.ok(t.includes(from), from); return t.replace(from, to); });
+	const add = code => mutate(DASH, t => t + '\n' + code + '\n');
+	const MAP = 'asks = ids.map(function(id) { return self.askTile(id, now); })';
+	const IDS_UBUS = "!Array.isArray(acl) ? acl.ubus : null, out = [];";
+	/* 11: where the ids come from */
+	for (const [ what, mutant, why ] of [
+		[ 'ids from the saved layout\'s x entries', edit(MAP, "asks = ids.concat(Object.keys(self.layouts || {}).reduce(function(a, k) { return a.concat((self.layouts[k] || []).filter(function(e) { return layout.isExtra(e.id); }).map(function(e) { return e.id.slice(1); })); }, [])).map(function(id) { return self.askTile(id, now); })"), /not handed to askTile as they are/ ],
+		[ 'tileIds reading the uci scope too', edit(IDS_UBUS, "!Array.isArray(acl) ? Object.assign({}, acl.uci, acl.ubus) : null, out = [];"), /0 tileIds in its pinned form/ ],
+		[ 'tileIds reading the access-group names', edit("\treturn out.sort().slice(0, layout.EXTRA_MAX);\n}\n", "\tObject.keys(acl['access-group'] || {}).forEach(function(g) { var m = /^vantage-tile-([a-z]{1,7})$/.exec(g); if (m) out.push(m[1]); });\n\treturn out.sort().slice(0, layout.EXTRA_MAX);\n}\n"), /0 tileIds in its pinned form/ ],
+		[ 'a second caller of askTile', add("function askOther(view) { return view.askTile('other', Date.now()); }"), /askTile in function askOther/ ],
+		[ 'ids from localStorage', edit(MAP, "asks = ids.concat(JSON.parse(window.localStorage.getItem('vantage.tiles') || '[]')).map(function(id) { return self.askTile(id, now); })"), /not handed to askTile as they are/ ],
+		[ 'a constant id', edit(MAP, "asks = ids.concat([ 'zzzzzzz' ]).map(function(id) { return self.askTile(id, now); })"), /not handed to askTile as they are/ ],
+		[ 'id reassigned above the call', edit("\t\tvar asked = Date.now();\n\t\ts.call = tileCall(id).then(", "\t\tvar asked = Date.now();\n\t\tid = window.location.hash.slice(1) || id;\n\t\ts.call = tileCall(id).then("), /askTile does not hand its id/ ],
+		[ 'the ids replaced after the read', edit("\t\t\tself.tileIds = ids;\n", "\t\t\tids = [ 'dns', 'modem', 'sqm' ];\n\t\t\tself.tileIds = ids;\n"), /not handed to askTile as they are/ ],
+		[ 'the read replaced elsewhere', add("function forge(view) { view.tilesMay = Promise.resolve([ 'dns' ]); }"), /tilesMay used/ ],
+		[ 'tileIds defined again below', add('function tileIds(acl) { return [ \'dns\' ]; }'), /2 definitions of tileIds/ ],
+		[ 'askTile defined again below', edit('\ttileHidden: function(id) {', '\taskTile: function(id, now) { return tileCall(\'dns\'); },\n\ttileHidden: function(id) {'), /askTile defined and called 3 times|tileCall/ ]
+	]) {
+		assert.notDeepEqual(mutant, sources, what + ': the mutation applies');
+		assert.match(tileProblems(mutant).join('\n'), why, what);
+	}
+	/* 12: TILE_OBJ only tested, never changed */
+	for (const [ what, mutant, why, check ] of [
+		[ 'an alias of TILE_OBJ changed', add('var tileObjAlias = TILE_OBJ;\ntileObjAlias.test = function() { return true; };'), /TILE_OBJ in var tileObjAlias = TILE_OBJ;/, tileProblems ],
+		[ 'RegExp.prototype.test replaced', add('RegExp.prototype.test = function() { return true; };'), /overview\.js: prototype in RegExp\.prototype\.test = /, builtinProblems ],
+		[ 'test defined on TILE_OBJ', add("Object.defineProperty(TILE_OBJ, 'test', { value: function() { return true; } });"), /TILE_OBJ in Object\.defineProperty\(TILE_OBJ/, tileProblems ],
+		[ 'test defined on TILE_OBJ (the built-in)', add("Object.defineProperty(TILE_OBJ, 'test', { value: function() { return true; } });"), /overview\.js: defineProperty in /, builtinProblems ],
+		[ 'a prototype reached by name', add("RegExp['prototype'].test = function() { return true; };"), /prototype in RegExp\['prototype'\]/, builtinProblems ],
+		[ 'a prototype reached through an object', add('Object.getPrototypeOf(TILE_OBJ).test = function() { return true; };'), /getPrototypeOf in /, builtinProblems ],
+		[ 'a module changes RegExp', mutate('vantage/model.js', t => t + '\nRegExp.prototype.exec = function() { return null; };\n'), /model\.js: prototype in RegExp\.prototype\.exec/, builtinProblems ]
+	]) {
+		assert.notDeepEqual(mutant, sources, what + ': the mutation applies');
+		assert.match(check(mutant).join('\n'), why, what);
+	}
+	assert.match(builtinProblems([ { file: 'luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js', text: 'Object.prototype.hasOwnProperty.call(a, b);\nString.prototype.trim = null;\n' } ]).join('\n'), /menu-vantage\.js: prototype in String\.prototype\.trim/);
+	/* 13: rpc, fetch, XMLHttpRequest */
+	const aps = browserFiles([ APS_PKG ]);
+	const withAps = srcs => srcs.concat(aps);
+	for (const [ what, mutant, why ] of [
+		[ 'rpc aliased, then declare', add("var rpcAlias = rpc;\nvar callAny = rpcAlias.declare({ object: 'file', method: 'exec', params: [ 'command' ] });"), /overview\.js: rpc in var rpcAlias = rpc;/ ],
+		[ 'rpc.call directly', add("function rawCall(o, m, a) { return new Promise(function(res) { rpc.call({ jsonrpc: '2.0', id: 1, method: 'call', params: [ rpc.getSessionID(), o, m, a ] }, res); }); }"), /overview\.js: rpc in function rawCall/ ],
+		[ 'rpc required under another name', edit("'require rpc';\n", "'require rpc as r';\n"), /overview\.js: rpc in 'require rpc as r';/ ],
+		[ 'a raw fetch to ubus', add("function rawTile(o, m, a) { return fetch(L.url('admin/ubus'), { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'call', params: [ L.env.sessionid, o, m, a ] }) }); }"), /overview\.js: fetch in function rawTile/ ],
+		[ 'window.fetch', add("window.fetch('/ubus/', { method: 'POST' });"), /overview\.js: fetch in window\.fetch/ ],
+		[ 'fetch passed on', add('var f = fetch;'), /overview\.js: fetch in var f = fetch;/ ],
+		[ 'a CSS fetch with more', edit("fetch(L.resource('vantage/app.css') + '?v=' + L.env.resource_version)", "fetch(L.resource('vantage/app.css') + '?v=' + L.env.resource_version, { method: 'POST' })"), /overview\.js: fetch in |not found: fetch\(L\.resource\('vantage\/app\.css'\)/ ],
+		[ 'XMLHttpRequest', add("var x = new XMLHttpRequest(); x.open('POST', L.url('admin/ubus'));"), /overview\.js: XMLHttpRequest in / ],
+		[ 'LuCI\'s request module', edit("'require rpc';\n", "'require rpc';\n'require request';\n"), /overview\.js: 'require request'/ ],
+		[ 'L.post', add("L.post('admin/ubus', {});"), /overview\.js: L\.post in / ],
+		[ 'the same in a module', mutate('vantage/model.js', t => t + "\nvar r = rpc;\n"), /model\.js: rpc in var r = rpc;/ ]
+	]) {
+		assert.notDeepEqual(mutant, sources, what + ': the mutation applies');
+		assert.match(transportProblems(withAps(mutant)).join('\n'), why, what);
+	}
+	const apsView = aps.find(f => f.file.endsWith('view/vantage/aps.js'));
+	assert.match(transportProblems(aps.map(f => f === apsView ? { file: f.file, text: f.text + "\nfetch('/ubus/', { method: 'POST' });\n" } : f)).join('\n'), /aps\.js: fetch in fetch\('\/ubus\/'/, 'the add-on too');
+	assert.ok(dash().includes("'require rpc';\n"));
 });

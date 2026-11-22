@@ -205,8 +205,8 @@ function hostapd(ifname, method) {
 	return L.resolveDefault(hostapdCalls[key](), null);
 }
 
-/* A provider's status call (TILE_OBJ): its object made from an id of the
-   session's ACL (tileIds) and checked again, its one method, no
+/* A provider's status call: its object made from an id of the session's
+   ACL (tileIds) and checked again (TILE_OBJ.test(obj)), its one method, no
    parameters. A request of its own (nobatch): LuCI answers the calls of
    one request together, and a slow provider would hold back every other
    reply of the poll. A failed call is rejected: {} would be an answer */

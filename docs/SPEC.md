@@ -1006,12 +1006,20 @@ the contract. For provider authors: [`docs/TILES.md`](TILES.md).
   ports).
 - **What the tests pin.** `security-tests/test_acl_policy.js`: the
   helper's exact text and its `TILE_OBJ` line, in the dashboard only and
-  once; `TILE_OBJ` only tested, never changed; the helper's declares its
-  own; `tileCall` called once, in `askTile`, with an id; the ACL dump
-  declared once without parameters and called once, where it feeds
-  `tileIds`; no other declare naming `vantage.tile`, no other `session`
+  once; `TILE_OBJ` only tested, never changed (named only in its line
+  and in `TILE_OBJ.test(obj)`); the helper's declares its own; `tileCall`
+  called once, in `askTile`, with an id; the ACL dump declared once
+  without parameters and called once, where it feeds `tileIds`;
+  `tileIds`' exact text, defined once, its ids handed as they are to
+  `askTile`, its one caller, whose head hands its id to the call
+  unchanged; no other declare naming `vantage.tile`, no other `session`
   method; the call granted by no group of the dashboard or the add-on,
-  and no `vantage-tile-` group there; 18 mutations, each caught.
+  and no `vantage-tile-` group there. Beside the declares, the browser
+  files of the dashboard and the add-ons use `rpc` only as
+  `rpc.declare({`, fetch only their own CSS and the theme's script, and
+  make no XMLHttpRequest, beacon, socket or LuCI request; none of them,
+  nor the theme's, assigns a prototype's member or defines a property;
+  49 mutations, each caught.
   `tests/tiles.test.js`: the contract's bounds, the polling rules, the
   drawing as text against hostile answers, provenance, the layouts, and
   the example provider (`dev/replay/tiles/`) run under ucode.
