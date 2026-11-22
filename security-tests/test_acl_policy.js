@@ -1078,8 +1078,9 @@ test('the firewall overview: behind LuCI\'s firewall group, uci get on firewall 
    of its own per call. The rules below hold it to that one program, at
    that one path, with that one option and a port name of the device's
    own: every line of code that mentions a file, the program, a name or a
-   cap is listed (checkPins), and the three functions that take the lock,
-   find the ports and run the program are pinned whole. One read at a
+   cap is listed (checkPins), the three functions that take the lock,
+   find the ports and run the program are pinned whole, and so are its
+   top-level statements and every name it binds. One read at a
    time: the plugin locks its own file, opened for reading, before it
    reads or starts anything, and answers busy where another holds it. */
 const THEME_PKG = path.resolve(process.env.VANTAGE_THEME_PKG || path.join(__dirname, '..', 'luci-theme-vantage'));
@@ -1158,6 +1159,11 @@ const PORTS_PINS = [
 		'else if (ARGV[0] == \'call\' && ARGV[1] == \'counters\')',
 		'print(sprintf(\'%J\', counters()), \'\\n\');'
 	] ],
+	/* the table: defined once, only read */
+	[ '\\bCOUNTERS\\b', [
+		'const COUNTERS = [',
+		'for (let c in COUNTERS)'
+	] ],
 	/* the counters' names (COUNTERS), and no member reached by a literal name */
 	[ '\\[\\s*[\'"]', [
 		'[ \'RxBytes\', \'TxBytes\' ],             // mt7530: MT7530, MT7531, MT7988 (until Linux 6.16)',
@@ -1168,6 +1174,40 @@ const PORTS_PINS = [
 		'[ \'IfInOctets\', \'IfOutOctets\' ]       // rtl8366rb'
 	] ]
 ];
+/* Every name the plugin binds and every function it defines. At the
+   top: its imports, its constants, its five functions and rpcd's two
+   calls; inside the functions: their parameters and locals. No other
+   function (none inside another, no arrow function), no try/catch, no
+   name assigned that is not one of these. So a builtin the pinned
+   functions call (match, split, readfile, ...) cannot be replaced or
+   shadowed, and no function of the plugin can be defined a second time */
+const PORTS_TOP = [
+	'#!/usr/bin/ucode -S', '\'use strict\';', 'import { access, lsdir, open, popen, readfile } from \'fs\';',
+	'const NET', 'const ETHTOOL', 'const SELF', 'const MAX_PORTS', 'const BUDGET_MS', 'const MAX_OUT', 'const MAX_UEVENT', 'const RE_PORT', 'const RE_LINE', 'const COUNTERS',
+	'function now_ms()', 'function dsa_ports()', 'function parse(text)', 'function read_port(name)', 'function counters()',
+	'if (ARGV[0] == \'list\')', 'else if (ARGV[0] == \'call\' && ARGV[1] == \'counters\')'
+];
+const PORTS_NAMES = [
+	'BUDGET_MS', 'COUNTERS', 'ETHTOOL', 'MAX_OUT', 'MAX_PORTS', 'MAX_UEVENT', 'NET', 'RE_LINE', 'RE_PORT', 'SELF',
+	'c', 'counters', 'd', 'dsa', 'dsa_ports', 'found', 'i', 'l', 'lines', 'm', 'more', 'n', 'name', 'now_ms', 'p', 'parse',
+	'ports', 'read_port', 'seen', 'self_file', 't', 't0', 'text'
+];
+/* the top-level statements of `code` (comment lines out), a constant or a function by its head */
+function portsTop(code) {
+	return code.split('\n').filter(l => /^[^\s}\]]/.test(l)).map(l => (/^const \w+|^function \w+\([^)]*\)/.exec(l) || [ l ])[0]);
+}
+/* the names `code` binds: assigned (=, +=, ...; not a member), declared without a value, a for-in's, a function's and its parameters */
+function portsNames(code) {
+	const bare = code.replace(/'(?:[^'\\\n]|\\.)*'/g, '\'\'').replace(/"(?:[^"\\\n]|\\.)*"/g, '""'), out = new Set();
+	for (const m of bare.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*(?:[-+*\/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?![=>])/g)) out.add(m[1]);
+	for (const m of bare.matchAll(/\b(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*(?=[;,]|\bin\b)/g)) out.add(m[1]);
+	for (const m of bare.matchAll(/\bfunction\s*([A-Za-z_$][\w$]*)?\s*\(([^)]*)\)/g)) {
+		if (m[1]) out.add(m[1]);
+		for (const a of m[2].split(',')) if (a.trim()) out.add(a.trim().replace(/^\.\.\./, ''));
+	}
+	return [ ...out ].sort();
+}
+
 function checkPortsSource(src) {
 	assert.ok(src.startsWith('#!/usr/bin/ucode -S\n'), 'strict ucode');
 	assert.match(src, /^'use strict';$/m);
@@ -1191,6 +1231,10 @@ function checkPortsSource(src) {
 		assert.equal(found && found[0], fn, what + '(), exactly');
 	}
 	checkPins(src, 'the switch counters plugin', PORTS_PINS);
+	assert.deepEqual(portsTop(code), PORTS_TOP, 'the top-level statements, exactly');
+	assert.deepEqual(portsNames(code), PORTS_NAMES, 'every name the plugin binds, exactly');
+	assert.equal((code.match(/\bfunction\b/g) || []).length, 5, 'five functions, at the top');
+	assert.doesNotMatch(code, /=>|\btry\b|\bcatch\b/, 'no arrow function, no try/catch');
 }
 
 test('switch counters: the plugin starts ethtool alone, at its one path, with -S and a DSA port\'s name of the device\'s own; its method takes nothing', () => {
@@ -1256,7 +1300,19 @@ test('switch counters: the plugin rules catch each breach', () => {
 		'the ports read before the lock': swap('\tlet t0 = now_ms(), self_file = open(SELF, \'r\');\n', '\tlet d0 = dsa_ports();\n\tlet t0 = now_ms(), self_file = open(SELF, \'r\');\n'),
 		'a program started while busy': swap('\t\treturn { v: 1, state: \'busy\', took: now_ms() - t0, more: false, ports: {} };', '\t\treturn { v: 1, state: \'busy\', took: now_ms() - t0, more: false, ports: { lan1: read_port(\'lan1\') } };'),
 		'the lock let go': add('self_file.lock(\'u\');'),
-		'the lock closed early': add('self_file.close();')
+		'the lock closed early': add('self_file.close();'),
+		/* the names: no builtin replaced or shadowed, no function defined twice */
+		'a later definition of a builtin': portsPlugin + '\nfunction match(s, re) {\n\treturn [ s ];\n}\n',
+		'a second parse': portsPlugin + '\nfunction parse(text) {\n\treturn { rx_bytes: 1, tx_bytes: 1 };\n}\n',
+		'a builtin replaced at the top': portsPlugin.replace('// ms on the monotonic clock\n', 'split = sort;\n\n// ms on the monotonic clock\n'),
+		'a builtin replaced inside a function': add('length = int;'),
+		'a builtin shadowed by a local': add('let readfile2 = 1, sort = reverse;'),
+		'a builtin shadowed by a loop': add('for (let match in [ 1 ]) d.more = true;'),
+		'a parameter shadowing a builtin': swap('function parse(text) {', 'function parse(text, split) {'),
+		'an arrow function': add('let f = (x) => x;'),
+		'a function inside one': add('let g = function() { return 1; };'),
+		'try and catch': add('try { d.more = true; } catch (match) { d.more = false; }'),
+		'the table changed in place': add('COUNTERS[0][0] = \'rx_bytes\';')
 	};
 	for (const [ name, src ] of Object.entries(MUTANTS)) {
 		assert.notEqual(src, portsPlugin, name + ': the mutation applies');
