@@ -124,6 +124,9 @@ test('replay server: host, origin, session, headers, escaping, logs', { skip, ti
 		const access = (group, id) => rpc(sid, 'session', 'access', { scope: 'access-group', object: group, function: 'read' }, id);
 		const nowg = JSON.parse((await req('POST', '/ubus/', { headers: JSONH, body: `[${access('luci-proto-wireguard', 1)},${access('luci-app-vantage', 2)},${rpc(sid, 'luci.wireguard', 'getWgInstances', {}, 3)},${rpc(sid, 'luci.wireguard', 'generateKeyPair', {}, 4)}]` })).body);
 		assert.deepEqual(nowg.map(r => r.result || r.error), [ [ 0, { access: false } ], [ 0, { access: true } ], { code: -32000, message: 'Object not found' }, { code: -32000, message: 'Object not found' } ]);
+		/* nor, without --traffic, luci-app-vantage-traffic */
+		const notraffic = JSON.parse((await req('POST', '/ubus/', { headers: JSONH, body: `[${access('luci-app-vantage-traffic', 1)},${rpc(sid, 'luci.vantage.traffic', 'hosts', {}, 2)}]` })).body);
+		assert.deepEqual(notraffic.map(r => r.result || r.error), [ [ 0, { access: false } ], { code: -32000, message: 'Object not found' } ]);
 
 		/* app plugin stand-ins (dev/replay/*-plugin.js) are loaded and answer */
 		for (const f of fs.readdirSync(path.join(ROOT, 'dev/replay')).filter(f => /-plugin\.js$/.test(f))) {
@@ -197,6 +200,36 @@ test('replay server: --wg answers luci.wireguard getWgInstances with two tunnels
 		/* not without the login */
 		assert.equal((await call(ZERO, 'luci.wireguard', 'getWgInstances')).error.code, -32002);
 		assert.doesNotMatch(log, /unknown call[^\n]*luci\.wireguard\.getWgInstances/);
+	}
+	finally {
+		srv.kill('SIGTERM');
+	}
+});
+
+/* --traffic: luci-app-vantage-traffic's counters for the wired hosts the replay lists, its group held */
+test('replay server: --traffic answers luci.vantage.traffic hosts for the wired hosts, one read every 5 s', { skip, timeout: 60000 }, async () => {
+	const port = await freePort();
+	const srv = spawn(process.execPath, [ path.join(ROOT, 'dev/replay/server.js'), '--mirror', MIRROR, '--rootfs', ROOTFS, '--port', String(port),
+		'--app-dir', path.join(ROOT, 'luci-app-vantage'), '--demo', '--wired', '--traffic' ], { stdio: [ 'ignore', 'ignore', 'pipe' ] });
+	let log = '';
+	srv.stderr.on('data', d => { log += d; });
+	try {
+		for (let i = 0; i < 200 && !log.includes('[replay] http://'); i++) await new Promise(r => setTimeout(r, 50));
+		assert.match(log, /\[replay\] http:\/\//, log);
+		const login = await request(port, 'POST', '/cgi-bin/luci/', { headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: `http://127.0.0.1:${port}` }, body: 'luci_username=root&luci_password=x' });
+		const sid = login.headers['set-cookie'][0].split(';')[0].split('=')[1];
+		const call = async (s, object, method, args) => JSON.parse((await request(port, 'POST', '/ubus/', { headers: JSONH, body: rpc(s, object, method, args) })).body);
+		assert.deepEqual((await call(sid, 'session', 'access', { scope: 'access-group', object: 'luci-app-vantage-traffic', function: 'read' })).result, [ 0, { access: true } ]);
+		const wired = (await call(sid, 'luci.vantage', 'wired')).result[1].hosts.map(h => h.mac).sort();
+		const r = await call(sid, 'luci.vantage.traffic', 'hosts');
+		assert.equal(r.result[0], 0);
+		const a = r.result[1];
+		assert.deepEqual(a.hosts.map(h => h.mac), wired, 'the wired hosts the replay lists');
+		for (const h of a.hosts) assert.deepEqual(Object.keys(h), [ 'mac', 'rx', 'tx' ]);
+		assert.deepEqual([ a.acct, a.every, a.partial, a.at % 5000 ], [ true, 5000, false, 0 ]);
+		assert.ok(a.hosts.every(h => /^00:00:5e:00:53:[0-9a-f]{2}$|^02:00:5e:/.test(h.mac)), 'documentation MACs');
+		/* not without the login */
+		assert.equal((await call(ZERO, 'luci.vantage.traffic', 'hosts')).error.code, -32002);
 	}
 	finally {
 		srv.kill('SIGTERM');

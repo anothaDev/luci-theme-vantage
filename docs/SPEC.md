@@ -36,6 +36,7 @@ port in one click, finding anything by typing — not from their look.
 | `luci-theme-vantage` | ucode templates, CSS, icons, `menu-vantage.js` (shell: rail, top bar, palette, tabs, indicators), login page, its rpcd ACL (`/etc/config/vantage_theme` only), that config | `+luci-base` |
 | `luci-app-vantage` | dashboard + inspector views under `admin/dashboard` (landing page), its rpcd ACL (reads + its own config only), its rpcd ucode plugin `luci.vantage` (key-free wireless status, temperatures, the bridges' wired hosts, the radios' channel survey, validated alias writes), `/etc/config/vantage` | `+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-nl80211` (rpcd-mod-iwinfo, ucode-mod-fs, ucode-mod-rtnl and ucode-mod-nl80211 beyond luci-base; Wi-Fi images already have rtnl and nl80211, as wifi-scripts needs them); reverse DNS (`rpcd-mod-rrdns`), mDNS (`umdns`) and hostapd's ubus objects are optional and degrade |
 | `luci-app-vantage-aps` (optional) | the access points a router's dashboard shows, over SSH (section "Other access points"): the Network → Access points page, its rpcd ACL and ucode plugin `luci.vantage.pair` (pairing), the collector service (router) and the report command (access point) | `+luci-app-vantage +rpcd-mod-ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci +ucode-mod-uloop`; Dropbear at run time (server on the access points, `dbclient` on the router), not as a dependency |
+| `luci-app-vantage-traffic` (optional, experimental) | per-device traffic for hosts that share a port of the router, from its connection tracking (section "Per-device traffic"): its rpcd ACL and ucode plugin `luci.vantage.traffic` | `+luci-app-vantage +rpcd-mod-ucode +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-uci`; `kmod-nf-conntrack` with accounting at run time (a router's default), not as a dependency |
 
 The theme is useful alone; the app alone works under any theme but is
 designed for Vantage. With both installed and another theme selected, the
@@ -824,6 +825,123 @@ text around it so it looks the same size.
   every login (the likely cause of #134). Failing first leaves them
   untouched; `tests/plugin.test.js` keeps the order.
 
+### Provider tiles (experimental)
+
+Since 1.1.2 (#129) another package (a provider) can put a read-only
+tile on the dashboard: it answers one ubus call with data, and the
+dashboard checks the answer and draws it as text in its own look.
+**Experimental**: the object and group names, the method, the fields
+and their limits, the `x` layout ids and the cap may change in any
+release until the project says otherwise here and in the changelog.
+The dashboard's own tiles (ids, sizes, order, defaults) are no part of
+the contract. For provider authors: [`docs/TILES.md`](TILES.md).
+
+- **Contract.** A provider is a ubus object `vantage.tile.<id>` (`<id>`
+  1 to 7 letters a-z) with one method, `status`, which takes no
+  arguments, changes nothing and answers `{ v: 1, title, icon?, state?,
+  note?, every?, page?, items: [ { label, value | text, unit?, rate?,
+  max?, level?, trend? } ] }`; its package ships an rpcd ACL group,
+  `vantage-tile-<id>`, granting that call to read and nothing else. The
+  view's `model.tile` reads an answer field by field and keeps nothing
+  else: `v` must be 1 and `title` 1-32 characters, else the answer is
+  unreadable ("Sent a report that could not be read"); `icon` one of
+  eleven of the dashboard's own icon names (else the first); `state`
+  and `level` `ok`/`warn`/`err`/`off`; `note` up to 64 characters,
+  `text` up to 48, `label` 1-32 (one item a label, compared without
+  case); `every` a whole 5-300 s; `page` `admin` and 1-4 steps of
+  `[A-Za-z0-9_-]{1,32}`; `value` a finite number under 10^15 either way,
+  written out by `unit` (`''`, `%`, `ms`, `s`, `dBm`, `dB`, `MHz`, `B`,
+  `bit/s`, else the item is left out) in the dashboard's own formats;
+  `rate` only on a counter of `''` or `B` that is not negative; `max`
+  above 0 and not with `rate`; `trend` values only. At most 8 items of
+  the first 32; unknown keys are ignored, an item not of the form is
+  left out alone. Text goes through `fmt.safeText` (control,
+  bidirectional and invisible characters replaced, cut with an
+  ellipsis).
+- **Discovery.** Once a page the view calls `session access` without an
+  object and a function: rpcd then answers the session's own ACL,
+  `{ scope: { object: [ method ] } }` (`session.c`,
+  `rpc_session_dump_acls`), and grants the call to every session
+  (`unauthenticated` group), as for the group probes. The view takes the
+  `ubus` entries named exactly `vantage.tile.<id>` with `status` granted
+  by name, the first three by id, and reads nothing else of the answer;
+  a grant by pattern names no provider. Without a provider package, or
+  for a login without its group, that is the only call: no provider is
+  asked and the page is as before (the dump rides the first poll's
+  batch: one call more, no request more). The ACL is not read again on
+  that page.
+- **The call.** One helper, `tileCall(id)`, makes the object from the
+  fixed prefix and the id, checks it again against
+  `^vantage\.tile\.[a-z]{1,7}$`, and declares only `status`, without
+  parameters, so no argument can be sent; `nobatch` (a request of its
+  own: a slow provider holds back no other reply) and `reject`. It is
+  called in one place, for ids from the session's ACL. No group of the
+  dashboard or the add-on grants a `vantage.tile.` object.
+- **Cost.** A provider is asked with the slow part of the poll (every
+  poll; every 30 s on a Low-power router), no more often than its
+  `every`, and not while its call is out; the poll waits for it 2 s at
+  most (also at page load, so a slow provider delays the first paint by
+  up to 2 s), and a late answer is the next poll's. After an answer
+  that took over 500 ms the next call waits ten times as long. A first
+  answer that says the call is not there (no object or method, access
+  denied) means no tile and no further call on that page; an object
+  that goes away later is asked once a minute, its last answer shown
+  for that minute, then "Did not answer in time" (also after any other
+  failure). A tile hidden under Customize is not asked after its first
+  answer.
+- **Drawing.** The view draws the tile from its own parts: the icon
+  and title, then the provider's id in a source tag (`vt-src`, the
+  look of a client's name source), so that no provider passes for a
+  tile of the dashboard's own: none of those has one, and the id comes
+  from the object's name, never from the answer. Customize, its hidden
+  tiles' list, its announcements and the tile's `aria-label` say
+  "title (id)"; the controls are not rebuilt for a new title while
+  Customize is open. Then the state's dot (never a health check, never
+  the page title's mark), a link to `page` where this login's menu has
+  that node satisfied, named with LuCI's own title of it (`L.url` from
+  the checked steps), the note, and the items in a grid: a label over
+  its value, a counter as its rate between two answers, a meter for
+  `max`, the page's own five minutes of a `trend` value as a bare line
+  (90 points at most an item). Title, note and labels are looked up in
+  LuCI's catalogues (`_()`), so a provider's own catalogue translates
+  them; a `text` value is shown as it came. An answer that cannot be
+  read keeps the tile's last title, icon and link. The page keeps
+  `model.tile`'s reading of the last answer, never the answer itself.
+- **Layouts.** A provider tile is `x<id>` in a layout (`xdns`), which
+  fits the theme's stored form (`[a-z]{1,8}`); no tile of the
+  dashboard's own starts with `x`. At most three, so that nine of the
+  dashboard's own and three stay within the twelve entries the theme
+  keeps. Like the WireGuard tile they make no layouts of their own: a
+  stored layout that does not mention one gets it where the default has
+  it (one column wide at the end of the right-hand column), and a
+  layout arranged while a provider is not answering keeps its stored
+  entry, hidden or not, while there is room among the three. A page
+  without providers lays out exactly as before (`tests/tiles.test.js`
+  over every screen class, wired or not, with and without a tunnel and
+  ports).
+- **What the tests pin.** `security-tests/test_acl_policy.js`: the
+  helper's exact text and its `TILE_OBJ` line, in the dashboard only and
+  once; `TILE_OBJ` only tested, never changed; the helper's declares its
+  own; `tileCall` called once, in `askTile`, with an id; the ACL dump
+  declared once without parameters and called once, where it feeds
+  `tileIds`; no other declare naming `vantage.tile`, no other `session`
+  method; the call granted by no group of the dashboard or the add-on,
+  and no `vantage-tile-` group there; 18 mutations, each caught.
+  `tests/tiles.test.js`: the contract's bounds, the polling rules, the
+  drawing as text against hostile answers, provenance, the layouts, and
+  the example provider (`dev/replay/tiles/`) run under ucode.
+  `check_dom_sinks.js` passes the view as it is, with no suppression.
+- **Known limits.** A slow `status` blocks rpcd for every caller while
+  it runs (rpcd runs a ucode method in its own process): the dashboard
+  backs off, but cannot stop other callers. The dashboard cannot verify
+  that `status` has no side effects; it is called with the session of
+  whoever has the dashboard open, so installing a provider is trusting
+  it, like any LuCI package (which could also replace the dashboard, or
+  retranslate its strings through its catalogue). The browser parses a
+  whole answer before the view sees it (up to ubus' message size). A
+  fourth provider has no tile, without a word. A provider installed or
+  granted while the dashboard is open shows after a reload.
+
 ### Other access points (`luci-app-vantage-aps`)
 
 An optional package shows the network's other OpenWrt access points on a
@@ -1059,6 +1177,110 @@ dashboard package itself stays read-only.
   so the report runs then too, asked for by name; the host key is pinned
   either way.
 
+### Per-device traffic (`luci-app-vantage-traffic`, experimental)
+
+An optional package gives the dashboard a rate for wired hosts that
+share one of the router's ports (a switch, or an access point that is
+not paired or not OpenWrt, behind it), which the port's counters cannot
+split per device (#110). It counts from the kernel's connection
+tracking, which a router accounts already (`kmod-nf-conntrack` installs
+`/etc/sysctl.d/11-nf-conntrack.conf` with
+`net.netfilter.nf_conntrack_acct=1`): no firewall rule, no sysctl
+change, no daemon, init script, cron job or config file. Installing and
+removing it is its files and an rpcd reload. Experimental: what it costs
+a router is measured on few devices so far.
+
+- **What is counted.** The plugin reads `/proc/net/nf_conntrack` line by
+  line, with both directions' bytes of each entry. A host is the MAC the
+  router's IPv4 or IPv6 neighbour table gives an address: the one that
+  opened the connection, and the one it was opened to (a port forward,
+  a host of another of the router's networks; a connection between two
+  of them counts for both). Routed traffic and traffic to the router
+  itself count; the router's own connections to the internet do not
+  (its address is in no neighbour table). The counters, by MAC, only
+  grow: each read adds what each entry carried since the read before.
+  An entry is known again by its protocol and original addresses and
+  ports, whatever its timeout and state; a new one counts whole; one
+  whose counters went down (another reader reset them) counts from 0.
+  An address the neighbour table does not give a host yet is followed
+  all the same, so it does not count whole once it does. A host nothing
+  was counted for in 10 minutes is dropped, and counts from 0 when it
+  comes back. As for ports and stations, rx is from the host and tx to
+  it, and the browser takes the rate from two answers.
+- **What is not counted.** Traffic a bridge or a switch passes between
+  hosts of one network: it never reaches connection tracking, so this
+  is traffic through the router, never all of a host's. Hosts behind
+  another router (their addresses are in no neighbour table here). An
+  IPv6 address the neighbour table does not hold when a read runs (an
+  expired privacy address). What a connection carried after the last
+  read before it ended, and one that began and ended between two reads.
+  Flows offloaded to hardware, whose counters move only where the
+  driver reports flow statistics (the answer counts such entries, `hw`;
+  fw4's software offload keeps counting, its flowtable has a `counter`).
+  Where nlbwmon runs, what passed between a read and nlbwmon's reset: it
+  zeroes the counters at every refresh, 30 s by default (the answer
+  counts the resets it saw, `zeroed`). A paired access point's clients
+  behind it: their rate is the one the access point reports, where it
+  reports one.
+- **The answer.** `luci.vantage.traffic hosts`, no argument:
+  `{ v, at, took, every, slow, low, acct, entries, partial, offloaded,
+  hw, zeroed, dropped, hosts: [ { mac, rx, tx } ] }`. `at`: when the read
+  began, ms on the router's monotonic clock, the same in every answer
+  until the next read; `took`: how long it took; `every`: when the next
+  one is due. `acct` false: accounting is switched off (the sysctl, or
+  no entry carries byte counts), nothing is counted and `hosts` is
+  empty; the plugin never switches it on. null: there is no connection
+  table. `partial`: false, or why the read stopped early (`time`,
+  `entries`). No remote address, port or destination ever leaves the
+  router: a MAC and two numbers a host.
+- **Costs and bounds.** rpcd answers nothing else while the plugin
+  reads, so one read serves every caller: for 5 s, or 30 s where the
+  theme's Low-power router is on for every browser (a browser that
+  picked it for itself asks every 30 s, with its slow poll), less 500 ms
+  so that a dashboard polling every 5 s gets a new read each time. Each
+  read is timed: one longer than 100 ms makes the next wait 50 times as
+  long (2 minutes at most), so the plugin takes at most about 2 % of
+  rpcd's time, and the answer says so (`took`, `every`, `slow`). The
+  table is read for 500 ms and 16,384 entries at most; an entry a read
+  did not reach is known for 10 minutes, so that it does not count
+  twice. At most 512 hosts (`dropped`: the rest) and 4,096 neighbour
+  entries. The state stays in rpcd's memory, updated in place: on a
+  desktop's ucode about 0.36 KiB an entry (6 MiB at 16,384) and 14 µs an
+  entry a read; `dev/traffic/bench.uc` measures a router.
+- **On the dashboard.** In the Clients list (Live, its sort and bars)
+  and in the host's details, for a wired host on a shared port of this
+  device whose traffic this device routes: not the gateway, not a host
+  on a line's port or on a line's own network (a dumb access point's
+  hosts reach the gateway past it, bridged: it shows no such rate). It
+  says where the number comes from: "Through this router, from its
+  connection tracking (read every 5 s)", and in the details that
+  traffic with devices on the same network is not counted, and what may
+  make it low (a partial read, connections offloaded to hardware,
+  counters another program resets) or why there is none (accounting
+  off). A port of the host's own comes first (its counters count all of
+  its traffic), then the rate a paired access point reports where it
+  has the host alone on a port (it counts traffic within the network
+  too), then this. Top talkers does not rank these hosts; whether it
+  should is open. The dashboard asks rpcd once a page, in the batch it
+  sends when it loads, whether the login holds the package's group, and
+  calls only then, with the slow part of each poll, in that batch; a
+  failed call keeps the last rates two slow polls, then none. Without
+  the package, or for a login without its group, the dashboard makes
+  that one check and nothing else, and looks as before.
+- **Permission.** Its own group, `luci-app-vantage-traffic` (read
+  `luci.vantage.traffic hosts`). It shows how much each device sends and
+  receives, so no group of the dashboard grants it. `test_acl_policy.js`
+  pins the group and its one read, that no group of the dashboard or the
+  access points add-on grants it, the dashboard's one declare (no
+  parameters) and its one call behind the check, and the plugin's
+  reads: rtnl, uci's cursor and fs's open and readfile only, the table
+  opened for reading, the accounting switch read bounded, the two
+  neighbour dumps, the one theme option, and an answer of MACs and
+  counts; altered copies of the plugin are refused.
+  `tests/traffic.test.js` runs the plugin under a host ucode (counting,
+  caps, the shared read, the time budget, the module order of #134),
+  `tests/traffic-view.test.js` the dashboard's side.
+
 ## 5. Later
 
 - **v2**: one-click actions (restart radio, kick/ban client, toggle SSID)
@@ -1068,10 +1290,12 @@ dashboard package itself stays read-only.
 - **Wired hosts on DSA switches** (#101): the bridge's forwarding dump
   may make a switch such as the MT7531 walk its hardware table on every
   poll; measure on such a router before changing `wired`.
-- **Live per-device traffic for wired and mesh clients** (#110): a router
-  has no per-host counters for hosts behind a shared port; getting them
-  means counting rules in the firewall. If ever, as a separate opt-in
-  package, never in the read-only dashboard; how to package it is open.
+- **Live per-device traffic for wired and mesh clients** (#110): since
+  1.1.2 the experimental `luci-app-vantage-traffic` (section 4,
+  "Per-device traffic"), from connection tracking, without firewall
+  rules. Open: what a read costs small routers, whether Top talkers
+  ranks these hosts, and the names of a router's clients on an access
+  point's own dashboard.
 
 ## 6. Security requirements
 
@@ -1111,6 +1335,12 @@ dashboard package itself stays read-only.
   `luci-base-network-status`); the only writes are the plugin's
   `set_alias` and `set_quiet`, whose validation `tests/plugin.test.js`
   checks against the view's and the replay's.
+- Provider tiles (experimental, above): the dashboard calls only
+  `vantage.tile.<id> status`, without arguments, for ids its session's
+  own ACL grants by name, and draws the answer as text after checking
+  it; no group of the dashboard or the add-on grants such a call
+  (`test_acl_policy.js`). A provider tile always shows its provider's
+  id.
 - No private addresses or MACs in committed files
   (`security-tests/check_private_addresses.js`, which also looks for the
   hostnames/SSIDs recorded in the mirror when it is present); fixtures are
@@ -1133,6 +1363,13 @@ dashboard package itself stays read-only.
   the dashboard alone sees the dashboard without the access points.
   `test_acl_policy.js` holds each of these to that list, and
   `tests/aps.test.js` runs them against hostile codes and reports.
+- `luci-app-vantage-traffic` (optional, experimental) changes nothing on
+  the device: its plugin reads the connection table, the accounting
+  switch, the neighbour tables and the theme's Low-power option, keeps
+  its counters in rpcd's memory, and answers MACs and byte counts, never
+  an address. Its group (`luci-app-vantage-traffic`) is the only one
+  that grants the call; `test_acl_policy.js` holds the plugin to those
+  reads and the dashboard to one call behind the check.
 - Built-package verification (`security-tests/verify_built_apk.js`, run by
   `dev/build/sdk-build.sh` before anything reaches `dist/`) and a
   reproducible release manifest (`dist/<release>/BUILDINFO`: commit, SDK

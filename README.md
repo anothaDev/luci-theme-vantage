@@ -25,7 +25,9 @@ replaced. The larger access point further down is generated.</sub></p>
 
 Two packages that work together or alone: the theme doesn't need the
 dashboard, and the dashboard on its own works under any LuCI theme. A
-third, optional one adds your other access points to the dashboard.
+third, optional one adds your other access points to the dashboard, and
+a fourth, optional and experimental, the traffic of devices that share a
+port.
 
 **The dashboard** (`luci-app-vantage`) is the page you land on after login.
 
@@ -40,6 +42,10 @@ third, optional one adds your other access points to the dashboard.
   dashboard shows its SSIDs, clients and wired devices beside its own.
   The router reads them over SSH with a key that can only fetch that
   report; nothing is shared until you pair.
+- **Traffic per device, also behind a switch** (optional add-on
+  `luci-app-vantage-traffic`, experimental). On a router, devices that
+  share a port get the traffic that passes the router for each of them,
+  from the router's own connection tracking. No firewall rules.
 - **Every client, by name.** Your alias, a name from DHCP, mDNS, WPS or
   reverse DNS, or else the vendor. You get signal, link rate, Wi-Fi
   generation, live traffic and an experience score that explains itself.
@@ -189,11 +195,22 @@ the [spec](docs/SPEC.md#6-security-requirements).
   (`luci-app-vantage-aps-view`), since asking for their reports makes the
   router log in to them with that key; the dashboard's own read
   permission does not include it.
+- **Per-device traffic is opt-in.** The experimental
+  `luci-app-vantage-traffic` only reads: the router's connection table
+  and neighbour tables, never changing a setting. Its answer is a MAC
+  address and two byte counts per device, and it has its own permission
+  (`luci-app-vantage-traffic`), since it shows how much each device
+  sends and receives.
 - **Extras are separate permissions.** Renaming devices
   (`luci-app-vantage-names`) and reverse DNS (`luci-app-vantage-rdns`) are
   their own groups, so you can leave them out. The firewall overview only
   appears for users who already hold LuCI's firewall permission, and the
   WireGuard tile for those who hold LuCI's WireGuard one.
+- **Tiles from other packages are text.** A package may add a read-only
+  tile (experimental, [`docs/TILES.md`](docs/TILES.md)). The dashboard
+  asks it one fixed question, only for logins that hold that package's
+  own permission, and draws the answer itself, as text, with the
+  package's id beside the tile's name.
 - **Checked by tests.** They reject HTML built from data, render the
   theme's templates with hostile input, confirm the permissions match what
   the code calls, and keep real addresses, MACs and SSIDs out of the
@@ -256,6 +273,8 @@ node dev/replay/server.js --mirror ../vantage-mirror --port 8106 --demo \
 [`docs/SPEC.md`](docs/SPEC.md) describes the product, and
 [`docs/luci-contract.md`](docs/luci-contract.md) lists what LuCI expects
 from a theme. Coding agents should read [`AGENTS.md`](AGENTS.md).
+To put a tile of your own package on the dashboard, see
+[`docs/TILES.md`](docs/TILES.md) (experimental).
 
 ## Contributing
 

@@ -220,7 +220,7 @@ SDK.
 ## Releases
 
 1. Add the release to `CHANGELOG.md` (user-visible changes, newest
-   first), bump `PKG_VERSION` in the three Makefiles and the `VERSION`
+   first), bump `PKG_VERSION` in the four Makefiles and the `VERSION`
    lines of `overview.js` and `menu-vantage.js`
    (`tests/version.test.js` checks them), with the version in
    `overview.js`'s `NEWS_URL` (the "what's new" link;
