@@ -2207,7 +2207,7 @@ const TRAFFIC_PINS = [
 		'function put(name, text) {',
 		'let tmp = DIR + \'/\' + name + \'.new\', file = DIR + \'/\' + name;',
 		'return writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true;',
-		'put(\'state.json\', sprintf(\'%J\', { v: 2, flows, totals }));',
+		'return put(\'state.json\', sprintf(\'%J\', { v: 2, at: now, flows, totals }));',
 		'put(\'answer.json\', text);'
 	] ],
 	/* one read at a time */

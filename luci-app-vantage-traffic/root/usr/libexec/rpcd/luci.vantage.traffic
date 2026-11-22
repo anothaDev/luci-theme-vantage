@@ -66,9 +66,10 @@
 // vantage_theme.appearance.power). Writes only its own state, in DIR
 // (/var/run: RAM, gone at reboot; the package's postrm removes it):
 //   lock         held while a read runs, so that one runs at a time
-//   state.json   { v, flows: { key: [ orig bytes, reply bytes, read at ] },
-//                totals: { mac: [ rx, tx, counted at ] } }: about 100
-//                bytes an entry, MAX_STATE at most (a larger one is not
+//   state.json   { v, at, flows: { key: [ orig bytes, reply bytes, read
+//                at ] }, totals: { mac: [ rx, tx, counted at ] } }, at:
+//                when the read that wrote it began; about 100 bytes an
+//                entry, never more than MAX_STATE (a larger one is not
 //                read: the counting starts over)
 //   answer.json  the last answer, as printed
 // DIR is made 0700 and the files 0600, root's: no other account can read
@@ -87,7 +88,13 @@ const THEME = 'vantage_theme';    // read only: is Low-power router on
 const MAX_ENTRIES = 16384;        // entries read a time (nf_conntrack_max: 2048 up, by RAM)
 const MAX_HOSTS = 512;            // hosts counted, as luci.vantage wired lists
 const MAX_NEIGH = 4096;           // neighbour entries taken, both families
-const MAX_STATE = 4194304;        // bytes of state.json read: 2 x MAX_ENTRIES entries at about 100 and more
+const MAX_KEY = 160;              // characters of an entry's key: 115 at most by the layout table (IPv6 gre), about 140 by parse_slow
+// The most state.json holds, as %J writes it: 2 x MAX_ENTRIES entries (those
+// a read saw, as many it did not), each a key of MAX_KEY characters at most,
+// three integers of 20 at most (64 bits) and 14 of quotes, brackets and
+// separators; MAX_HOSTS hosts, a MAC (17) and the same; the frame: what a
+// read writes is read back
+const MAX_STATE = 2 * MAX_ENTRIES * (MAX_KEY + 74) + MAX_HOSTS * (17 + 74) + 128;
 const MAX_ANSWER = 131072;        // bytes of answer.json read: MAX_HOSTS hosts take about 40000
 const WINDOW_MS = 5000;           // one read serves every caller this long
 const LOW_MS = 30000;             // ... with Low-power router on
@@ -97,7 +104,7 @@ const MAX_EVERY_MS = 120000;
 const STOP_MS = 2000;             // the table is read no longer than this
 const CHECK_EVERY = 64;           // entries between looks at the clock
 const IDLE_MS = 600000;           // a host nothing was counted for this long goes
-const KEEP_MS = 600000;           // an entry a partial read did not reach is known this long
+const KEEP_MS = 150000;           // an entry a read did not see is known this long: longer than the 2-minute back-off
 const NUD_VALID = 0x9e;           // REACHABLE, STALE, DELAY, PROBE, PERMANENT
 
 // Patterns, compiled once (ucode compiles a literal each time it is reached)
@@ -119,6 +126,7 @@ const PROTO = {
 
 let flows = {};                   // entry key -> [ orig bytes, reply bytes, last read ]
 let totals = {}, ntotals = 0;     // mac -> [ rx, tx, counted at ]
+let before = null;                // when the read before this one began
 
 // ms on the monotonic clock
 function now_ms() {
@@ -322,8 +330,10 @@ function feed(f, neigh, now, stop, st) {
 			prev[1] = rb;
 			prev[2] = now;
 		}
-		else
+		else if (length(k) <= MAX_KEY)
 			flows[k] = [ ob, rb, now ];
+		else
+			continue;    // not this table's: one it could not know again
 		// the host that opened it sent the original direction; one it was
 		// opened to (a port forward, another of this router's networks)
 		// sent the reply. As this router counts them: rx from, tx to
@@ -357,11 +367,20 @@ function feed(f, neigh, now, stop, st) {
 	st.zeroed = zeroed;
 	st.partial = partial;
 
-	// what the read did not see has ended, unless it stopped short: an
-	// entry it did not reach is not new when one reaches it, for a while
-	let gone = [], kept = 0;
+	// An entry the read did not see may have ended, or the read missed
+	// it: a read stops short, and the kernel lists the table by position,
+	// starting again at every read() of about a page, so each entry
+	// removed behind that place hides the next one. Kept, so that it does
+	// not count whole when a read sees it again: one the read before saw,
+	// however long ago (no read while nobody looks), then one seen less
+	// than KEEP_MS ago; MAX_ENTRIES at most, those the read before saw
+	// first (never more than that read saw: all of them)
+	let gone = [], recent = [], older = [], kept = 0;
 	for (let k, v in flows)
-		if (v[2] != now && !(partial && now - v[2] < KEEP_MS && kept++ < MAX_ENTRIES))
+		if (v[2] != now)
+			push((v[2] == before) ? recent : (now - v[2] < KEEP_MS) ? older : gone, k);
+	for (let k in [ ...recent, ...older ])
+		if (++kept > MAX_ENTRIES)
 			push(gone, k);
 	for (let k in gone)
 		delete flows[k];
@@ -395,6 +414,12 @@ function load_state() {
 	flows = ok ? st.flows : {};
 	totals = ok ? st.totals : {};
 	ntotals = length(totals);
+	before = ok ? st.at : null;
+}
+
+// the counters' state for the next read; false when it could not be written
+function save_state(now) {
+	return put('state.json', sprintf('%J', { v: 2, at: now, flows, totals }));
 }
 
 // the last answer and its text, or null
@@ -441,7 +466,7 @@ function read(t0) {
 	for (let k in sort(keys(totals)))
 		push(out, { mac: k, rx: totals[k][0], tx: totals[k][1] });
 
-	put('state.json', sprintf('%J', { v: 2, flows, totals }));
+	save_state(t0);
 	return { acct, st, hosts: out };
 }
 

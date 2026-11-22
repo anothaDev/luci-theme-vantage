@@ -4,6 +4,13 @@
 // OpenWrt has both), not the package.
 //
 //   ucode bench.uc <dir> [entries ...]       (default 500 2000 8000 16384)
+//   ucode bench.uc <dir> churn [entries] [percent] [reads]
+//                                            (default 2000 20 120)
+//
+// The second form keeps a table of that many entries through that many
+// reads 5 s apart (by the plugin's clock), each read with that share of
+// them ended and as many new ones begun, as on a busy router, and prints
+// what the state holds at the end and what the last read cost.
 //
 // It makes <dir>/vantage-traffic-bench (0700), and for each size writes a
 // synthetic table in the kernel's format of /proc/net/nf_conntrack there
@@ -29,10 +36,11 @@ import { chmod, lstat, mkdir, open, readfile, rename, rmdir, stat, unlink, write
 
 const MAX_ENTRIES = 16384;        // entries read a time (nf_conntrack_max: 2048 up, by RAM)
 const MAX_HOSTS = 512;            // hosts counted, as luci.vantage wired lists
-const MAX_STATE = 4194304;        // bytes of state.json read: 2 x MAX_ENTRIES entries at about 100 and more
+const MAX_KEY = 160;              // characters of an entry's key: 115 at most by the layout table (IPv6 gre), about 140 by parse_slow
+const MAX_STATE = 2 * MAX_ENTRIES * (MAX_KEY + 74) + MAX_HOSTS * (17 + 74) + 128;
 const STOP_MS = 2000;             // the table is read no longer than this
 const CHECK_EVERY = 64;           // entries between looks at the clock
-const KEEP_MS = 600000;           // an entry a partial read did not reach is known this long
+const KEEP_MS = 150000;           // an entry a read did not see is known this long: longer than the 2-minute back-off
 const PROTO = {
 	tcp: [ 13, 14, 5 ], udp: [ 13, 13, 5 ], udplite: [ 9, 9, 5 ], sctp: [ 12, 13, 5 ], dccp: [ 12, 13, 5 ],
 	icmp: [ 12, 12, 6 ], icmpv6: [ 10, 10, 6 ], gre: [ 13, 15, 5 ], unknown: [ 9, 9, 3 ]
@@ -40,6 +48,7 @@ const PROTO = {
 
 let flows = {};
 let totals = {}, ntotals = 0;
+let before = null;
 let DIR = null;                   // the plugin's state directory: here the bench's own
 
 function now_ms() {
@@ -185,8 +194,10 @@ function feed(f, neigh, now, stop, st) {
 			prev[1] = rb;
 			prev[2] = now;
 		}
-		else
+		else if (length(k) <= MAX_KEY)
 			flows[k] = [ ob, rb, now ];
+		else
+			continue;    // not this table's: one it could not know again
 		// the host that opened it sent the original direction; one it was
 		// opened to (a port forward, another of this router's networks)
 		// sent the reply. As this router counts them: rx from, tx to
@@ -220,11 +231,20 @@ function feed(f, neigh, now, stop, st) {
 	st.zeroed = zeroed;
 	st.partial = partial;
 
-	// what the read did not see has ended, unless it stopped short: an
-	// entry it did not reach is not new when one reaches it, for a while
-	let gone = [], kept = 0;
+	// An entry the read did not see may have ended, or the read missed
+	// it: a read stops short, and the kernel lists the table by position,
+	// starting again at every read() of about a page, so each entry
+	// removed behind that place hides the next one. Kept, so that it does
+	// not count whole when a read sees it again: one the read before saw,
+	// however long ago (no read while nobody looks), then one seen less
+	// than KEEP_MS ago; MAX_ENTRIES at most, those the read before saw
+	// first (never more than that read saw: all of them)
+	let gone = [], recent = [], older = [], kept = 0;
 	for (let k, v in flows)
-		if (v[2] != now && !(partial && now - v[2] < KEEP_MS && kept++ < MAX_ENTRIES))
+		if (v[2] != now)
+			push((v[2] == before) ? recent : (now - v[2] < KEEP_MS) ? older : gone, k);
+	for (let k in [ ...recent, ...older ])
+		if (++kept > MAX_ENTRIES)
 			push(gone, k);
 	for (let k in gone)
 		delete flows[k];
@@ -243,15 +263,21 @@ function load_state() {
 	flows = ok ? st.flows : {};
 	totals = ok ? st.totals : {};
 	ntotals = length(totals);
+	before = ok ? st.at : null;
+}
+
+function save_state(now) {
+	return put('state.json', sprintf('%J', { v: 2, at: now, flows, totals }));
 }
 
 /* -------------------------------------------------------- the bench */
 
-let base = ARGV[0], sizes = map(slice(ARGV, 1), (n) => int(n));
+let base = ARGV[0], churn = (ARGV[1] == 'churn') ? map(slice(ARGV, 2), (n) => int(n)) : null;
+let sizes = churn ? [ churn[0] ?? 2000 ] : map(slice(ARGV, 1), (n) => int(n));
 if (!length(sizes))
 	sizes = [ 500, 2000, 8000, MAX_ENTRIES ];
 if (type(base) != 'string' || stat(base)?.type != 'directory') {
-	warn('usage: ucode bench.uc <directory> [entries ...]\n');
+	warn('usage: ucode bench.uc <directory> [entries ...] | churn [entries] [percent] [reads]\n');
 	exit(1);
 }
 for (let n in sizes)
@@ -267,28 +293,29 @@ if (lstat(DIR) || !mkdir(DIR, 0700)) {
 }
 const TABLE = DIR + '/nf_conntrack';
 
-// the table, written to its file: n entries over m hosts, every counter
-// k steps on. Line by line, so that what this process holds is the count's
-function table(n, m, k) {
+// the table, written to its file: n entries over m hosts from entry
+// `first` on, every counter k steps on. Line by line, so that what this
+// process holds is the count's
+function table(n, m, k, first) {
 	let out = open(TABLE, 'w');
 	if (!out)
 		die(sprintf('cannot write %s\n', TABLE));
-	for (let i = 0; i < n; i++) {
+	for (let i = first ?? 0; i < (first ?? 0) + n; i++) {
 		let h = i % m, up = 1000 + i + k * 100, down = 5000 + i + k * 1000;
 		if (i % 4 == 3) {
 			let a = sprintf('2001:0db8:0000:0000:0000:0000:0000:%04x', h + 1), b = sprintf('2001:0db8:0001:0000:0000:0000:0000:%04x', i % 250 + 1);
 			out.write(sprintf('ipv6     10 tcp      6 7438 ESTABLISHED src=%s dst=%s sport=%d dport=443 packets=%d bytes=%d src=%s dst=%s sport=443 dport=%d packets=%d bytes=%d [ASSURED] mark=0 zone=0 use=2\n',
-				a, b, 10000 + i % 50000, 10 + k, up, b, a, 10000 + i % 50000, 10 + k, down));
+				a, b, 1024 + i % 64000, 10 + k, up, b, a, 1024 + i % 64000, 10 + k, down));
 		}
 		else if (i % 8 == 2) {
 			let a = sprintf('%s.%d', (h < 254) ? '192.0.2' : '198.51.100', h % 254 + 1), b = sprintf('203.0.113.%d', i % 250 + 1);
 			out.write(sprintf('ipv4     2 udp      17 54 src=%s dst=%s sport=%d dport=53 packets=%d bytes=%d src=%s dst=203.0.113.254 sport=53 dport=%d packets=%d bytes=%d mark=0 zone=0 use=2\n',
-				a, b, 10000 + i % 50000, 1 + k, up, b, 10000 + i % 50000, 1 + k, down));
+				a, b, 1024 + i % 64000, 1 + k, up, b, 1024 + i % 64000, 1 + k, down));
 		}
 		else {
 			let a = sprintf('%s.%d', (h < 254) ? '192.0.2' : '198.51.100', h % 254 + 1), b = sprintf('203.0.113.%d', i % 250 + 1);
 			out.write(sprintf('ipv4     2 tcp      6 7438 ESTABLISHED src=%s dst=%s sport=%d dport=443 packets=%d bytes=%d src=%s dst=203.0.113.254 sport=443 dport=%d packets=%d bytes=%d [ASSURED] mark=0 zone=0 use=2\n',
-				a, b, 10000 + i % 50000, 10 + k, up, b, 10000 + i % 50000, 10 + k, down));
+				a, b, 1024 + i % 64000, 10 + k, up, b, 1024 + i % 64000, 10 + k, down));
 		}
 	}
 	out.close();
@@ -326,7 +353,7 @@ function read(neigh, now) {
 	feed(f, neigh, now, t1 + 3600000, st);
 	f.close();
 	let t2 = now_ms();
-	put('state.json', sprintf('%J', { v: 2, flows, totals }));
+	save_state(now);
 	let t3 = now_ms();
 	return { load: t1 - t0, count: t2 - t1, save: t3 - t2, all: t3 - t0, st };
 }
@@ -334,7 +361,7 @@ function read(neigh, now) {
 // the real table: how long the kernel takes to print it, and whether the
 // plugin's layout table fits its lines (those it does not go to
 // parse_slow, at several times the cost); nothing of it is kept or shown
-let real = open('/proc/net/nf_conntrack', 'r');
+let real = churn ? null : open('/proc/net/nf_conntrack', 'r');
 if (real) {
 	let t0 = now_ms(), n = 0;
 	while (real.read('line'))
@@ -355,7 +382,20 @@ if (real) {
 		n, t1 - t0, fit, length(other) ? sprintf(' (the others by protocol: %J)', other) : ''));
 }
 
-print(sprintf('the plugin stops reading the table after %d ms. This process before the reads: %s KiB\n', STOP_MS, memory().VmRSS ?? '?'));
+if (churn) {
+	let n = sizes[0], c = int(n * (churn[1] ?? 20) / 100), reads = churn[2] ?? 120, m = min(250, max(10, int(n / 20)));
+	let neigh = neighbours(m), r = null;
+	for (let k = 0; k < reads; k++) {
+		table(n, m, k, k * c);
+		r = read(neigh, k * 5000);
+	}
+	let size = stat(DIR + '/state.json')?.size ?? 0, mem = memory();
+	print(sprintf('churn: %d entries, %d ended and begun a read, %d reads 5 s apart: the state holds %d entries, %d KiB; the last read %d ms = state load %d + table %d + state save %d; memory %s KiB, peak %s KiB\n',
+		n, c, reads, length(flows), int(size / 1024), r.all, r.load, r.count, r.save, mem.VmRSS ?? '?', mem.VmHWM ?? '?'));
+	sizes = [];
+}
+else
+	print(sprintf('the plugin stops reading the table after %d ms. This process before the reads: %s KiB\n', STOP_MS, memory().VmRSS ?? '?'));
 for (let n in sizes) {
 	let m = min(250, max(10, int(n / 20)));
 	let neigh = neighbours(m);

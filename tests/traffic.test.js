@@ -17,10 +17,12 @@ const mkTmp = require('./tmpdir');
    hosts; say when accounting is off and when entries are offloaded; share
    one read among all callers for 5 s (30 s with Low-power router), one at
    a time; stop reading the table after its time budget and wait longer
-   after a slow read; keep its files to itself (0700, 0600) and refuse a
-   directory it did not make; and hand out nothing but MACs and byte
-   counts. The lean parse must give what the slower one gives, on every
-   kind of line, and leave lines it does not fit to it.
+   after a slow read; know an entry a read did not see when one sees it
+   again, for a while, within what it reads back; keep its files to itself
+   (0700, 0600) and refuse a directory it did not make; and hand out
+   nothing but MACs and byte counts. The lean parse must give what the
+   slower one gives, on every kind of line, and leave lines it does not
+   fit to it.
 
    Each call runs the plugin as rpcd would, a ucode process with the
    arguments rpcd passes, under a host ucode binary ($UCODE, else `ucode`
@@ -54,9 +56,21 @@ const NO_UCODE = UCODE ? false : 'no ucode binary (set UCODE=/path/to/ucode)';
 const CLOCK_FN = 'function now_ms() {\n\tlet t = clock(true);\n\treturn t[0] * 1000 + int(t[1] / 1000000);\n}';
 const DISPATCH = "if (ARGV[0] == 'list')\n";
 
+/* test-largest: the largest state the plugin can write, through its own
+   writer and reader: 2 x MAX_ENTRIES entries with keys of MAX_KEY
+   characters, MAX_HOSTS hosts, every number the widest a 64-bit integer
+   prints (18446744073709551615); then the size of the file and what
+   load_state took back of it */
+const LARGEST = "\tdir_ok();\n\tflows = {};\n\ttotals = {};\n\tlet top = 18446744073709551615;\n" +
+	"\tfor (let i = 0; i < 2 * MAX_ENTRIES; i++)\n\t\tflows[sprintf('%0' + MAX_KEY + 'd', i)] = [ top, top, top ];\n" +
+	"\tfor (let i = 0; i < MAX_HOSTS; i++)\n\t\ttotals[sprintf('02:00:5e:00:%02x:%02x', i >> 8, i & 255)] = [ top, top, top ];\n" +
+	"\tlet saved = save_state(top);\n\tflows = null;\n\ttotals = null;\n\tload_state();\n" +
+	"\tprint(sprintf('%J\\n', { saved, size: length(readfile(DIR + '/state.json')), flows: length(flows), totals: length(totals), before }));\n";
+
 /* The plugin with its table, switch and state directory in dir, the
-   test's clock (NOW, STEP), the stubs' data from STUB, a mode that hands
-   out both parses, and what the stubs and the clock saw on stderr */
+   test's clock (NOW, STEP), the stubs' data from STUB, modes that hand
+   out both parses, its limits, and a state at its largest written and
+   read back, and what the stubs and the clock saw on stderr */
 function pluginCopy(src, dir) {
 	const swaps = [
 		[ /^const TABLE = .*$/m, 'const TABLE = ' + JSON.stringify(path.join(dir, 'nf_conntrack')) + ';' ],
@@ -65,6 +79,8 @@ function pluginCopy(src, dir) {
 		[ CLOCK_FN, 'function now_ms() {\n\tglobal.CLOCK.reads++;\n\tlet t = global.CLOCK.t;\n\tglobal.CLOCK.t += global.CLOCK.step;\n\treturn t;\n}' ],
 		[ DISPATCH, "global.STUB = json(readfile(STUB));\nglobal.STUB.dumps = 0;\nglobal.STUB.uci = 0;\nglobal.CLOCK = { t: NOW, step: STEP, reads: 0 };\n" +
 			"if (ARGV[0] == 'test-parse')\n\tprint(sprintf('%J\\n', map(json(readfile(INPUT)), (l) => { let e = []; return [ parse(l, e) ? e : null, parse_slow(l) ]; })));\n" +
+			"else if (ARGV[0] == 'test-const')\n\tprint(sprintf('%J\\n', { MAX_STATE, MAX_KEY, MAX_ENTRIES, MAX_HOSTS, KEEP_MS }));\n" +
+			"else if (ARGV[0] == 'test-largest') {\n" + LARGEST + "}\n" +
 			'else ' + DISPATCH ]
 	];
 	for (const [ from, to ] of swaps) {
@@ -102,6 +118,16 @@ function calls(list, dir) {
 		assert.equal(r.status, 0, r.stderr);
 		return Object.assign({ reply: JSON.parse(r.out) }, r.seen);
 	});
+}
+/* the plugin's limits, from its own constants */
+let LIMITS = null;
+function limits() {
+	if (!LIMITS) {
+		const r = exec(setup(), [ 'test-const' ]);
+		assert.equal(r.status, 0, r.stderr);
+		LIMITS = JSON.parse(r.out);
+	}
+	return LIMITS;
 }
 const parses = lines => {
 	const dir = setup();
@@ -150,10 +176,11 @@ const call = (table, now, x) => Object.assign({ table, acct: '1\n', neigh: NEIGH
 const of = (r, mac) => r.reply.hosts.find(h => h.mac === mac);
 
 /* a table of n made-up entries (a quarter IPv6) over m hosts, each 100
-   bytes from its host and 1000 to it, k times over */
-function table(n, m, k) {
+   bytes from its host and 1000 to it, k times over; from the first-th
+   made-up entry on (others than another table's) */
+function table(n, m, k, first) {
 	const out = [];
-	for (let i = 0; i < n; i++) {
+	for (let i = first || 0; i < (first || 0) + n; i++) {
 		const h = i % m, up = 1000 + i + k * 100, down = 5000 + i + k * 1000;
 		if (i % 4 === 3) {
 			const a = '2001:0db8:0000:0000:0000:0000:0000:' + (h + 1).toString(16).padStart(4, '0'), b = '2001:0db8:0001:0000:0000:0000:0000:' + (i % 250 + 1).toString(16).padStart(4, '0');
@@ -386,6 +413,70 @@ test('traffic plugin: the table is read for 2 s at most; a slow read lengthens t
 	assert.deepEqual([ stuck[0].reply.entries, stuck[0].reply.took, stuck[0].reply.every ], [ 64, 39000, 120000 ]);
 });
 
+/* ---------------------------------------- entries a read did not see */
+
+/* The kernel lists the table by position, from the start again at every
+   read() of about a page: an entry removed behind that place hides the
+   next one from a read that is not partial. */
+test('traffic plugin: an entry one whole read did not see counts its growth when one sees it again, not all it carried', { skip: NO_UCODE }, () => {
+	const big = at(OUT, { ob: 1000000000, rb: 4000000000 }), other = at(NEW, { ob: 10, rb: 20 });
+	const back = line(at(big, { ob: 1000000100, rb: 4000000500 }));
+	const [ a, b, c ] = calls([ call([ line(big), line(other) ], 0), call([ line(other) ], 5000), call([ back, line(other) ], 10000) ]);
+	assert.deepEqual([ of(a, M1), b.reply.partial ], [ { mac: M1, rx: 1000000000, tx: 4000000000 }, false ]);
+	assert.deepEqual(of(c, M1), { mac: M1, rx: 1000000100, tx: 4000000500 }, 'counted once');
+	/* the read before saw it: kept however long ago (no read while nobody
+	   looks; here longer than KEEP_MS, shorter than a host's IDLE_MS) */
+	const { KEEP_MS } = limits();
+	const late = calls([ call([ line(big), line(other) ], 0), call([ line(other) ], 2 * KEEP_MS), call([ back, line(other) ], 2 * KEEP_MS + 5000) ]);
+	assert.deepEqual(of(late[2], M1), { mac: M1, rx: 1000000100, tx: 4000000500 });
+	/* then for KEEP_MS from the read that last saw it */
+	const twice = calls([ call([ line(big), line(other) ], 0), call([ line(other) ], 5000), call([ line(other) ], KEEP_MS - 1), call([ back, line(other) ], KEEP_MS + 4999) ]);
+	assert.deepEqual(of(twice[3], M1), { mac: M1, rx: 1000000100, tx: 4000000500 });
+	const dir = setup(), flows = () => Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'state', 'state.json'), 'utf8')).flows).length;
+	const gone = calls([ call([ line(big), line(other) ], 0), call([ line(other) ], 5000), call([ line(other) ], KEEP_MS) ], dir);
+	assert.equal(flows(), 1, 'not seen by the read before, not seen for KEEP_MS: ended');
+	const [ again ] = calls([ call([ back, line(other) ], KEEP_MS + 5000) ], dir);
+	assert.equal(of(again, M1).rx - of(gone[2], M1).rx, 1000000100, 'were it back, it would count whole: the limit');
+});
+
+test('traffic plugin: every entry the read before saw is kept, at the most entries a read takes, and the state is read back', { skip: NO_UCODE }, () => {
+	/* a full table of IPv6 entries, then as many others: the first all
+	   kept, 2 x 16384 entries, about 5 MiB of state (more than the 4 MiB
+	   read back before) */
+	const dir = setup(), neigh = neighOf(100);
+	const v6 = (first, k) => {
+		const out = [];
+		for (let i = first; i < first + 16384; i++) {
+			const a = '2001:0db8:0000:0000:0000:0000:0000:' + (i % 100 + 1).toString(16).padStart(4, '0'), b = '2001:0db8:ffff:ffff:ffff:ffff:ffff:' + (i % 65000 + 1).toString(16).padStart(4, '0');
+			out.push(line({ v6: true, src: a, dst: b, sport: 1024 + i % 60000, dport: 443 + (i >> 16), ob: 4000000000 + i + k * 100, rsrc: b, rdst: a, rb: 4000000000 + i + k * 1000 }));
+		}
+		return out;
+	};
+	const [ a, b ] = calls([ call(v6(0, 0), 0, { neigh }), call(v6(16384, 0), 5000, { neigh }) ], dir);
+	const st = fs.readFileSync(path.join(dir, 'state', 'state.json'), 'utf8');
+	assert.deepEqual([ a.reply.entries, b.reply.entries, b.reply.partial ], [ 16384, 16384, false ]);
+	assert.equal(Object.keys(JSON.parse(st).flows).length, 2 * 16384);
+	assert.ok(st.length > 4 << 20 && st.length <= limits().MAX_STATE, st.length);
+	const [ c ] = calls([ call(v6(0, 1), 10000, { neigh }) ], dir);
+	assert.deepEqual([ sum(c, 'rx') - sum(b, 'rx'), sum(c, 'tx') - sum(b, 'tx') ], [ 16384 * 100, 16384 * 1000 ], 'their growth, not all they carried');
+	/* a third table: the first kept (the read before saw it), the second
+	   (seen 10 s ago) has no room left: 16384 kept at most */
+	const [ d ] = calls([ call(v6(32768, 0), 15000, { neigh }) ], dir);
+	assert.equal(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'state', 'state.json'), 'utf8')).flows).length, 2 * 16384);
+	const [ e ] = calls([ call(v6(16384, 1), 20000, { neigh }) ], dir);
+	assert.ok(sum(e, 'rx') - sum(d, 'rx') > 16384 * 4000000000, 'the second, no longer kept, counts whole again: what the cap costs');
+});
+
+test('traffic plugin: the largest state it can write is within MAX_STATE, and read back whole', { skip: NO_UCODE }, () => {
+	const { MAX_STATE, MAX_ENTRIES, MAX_HOSTS } = limits();
+	const dir = setup(), r = exec(dir, [ 'test-largest' ]);
+	assert.equal(r.status, 0, r.stderr);
+	const got = JSON.parse(r.out);
+	assert.equal(got.saved, true);
+	assert.ok(got.size <= MAX_STATE && got.size > MAX_STATE - 128, got.size + ' bytes of ' + MAX_STATE + ': within, and the bound no looser than its frame');
+	assert.deepEqual([ got.flows, got.totals, got.before ], [ 2 * MAX_ENTRIES, MAX_HOSTS, 18446744073709551615 ]);
+});
+
 /* ------------------------------------------------- process and state */
 
 test('traffic plugin: rpcd\'s list and call, and nothing else', { skip: NO_UCODE }, () => {
@@ -407,15 +498,27 @@ test('traffic plugin: its state in a directory of its own, 0700, its files 0600,
 	assert.deepEqual(fs.readdirSync(state).sort(), [ 'answer.json', 'lock', 'state.json' ]);
 	for (const f of [ 'answer.json', 'state.json' ]) assert.equal(fs.statSync(path.join(state, f)).mode & 0o777, 0o600, f);
 	const st = JSON.parse(fs.readFileSync(path.join(state, 'state.json'), 'utf8'));
-	assert.deepEqual(Object.keys(st).sort(), [ 'flows', 'totals', 'v' ]);
-	assert.deepEqual(st.totals, { [M1]: [ 1, 2, 0 ] });
-	/* a state that is not this plugin's, or too large: counted afresh, never trusted */
-	const big = '{ "v": 2, "flows": {}, "totals": { "' + M1 + '": [ 1000000, 1000000, 5000 ] }' + ' '.repeat(4194304) + '}';
-	for (const bad of [ '{ "v": 1, "flows": {}, "totals": { "' + M1 + '": [ 1000000, 1000000, 5000 ] } }', 'not json', '[]', big ]) {
-		fs.writeFileSync(path.join(state, 'state.json'), bad);
+	assert.deepEqual(Object.keys(st).sort(), [ 'at', 'flows', 'totals', 'v' ]);
+	assert.deepEqual([ st.at, st.totals ], [ 0, { [M1]: [ 1, 2, 0 ] } ]);
+	/* a state it wrote, up to MAX_STATE bytes, is counted on from; one that is
+	   not its own, or larger: counted afresh, never trusted */
+	const { MAX_STATE } = limits();
+	const of1 = (flows, totals, x) => JSON.stringify(Object.assign({ v: 2, at: 0, flows: flows || {}, totals: totals || { [M1]: [ 1000000, 1000000, 5000 ] } }, x || {}));
+	const pad = (text, n) => text.slice(0, -1) + ' '.repeat(n - text.length) + '}';
+	const cases = [
+		[ of1(), 1000005 ],
+		[ of1(null, null, { at: undefined }), 1000005 ],
+		[ pad(of1(), MAX_STATE), 1000005 ],
+		[ pad(of1(), MAX_STATE + 1), 5 ],
+		[ of1(null, null, { v: 1 }), 5 ],
+		[ 'not json', 5 ],
+		[ '[]', 5 ]
+	];
+	for (const [ text, rx ] of cases) {
+		fs.writeFileSync(path.join(state, 'state.json'), text);
 		fs.rmSync(path.join(state, 'answer.json'));
 		const [ r ] = calls([ call([ line(at(OUT, { ob: 5, rb: 6 })) ], 5000) ], dir);
-		assert.deepEqual(r.reply.hosts, [ { mac: M1, rx: 5, tx: 6 } ], bad.slice(0, 20));
+		assert.deepEqual(r.reply.hosts.find(h => h.mac === M1), { mac: M1, rx, tx: rx + 1 }, text.slice(0, 80) + ' (' + text.length + ' bytes)');
 	}
 	/* a broken answer: a new read */
 	fs.writeFileSync(path.join(state, 'answer.json'), '{ "at": "soon" }');
@@ -505,8 +608,8 @@ test('traffic benchmark: its counting and state code is the plugin\'s, byte for 
 		assert.ok(m, name);
 		return m[0];
 	};
-	for (const name of [ 'now_ms', 'count', 'kv', 'parse', 'parse_slow', 'norm', 'add', 'feed', 'put', 'load_state' ]) assert.equal(block(bench, name), block(plugin, name), name);
-	for (const c of [ 'MAX_ENTRIES', 'MAX_HOSTS', 'MAX_STATE', 'STOP_MS', 'CHECK_EVERY', 'KEEP_MS', 'PROTO' ])
+	for (const name of [ 'now_ms', 'count', 'kv', 'parse', 'parse_slow', 'norm', 'add', 'feed', 'put', 'load_state', 'save_state' ]) assert.equal(block(bench, name), block(plugin, name), name);
+	for (const c of [ 'MAX_ENTRIES', 'MAX_HOSTS', 'MAX_KEY', 'MAX_STATE', 'STOP_MS', 'CHECK_EVERY', 'KEEP_MS', 'PROTO' ])
 		assert.equal(new RegExp('^const ' + c + ' = [^\\n]*(\\n\\t[^\\n]*)*', 'm').exec(bench)[0], new RegExp('^const ' + c + ' = [^\\n]*(\\n\\t[^\\n]*)*', 'm').exec(plugin)[0], c);
 	assert.doesNotMatch(bench, /^import .*'(rtnl|uci|ubus)'/m, 'only what a stock OpenWrt has: ucode and its fs module');
 });
@@ -519,6 +622,11 @@ test('traffic benchmark: runs, writes only its own files and prints a line per s
 	const rows = r.stdout.split('\n').filter(l => /^\s*\d+ entries/.test(l));
 	assert.equal(rows.length, 2, r.stdout);
 	for (const l of r.stdout.trim().split('\n')) t.diagnostic(l.trim());
+	/* a busy table: a fifth of it ends and begins again each read */
+	const churn = spawnSync(UCODE, [ BENCH, dir, 'churn', '500', '20', '40' ], { encoding: 'utf8' });
+	assert.equal(churn.status, 0, churn.stderr);
+	assert.match(churn.stdout, /^churn: 500 entries, 100 ended and begun a read, 40 reads 5 s apart: the state holds 3400 entries/m, 'those seen, those ended less than KEEP_MS (150 s) ago');
+	t.diagnostic(churn.stdout.trim());
 	assert.deepEqual(fs.readdirSync(dir), [ 'kept' ], 'its files removed, nothing else touched');
 	const bad = spawnSync(UCODE, [ BENCH, path.join(dir, 'no-such-dir') ], { encoding: 'utf8' });
 	assert.notEqual(bad.status, 0);
