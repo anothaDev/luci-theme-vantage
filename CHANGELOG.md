@@ -52,7 +52,7 @@ packages are listed at
   It reads in a process of its own, so LuCI keeps answering meanwhile,
   whatever the size of the router's connection table; one read serves
   every open dashboard, and a slow read makes the next wait longer, so
-  it takes about a tenth of one core at most. A device's own port and a paired
+  it takes about a tenth of one core. A device's own port and a paired
   access point's count still come first, and Top talkers is unchanged.
   Seeing it needs a permission of its own, `luci-app-vantage-traffic`.
   Install it on the router: `apk add luci-app-vantage-traffic` (24.10:
