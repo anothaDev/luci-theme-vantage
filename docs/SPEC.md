@@ -1308,9 +1308,11 @@ measured on few devices so far.
   10 µs an entry, the state's load and save 19 ms of it at 16,384; the
   process's memory about 19 MiB at 16,384 entries, 5 MiB at 2,000 (a
   router's table is sized by its RAM: 2,048 to 4,096 entries at
-  128 MiB). On a router: **[to be measured: quad-core ARM access point
-  (25.12) and x86 VM (24.10), ms a read at 500, 2,000, 8,000 and 16,384
-  entries]**. Before 1.1.2, inside rpcd, the same ARM device took 139 ms
+  128 MiB). On a quad-core ARM access point (25.12): 106 ms at 500
+  entries, 383 ms at 2,000, 1,511 ms at 8,000, about 190 µs an entry, and
+  the 2 s limit ends a read near 12,500 entries. On an x86 VM (24.10):
+  6 ms, 22 ms, 90 ms and 179 ms at 16,384, about 11 µs an entry. Before
+  the read left rpcd's process, the same ARM device took 139 ms
   at 500 entries and 515 ms at 2,000, during which rpcd answered no one.
 - **On the dashboard.** In the Clients list (Live, its sort and bars)
   and in the host's details, for a wired host on a shared port of this

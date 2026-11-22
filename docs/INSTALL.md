@@ -726,8 +726,9 @@ is open.
 What it costs: rpcd runs the plugin as a process of its own when a
 dashboard asks, and goes on answering LuCI meanwhile, so a read never
 holds LuCI up. A read takes the router's CPU for a moment: on a quad-core
-ARM access point **[to be measured: ms a read at 2,000 and 16,384
-entries]**; on an x86 VM **[to be measured]**. It is shared by everyone
+ARM access point about 0.4 s at 2,000 entries and 1.5 s at 8,000 (beyond
+about 12,500 entries the 2 s limit ends the read); on an x86 VM 22 ms at
+2,000 entries and 0.2 s at 16,384. It is shared by everyone
 looking, one at a time, every 5 s at most; a slow one makes the next wait
 ten times as long as it took, so the reads take a tenth of one core at
 most, and the table is read for 2 s at most. `cat /proc/net/nf_conntrack
