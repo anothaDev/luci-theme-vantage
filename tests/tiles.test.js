@@ -258,7 +258,7 @@ test('the providers a session may ask: named exactly and granted status in its A
 	const a = await c.poll(0);
 	assert.deepEqual(c.self.tileIds, [ 'abc', 'dns', 'modem' ]);
 	assert.deepEqual(Object.keys(a), [ 'abc', 'dns', 'modem' ]);
-	assert.deepEqual(a.dns, { reply: DNS(), at: 1e12, failed: false });
+	assert.deepEqual(a.dns, { data: JSON.parse(JSON.stringify(model.tile(DNS()))), at: 1e12, failed: false }, 'the dashboard\'s reading of the answer, not the answer');
 	assert.deepEqual(c.calls.filter(x => x[0] !== 'acl').map(x => x.slice(1)), [ [ [], true, true, null ], [ [], true, true, null ], [ [], true, true, null ] ], 'no argument, nobatch, a failure rejected, no parameters');
 	assert.equal(c.asked('zzz'), 0, 'the fourth is not asked');
 	/* the ACL once a page */
@@ -303,7 +303,7 @@ test('a provider is asked with the slow poll, no more often than its data change
 	c.answer.dns = () => Promise.reject(new Error(GONE));
 	const gone = await c.poll(5e3);
 	assert.equal(gone.dns.failed, true);
-	assert.ok(gone.dns.reply, 'the last answer, marked as from a call that failed');
+	assert.ok(gone.dns.data, 'the last answer, marked as from a call that failed');
 	for (let i = 0; i < 11; i++) await c.poll(5e3);
 	assert.equal(c.asked('dns'), 8);
 	c.answer.dns = () => Promise.resolve(DNS());
@@ -321,15 +321,15 @@ test('a provider\'s call holds up a poll for 2 s at most; while it is out no sec
 	assert.equal(done, false);
 	assert.deepEqual(c.timers.map(t => t.ms), [ 2000 ], 'the deadline');
 	c.timers[0].f();
-	assert.deepEqual(await first, { dns: { reply: null, at: 0, failed: false } }, 'no answer yet');
+	assert.deepEqual(await first, { dns: { data: null, at: 0, failed: false } }, 'no answer yet');
 	/* the next poll: the call is still out */
 	c.timers = [];
-	assert.deepEqual(await c.poll(5e3), { dns: { reply: null, at: 0, failed: false } });
+	assert.deepEqual(await c.poll(5e3), { dns: { data: null, at: 0, failed: false } });
 	assert.equal(c.asked('dns'), 1);
 	assert.deepEqual(c.timers, [], 'nothing to wait for');
 	release(DNS());
 	await new Promise(r => setImmediate(r));
-	assert.deepEqual((await c.poll(5e3)).dns.reply, DNS(), 'the late answer is the next poll\'s');
+	assert.deepEqual((await c.poll(5e3)).dns.data, JSON.parse(JSON.stringify(model.tile(DNS()))), 'the late answer is the next poll\'s');
 }));
 
 test('a provider whose tile the layout hides is not asked once it has answered', () => tilePolls(async c => {
@@ -359,16 +359,17 @@ function page(answers, v) {
 	self.paintTiles();
 	return self;
 }
-const ans = (reply, extra) => Object.assign({ reply, at: 1e12, failed: false }, extra);
+/* an answer as tileAnswers hands it on: model.tile's reading of a reply */
+const ans = (reply, extra) => Object.assign({ data: model.tile(reply), at: 1e12, failed: false }, extra);
 
 test('a tile drawn from an answer: its name, icon, dot, link, note and items, all text', () => withDom(() => {
 	const self = page({ dns: ans(DNS()) });
 	assert.deepEqual(self.m.extra, [ 'xdns' ]);
 	assert.deepEqual([ self.st.health, self.st.summary ], [ 'kept', 'kept' ], 'never a health check');
 	const tile = self.tiles.xdns;
-	assert.deepEqual([ tile.tag, tile.getAttribute('class'), tile.getAttribute('aria-label') ], [ 'section', 'vt-tile vt-ext-tile', 'DNS' ]);
-	assert.equal(self.tileNames.xdns, 'DNS');
-	assert.equal(tile.find('vt-tile-title')[0].textContent, 'DNS');
+	assert.deepEqual([ tile.tag, tile.getAttribute('class'), tile.getAttribute('aria-label') ], [ 'section', 'vt-tile vt-ext-tile', 'DNS (dns)' ]);
+	assert.equal(self.tileNames.xdns, 'DNS (dns)');
+	assert.deepEqual([ tile.find('vt-ext-name')[0].textContent, tile.find('vt-ext-src')[0].textContent ], [ 'DNS', 'dns' ]);
 	assert.deepEqual(tile.find('vt-status').map(s => s.getAttribute('class')), [ 'vt-status vt-status-ok' ]);
 	assert.deepEqual(tile.find('vt-link'), [], 'no menu: no link');
 	assert.equal(tile.find('vt-ext-note')[0].textContent, 'dnsmasq, since it started');
@@ -408,8 +409,8 @@ test('hostile text stays text: no markup, handler, style or link from an answer;
 	assert.ok(nodes.every(n => n.innerHTML === undefined), 'no markup');
 	assert.ok(nodes.every(n => !Object.keys(n.attrs).some(a => /^(on|href|src|style)/.test(a))), 'no handler, link or style');
 	assert.ok(nodes.every(n => !n.tag.includes('script') && n.tag !== 'a'));
-	assert.equal(self.tiles.xdns.getAttribute('aria-label'), evil, 'an attribute holds it as text');
-	assert.ok(self.tiles.xdns.find('vt-tile-title')[0].textContent === evil);
+	assert.equal(self.tiles.xdns.getAttribute('aria-label'), evil + ' (dns)', 'an attribute holds it as text');
+	assert.ok(self.tiles.xdns.find('vt-ext-name')[0].textContent === evil);
 	/* with the menu: the link is LuCI's own page, by its menu name */
 	const menuView = viewWithMenu(tree);
 	const withMenu = page({ dns: ans(reply) }, menuView);
@@ -434,9 +435,10 @@ function viewWithMenu(tree) {
 }
 
 test('before an answer, after one it cannot read and when it does not answer, the tile says so in words', () => withDom(() => {
-	const self = page({ dns: { reply: null, at: 0, failed: false } });
+	const self = page({ dns: { data: null, at: 0, failed: false } });
 	assert.equal(self.tiles.xdns.find('vt-ext')[0].textContent, 'Waiting for its first report');
 	assert.equal(self.tiles.xdns.find('vt-tile-title')[0].textContent, 'dns', 'by its id until it has a name');
+	assert.deepEqual([ self.tiles.xdns.find('vt-ext-name').length, self.tileNames.xdns ], [ 0, 'dns' ]);
 	self.noteTiles(self.m, { dns: ans({ v: 2, title: 'DNS' }) }, 1e12);
 	self.paintTiles();
 	assert.equal(self.tiles.xdns.find('vt-ext')[0].textContent, 'Sent a report that could not be read');
@@ -447,7 +449,99 @@ test('before an answer, after one it cannot read and when it does not answer, th
 	self.noteTiles(self.m, { dns: ans(DNS(), { at: 1e12 + 1, failed: true }) }, 1e12 + 61e3);
 	self.paintTiles();
 	assert.equal(self.tiles.xdns.find('vt-ext')[0].textContent, 'Did not answer in time');
-	assert.equal(self.tiles.xdns.find('vt-tile-title')[0].textContent, 'DNS', 'the name it gave');
+	assert.equal(self.tiles.xdns.find('vt-ext-name')[0].textContent, 'DNS', 'the name it gave');
+}));
+
+test('the page keeps the dashboard\'s reading of an answer, never the answer: a reply of megabytes leaves a few hundred bytes', () => tilePolls(async c => {
+	c.acl = dump({ 'vantage.tile.dns': [ 'status' ] });
+	const big = 'x'.repeat(1 << 20);
+	c.answer.dns = () => Promise.resolve(Object.assign(DNS(), { junk: big, note: big,
+		items: DNS().items.concat(Array.from({ length: 40 }, (_, i) => ({ label: big + i, text: big, extra: big }))) }));
+	const a = await c.poll(0);
+	const kept = JSON.stringify(c.self.tileState) + JSON.stringify(c.self.tileAnswers());
+	assert.ok(kept.length < 4096, kept.length + ' characters kept');
+	assert.doesNotMatch(kept, /junk|extra|x{100}/);
+	assert.equal(Array.from(a.dns.data.note).length, 64);
+	assert.equal(a.dns.data.items.length, 5, 'its four, and one of the forty long labels: cut alike, one a label');
+}));
+
+test('a provider\'s dBm and MHz: 0 is a value, a fraction has three digits, in the dashboard\'s forms', () => withDom(() => {
+	const self = page({ modem: ans({ v: 1, title: 'Modem', items: [
+		{ label: 'TX', value: 0, unit: 'dBm' }, { label: 'RSRP', value: -97.123456, unit: 'dBm' }, { label: 'RSSI', value: -65, unit: 'dBm' },
+		{ label: 'Ch', value: 1800.123456, unit: 'MHz' }, { label: 'Off', value: 0, unit: 'MHz' } ] }) });
+	assert.deepEqual(self.tiles.xmodem.find('vt-ext-val').map(v => v.textContent), [ '0 dBm', '−97.1 dBm', '−65 dBm', '1800 MHz', '0 MHz' ]);
+}));
+
+test('Customize: a provider tile\'s controls are not made again while it is open (a new name waits for Done)', () => withDom(() => {
+	const self = page({ dns: ans(DNS()) });
+	const tile = self.tiles.xdns, before = self.tileNames.xdns;
+	self.ov = {};
+	tile.appendChild(self.buildOverlay('xdns'));
+	const first = self.ov.xdns.root;
+	self.editing = true;
+	self.noteTiles(self.m, { dns: ans(Object.assign(DNS(), { title: 'Resolver' }), { at: 1e12 + 10e3 }) }, 1e12 + 10e3);
+	self.paintTiles();
+	assert.equal(self.ov.xdns.root, first, 'the controls under the pointer or the keyboard stay');
+	assert.ok(tile.childNodes.includes(first));
+	assert.equal(self.tileNames.xdns, before);
+	self.editing = false;
+	self.paintTiles();
+	assert.notEqual(self.ov.xdns.root, first, 'closed: named again');
+	assert.ok(!tile.childNodes.includes(first) && tile.childNodes.includes(self.ov.xdns.root));
+	assert.match(self.tileNames.xdns, /^Resolver\b/);
+	assert.equal(self.ov.xdns.root.find('vt-ov-name')[0].textContent, self.tileNames.xdns);
+}));
+
+test('an answer it cannot read leaves the tile its name, icon and page: it says so under them', () => withDom(() => {
+	const self = page({ dns: ans(DNS()) });
+	const head = () => self.tiles.xdns.find('vt-tile-title')[0];
+	const name = self.tileNames.xdns;
+	self.ov = {};
+	self.tiles.xdns.appendChild(self.buildOverlay('xdns'));
+	const ov = self.ov.xdns.root;
+	for (const bad of [ { v: 2, title: 'DNS' }, { v: 1, title: '' }, {} ]) {
+		self.noteTiles(self.m, { dns: ans(bad, { at: self.st.ext.dns.at + 10e3 }) }, self.st.ext.dns.at + 10e3);
+		self.paintTiles();
+		assert.equal(self.tiles.xdns.find('vt-ext')[0].textContent, 'Sent a report that could not be read');
+		assert.equal(head().children[1].textContent, 'DNS', JSON.stringify(bad));
+		assert.equal(self.tileNames.xdns, name);
+		assert.equal(self.ov.xdns.root, ov, 'no new controls for a name that did not change');
+	}
+}));
+
+test('provenance: a provider tile carries its provider\'s id from the session\'s ACL, whatever it answers; no tile of the dashboard\'s own has one', () => withDom(() => {
+	/* a provider that names itself after a tile of the dashboard's own, with its icon, and claims another id */
+	const self = page({ sys: ans({ v: 1, title: 'System', icon: 'cpu', id: 'hero', provider: 'luci.vantage', items: [ { label: 'CPU', value: 3, unit: '%' } ] }) });
+	assert.deepEqual(self.m.extra, [ 'xsys' ], 'its layout id is x and the object\'s id');
+	const tile = self.tiles.xsys, src = tile.find('vt-ext-src');
+	assert.equal(src.length, 1);
+	assert.deepEqual([ src[0].textContent, src[0].getAttribute('class'), src[0].getAttribute('title') ], [ 'sys', 'vt-src vt-ext-src', 'From another package: sys' ]);
+	assert.equal(src[0].parent, tile.find('vt-tile-title')[0], 'in the head, after its name');
+	assert.deepEqual(tile.find('vt-tile-title')[0].children.map(n => n.getAttribute('class')), [ 'vt-ico', 'vt-ext-name', 'vt-src vt-ext-src' ]);
+	assert.deepEqual([ self.tileNames.xsys, tile.getAttribute('aria-label') ], [ 'System (sys)', 'System (sys)' ], 'Customize, the hidden list and the screen reader');
+	/* the id is the object's: another provider with the same answer has its own */
+	const other = page({ dns: ans({ v: 1, title: 'System', id: 'sys' }) });
+	assert.deepEqual([ other.tiles.xdns.find('vt-ext-src')[0].textContent, other.tileNames.xdns ], [ 'dns', 'System (dns)' ]);
+	/* before an answer, after one it cannot read and when it does not answer: the tag all the same */
+	for (const a of [ { data: null, at: 0, failed: false }, ans({ v: 2 }), { data: null, at: 0, failed: true } ])
+		assert.equal(page({ dns: a }).tiles.xdns.find('vt-ext-src')[0].textContent, 'dns', JSON.stringify(a));
+	/* the dashboard's own tiles make none: the tag is made in one place */
+	assert.equal((VIEW_SRC.match(/vt-ext-src/g) || []).length, 1);
+	const head = VIEW_SRC.slice(VIEW_SRC.indexOf('function tileHead('), VIEW_SRC.indexOf('\n}\n', VIEW_SRC.indexOf('function tileHead(')));
+	assert.doesNotMatch(head, /vt-src/);
+}));
+
+test('a model built again between polls (names changed: rerender) keeps the provider tiles, and takes no sample', () => withDom(() => {
+	const self = page({ dns: ans(DNS()) });
+	const laid = [];
+	Object.assign(self, { lastRaw: { provided: { dns: ans(DNS()) } }, board: {}, aliases: {}, quiet: null,
+		markWired() {}, markOffline() {}, notePorts() {}, stickyGen() {}, talkers() { return []; }, cpuShown() { return null; },
+		paint() { laid.push((this.m.extra || []).join(' ')); } });
+	self.st.hist = { cpu: [], mem: [], net: {} };
+	const hist = JSON.stringify(self.st.ext.dns);
+	self.rerender();
+	assert.deepEqual(laid, [ 'xdns' ], 'the layout still has its tile');
+	assert.equal(JSON.stringify(self.st.ext.dns), hist, 'the same answer again: no new sample, no new rate');
 }));
 
 test('a page without providers builds, names and paints no tile beyond the dashboard\'s own', () => withDom(() => {

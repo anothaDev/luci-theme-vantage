@@ -638,9 +638,11 @@ function tileValue(x, perSec) {
 	case '%': return fmt.pct(v, Math.abs(v) < 10 && v % 1 ? 1 : 0);
 	case 'ms': return _('%s ms').format(tileNum(v));
 	case 's': return fmt.duration(v);
-	case 'dBm': return fmt.dbm(v);
+	/* the forms of fmt.dbm and fmt.mhz, with 0 a value and a fraction cut
+	   to three digits: these are another package's numbers */
+	case 'dBm': return tileNum(v) + ' ' + _('dBm');
 	case 'dB': return _('%s dB').format(tileNum(v));
-	case 'MHz': return fmt.mhz(v);
+	case 'MHz': return _('%s MHz').format(tileNum(v));
 	case 'B': return fmt.bytes(v);
 	case 'bit/s': return fmt.bits(v);
 	}
@@ -1135,8 +1137,10 @@ return view.extend({
 		});
 	},
 
-	/* The provider tiles' answers for a slow poll: { id: { reply, at,
-	   failed } }, each the last answer (at: when it came in) or null.
+	/* The provider tiles' answers for a slow poll: { id: { data, at,
+	   failed } }, each model.tile's reading of the last answer (null for
+	   one it cannot read; at: when it came in, 0 before one). The answer
+	   itself is not kept: only what the reading holds, capped.
 	   Which providers this login may ask comes from rpcd once a page
 	   (session access without an object, read by tileIds): without a
 	   provider package no group grants one, and none is asked. A
@@ -1178,7 +1182,7 @@ return view.extend({
 			var at = Date.now(), took = at - asked, d = a.reply ? model.tile(a.reply) : null;
 			s.call = null;
 			if (a.absent && !s.answered) { s.off = true; return; }
-			if (a.reply) { s.answered = true; s.last = { reply: a.reply, at: at }; }
+			if (a.reply) { s.answered = true; s.last = { data: d, at: at }; }
 			s.failed = !a.reply;
 			/* asked again: a minute on when it went away; ten times as late
 			   as a slow answer took; else when its data changes (every) */
@@ -1198,7 +1202,7 @@ return view.extend({
 		var self = this, out = Object.create(null);
 		(this.tileIds || []).forEach(function(id) {
 			var s = self.tileState && self.tileState[id];
-			if (s && !s.off) out[id] = { reply: s.last ? s.last.reply : null, at: s.last ? s.last.at : 0, failed: s.failed };
+			if (s && !s.off) out[id] = { data: s.last ? s.last.data : null, at: s.last ? s.last.at : 0, failed: s.failed };
 		});
 		return out;
 	},
@@ -1632,22 +1636,25 @@ return view.extend({
 	/* Provider tiles: the poll's answers (tiles: tileAnswers') -> the
 	   tiles this page has (m.extra: their layout ids, 'x' and the
 	   provider's id; not one whose first answer said it is not there)
-	   and what each shows (st.ext[id]: { data, state, at, rates, hist
-	   }). data is model.tile's reading of the last answer; state 'wait'
-	   before one, 'bad' for one it cannot read, 'gone' when the last call
-	   failed and the last answer is TILE_RETRY_MS old (or there is none),
-	   else 'ok'. A counter's rate between two answers, and a trend item's
-	   values for the page: the same answer again (between slow polls) is
-	   no sample */
+	   and what each shows (st.ext[id]: { data, readable, state, at,
+	   rates, hist }). data is model.tile's reading of the last answer,
+	   readable that of the last one it could read (the tile's name, icon
+	   and page stay while a later answer cannot be read); state 'wait'
+	   before an answer, 'bad' for one it cannot read, 'gone' when the
+	   last call failed and the last answer is TILE_RETRY_MS old (or there
+	   is none), else 'ok'. A counter's rate between two answers, and a
+	   trend item's values for the page: the same answer again (between
+	   slow polls, or a model built again: rerender) is no sample */
 	noteTiles: function(m, tiles, now) {
 		var byTile = this.st.ext;
 		m.extra = [];
 		Object.keys(tiles || {}).forEach(function(id) {
-			var a = tiles[id], t = byTile[id] || (byTile[id] = { data: null, state: 'wait', at: 0, prev: null, rates: Object.create(null), hist: Object.create(null) });
+			var a = tiles[id], t = byTile[id] || (byTile[id] = { data: null, readable: null, state: 'wait', at: 0, prev: null, rates: Object.create(null), hist: Object.create(null) });
 			m.extra.push('x' + id);
-			if (a.reply && a.at !== t.at) {
+			if (a.at && a.at !== t.at) {
 				t.at = a.at;
-				t.data = model.tile(a.reply);
+				t.data = a.data || null;
+				if (t.data) t.readable = t.data;
 				var counters = Object.create(null), labels = Object.create(null);
 				(t.data ? t.data.items : []).forEach(function(x) {
 					labels[x.label] = true;
@@ -1662,7 +1669,7 @@ return view.extend({
 				});
 				Object.keys(t.hist).forEach(function(k) { if (!labels[k]) delete t.hist[k]; });
 			}
-			t.state = !a.reply ? (a.failed ? 'gone' : 'wait') : !t.data ? 'bad' : a.failed && !(now - a.at < TILE_RETRY_MS) ? 'gone' : 'ok';
+			t.state = !a.at ? (a.failed ? 'gone' : 'wait') : !t.data ? 'bad' : a.failed && !(now - a.at < TILE_RETRY_MS) ? 'gone' : 'ok';
 		});
 	},
 
@@ -1839,6 +1846,8 @@ return view.extend({
 		m.wg = st.wgSeen === true;
 		this.markOffline(m, raw, null);
 		this.notePorts(m);
+		/* the provider tiles from the poll's answers again: no new sample */
+		this.noteTiles(m, raw.provided, Date.now());
 		this.stickyGen(m);
 		m.clients.forEach(function(c) { c.exp = insight.experience(c); c.firstSeen = st.presence && st.presence.firstSeen[c.mac]; c.isNew = !!st.isNew[c.mac]; });
 		st.talkers = this.talkers(m);
@@ -4802,15 +4811,45 @@ return view.extend({
 		var self = this, ts = this.tileState || {}, out = [], els = this.extEls = Object.create(null);
 		(this.tileIds || []).forEach(function(id) {
 			if (ts[id] && ts[id].off) return;
-			var e = els[id] = { head: E('h3', { 'class': 'vt-tile-title' }, [ icon(model.TILE_ICONS[0]), E('span', {}, [ id ]) ]), extra: E('div', { 'class': 'vt-tile-extra' }), body: E('div', { 'class': 'vt-ext' }) };
-			e.tile = self.tiles['x' + id] = E('section', { 'class': 'vt-tile vt-ext-tile', 'aria-label': id }, [
+			var e = els[id] = { head: E('h3', { 'class': 'vt-tile-title' }), extra: E('div', { 'class': 'vt-tile-extra' }), body: E('div', { 'class': 'vt-ext' }) };
+			e.tile = self.tiles['x' + id] = E('section', { 'class': 'vt-tile vt-ext-tile' }, [
 				E('header', { 'class': 'vt-tile-head' }, [ e.head, e.extra ]),
 				e.body
 			]);
-			self.tileNames['x' + id] = id;
+			self.nameTile(id);
 			out.push('x' + id);
 		});
 		return out;
+	},
+
+	/* Provenance: whose tile it is, so that no provider passes for a tile
+	   of the dashboard's own. The head carries the provider's id in a
+	   source tag after its name (the look of a client's name source),
+	   which its tooltip explains; only provider tiles have one.
+	   Customize, the hidden tiles' list and the screen reader name it
+	   "name (id)". The id is the object's, from the session's ACL, never
+	   from what the provider answered. Its name is that of the last
+	   answer that could be read, the id before one */
+	tileName: function(id) {
+		var t = this.st.ext[id], d = t && t.readable;
+		return d ? _('%s (%s)').format(_(d.title), id) : id;
+	},
+
+	nameTile: function(id) {
+		var e = this.extEls[id], t = this.st.ext[id], d = t && t.readable, lid = 'x' + id, name = this.tileName(id);
+		patch(e.head, [
+			icon(d ? d.icon : model.TILE_ICONS[0]),
+			d ? E('span', { 'class': 'vt-ext-name' }, [ _(d.title) ]) : '',
+			E('span', { 'class': 'vt-src vt-ext-src', 'title': _('From another package: %s').format(id) }, [ id ])
+		]);
+		/* Customize names it too: its controls made again under the name,
+		   but not while it is open, which would take a control from under
+		   the pointer or the keyboard */
+		var ov = this.ov && this.ov[lid];
+		if (this.tileNames[lid] === name || (ov && this.editing)) return;
+		this.tileNames[lid] = name;
+		e.tile.setAttribute('aria-label', name);
+		if (ov && ov.root.parentNode === e.tile) e.tile.replaceChild(this.buildOverlay(lid), ov.root);
 	},
 
 	paintTiles: function() {
@@ -4829,15 +4868,8 @@ return view.extend({
 	paintTile: function(id) {
 		var e = this.extEls[id], t = this.st.ext[id], lid = 'x' + id;
 		if (!e || !t || (this.m.extra || []).indexOf(lid) < 0) return;
-		var last = t.data, d = t.state === 'ok' ? last : null, name = last ? _(last.title) : id;
-		patch(e.head, [ icon(last ? last.icon : model.TILE_ICONS[0]), E('span', {}, [ name ]) ]);
-		if (this.tileNames[lid] !== name) {
-			this.tileNames[lid] = name;
-			e.tile.setAttribute('aria-label', name);
-			/* Customize names it too: its controls made again under the name */
-			var ov = this.ov && this.ov[lid];
-			if (ov && ov.root.parentNode === e.tile) e.tile.replaceChild(this.buildOverlay(lid), ov.root);
-		}
+		var last = t.readable, d = t.state === 'ok' ? t.data : null;
+		this.nameTile(id);
 		var page = last && last.page ? menuPage(last.page) : null;
 		patch(e.extra, [
 			d && d.state ? E('span', { 'class': 'vt-status vt-status-' + d.state }, d.state === 'err' || d.state === 'warn' ? [ E('span', { 'class': 'vt-sr' }, [ d.state === 'err' ? _('Error') : _('Warning') ]) ] : []) : '',
