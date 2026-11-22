@@ -55,6 +55,18 @@ Each release ships both packages, `luci-theme-vantage` and
   router: `apk add luci-app-vantage-traffic` (24.10: `opkg install
   luci-app-vantage-traffic`). See
   [Per-device traffic](docs/INSTALL.md#per-device-traffic-optional-experimental).
+- **Dashboard: a compact network path** (#157,
+  [@Vikk20](https://github.com/Vikk20)). With several access points and
+  many ports, the network path ran several screens long. Under
+  Customize, beside the throughput chart's style, **Network path** now
+  offers **Compact, one line per node**: every Wi-Fi network, every
+  Ethernet port and every access point becomes one line with its name,
+  how many clients or devices it has and its live rate, and the client
+  rows go. A red dot before the count still marks a client with a weak
+  signal, and a click on a line does what a click on the card did. It
+  is saved like the chart style: on the router for every browser where
+  your login may, otherwise in this browser. **Full**, the path as
+  before, stays the default.
 
 ## 1.1.1 - 2026-11-21
 

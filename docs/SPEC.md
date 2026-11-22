@@ -128,15 +128,17 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   (those keys are dropped); Appearance says when picks stay in the
   browser. This browser's last pick (`vantage.theme`, `vantage.login`,
   `vantage.backdrop.v1`, what the dashboard reads under another theme)
-  counts until the router has one. The dashboard's chart style and layouts
-  go the same way, in options `chart` and `layout_<class>[_wired]`: Done
+  counts until the router has one. The dashboard's chart style, network
+  path form and layouts go the same way, in options `chart`, `path` and
+  `layout_<class>[_wired]`: Done
   under Customize saves what it changed and the router doesn't have yet
   (`vantage.view.unsaved`, kept across a failed save or a reload; until
   then this browser's copy stands), by handing it to the theme (`vantage:view-save`), which writes it once. If
   that fails Customize stays open with a note: Done tries again, and Esc
   or the Customize button leaves without saving.
-  The template passes them on as `data-vt-look-chart` and
-  `data-vt-look-layout`, logged in only and in their form only, and
+  The template passes them on as `data-vt-look-chart`,
+  `data-vt-look-path` and `data-vt-look-layout`, logged in only and in
+  their form only (`path`: `full` or `compact`), and
   `vantage.layout` validates them again. The router's come first for a
   login that may save; any other keeps this browser's, and sees the
   router's where it has none. Without the theme they stay in the browser.
@@ -583,6 +585,37 @@ text around it so it looks the same size.
   without samples (page hidden, failed polls) is hatched as "no data".
   The pick is saved with the layout and validated on read; the tile's
   size and place don't change with it.
+- **Network path, compact** (#157): under "Customize", beside the chart
+  style, "Network path" picks Full (the default: the path's cards as
+  they are) or "Compact, one line per node", saved as the chart style
+  is. Compact makes every node of the branches one line, in the same
+  places on the same wires: a radio (its band and channel), the Wired
+  node, a network of a device without Wi-Fi (its address), a paired
+  access point (its pairing name, and why while it is not reporting),
+  and under them each Wi-Fi network (its lock where the security is
+  open or weak), each port and each access point's networks and Wired
+  node. A line shows its name, how many it has (a port with one host:
+  that host's link speed; an access point: its stations and wired hosts
+  in one count) and its rate, ↓ what went towards its devices and ↑
+  what came back, as the cards count them (an access point's network or
+  Wired node: what its rows would have added up to, idle with none
+  there). A red dot before the count marks a client of that network
+  whose signal is weak, as the Signal check counts it (below −75 dBm,
+  not one set quiet), its name and signal in the dot's tooltip; an off
+  radio or an access point not reporting is dimmed and dashed, an idle
+  network flat, as their cards are; the wires carry traffic as before. A
+  line is the card's control, with its click and tooltip, named for a
+  screen reader with all it shows and both rates. Left out: the client
+  rows and "+n more", a dot per client, a radio's generation, a
+  network's protocol, an access point's address and uptime (in its
+  tooltip, with its stations and wired hosts counted apart). The lines are stacked at every width, a
+  radio, the Wired node or an access point above what it leads to, and
+  share their columns (subgrid), each as wide as its widest text; below
+  the wide layout the path takes the phone's single column. The tree is
+  at most 640 px wide; narrower than 500 px it shows ↓ only, narrower
+  than 400 px in the client rows' short form (62.2k). Switching builds
+  the path again, and its tile takes its new height at once, not after
+  the 30 s a shrinking tile is held.
 - **Network path background**: behind the path, on its dot grid, one
   canvas in the style picked under the theme's Appearance (or under
   "Customize" when the dashboard runs without the Vantage theme), the
