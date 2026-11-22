@@ -45,6 +45,7 @@ const PROTO = {
 	tcp: [ 13, 14, 5 ], udp: [ 13, 13, 5 ], udplite: [ 9, 9, 5 ], sctp: [ 12, 13, 5 ], dccp: [ 12, 13, 5 ],
 	icmp: [ 12, 12, 6 ], icmpv6: [ 10, 10, 6 ], gre: [ 13, 15, 5 ], unknown: [ 9, 9, 3 ]
 };
+const RE_MAC = /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/;
 
 let flows = {};
 let totals = {}, ntotals = 0;
@@ -255,11 +256,29 @@ function put(name, text) {
 	return writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true;
 }
 
+function entry_ok(v) {
+	if (type(v) != 'array' || length(v) != 3)
+		return false;
+	let a = v[0], b = v[1], c = v[2];
+	return a === +a && b === +b && c === +c && a >= 0 && b >= 0 && c >= 0;
+}
+
 function load_state() {
 	let text = readfile(DIR + '/state.json', MAX_STATE + 1), st = null;
 	if (type(text) == 'string' && length(text) <= MAX_STATE)
 		try { st = json(text); } catch (err) { st = null; }
-	let ok = type(st) == 'object' && st.v == 2 && type(st.flows) == 'object' && type(st.totals) == 'object';
+	let ok = type(st) == 'object' && st.v == 2 && type(st.flows) == 'object' && type(st.totals) == 'object' &&
+		(st.at == null || st.at === +st.at) && length(st.totals) <= MAX_HOSTS;
+	for (let k, v in (ok ? st.flows : {}))
+		if (length(k) > MAX_KEY || !entry_ok(v)) {
+			ok = false;
+			break;
+		}
+	for (let k, v in (ok ? st.totals : {}))
+		if (!match(k, RE_MAC) || !entry_ok(v)) {
+			ok = false;
+			break;
+		}
 	flows = ok ? st.flows : {};
 	totals = ok ? st.totals : {};
 	ntotals = length(totals);

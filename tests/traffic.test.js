@@ -19,10 +19,10 @@ const mkTmp = require('./tmpdir');
    a time; stop reading the table after its time budget and wait longer
    after a slow read; know an entry a read did not see when one sees it
    again, for a while, within what it reads back; keep its files to itself
-   (0700, 0600) and refuse a directory it did not make; and hand out
-   nothing but MACs and byte counts. The lean parse must give what the
-   slower one gives, on every kind of line, and leave lines it does not
-   fit to it.
+   (0700, 0600) and refuse a directory it did not make and a state it did
+   not write; and hand out nothing but MACs and byte counts. The lean
+   parse must give what the slower one gives, on every kind of line, and
+   leave lines it does not fit to it.
 
    Each call runs the plugin as rpcd would, a ucode process with the
    arguments rpcd passes, under a host ucode binary ($UCODE, else `ucode`
@@ -504,17 +504,35 @@ test('traffic plugin: its state in a directory of its own, 0700, its files 0600,
 	assert.deepEqual([ st.at, st.totals ], [ 0, { [M1]: [ 1, 2, 0 ] } ]);
 	/* a state it wrote, up to MAX_STATE bytes, is counted on from; one that is
 	   not its own, or larger: counted afresh, never trusted */
-	const { MAX_STATE } = limits();
+	const { MAX_STATE, MAX_KEY, MAX_HOSTS } = limits();
 	const of1 = (flows, totals, x) => JSON.stringify(Object.assign({ v: 2, at: 0, flows: flows || {}, totals: totals || { [M1]: [ 1000000, 1000000, 5000 ] } }, x || {}));
 	const pad = (text, n) => text.slice(0, -1) + ' '.repeat(n - text.length) + '}';
+	const hosts = {};
+	for (let h = 0; h <= MAX_HOSTS; h++) hosts['02:00:5e:00:' + (h >> 8).toString(16).padStart(2, '0') + ':' + (h & 255).toString(16).padStart(2, '0')] = [ 1, 1, 5000 ];
 	const cases = [
 		[ of1(), 1000005 ],
 		[ of1(null, null, { at: undefined }), 1000005 ],
+		[ of1({ k: [ 1.5, 2, 3 ] }), 1000005 ],
 		[ pad(of1(), MAX_STATE), 1000005 ],
 		[ pad(of1(), MAX_STATE + 1), 5 ],
 		[ of1(null, null, { v: 1 }), 5 ],
 		[ 'not json', 5 ],
-		[ '[]', 5 ]
+		[ '[]', 5 ],
+		/* entries it would not write: a read would stop at the first (not an
+		   array), count from the others, join a count as text */
+		[ of1({ k: 5 }), 5 ],
+		[ of1({ k: [ 1, 2 ] }), 5 ],
+		[ of1({ k: [ '1', 2, 3 ] }), 5 ],
+		[ of1({ k: [ 1, 2, -3 ] }), 5 ],
+		[ of1({ k: [ 1, 2, null ] }), 5 ],
+		[ of1({ k: [ 1, 2, true ] }), 5 ],
+		[ of1({ k: [ 1, 2, [ 3 ] ] }), 5 ],
+		[ of1({ k: [ 1, 2, 3, 4 ] }), 5 ],
+		[ of1({ [ 'k'.repeat(MAX_KEY + 1) ]: [ 1, 2, 3 ] }), 5 ],
+		[ of1(null, { [M1]: [ '1000000', 1000000, 5000 ] }), 5 ],
+		[ of1(null, { [M1]: [ 1000000, 1000000, 5000 ], 'not a MAC': [ 1, 2, 3 ] }), 5 ],
+		[ of1(null, Object.assign({ [M1]: [ 1000000, 1000000, 5000 ] }, hosts)), 5 ],
+		[ of1(null, null, { at: '5000' }), 5 ]
 	];
 	for (const [ text, rx ] of cases) {
 		fs.writeFileSync(path.join(state, 'state.json'), text);
@@ -612,8 +630,8 @@ test('traffic benchmark: its counting and state code is the plugin\'s, byte for 
 		assert.ok(m, name);
 		return m[0];
 	};
-	for (const name of [ 'now_ms', 'count', 'kv', 'parse', 'parse_slow', 'norm', 'add', 'feed', 'put', 'load_state', 'save_state' ]) assert.equal(block(bench, name), block(plugin, name), name);
-	for (const c of [ 'MAX_ENTRIES', 'MAX_HOSTS', 'MAX_KEY', 'MAX_STATE', 'STOP_MS', 'CHECK_EVERY', 'KEEP_MS', 'PROTO' ])
+	for (const name of [ 'now_ms', 'count', 'kv', 'parse', 'parse_slow', 'norm', 'add', 'feed', 'put', 'entry_ok', 'load_state', 'save_state' ]) assert.equal(block(bench, name), block(plugin, name), name);
+	for (const c of [ 'MAX_ENTRIES', 'MAX_HOSTS', 'MAX_KEY', 'MAX_STATE', 'STOP_MS', 'CHECK_EVERY', 'KEEP_MS', 'PROTO', 'RE_MAC' ])
 		assert.equal(new RegExp('^const ' + c + ' = [^\\n]*(\\n\\t[^\\n]*)*', 'm').exec(bench)[0], new RegExp('^const ' + c + ' = [^\\n]*(\\n\\t[^\\n]*)*', 'm').exec(plugin)[0], c);
 	assert.doesNotMatch(bench, /^import .*'(rtnl|uci|ubus)'/m, 'only what a stock OpenWrt has: ucode and its fs module');
 });

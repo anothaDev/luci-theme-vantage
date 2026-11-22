@@ -69,8 +69,8 @@
 //   state.json   { v, at, flows: { key: [ orig bytes, reply bytes, read
 //                at ] }, totals: { mac: [ rx, tx, counted at ] } }, at:
 //                when the read that wrote it began; about 100 bytes an
-//                entry, never more than MAX_STATE (a larger one is not
-//                read: the counting starts over)
+//                entry, never more than MAX_STATE (one that is larger or
+//                not of this form is not used: the counting starts over)
 //   answer.json  the last answer, as printed
 // DIR is made 0700 and the files 0600, root's: no other account can read
 // which hosts are counted, let alone how much. Runs nothing.
@@ -91,9 +91,10 @@ const MAX_NEIGH = 4096;           // neighbour entries taken, both families
 const MAX_KEY = 160;              // characters of an entry's key: 115 at most by the layout table (IPv6 gre), about 140 by parse_slow
 // The most state.json holds, as %J writes it: 2 x MAX_ENTRIES entries (those
 // a read saw, as many it did not), each a key of MAX_KEY characters at most,
-// three integers of 20 at most (64 bits) and 14 of quotes, brackets and
-// separators; MAX_HOSTS hosts, a MAC (17) and the same; the frame: what a
-// read writes is read back
+// three numbers of 20 at most (a 64-bit integer; a double, which ucode
+// prints to 14 digits) and 14 of quotes, brackets and separators; MAX_HOSTS
+// hosts, a MAC (17) and the same; the frame. What load_state takes is no
+// more than this, so what a read writes is read back
 const MAX_STATE = 2 * MAX_ENTRIES * (MAX_KEY + 74) + MAX_HOSTS * (17 + 74) + 128;
 const MAX_ANSWER = 131072;        // bytes of answer.json read: MAX_HOSTS hosts take about 40000
 const WINDOW_MS = 5000;           // one read serves every caller this long
@@ -406,11 +407,35 @@ function put(name, text) {
 	return writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true;
 }
 
+// an entry as this plugin writes it: two counts and a time, numbers not
+// below 0 (+x is x itself only for a number). Anything else and the file
+// is none of its own: a read would stop at it (indexing what is no array)
+// or count from it
+function entry_ok(v) {
+	if (type(v) != 'array' || length(v) != 3)
+		return false;
+	let a = v[0], b = v[1], c = v[2];
+	return a === +a && b === +b && c === +c && a >= 0 && b >= 0 && c >= 0;
+}
+
+// the state the last read left, all of it as this plugin writes it, or
+// none: the counting starts over
 function load_state() {
 	let text = readfile(DIR + '/state.json', MAX_STATE + 1), st = null;
 	if (type(text) == 'string' && length(text) <= MAX_STATE)
 		try { st = json(text); } catch (err) { st = null; }
-	let ok = type(st) == 'object' && st.v == 2 && type(st.flows) == 'object' && type(st.totals) == 'object';
+	let ok = type(st) == 'object' && st.v == 2 && type(st.flows) == 'object' && type(st.totals) == 'object' &&
+		(st.at == null || st.at === +st.at) && length(st.totals) <= MAX_HOSTS;
+	for (let k, v in (ok ? st.flows : {}))
+		if (length(k) > MAX_KEY || !entry_ok(v)) {
+			ok = false;
+			break;
+		}
+	for (let k, v in (ok ? st.totals : {}))
+		if (!match(k, RE_MAC) || !entry_ok(v)) {
+			ok = false;
+			break;
+		}
 	flows = ok ? st.flows : {};
 	totals = ok ? st.totals : {};
 	ntotals = length(totals);
