@@ -807,8 +807,9 @@ removes a package that another one still needs.
 Nothing stays behind on the router: the removal deletes
 `/var/run/vantage-traffic` and has rpcd let go of the plugin (a reload,
 as installing a LuCI package does); a read running at that moment can
-make the folder again, in RAM until the next reboot. The dashboard
-stops asking at the next reload of the page.
+make the folder again, in RAM until the next reboot. A dashboard left
+open asks once a minute whether it is back, and no more once its page
+is reloaded.
 
 ## Switch themes
 

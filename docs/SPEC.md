@@ -1491,9 +1491,18 @@ measured on few devices so far.
   sends when it loads, whether the login holds the package's group, and
   calls only then, with the slow part of each poll, in a request of its
   own that no poll waits for: its answer is the next poll's (one call at
-  a time); a failed call keeps the last rates two slow polls, then none. Without
-  the package, or for a login without its group, the dashboard makes
-  that one check and nothing else, and looks as before.
+  a time). A failed call keeps the last rates two slow polls, then none;
+  so does a read given again for longer than twice its `every` (or twice
+  the page's slow poll, where that is longer): the plugin reads no more.
+  A call that says the plugin is not there (the package removed under
+  the page, or rpcd reloading at a package install) is made again a
+  minute later, whether the plugin had answered before or not; its
+  empty answer (`{}`, no read yet) and other failures at the next slow
+  poll. The rates are taken on the router's monotonic clock, and start
+  over where it went back (the router started again under the page):
+  the second read after it gives a rate. Without the package, or for a
+  login without its group, the dashboard makes that one check and
+  nothing else, and looks as before.
 - **Permission.** Its own group, `luci-app-vantage-traffic` (read
   `luci.vantage.traffic hosts`). It shows how much each device sends and
   receives, so no group of the dashboard grants it. `test_acl_policy.js`
