@@ -43,7 +43,7 @@ const MAX_STATE = 2 * MAX_ENTRIES * (MAX_KEY + 74) + MAX_HOSTS * (17 + 74) + 128
 const STOP_MS = 2000;             // the table is read no longer than this
 const CHECK_EVERY = 64;           // entries between looks at the clock
 const KEEP_MS = 150000;           // an entry a read did not see is known this long: longer than the 2-minute back-off
-const KEEP_BYTES = 65536;         // ... if it carried this many bytes, both ways (or a partial read did not reach it)
+const KEEP_BYTES = 65536;         // ... past the next read only from this many bytes, both ways (or after a partial read)
 const PROTO = {
 	tcp: [ 13, 14, 5 ], udp: [ 13, 13, 5 ], udplite: [ 9, 9, 5 ], sctp: [ 12, 13, 5 ], dccp: [ 12, 13, 5 ],
 	icmp: [ 12, 12, 6 ], icmpv6: [ 10, 10, 6 ], gre: [ 13, 15, 5 ], unknown: [ 9, 9, 3 ]
@@ -239,20 +239,20 @@ function feed(f, neigh, now, stop, st) {
 	// it: a read stops short, and the kernel lists the table by position,
 	// starting again at every read() of about a page, so each entry
 	// removed behind that place hides the next one. Kept, so that it does
-	// not count whole when a read sees it again, where that would matter:
-	// one that carried KEEP_BYTES or more, or any after a partial read
-	// (those it did not reach are many, and mostly still there); and then
-	// one the read before saw, however long ago (no read while nobody
-	// looks), or one seen less than KEEP_MS ago; MAX_ENTRIES at most,
-	// those the read before saw first (never more than that read saw: all
-	// of them). A smaller one a whole read missed counts twice when one
-	// sees it again: by less than KEEP_BYTES, once. Most of those are
-	// lookups and short exchanges that ended, which the state no longer
-	// holds for KEEP_MS on a router where connections come and go
+	// not count whole when a read sees it again: one the read before saw,
+	// whatever its size, however long ago (no read while nobody looks):
+	// that covers a single miss; then, seen less than KEEP_MS ago, one
+	// that carried KEEP_BYTES or more, or any after a partial read (those
+	// it did not reach are many, and mostly still there); MAX_ENTRIES at
+	// most, those the read before saw first (never more than that read
+	// saw: all of them). A smaller one missed by two whole reads running
+	// counts twice when one sees it again: by less than KEEP_BYTES, once.
+	// Lookups and short exchanges that ended stay one read, not KEEP_MS,
+	// on a router where connections come and go
 	let gone = [], recent = [], older = [], kept = 0;
 	for (let k, v in flows)
 		if (v[2] != now)
-			push((!partial && v[0] + v[1] < KEEP_BYTES) ? gone : (v[2] == before) ? recent : (now - v[2] < KEEP_MS) ? older : gone, k);
+			push((v[2] == before) ? recent : (!partial && v[0] + v[1] < KEEP_BYTES) ? gone : (now - v[2] < KEEP_MS) ? older : gone, k);
 	for (let k in [ ...recent, ...older ])
 		if (++kept > MAX_ENTRIES)
 			push(gone, k);

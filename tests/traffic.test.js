@@ -18,13 +18,13 @@ const mkTmp = require('./tmpdir');
    one read among all callers for 5 s (30 s with Low-power router), one at
    a time; stop reading the table after its time budget and wait longer
    after a slow read; know an entry a read did not see when one sees it
-   again, for a while, within what it reads back, where forgetting it
-   would cost what matters (64 KiB, or any a partial read missed); keep its files to itself
-   (0700, 0600), refuse a directory it did not make and a state it did not
-   write, and give no answer without the state it comes from; and hand out
-   nothing but MACs and byte counts. The lean parse must give what the
-   slower one gives, on every kind of line, and leave lines it does not
-   fit to it.
+   again, for a while, within what it reads back (any the read before
+   saw; past that, from 64 KiB, or any a partial read missed); keep its
+   files to itself (0700, 0600), refuse a directory it did not make and a
+   state it did not write, and give no answer without the state it comes
+   from; and hand out nothing but MACs and byte counts. The lean parse
+   must give what the slower one gives, on every kind of line, and leave
+   lines it does not fit to it.
 
    Each call runs the plugin as rpcd would, a ucode process with the
    arguments rpcd passes, under a host ucode binary ($UCODE, else `ucode`
@@ -447,18 +447,25 @@ test('traffic plugin: an entry one whole read did not see counts its growth when
 	assert.deepEqual([ of(reuse[2], M1), reuse[2].reply.zeroed ], [ { mac: M1, rx: 1000000300, tx: 4000000700 }, 0 ]);
 });
 
-/* Kept only where forgetting it would cost what matters: from KEEP_BYTES
-   both ways, or after a partial read (the time budget's test above: what
-   it did not reach counts its growth whatever its size) */
-test('traffic plugin: a smaller entry one whole read did not see counts twice when one sees it again, by less than KEEP_BYTES', { skip: NO_UCODE }, () => {
-	const { KEEP_BYTES } = limits(), other = at(NEW, { ob: 10, rb: 20 });
-	const missed = (ob, rb) => of(calls([ call([ line(at(OUT, { ob, rb })), line(other) ], 0), call([ line(other) ], 5000),
-		call([ line(at(OUT, { ob: ob + 100, rb: rb + 500 })), line(other) ], 10000) ])[2], M1);
-	const q = KEEP_BYTES / 4;
-	assert.deepEqual(missed(q, 3 * q), { mac: M1, rx: q + 100, tx: 3 * q + 500 }, 'KEEP_BYTES both ways: kept, counted once');
-	assert.deepEqual(missed(q, 3 * q - 1), { mac: M1, rx: 2 * q + 100, tx: 2 * (3 * q - 1) + 500 },
-		'a byte less: forgotten, and what it had carried counted again, once: KEEP_BYTES - 1 at most');
-	assert.deepEqual(missed(1, 2), { mac: M1, rx: 2 + 100, tx: 4 + 500 }, 'a lookup: a few bytes twice');
+/* An entry the read before saw is kept whatever its size: a single miss
+   by the kernel's listing costs nothing. Missed by two whole reads
+   running, it is kept only from KEEP_BYTES both ways (or after a partial
+   read: the time budget's test above, what it did not reach counts its
+   growth whatever its size) */
+test('traffic plugin: an entry one whole read missed counts once, whatever its size; a smaller one missed by two reads running, twice by less than KEEP_BYTES', { skip: NO_UCODE }, () => {
+	const { KEEP_BYTES } = limits(), other = at(NEW, { ob: 10, rb: 20 }), q = KEEP_BYTES / 4;
+	const missed = (ob, rb, reads) => {
+		const list = [ call([ line(at(OUT, { ob, rb })), line(other) ], 0) ];
+		for (let i = 1; i <= reads; i++) list.push(call([ line(other) ], 5000 * i));
+		list.push(call([ line(at(OUT, { ob: ob + 100, rb: rb + 500 })), line(other) ], 5000 * (reads + 1)));
+		return of(calls(list).pop(), M1);
+	};
+	for (const [ ob, rb ] of [ [ 1, 2 ], [ q, 3 * q - 1 ], [ q, 3 * q ] ])
+		assert.deepEqual(missed(ob, rb, 1), { mac: M1, rx: ob + 100, tx: rb + 500 }, 'missed once: counted once, ' + (ob + rb) + ' bytes');
+	assert.deepEqual(missed(q, 3 * q, 2), { mac: M1, rx: q + 100, tx: 3 * q + 500 }, 'twice running, KEEP_BYTES both ways: kept, counted once');
+	assert.deepEqual(missed(q, 3 * q - 1, 2), { mac: M1, rx: 2 * q + 100, tx: 2 * (3 * q - 1) + 500 },
+		'twice running, a byte less: forgotten, and what it had carried counted again, once: KEEP_BYTES - 1 at most');
+	assert.deepEqual(missed(1, 2, 2), { mac: M1, rx: 2 + 100, tx: 4 + 500 }, 'a lookup: a few bytes twice');
 });
 
 test('traffic plugin: every entry the read before saw is kept, at the most entries a read takes, and the state is read back', { skip: NO_UCODE }, () => {
@@ -690,8 +697,8 @@ test('traffic benchmark: runs, writes only its own files and prints a line per s
 	/* a busy table: a fifth of it ends and begins again each read, a tenth of it large */
 	const churn = spawnSync(UCODE, [ BENCH, dir, 'churn', '500', '20', '40', '10' ], { encoding: 'utf8' });
 	assert.equal(churn.status, 0, churn.stderr);
-	assert.match(churn.stdout, /^churn: 500 entries, 100 ended and begun a read, 40 reads 5 s apart, 10 % large: the state holds 790 entries/m,
-		'those seen, and the large ones that ended less than KEEP_MS (150 s) ago: 10 a read, 29 reads');
+	assert.match(churn.stdout, /^churn: 500 entries, 100 ended and begun a read, 40 reads 5 s apart, 10 % large: the state holds 880 entries/m,
+		'those seen, the small ones the read before saw (90), and the large ones that ended less than KEEP_MS (150 s) ago: 10 a read, 29 reads');
 	t.diagnostic(churn.stdout.trim());
 	assert.deepEqual(fs.readdirSync(dir), [ 'kept' ], 'its files removed, nothing else touched');
 	const bad = spawnSync(UCODE, [ BENCH, path.join(dir, 'no-such-dir') ], { encoding: 'utf8' });
