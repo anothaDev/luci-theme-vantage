@@ -122,7 +122,7 @@ function page(m, answers) {
 	const self = Object.create(dview);
 	Object.assign(self, { m, ui: {}, el: {}, quiet: {}, canWrite: false });
 	self.st = { staRates: {}, devRates: { lan1: { rx: 7e6, tx: 7e6 }, lan2: { rx: 1000, tx: 3000 } }, clientHist: {}, gone: [],
-		traffic: null, trafficRates: null, trafficPrev: null, trafficSeen: 0, trafficNew: 0 };
+		traffic: null, trafficRates: null, trafficPrev: null, trafficSeen: 0, trafficNew: 0, trafficAt: null };
 	for (const a of answers || []) self.noteTraffic(a);
 	return self;
 }
@@ -209,6 +209,24 @@ test('traffic view: a read given twice keeps its rates; a failed call keeps them
 	self.noteTraffic(null);
 	assert.equal(self.listRate(printer), null, 'then none, not an old rate shown as current');
 	assert.equal(live(self, printer).textContent, fmt.DASH);
+	/* a failed call, then none for a minute (the plugin not there): none
+	   two slow polls after the last answer, though no answer comes; back,
+	   a base first, not a rate over the gap */
+	const gone = page(m, [ ANSWER(1000, 0), ANSWER(6000, 1) ]);
+	now += 5000;
+	gone.noteTraffic(null);
+	now += 5000;
+	gone.noteTraffic(undefined);
+	assert.deepEqual(gone.listRate(printer), { rx: 1600, tx: 16000 }, 'two slow polls: kept');
+	now += 1;
+	gone.noteTraffic(undefined);
+	assert.equal(gone.listRate(printer), null, 'then none, without an answer');
+	now += 50000;
+	gone.noteTraffic(ANSWER(66000, 13));
+	assert.equal(gone.listRate(printer), null, 'back: a base');
+	now += 5000;
+	gone.noteTraffic(ANSWER(71000, 14));
+	assert.deepEqual(gone.listRate(printer), { rx: 1600, tx: 16000 }, 'then a rate of its own');
 	/* the router started again under the page: its monotonic clock and the
 	   plugin's counters start over (its state is RAM); the next two reads
 	   give rates again, not only once the new uptime passes the old one */
