@@ -103,7 +103,10 @@ packages are listed at
   width** (#155, [@Vikk20](https://github.com/Vikk20)). A paired access
   point's report now carries each station's link as the access point
   sees it, so its clients show their Wi-Fi generation like the router's
-  own, once the access point runs this version of the add-on too.
+  own, once the access point runs this version of the add-on too. Update
+  the router first: these reports are larger, and a router still on
+  1.1.0 or 1.1.1 refuses the report of an access point with more than
+  about 150 clients.
 - **WireGuard tile: no long silence after the computer slept.** After a
   slow answer the tile waits ten times as long before it asks again. A
   call that was out while the computer slept counted as slow and could

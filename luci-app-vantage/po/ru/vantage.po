@@ -216,7 +216,7 @@ msgid "%s (new this session)"
 msgstr "%s (новое в этой сессии)"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:24
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:524
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:525
 msgid "%s Gbit/s"
 msgstr "%s Гбит/с"
 
@@ -232,7 +232,7 @@ msgstr "%s МГц"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:24
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/insight.js:54
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:524
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:525
 msgid "%s Mbit/s"
 msgstr "%s Мбит/с"
 
@@ -1874,7 +1874,7 @@ msgstr "Открыто из интернета: %d"
 msgid "Open network"
 msgstr "Открытая сеть"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1817
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1818
 msgid "OpenWrt device"
 msgstr "Устройство OpenWrt"
 
@@ -1941,7 +1941,7 @@ msgstr "Плохо"
 msgid "Port"
 msgstr "Порт"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:514
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:515
 msgid "Port %d"
 msgstr "Порт %d"
 
@@ -2081,7 +2081,7 @@ msgstr "Сброс"
 msgid "Reverse DNS of its address"
 msgstr "Обратный DNS его адреса"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1830
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1831
 msgid "Root (overlay)"
 msgstr "Корень (overlay)"
 
@@ -2301,7 +2301,7 @@ msgstr "Температура"
 msgid "Temperature %s"
 msgstr "Температура %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1830
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:1831
 msgid "Temporary (RAM)"
 msgstr "Временное (ОЗУ)"
 
@@ -3039,7 +3039,7 @@ msgstr "откуда угодно"
 msgid "from anywhere except %s"
 msgstr "откуда угодно, кроме %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:525
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:526
 msgid "full duplex"
 msgstr "полный дуплекс"
 
@@ -3047,7 +3047,7 @@ msgstr "полный дуплекс"
 msgid "gateway %s"
 msgstr "шлюз %s"
 
-#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:525
+#: luci-app-vantage/htdocs/luci-static/resources/vantage/model.js:526
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5132
 msgid "half duplex"
 msgstr "полудуплекс"
