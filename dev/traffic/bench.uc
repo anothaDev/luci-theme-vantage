@@ -4,13 +4,15 @@
 // OpenWrt has both), not the package.
 //
 //   ucode bench.uc <dir> [entries ...]       (default 500 2000 8000 16384)
-//   ucode bench.uc <dir> churn [entries] [percent] [reads]
-//                                            (default 2000 20 120)
+//   ucode bench.uc <dir> churn [entries] [percent] [reads] [large]
+//                                            (default 2000 20 120 10)
 //
 // The second form keeps a table of that many entries through that many
 // reads 5 s apart (by the plugin's clock), each read with that share of
 // them ended and as many new ones begun, as on a busy router, and prints
-// what the state holds at the end and what the last read cost.
+// what the state holds at the end and what the last read cost. A `large`
+// percent of its entries carry more than KEEP_BYTES and grow, the others
+// a lookup's few hundred bytes.
 //
 // It makes <dir>/vantage-traffic-bench (0700), and for each size writes a
 // synthetic table in the kernel's format of /proc/net/nf_conntrack there
@@ -41,6 +43,7 @@ const MAX_STATE = 2 * MAX_ENTRIES * (MAX_KEY + 74) + MAX_HOSTS * (17 + 74) + 128
 const STOP_MS = 2000;             // the table is read no longer than this
 const CHECK_EVERY = 64;           // entries between looks at the clock
 const KEEP_MS = 150000;           // an entry a read did not see is known this long: longer than the 2-minute back-off
+const KEEP_BYTES = 65536;         // ... if it carried this many bytes, both ways (or a partial read did not reach it)
 const PROTO = {
 	tcp: [ 13, 14, 5 ], udp: [ 13, 13, 5 ], udplite: [ 9, 9, 5 ], sctp: [ 12, 13, 5 ], dccp: [ 12, 13, 5 ],
 	icmp: [ 12, 12, 6 ], icmpv6: [ 10, 10, 6 ], gre: [ 13, 15, 5 ], unknown: [ 9, 9, 3 ]
@@ -236,14 +239,20 @@ function feed(f, neigh, now, stop, st) {
 	// it: a read stops short, and the kernel lists the table by position,
 	// starting again at every read() of about a page, so each entry
 	// removed behind that place hides the next one. Kept, so that it does
-	// not count whole when a read sees it again: one the read before saw,
-	// however long ago (no read while nobody looks), then one seen less
-	// than KEEP_MS ago; MAX_ENTRIES at most, those the read before saw
-	// first (never more than that read saw: all of them)
+	// not count whole when a read sees it again, where that would matter:
+	// one that carried KEEP_BYTES or more, or any after a partial read
+	// (those it did not reach are many, and mostly still there); and then
+	// one the read before saw, however long ago (no read while nobody
+	// looks), or one seen less than KEEP_MS ago; MAX_ENTRIES at most,
+	// those the read before saw first (never more than that read saw: all
+	// of them). A smaller one a whole read missed counts twice when one
+	// sees it again: by less than KEEP_BYTES, once. Most of those are
+	// lookups and short exchanges that ended, which the state no longer
+	// holds for KEEP_MS on a router where connections come and go
 	let gone = [], recent = [], older = [], kept = 0;
 	for (let k, v in flows)
 		if (v[2] != now)
-			push((v[2] == before) ? recent : (now - v[2] < KEEP_MS) ? older : gone, k);
+			push((!partial && v[0] + v[1] < KEEP_BYTES) ? gone : (v[2] == before) ? recent : (now - v[2] < KEEP_MS) ? older : gone, k);
 	for (let k in [ ...recent, ...older ])
 		if (++kept > MAX_ENTRIES)
 			push(gone, k);
@@ -299,7 +308,7 @@ let sizes = churn ? [ churn[0] ?? 2000 ] : map(slice(ARGV, 1), (n) => int(n));
 if (!length(sizes))
 	sizes = [ 500, 2000, 8000, MAX_ENTRIES ];
 if (type(base) != 'string' || stat(base)?.type != 'directory') {
-	warn('usage: ucode bench.uc <directory> [entries ...] | churn [entries] [percent] [reads]\n');
+	warn('usage: ucode bench.uc <directory> [entries ...] | churn [entries] [percent] [reads] [large]\n');
 	exit(1);
 }
 for (let n in sizes)
@@ -316,14 +325,20 @@ if (lstat(DIR) || !mkdir(DIR, 0700)) {
 const TABLE = DIR + '/nf_conntrack';
 
 // the table, written to its file: n entries over m hosts from entry
-// `first` on, every counter k steps on. Line by line, so that what this
-// process holds is the count's
-function table(n, m, k, first) {
+// `first` on, every counter k steps on; with `large` (a percent), that
+// share of them large and growing, the others a few hundred bytes. Line
+// by line, so that what this process holds is the count's
+function table(n, m, k, first, large) {
 	let out = open(TABLE, 'w');
 	if (!out)
 		die(sprintf('cannot write %s\n', TABLE));
 	for (let i = first ?? 0; i < (first ?? 0) + n; i++) {
 		let h = i % m, up = 1000 + i + k * 100, down = 5000 + i + k * 1000;
+		if (large != null) {
+			let big = (i * 37) % 100 < large;
+			up = big ? KEEP_BYTES + k * 1000 : 60 + i % 40;
+			down = big ? 10 * KEEP_BYTES + k * 10000 : 120 + i % 200;
+		}
 		if (i % 4 == 3) {
 			let a = sprintf('2001:0db8:0000:0000:0000:0000:0000:%04x', h + 1), b = sprintf('2001:0db8:0001:0000:0000:0000:0000:%04x', i % 250 + 1);
 			out.write(sprintf('ipv6     10 tcp      6 7438 ESTABLISHED src=%s dst=%s sport=%d dport=443 packets=%d bytes=%d src=%s dst=%s sport=443 dport=%d packets=%d bytes=%d [ASSURED] mark=0 zone=0 use=2\n',
@@ -405,15 +420,15 @@ if (real) {
 }
 
 if (churn) {
-	let n = sizes[0], c = int(n * (churn[1] ?? 20) / 100), reads = churn[2] ?? 120, m = min(250, max(10, int(n / 20)));
+	let n = sizes[0], c = int(n * (churn[1] ?? 20) / 100), reads = churn[2] ?? 120, large = churn[3] ?? 10, m = min(250, max(10, int(n / 20)));
 	let neigh = neighbours(m), r = null;
 	for (let k = 0; k < reads; k++) {
-		table(n, m, k, k * c);
+		table(n, m, k, k * c, large);
 		r = read(neigh, k * 5000);
 	}
 	let size = stat(DIR + '/state.json')?.size ?? 0, mem = memory();
-	print(sprintf('churn: %d entries, %d ended and begun a read, %d reads 5 s apart: the state holds %d entries, %d KiB; the last read %d ms = state load %d + table %d + state save %d; memory %s KiB, peak %s KiB\n',
-		n, c, reads, length(flows), int(size / 1024), r.all, r.load, r.count, r.save, mem.VmRSS ?? '?', mem.VmHWM ?? '?'));
+	print(sprintf('churn: %d entries, %d ended and begun a read, %d reads 5 s apart, %d %% large: the state holds %d entries, %d KiB; the last read %d ms = state load %d + table %d + state save %d; memory %s KiB, peak %s KiB\n',
+		n, c, reads, large, length(flows), int(size / 1024), r.all, r.load, r.count, r.save, mem.VmRSS ?? '?', mem.VmHWM ?? '?'));
 	sizes = [];
 }
 else

@@ -18,7 +18,8 @@ const mkTmp = require('./tmpdir');
    one read among all callers for 5 s (30 s with Low-power router), one at
    a time; stop reading the table after its time budget and wait longer
    after a slow read; know an entry a read did not see when one sees it
-   again, for a while, within what it reads back; keep its files to itself
+   again, for a while, within what it reads back, where forgetting it
+   would cost what matters (64 KiB, or any a partial read missed); keep its files to itself
    (0700, 0600), refuse a directory it did not make and a state it did not
    write, and give no answer without the state it comes from; and hand out
    nothing but MACs and byte counts. The lean parse must give what the
@@ -82,7 +83,7 @@ function pluginCopy(src, dir, uid) {
 		[ CLOCK_FN, 'function now_ms() {\n\tglobal.CLOCK.reads++;\n\tlet t = global.CLOCK.t;\n\tglobal.CLOCK.t += global.CLOCK.step;\n\treturn t;\n}' ],
 		[ DISPATCH, "global.STUB = json(readfile(STUB));\nglobal.STUB.dumps = 0;\nglobal.STUB.uci = 0;\nglobal.CLOCK = { t: NOW, step: STEP, reads: 0 };\n" +
 			"if (ARGV[0] == 'test-parse')\n\tprint(sprintf('%J\\n', map(json(readfile(INPUT)), (l) => { let e = []; return [ parse(l, e) ? e : null, parse_slow(l) ]; })));\n" +
-			"else if (ARGV[0] == 'test-const')\n\tprint(sprintf('%J\\n', { MAX_STATE, MAX_KEY, MAX_ENTRIES, MAX_HOSTS, KEEP_MS }));\n" +
+			"else if (ARGV[0] == 'test-const')\n\tprint(sprintf('%J\\n', { MAX_STATE, MAX_KEY, MAX_ENTRIES, MAX_HOSTS, KEEP_MS, KEEP_BYTES }));\n" +
 			"else if (ARGV[0] == 'test-largest') {\n" + LARGEST + "}\n" +
 			'else ' + DISPATCH ]
 	];
@@ -446,6 +447,20 @@ test('traffic plugin: an entry one whole read did not see counts its growth when
 	assert.deepEqual([ of(reuse[2], M1), reuse[2].reply.zeroed ], [ { mac: M1, rx: 1000000300, tx: 4000000700 }, 0 ]);
 });
 
+/* Kept only where forgetting it would cost what matters: from KEEP_BYTES
+   both ways, or after a partial read (the time budget's test above: what
+   it did not reach counts its growth whatever its size) */
+test('traffic plugin: a smaller entry one whole read did not see counts twice when one sees it again, by less than KEEP_BYTES', { skip: NO_UCODE }, () => {
+	const { KEEP_BYTES } = limits(), other = at(NEW, { ob: 10, rb: 20 });
+	const missed = (ob, rb) => of(calls([ call([ line(at(OUT, { ob, rb })), line(other) ], 0), call([ line(other) ], 5000),
+		call([ line(at(OUT, { ob: ob + 100, rb: rb + 500 })), line(other) ], 10000) ])[2], M1);
+	const q = KEEP_BYTES / 4;
+	assert.deepEqual(missed(q, 3 * q), { mac: M1, rx: q + 100, tx: 3 * q + 500 }, 'KEEP_BYTES both ways: kept, counted once');
+	assert.deepEqual(missed(q, 3 * q - 1), { mac: M1, rx: 2 * q + 100, tx: 2 * (3 * q - 1) + 500 },
+		'a byte less: forgotten, and what it had carried counted again, once: KEEP_BYTES - 1 at most');
+	assert.deepEqual(missed(1, 2), { mac: M1, rx: 2 + 100, tx: 4 + 500 }, 'a lookup: a few bytes twice');
+});
+
 test('traffic plugin: every entry the read before saw is kept, at the most entries a read takes, and the state is read back', { skip: NO_UCODE }, () => {
 	/* a full table of IPv6 entries, then as many others: the first all
 	   kept, 2 x 16384 entries, about 5 MiB of state (more than the 4 MiB
@@ -659,7 +674,7 @@ test('traffic benchmark: its counting and state code is the plugin\'s, byte for 
 		return m[0];
 	};
 	for (const name of [ 'now_ms', 'count', 'kv', 'parse', 'parse_slow', 'norm', 'add', 'feed', 'put', 'entry_ok', 'load_state', 'save_state' ]) assert.equal(block(bench, name), block(plugin, name), name);
-	for (const c of [ 'MAX_ENTRIES', 'MAX_HOSTS', 'MAX_KEY', 'MAX_STATE', 'STOP_MS', 'CHECK_EVERY', 'KEEP_MS', 'PROTO', 'RE_MAC' ])
+	for (const c of [ 'MAX_ENTRIES', 'MAX_HOSTS', 'MAX_KEY', 'MAX_STATE', 'STOP_MS', 'CHECK_EVERY', 'KEEP_MS', 'KEEP_BYTES', 'PROTO', 'RE_MAC' ])
 		assert.equal(new RegExp('^const ' + c + ' = [^\\n]*(\\n\\t[^\\n]*)*', 'm').exec(bench)[0], new RegExp('^const ' + c + ' = [^\\n]*(\\n\\t[^\\n]*)*', 'm').exec(plugin)[0], c);
 	assert.doesNotMatch(bench, /^import .*'(rtnl|uci|ubus)'/m, 'only what a stock OpenWrt has: ucode and its fs module');
 });
@@ -672,10 +687,11 @@ test('traffic benchmark: runs, writes only its own files and prints a line per s
 	const rows = r.stdout.split('\n').filter(l => /^\s*\d+ entries/.test(l));
 	assert.equal(rows.length, 2, r.stdout);
 	for (const l of r.stdout.trim().split('\n')) t.diagnostic(l.trim());
-	/* a busy table: a fifth of it ends and begins again each read */
-	const churn = spawnSync(UCODE, [ BENCH, dir, 'churn', '500', '20', '40' ], { encoding: 'utf8' });
+	/* a busy table: a fifth of it ends and begins again each read, a tenth of it large */
+	const churn = spawnSync(UCODE, [ BENCH, dir, 'churn', '500', '20', '40', '10' ], { encoding: 'utf8' });
 	assert.equal(churn.status, 0, churn.stderr);
-	assert.match(churn.stdout, /^churn: 500 entries, 100 ended and begun a read, 40 reads 5 s apart: the state holds 3400 entries/m, 'those seen, those ended less than KEEP_MS (150 s) ago');
+	assert.match(churn.stdout, /^churn: 500 entries, 100 ended and begun a read, 40 reads 5 s apart, 10 % large: the state holds 790 entries/m,
+		'those seen, and the large ones that ended less than KEEP_MS (150 s) ago: 10 a read, 29 reads');
 	t.diagnostic(churn.stdout.trim());
 	assert.deepEqual(fs.readdirSync(dir), [ 'kept' ], 'its files removed, nothing else touched');
 	const bad = spawnSync(UCODE, [ BENCH, path.join(dir, 'no-such-dir') ], { encoding: 'utf8' });
