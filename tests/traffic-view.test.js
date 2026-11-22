@@ -133,7 +133,7 @@ test('traffic model: the plugin\'s answer is checked and cut to its cap; anythin
 	const t = model.trafficHosts(ANSWER(5000, 1, { hosts: [ { mac: '00-00-5E-00-53-31', rx: 1, tx: 2 }, { mac: PRINTER, rx: 9, tx: 9 }, { mac: '01:00:5e:00:53:01', rx: 1, tx: 1 },
 		{ mac: 'x', rx: 1, tx: 1 }, { mac: NAS, rx: -1, tx: 1 }, { mac: DESK, rx: 'many', tx: 1 }, { mac: AP_MAC, rx: 1, tx: Infinity }, null ] }));
 	assert.deepEqual(Object.keys(t.counters), [ PRINTER, '01:00:5e:00:53:01' ], 'normalised, the first of a MAC, numbers only');
-	assert.deepEqual(t.counters[PRINTER], { rx: 1, tx: 2 });
+	assert.deepEqual(t.counters[PRINTER], { rx: 1, tx: 2, at: 5000 }, 'each with the read\'s time, on the router\'s clock');
 	assert.equal(Object.getPrototypeOf(t.counters), null);
 	assert.deepEqual([ t.at, t.every, t.acct, t.partial, t.hw, t.zeroed ], [ 5000, 5000, true, false, 0, 0 ]);
 	const many = [];
@@ -209,6 +209,14 @@ test('traffic view: a read given twice keeps its rates; a failed call keeps them
 	self.noteTraffic(null);
 	assert.equal(self.listRate(printer), null, 'then none, not an old rate shown as current');
 	assert.equal(live(self, printer).textContent, fmt.DASH);
+	/* the router started again under the page: its monotonic clock and the
+	   plugin's counters start over (its state is RAM); the next two reads
+	   give rates again, not only once the new uptime passes the old one */
+	const booted = page(m, [ ANSWER(600000, 0), ANSWER(605000, 1) ]);
+	booted.noteTraffic(ANSWER(30000, 0, { hosts: [ { mac: PRINTER, rx: 100, tx: 900 } ] }));
+	assert.equal(booted.listRate(printer), null, 'the first read after it: a base');
+	booted.noteTraffic(ANSWER(35000, 0, { hosts: [ { mac: PRINTER, rx: 1100, tx: 10900 } ] }));
+	assert.deepEqual(booted.listRate(printer), { rx: 1600, tx: 16000 }, 'the next: a rate');
 	/* the same read given on and on (the plugin reads no more): its rates
 	   stand twice its every, then none, as for a failed call; a new read
 	   starts over from itself, not from the old one */

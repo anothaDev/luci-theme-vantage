@@ -441,17 +441,19 @@ return baseclass.extend({
 
 	/* luci.vantage.traffic hosts (luci-app-vantage-traffic, #110), checked
 	   and cut to the plugin's own cap: { at, every, acct, partial, hw,
-	   zeroed, counters: { mac: { rx, tx } } }, bytes from and to each
+	   zeroed, counters: { mac: { rx, tx, at } } }, bytes from and to each
 	   host since the plugin began counting it, or null. at is when the
 	   plugin read its table (ms on the router's monotonic clock): the
-	   rates come from two reads, whoever asked for them */
+	   rates come from two reads, whoever asked for them. Each counter
+	   carries it, so that rates() starts a host over where that clock
+	   went back (the router started again) */
 	trafficHosts: function(reply) {
 		var r = obj(reply), counters = Object.create(null);
 		if (!finite(r.at) || !Array.isArray(r.hosts)) return null;
 		r.hosts.slice(0, MAX_TRAFFIC_HOSTS).forEach(function(h) {
 			h = obj(h);
 			var mac = typeof h.mac === 'string' ? names.normMac(h.mac) : null;
-			if (mac && !own(counters, mac) && finite(h.rx) && finite(h.tx) && h.rx >= 0 && h.tx >= 0) counters[mac] = { rx: h.rx, tx: h.tx };
+			if (mac && !own(counters, mac) && finite(h.rx) && finite(h.tx) && h.rx >= 0 && h.tx >= 0) counters[mac] = { rx: h.rx, tx: h.tx, at: r.at };
 		});
 		var n = function(v) { return finite(v) && v > 0 ? Math.floor(v) : 0; };
 		return {
