@@ -566,7 +566,7 @@ function int_in(v, lo, hi) {
 	return (type(v) == 'int' && v >= lo && v <= hi) ? v : null;
 }
 
-// homenet: a station's link (the report's phy()), checked field by field
+// a station's link (the report's phy()), checked field by field
 function phy(r) {
 	if (type(r) != 'object')
 		return null;

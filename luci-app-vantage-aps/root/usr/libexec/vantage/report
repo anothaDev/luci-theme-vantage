@@ -63,7 +63,7 @@ function int_in(v, lo, hi) {
 	return (type(v) == 'int' && v >= lo && v <= hi) ? v : null;
 }
 
-// homenet: a station's link as iwinfo saw its last frame: width, MCS,
+// a station's link as iwinfo saw its last frame: width, MCS,
 // streams and which standard (ht/vht/he/eht), short guard interval
 function phy(r) {
 	if (type(r) != 'object')
