@@ -155,8 +155,11 @@ var callCollector = rpc.declare({ object: 'vantage.collector', method: 'report',
    (canTraffic, looked up once a page). It takes no argument. In a request
    of its own (nobatch), never waited for (takeTraffic): rpcd runs the
    plugin as a process, and a read of a large table takes it a second or
-   two */
-var callTraffic = rpc.declare({ object: 'luci.vantage.traffic', method: 'hosts', expect: { '': {} }, nobatch: true });
+   two. A failed call rejects (reject), so that one that says the plugin
+   is not there (WG_ABSENT) is told from its empty answer ({}: no read
+   yet); then it is asked again only TRAFFIC_RETRY_MS later */
+var callTraffic = rpc.declare({ object: 'luci.vantage.traffic', method: 'hosts', expect: { '': {} }, reject: true, nobatch: true });
+var TRAFFIC_RETRY_MS = 60 * 1000;
 /* the byte counters a DSA switch chip keeps for its ports, which count
    what it forwards from port to port too (#156): the app's executable
    rpcd plugin, which runs ethtool once a port in a process of its own.
@@ -1347,13 +1350,26 @@ return view.extend({
 	/* luci-app-vantage-traffic's answer for a poll: the one that came in
 	   since the last poll (undefined: none; null: a failed call). With the
 	   slow part, a login that may ask (canTraffic) asks again, one call at
-	   a time, and no poll waits for it: its answer is the next poll's */
+	   a time, and no poll waits for it: its answer is the next poll's.
+	   After a call that says the plugin is not there (trafficNext), not
+	   before TRAFFIC_RETRY_MS: the package removed under the page, or
+	   rpcd's objects gone for a moment while it reloads at a package
+	   install. That never ends the asking, first answer or later: the
+	   page found the package's group, so it was there when the page
+	   loaded */
 	takeTraffic: function(slow) {
-		var self = this, got = this.trafficGot;
+		var self = this, got = this.trafficGot, now = Date.now();
 		this.trafficGot = undefined;
-		if (slow && this.canTraffic && !this.trafficCall)
-			this.trafficCall = L.resolveDefault(callTraffic(), null).then(function(v) { self.trafficGot = v; self.trafficCall = null; });
+		if (slow && this.canTraffic && !this.trafficCall && !(now < this.trafficNext))
+			this.trafficCall = callTraffic().then(null, function(e) { return self.trafficFailed(e); }).then(function(v) { self.trafficGot = v; self.trafficCall = null; });
 		return got;
+	},
+
+	/* a failed call (takeTraffic): none, and the next a minute later
+	   where it says the plugin is not there */
+	trafficFailed: function(e) {
+		if (WG_ABSENT.test(String(e && e.message))) this.trafficNext = Date.now() + TRAFFIC_RETRY_MS;
+		return null;
 	},
 
 	/* one poll's worth of raw replies; missing pieces degrade to {} */

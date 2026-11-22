@@ -21,11 +21,18 @@ const fmt = load('vantage.fmt');
 
 const REPLIES = {};
 const UI = {};
+/* as LuCI's rpc.js answers a declare: a ubus status other than 0 rejects
+   only with reject set, else it is the expected default ({}); a JSON-RPC
+   error (-32000 no object, -32002 access denied) always rejects */
+const declare = o => function(...args) {
+	const f = REPLIES[o.object + ' ' + o.method], p = f ? f(...args) : Promise.resolve(null);
+	return o.reject ? p : p.catch(e => { if (/ubus code [1-9]/.test(String(e && e.message))) return o.expect ? Object.values(o.expect)[0] : null; throw e; });
+};
 function loadView(dom) {
 	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
 	const stubs = {
 		view: { extend: p => p },
-		rpc: { declare: o => function(...args) { const f = REPLIES[o.object + ' ' + o.method]; return f ? f(...args) : Promise.resolve(null); } },
+		rpc: { declare },
 		poll: { active() { return true; } }, ui: UI, dom: dom || {}
 	};
 	const params = [], values = [];
@@ -338,6 +345,43 @@ test('traffic view: a login without the group never calls; with it, once a slow 
 		c.t += 30000;
 		assert.equal((await c.self.fetch()).traffic, null, 'a failed call is null');
 	});
+});
+
+/* A call that says the plugin is not there (removed under the page, or
+   rpcd's objects gone a moment while it reloads at a package install):
+   asked again a minute later, whether it had answered before or not, and
+   on as before once it answers. Its empty answer ({}: no read yet) and
+   any other failure: at the next slow poll, as before */
+test('traffic view: the plugin not there is asked for again a minute later, first answer or later; an empty answer or another failure at the next slow poll', async () => {
+	const flush = () => new Promise(r => setImmediate(r));
+	const step = async (c, ms) => { c.t += ms; const a = await c.self.fetch(); await flush(); return a; };
+	const failed = msg => () => Promise.reject(new Error('RPC call to luci.vantage.traffic/hosts failed with ' + msg));
+	for (const gone of [ 'ubus code 4: Resource not found', 'error -32000: Object not found', 'error -32002: Access denied' ]) {
+		for (const answered of [ false, true ]) {
+			await polls(true, async c => {
+				if (answered) await step(c, 0);
+				const before = c.asked;
+				c.reply = failed(gone);
+				await step(c, 5000);
+				assert.equal(c.asked, before + 1);
+				for (let i = 0; i < 11; i++) assert.equal((await step(c, 5000)).traffic, i ? undefined : null, gone);
+				assert.equal(c.asked, before + 1, 'not asked for a minute: ' + gone + (answered ? ', after an answer' : ', as the first answer'));
+				c.reply = () => Promise.resolve(ANSWER(70000, 1));
+				await step(c, 5000);
+				assert.equal(c.asked, before + 2, 'asked again a minute later');
+				assert.equal((await step(c, 5000)).traffic.at, 70000, 'its answer read');
+				await step(c, 5000);
+				assert.equal(c.asked, before + 4, 'and every slow poll again');
+			});
+		}
+	}
+	for (const [ reply, got ] of [ [ () => Promise.resolve({}), {} ], [ failed('ubus code 7: Request timeout'), null ], [ () => Promise.reject(new Error('XHR request timed out')), null ] ]) {
+		await polls(true, async c => {
+			c.reply = reply;
+			for (let i = 0; i < 3; i++) assert.deepEqual((await step(c, i ? 5000 : 0)).traffic, i ? got : undefined);
+			assert.equal(c.asked, 3, 'asked every slow poll: ' + reply);
+		});
+	}
 });
 
 test('traffic view: load() asks about the group once, in its own batch, and keeps the answer', async () => {

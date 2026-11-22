@@ -231,12 +231,12 @@ const COLLECTOR_CALL = 'vantage.collector report';
    called in that one place. */
 const TRAFFIC_CALL = 'luci.vantage.traffic hosts';
 const TRAFFIC_GROUP = 'luci-app-vantage-traffic';
-const TRAFFIC_DECLARE = "var callTraffic = rpc.declare({ object: 'luci.vantage.traffic', method: 'hosts', expect: { '': {} }, nobatch: true });";
+const TRAFFIC_DECLARE = "var callTraffic = rpc.declare({ object: 'luci.vantage.traffic', method: 'hosts', expect: { '': {} }, reject: true, nobatch: true });";
 const TRAFFIC_PROBE = "\t\t\t\tL.resolveDefault(ui.menu.load(), null),\n" +
 	"\t\t\t\t/* per-device traffic is a package and a group of its own: without either, no call (takeTraffic) */\n" +
 	"\t\t\t\tL.resolveDefault(callAccess('access-group', 'luci-app-vantage-traffic', 'read'), false)\n\t\t\t]);\n\t\t}).then(function(r) {\n";
-const TRAFFIC_ASK = "\t\tif (slow && this.canTraffic && !this.trafficCall)\n" +
-	"\t\t\tthis.trafficCall = L.resolveDefault(callTraffic(), null).then(function(v) { self.trafficGot = v; self.trafficCall = null; });\n";
+const TRAFFIC_ASK = "\t\tif (slow && this.canTraffic && !this.trafficCall && !(now < this.trafficNext))\n" +
+	"\t\t\tthis.trafficCall = callTraffic().then(null, function(e) { return self.trafficFailed(e); }).then(function(v) { self.trafficGot = v; self.trafficCall = null; });\n";
 /* And LuCI's own WireGuard status (luci-proto-wireguard's rpcd plugin):
    `wg show all dump` by interface, each with its peers (name, public key,
    endpoint, allowed IPs, last handshake, byte counters, keepalive); the
@@ -2123,7 +2123,7 @@ function trafficProblems(srcs) {
 			if (!text.includes(TRAFFIC_PROBE)) out.push(`${file}: the probe is not the last of load()'s batch`);
 			if (JSON.stringify(flags) !== JSON.stringify([
 				'return { board: r[1] || {}, canWrite: r[2] === true, mdns: r[4], raw: r[5], canRdns: r[6] === true, canTraffic: r[8] === true };',
-				'if (slow && this.canTraffic && !this.trafficCall)',
+				'if (slow && this.canTraffic && !this.trafficCall && !(now < this.trafficNext))',
 				'this.canTraffic = data.canTraffic === true;'
 			])) out.push(`${file}: canTraffic: ${flags.join(' | ')}`);
 		}
@@ -2151,9 +2151,9 @@ test('negative controls: another form, method, argument or place of the traffic 
 		[ 'another method under the name', edit(TRAFFIC_DECLARE, TRAFFIC_DECLARE.replace("'hosts'", "'reset'")), /overview\.js: var callTraffic = .*reset/ ],
 		[ 'a second declare', add(DASH, "var callTraffic2 = rpc.declare({ object: 'luci.vantage.traffic', method: 'hosts' });"), /2 declares of luci\.vantage\.traffic/ ],
 		[ 'a declare in a module', add('vantage/model.js', TRAFFIC_DECLARE), /model\.js: var callTraffic = / ],
-		[ 'an argument', edit('L.resolveDefault(callTraffic(), null)', "L.resolveDefault(callTraffic({ cmd: 'x' }), null)"), /overview\.js: .*callTraffic\(\{ cmd/ ],
+		[ 'an argument', edit('this.trafficCall = callTraffic().then(', "this.trafficCall = callTraffic({ cmd: 'x' }).then("), /overview\.js: .*callTraffic\(\{ cmd/ ],
 		[ 'a second call', add(DASH, 'L.resolveDefault(callTraffic(), null);'), /overview\.js: L\.resolveDefault\(callTraffic\(\), null\);/ ],
-		[ 'called without the group', edit('if (slow && this.canTraffic && !this.trafficCall)', 'if (slow && !this.trafficCall)'), /0 calls|canTraffic: / ],
+		[ 'called without the group', edit('if (slow && this.canTraffic && !this.trafficCall && !(now < this.trafficNext))', 'if (slow && !this.trafficCall && !(now < this.trafficNext))'), /0 calls|canTraffic: / ],
 		[ 'in the poll\'s batch', edit(TRAFFIC_DECLARE, TRAFFIC_DECLARE.replace(', nobatch: true', '')), /overview\.js: var callTraffic = / ],
 		[ 'the answer set elsewhere', add(DASH, 'self.canTraffic = true;'), /canTraffic: .*self\.canTraffic = true/ ],
 		[ 'the probe moved', edit("\t\t\t\tL.resolveDefault(callAccess('access-group', 'luci-app-vantage-traffic', 'read'), false)\n", "\t\t\t\tL.resolveDefault(callAccess('access-group', 'luci-app-vantage-names', 'write'), false)\n"), /the probe is not the last/ ],
