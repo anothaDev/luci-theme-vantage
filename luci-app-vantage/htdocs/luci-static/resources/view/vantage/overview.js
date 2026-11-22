@@ -1195,14 +1195,17 @@ return view.extend({
 	   answer says there is nothing to get (no DSA port, no ethtool, a
 	   driver whose counters the plugin does not know), or the object is
 	   not there (the answers WG_ABSENT names), the page asks no more: a
-	   device without a switch starts no process for it every poll */
+	   device without a switch starts no process for it every poll. Only
+	   the first: once it has answered, any later answer is that poll's
+	   and no more (rpcd's objects are gone for a moment while it reloads,
+	   at every package install) */
 	askSwitch: function() {
 		var self = this;
 		if (this.hwOff || this.hwCall) return Promise.resolve(null);
 		var call = this.hwCall = callSwitchCounters().then(function(v) {
 			return model.switchCounters(v);
 		}, function(e) {
-			if (WG_ABSENT.test(String(e && e.message))) self.hwOff = true;
+			if (!self.hwAnswered && WG_ABSENT.test(String(e && e.message))) self.hwOff = true;
 			return null;
 		}).then(function(c) {
 			self.hwCall = null;

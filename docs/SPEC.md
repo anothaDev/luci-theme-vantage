@@ -592,7 +592,9 @@ text around it so it looks the same size.
   get (no DSA port, no `ethtool`, or every port read with names the
   plugin does not know) or that there is no such object ends the asking
   for the page, so a device without such a switch starts no process for
-  it every poll. Nothing is shown about traffic the counters miss.
+  it every poll. Only the first: once it has answered, a later answer of
+  any kind (rpcd's objects are gone for a moment while it reloads, at
+  every package install) is that poll's alone. Nothing is shown about traffic the counters miss.
 - **Throughput chart**: one row per line, then each radio, each
   with its own scale. Under "Customize", the viewer picks how download and
   upload share a row: overlaid on one scale (the default), overlaid on a

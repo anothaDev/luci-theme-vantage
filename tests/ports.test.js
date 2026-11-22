@@ -378,6 +378,23 @@ test('view: asked every poll while the first answer had counters, whatever later
 	assert.equal(c.timers.length, 0, 'no deadline left behind');
 }));
 
+test('view: once it has answered, no later answer ends the asking: not a missing object, a refusal or nothing to get', () => switchCalls(async c => {
+	const absent = msg => () => Promise.reject(new Error('RPC call to luci.vantage.ports/counters failed with ' + msg));
+	const none = state => () => Promise.resolve({ v: 1, state, took: 0, more: false, ports: {} });
+	const later = [ absent('error -32000: Object not found'), absent('error -32002: Access denied'), absent('ubus code 4: Resource not found'),
+		absent('ubus code 3: Method not found'), none('none'), none('no-ethtool'), answer({ lan1: { error: 'unknown' } }) ];
+	c.reply = answer({ lan1: { rx_bytes: 1, tx_bytes: 2 } });
+	await c.ask();
+	/* rpcd reloading after a package install: its objects gone for a moment, then back */
+	for (const reply of later) {
+		c.reply = reply;
+		await c.ask();
+		c.reply = answer({ lan1: { rx_bytes: 3, tx_bytes: 4 } });
+		assert.deepEqual((await c.ask())[0].counters.lan1, { rx: 3, tx: 4 }, 'asked again after ' + reply);
+	}
+	assert.equal(c.asked, 1 + 2 * later.length);
+}));
+
 test('view: the first answer that says there is nothing to get, or no object, ends the asking for the page', () => switchCalls(async c => {
 	for (const [ what, reply ] of [
 		[ 'no DSA port', () => Promise.resolve({ v: 1, state: 'none', took: 0, more: false, ports: {} }) ],
