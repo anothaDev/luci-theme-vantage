@@ -9,7 +9,10 @@
      luci.vantage.ports counters    SYNTHETIC, in the plugin's own form:
                                     the chip's counters for lan1 and lan2,
                                     at the ports' full rates, from what the
-                                    chip had counted before the replay began
+                                    chip had counted before the replay began,
+                                    each with the time it was read (at: ms
+                                    since the replay started, as the
+                                    device's monotonic clock counts)
 
    Without --dsa the object answers as the plugin does on a device without
    a DSA port (state 'none'), and the dashboard asks no more. */
@@ -22,13 +25,15 @@ const VIA_CPU = 1 / 50;
 const BEFORE = 7e10;
 
 const NONE = { v: 1, state: 'none', took: 0, more: false, ports: {} };
+/* the replay's start, for the device's monotonic clock */
+const T0 = Date.now() / 1000;
 
 /* the plugin's answer at t s */
 function counters(t) {
 	const ports = {};
 	wired.PORTS.forEach((p, i) => {
 		const c = wired.counters(p.rate, 10 + i, t);
-		ports[p.dev] = { rx_bytes: BEFORE + c.rx_bytes, tx_bytes: 2 * BEFORE + c.tx_bytes };
+		ports[p.dev] = { rx_bytes: BEFORE + c.rx_bytes, tx_bytes: 2 * BEFORE + c.tx_bytes, at: Math.round((t - T0) * 1000) };
 	});
 	return { v: 1, state: 'ok', took: 7, more: false, ports };
 }

@@ -584,6 +584,11 @@ text around it so it looks the same size.
   them: the Ports tile, the Wired branch and the wired hosts that have
   the port to themselves. Not for a line's own device, whose rate the
   line, the throughput chart and the fast lane take from the kernel's.
+  A chip's counters are rated by when the device read them (each port's
+  time on its monotonic clock), never by when the answer came in: it
+  comes in a request of its own, up to 2 s after the poll's; a clock
+  that went back (the device started again) starts the port over, and a
+  reading without its time is none.
   A rate is only ever of two readings of one source: a port whose
   chip's counters stayed out of a poll has no rate for that step, nor
   for the step back. An answer that another call was reading (`busy`)
@@ -897,8 +902,9 @@ text around it so it looks the same size.
   most in name order; where there is none, or no `/usr/sbin/ethtool`
   (not a dependency), it starts nothing and says so (`state` `none`,
   `no-ethtool`). Otherwise it runs `ethtool -S <port>` for each, none
-  after its first second (`time`), reads 32 KiB of each run at most
-  and keeps a run only when it exits 0 and starts with `NIC
+  after its first second (`time`), reads 32 KiB of each run at most,
+  gives each port the time its `ethtool` started (`at`, ms on the
+  device's monotonic clock), and keeps a run only when it exits 0 and starts with `NIC
   statistics:`; ucode reads a program's output only through `popen`,
   which hands the line to `/bin/sh`, so the name rule keeps the line to
   three plain words. A port's counters are the first pair of a fixed

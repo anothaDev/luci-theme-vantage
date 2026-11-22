@@ -312,6 +312,10 @@ test('replay server: --dsa types --wired\'s ports dsa and answers luci.vantage.p
 		const r = await a.call(a.sid, 'luci.vantage.ports', 'counters');
 		assert.equal(r.result[0], 0);
 		assert.deepEqual([ r.result[1].v, r.result[1].state, Object.keys(r.result[1].ports) ], [ 1, 'ok', [ 'lan1', 'lan2' ] ]);
+		/* each reading with its time on the device's clock, which a later one is ahead of */
+		assert.ok(Number.isInteger(r.result[1].ports.lan1.at) && r.result[1].ports.lan1.at >= 0);
+		await new Promise(res => setTimeout(res, 50));
+		assert.ok((await a.call(a.sid, 'luci.vantage.ports', 'counters')).result[1].ports.lan1.at > r.result[1].ports.lan1.at);
 		/* the chip counts what the kernel's counters miss */
 		assert.ok(r.result[1].ports.lan1.tx_bytes > devs.lan1.statistics.tx_bytes * 10);
 		assert.equal((await a.call(ZERO, 'luci.vantage.ports', 'counters')).error.code, -32002, 'not without the login');

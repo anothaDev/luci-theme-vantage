@@ -415,20 +415,24 @@ return baseclass.extend({
 		return { at: now, local: local };
 	},
 
-	/* Rates for a set of counters { key: { rx, tx, src } } captured at
+	/* Rates for a set of counters { key: { rx, tx, src, at } } captured at
 	   `at`. Returns { next, rates }; next holds only keys present now, so
 	   the state cannot grow with every station that ever associated. src
 	   names where a key's counters come from (a switch port's: its chip,
 	   'switch', or the kernel, none): a rate is only ever of two readings
-	   of one source, so a key whose source changed starts over. */
+	   of one source, so a key whose source changed starts over. A key with
+	   its own at was read then, on its source's clock (a switch port's:
+	   the device's monotonic clock), and is rated by it, never by when
+	   the reply came in; that clock going back (the device started again)
+	   starts the key over */
 	rates: function(prevMap, counters, at) {
 		var next = Object.create(null), rates = Object.create(null), self = this;
 		Object.keys(obj(counters)).forEach(function(k) {
 			var c = counters[k];
 			if (!c) return;
 			var p = own(prevMap, k) ? prevMap[k] : null;
-			var cur = { at: at, rx: num(c.rx), tx: num(c.tx), src: c.src || null };
-			var r = p && p.src !== cur.src ? { state: 'first' } : self.counterRate(p, cur);
+			var cur = { at: finite(c.at) ? c.at : at, rx: num(c.rx), tx: num(c.tx), src: c.src || null };
+			var r = p && (p.src !== cur.src || (finite(c.at) && cur.at < p.at)) ? { state: 'first' } : self.counterRate(p, cur);
 			if (r.state === 'ok') rates[k] = { rx: r.rx, tx: r.tx };
 			next[k] = r.state === 'skip' ? p : cur;
 		});
@@ -462,7 +466,9 @@ return baseclass.extend({
 	   chip keeps for its ports, which count what it forwards from one
 	   port to another too (the kernel's count what passes the CPU), as
 	   the plugin read them with ethtool. Checked and cut to the plugin's
-	   own cap: { state, counters: { port: { rx, tx } }, none } or null.
+	   own cap: { state, counters: { port: { rx, tx, at } }, none } or
+	   null; at: when the port was read, ms on the device's monotonic
+	   clock, which its rate goes by (a port without it is not counted).
 	   none: the answer says there is nothing to ask for (no DSA port, no
 	   ethtool, or every port read with names the plugin does not know:
 	   one driver, which says the same at every call). 'busy' (another
@@ -474,7 +480,7 @@ return baseclass.extend({
 			var p = obj(ports[n]);
 			if (!AP_IFNAME.test(n)) return;
 			if (p.error === 'unknown' || p.error === 'failed') { read++; if (p.error === 'unknown') unknown++; return; }
-			if (finite(p.rx_bytes) && finite(p.tx_bytes) && p.rx_bytes >= 0 && p.tx_bytes >= 0) { read++; counters[n] = { rx: p.rx_bytes, tx: p.tx_bytes }; }
+			if (finite(p.rx_bytes) && finite(p.tx_bytes) && p.rx_bytes >= 0 && p.tx_bytes >= 0 && finite(p.at) && p.at >= 0) { read++; counters[n] = { rx: p.rx_bytes, tx: p.tx_bytes, at: p.at }; }
 		});
 		return { state: r.state, counters: counters, none: r.state !== 'ok' || (read > 0 && unknown === read) };
 	},

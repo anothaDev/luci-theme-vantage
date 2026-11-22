@@ -24,9 +24,14 @@
 //     ports  this device's DSA ports (those the kernel gives DEVTYPE=dsa),
 //            by name, in name order, MAX_PORTS at most (more: there were
 //            others). Each is
-//              { rx_bytes, tx_bytes }  the chip's counters since its last
-//                    reset, the way round the kernel's are: rx from the
-//                    device on the port, tx to it
+//              { rx_bytes, tx_bytes, at }  the chip's counters since its
+//                    last reset, the way round the kernel's are: rx from
+//                    the device on the port, tx to it; at: when ethtool was
+//                    started for the port, ms on this device's monotonic
+//                    clock. A rate is of two readings by their own at:
+//                    when the answer reaches a browser says nothing of
+//                    when the chip was read, nor does the start of the
+//                    call for the second port and on
 //              { error: 'unknown' }  ETHTOOL printed none of the pairs of
 //                    names in COUNTERS (another driver, or one that already
 //                    gives the kernel the chip's own counters)
@@ -34,6 +39,7 @@
 //                    else, or more than MAX_OUT bytes
 //              { error: 'time' }  not read: BUDGET_MS were over
 //     took   ms the call took
+//     (a port left out or that failed carries at too)
 //
 // The one file of the Vantage dashboard and theme that starts a program:
 // ETHTOOL, with -S and the name of one of this device's own DSA ports.
@@ -170,8 +176,11 @@ function counters() {
 	if (!access(ETHTOOL, 'x'))
 		return { v: 1, state: 'no-ethtool', took: now_ms() - t0, more: d.more, ports };
 
-	for (let name in d.found)
-		ports[name] = (now_ms() - t0 < BUDGET_MS) ? read_port(name) : { error: 'time' };
+	for (let name in d.found) {
+		let at = now_ms();
+
+		ports[name] = (at - t0 < BUDGET_MS) ? { ...read_port(name), at } : { error: 'time', at };
+	}
 
 	return { v: 1, state: 'ok', took: now_ms() - t0, more: d.more, ports };
 }

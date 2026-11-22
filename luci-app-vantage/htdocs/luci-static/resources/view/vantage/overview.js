@@ -1635,12 +1635,15 @@ return view.extend({
 		   passes the CPU. Not a line's own device, whose rate the line, the
 		   chart and the fast lane take from the kernel's. A port whose
 		   chip's counters stayed out has no rate for that step (model.rates):
-		   none rather than one of the kernel's against the chip's */
+		   none rather than one of the kernel's against the chip's. The
+		   chip's are rated by when the device read them (at), not by this
+		   poll's clock: they come in a request of their own, up to
+		   SWITCH_WAIT_MS later, and when says nothing of when ethtool ran */
 		var hw = raw.hw && raw.hw.counters, lineDevs = m.uplinks.map(function(x) { return x.statsDev; });
 		var devCounters = Object.create(null);
 		Object.keys(raw.devs || {}).forEach(function(n) {
 			var s = raw.devs[n] && raw.devs[n].statistics, c = hw && hw[n] && lineDevs.indexOf(n) < 0 ? hw[n] : null;
-			if (c) devCounters[n] = { rx: c.rx, tx: c.tx, src: 'switch' };
+			if (c) devCounters[n] = { rx: c.rx, tx: c.tx, src: 'switch', at: c.at };
 			else if (s) devCounters[n] = { rx: s.rx_bytes, tx: s.tx_bytes };
 		});
 		var dr = model.rates(st.devPrev, devCounters, at);

@@ -101,9 +101,15 @@ function exec(dir, argv, input) {
 	const lines = f => fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8').split('\n').filter(Boolean) : [];
 	return { out: r.stdout, calls: lines('calls'), finished: lines('finished') };
 }
+/* a call's answer, each port's read time (at: ms on the monotonic clock, every port has one) taken out into ats */
 function counters(o, input) {
-	const r = exec(setup(o), [ 'call', 'counters' ], input);
-	return Object.assign(JSON.parse(r.out), { calls: r.calls, finished: r.finished });
+	const r = exec(setup(o), [ 'call', 'counters' ], input), a = JSON.parse(r.out), ats = {};
+	for (const [ n, p ] of Object.entries(a.ports)) {
+		assert.ok(Number.isInteger(p.at) && p.at >= 0, n + ': its read time');
+		ats[n] = p.at;
+		delete p.at;
+	}
+	return Object.assign(a, { calls: r.calls, finished: r.finished, ats });
 }
 const lines = (dir, f) => fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8').split('\n').filter(Boolean) : [];
 async function until(what, ok) {
@@ -129,14 +135,14 @@ test('plugin: mt7530\'s counters, not the four of the CPU\'s path the DSA core p
 	const o = { ports: { lan1: null, lan2: null, wan: null, eth0: 'INTERFACE=eth0\nIFINDEX=2\n', 'br-lan': 'DEVTYPE=bridge\nINTERFACE=br-lan\nIFINDEX=7\n' },
 		out: { lan1: MT7530(74382564128, 131657591122), lan2: MT7530(0, 0), wan: MT7530(5, 6) } };
 	const r = counters(o);
-	assert.deepEqual(without(r, 'took', 'finished'), {
+	assert.deepEqual(without(r, 'took', 'finished', 'ats'), {
 		v: 1, state: 'ok', more: false, calls: [ '-S lan1', '-S lan2', '-S wan' ],
 		ports: { lan1: { rx_bytes: 74382564128, tx_bytes: 131657591122 }, lan2: { rx_bytes: 0, tx_bytes: 0 }, wan: { rx_bytes: 5, tx_bytes: 6 } }
 	});
 	assert.equal(typeof r.took, 'number');
 	/* the arguments rpcd writes to its standard input, a port's name among them, change nothing */
 	for (const input of [ '{ "port": "-x", "ubus_rpc_session": "x" }', '{ "name": "eth0; reboot" }', '' ])
-		assert.deepEqual(without(counters(o, input), 'took', 'finished'), without(r, 'took', 'finished'), input);
+		assert.deepEqual(without(counters(o, input), 'took', 'finished', 'ats'), without(r, 'took', 'finished', 'ats'), input);
 });
 
 test('plugin: each verified driver\'s pair of names; the first pair found counts', { skip: NO_UCODE }, () => {
@@ -175,7 +181,7 @@ test('plugin: names it does not know, half a pair, a name twice or a number too 
 test('plugin: ethtool missing or not executable: no program started, and the answer says so', { skip: NO_UCODE }, () => {
 	for (const ethtool of [ false, 'plain' ]) {
 		const r = counters({ ports: { lan1: null, lan2: null }, out: { lan1: MT7530(1, 2) }, ethtool });
-		assert.deepEqual(without(r, 'took'), { v: 1, state: 'no-ethtool', more: false, ports: {}, calls: [], finished: [] }, String(ethtool));
+		assert.deepEqual(without(r, 'took', 'ats'), { v: 1, state: 'no-ethtool', more: false, ports: {}, calls: [], finished: [] }, String(ethtool));
 	}
 });
 
@@ -184,7 +190,7 @@ test('plugin: no DSA port: no program started, whatever else the device has', { 
 		/* a line that only holds the word, and a uevent past what is read */
 		lan9: 'xDEVTYPE=dsa\nDEVTYPE=dsax\n DEVTYPE=dsa\n', lan8: 'INTERFACE=lan8\n' + 'X'.repeat(600) + '\nDEVTYPE=dsa\n' } ]) {
 		const r = counters({ ports, out: { eth0: MT7530(1, 2), lan9: MT7530(1, 2), lan8: MT7530(1, 2) } });
-		assert.deepEqual(without(r, 'took'), { v: 1, state: 'none', more: false, ports: {}, calls: [], finished: [] }, Object.keys(ports).join());
+		assert.deepEqual(without(r, 'took', 'ats'), { v: 1, state: 'none', more: false, ports: {}, calls: [], finished: [] }, Object.keys(ports).join());
 	}
 });
 
@@ -238,6 +244,8 @@ test('plugin: after its time budget no port is read; the rest are said to be lef
 	assert.deepEqual(r.ports, { lan1: { rx_bytes: 0, tx_bytes: 0 }, lan2: { rx_bytes: 1, tx_bytes: 1 }, lan3: { error: 'time' }, lan4: { error: 'time' }, lan5: { error: 'time' } });
 	assert.deepEqual(r.calls, [ '-S lan1', '-S lan2' ]);
 	assert.equal(r.took, 400 * 6);
+	/* each port's time is the reading just before its ethtool, not the call's start */
+	assert.deepEqual(r.ats, { lan1: 400, lan2: 800, lan3: 1200, lan4: 1600, lan5: 2000 });
 	/* a budget spent before the first port: none read, and still an answer */
 	assert.deepEqual(counters(Object.assign({ step: 1000 }, o)).calls, []);
 });
@@ -292,9 +300,11 @@ test('plugin: the lock goes with a call rpcd kills, and stays while that call\'s
 
 test('model: switchCounters keeps the counters of well-formed ports and says when there is nothing to ask for', () => {
 	const ok = model.switchCounters({ v: 1, state: 'ok', took: 12, more: false, ports: {
-		lan1: { rx_bytes: 5, tx_bytes: 6 }, lan2: { error: 'unknown' }, lan3: { error: 'failed' }, lan4: { error: 'time' },
-		'bad name': { rx_bytes: 1, tx_bytes: 1 }, lan5: { rx_bytes: -1, tx_bytes: 1 }, lan6: { rx_bytes: '5', tx_bytes: 6 }, lan7: 'x' } });
-	assert.deepEqual(JSON.parse(JSON.stringify(ok)), { state: 'ok', counters: { lan1: { rx: 5, tx: 6 } }, none: false });
+		lan1: { rx_bytes: 5, tx_bytes: 6, at: 7000 }, lan2: { error: 'unknown', at: 7001 }, lan3: { error: 'failed' }, lan4: { error: 'time' },
+		'bad name': { rx_bytes: 1, tx_bytes: 1, at: 7000 }, lan5: { rx_bytes: -1, tx_bytes: 1, at: 7000 }, lan6: { rx_bytes: '5', tx_bytes: 6, at: 7000 }, lan7: 'x',
+		/* a reading without its time (when the device read it) is none: rated by when it came in, it would be wrong */
+		lan8: { rx_bytes: 5, tx_bytes: 6 }, lan9: { rx_bytes: 5, tx_bytes: 6, at: -1 }, lan10: { rx_bytes: 5, tx_bytes: 6, at: '7000' } } });
+	assert.deepEqual(JSON.parse(JSON.stringify(ok)), { state: 'ok', counters: { lan1: { rx: 5, tx: 6, at: 7000 } }, none: false });
 	assert.equal(Object.getPrototypeOf(ok.counters), null);
 	/* nothing to get: no DSA port, no ethtool, every port read with names the plugin does not know */
 	assert.equal(model.switchCounters({ v: 1, state: 'none', ports: {} }).none, true);
@@ -308,7 +318,7 @@ test('model: switchCounters keeps the counters of well-formed ports and says whe
 	/* another call was reading: no answer this time, as a failed call, never "nothing to get" */
 	assert.equal(model.switchCounters({ v: 1, state: 'busy', took: 0, more: false, ports: {} }), null);
 	/* the plugin's own cap */
-	const many = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [ 'p' + i, { rx_bytes: i, tx_bytes: i } ]));
+	const many = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [ 'p' + i, { rx_bytes: i, tx_bytes: i, at: 7000 } ]));
 	assert.equal(Object.keys(model.switchCounters({ v: 1, state: 'ok', ports: many }).counters).length, 32);
 });
 
@@ -324,6 +334,34 @@ test('model: rates never take a rate across two sources; a key whose source chan
 	assert.equal(d.rates.lan1, undefined);
 	const e = model.rates(d.next, { lan1: { rx: 25000, tx: 3000, src: 'switch' } }, 20000);
 	assert.deepEqual(e.rates.lan1, { rx: 8000, tx: 1600 });
+});
+
+test('model: a chip\'s counters at a steady rate give that rate, however late each reading came in (the reviewer\'s case)', () => {
+	/* 19 Mbit/s on a port, read every 5 s on the device's clock; the answers came in alternately 0.1 s and 1.5 s after their poll */
+	let prev = null;
+	const got = [];
+	for (let k = 0; k < 8; k++) {
+		const read = 5000 * k, came = 1.8e12 + 5000 * k + (k % 2 ? 1500 : 100), bytes = 19e6 / 8 * read / 1000;
+		const r = model.rates(prev, { lan1: { rx: bytes, tx: bytes, src: 'switch', at: 9e6 + read } }, came);
+		prev = r.next;
+		if (k) got.push(r.rates.lan1.rx);
+	}
+	assert.deepEqual(got, Array(7).fill(19e6));
+	/* a key without its own time keeps the poll's, as every other counter does */
+	const a = model.rates(null, { eth0: { rx: 0, tx: 0 } }, 1000), b = model.rates(a.next, { eth0: { rx: 1000, tx: 0 } }, 6000);
+	assert.deepEqual(b.rates.eth0, { rx: 1600, tx: 0 });
+});
+
+test('model: a device clock that went back (the router started again) starts a chip\'s port over, then rates it again', () => {
+	const at = (prev, rx, t) => model.rates(prev, { lan1: { rx, tx: 0, src: 'switch', at: t } }, 1.8e12 + t);
+	const a = at(null, 5e9, 9e6), b = at(a.next, 5e9 + 625000, 9e6 + 5000);
+	assert.equal(b.rates.lan1.rx, 1e6);
+	/* the router restarted: its monotonic clock and the chip's counters from near zero */
+	const c = at(b.next, 1000, 30000);
+	assert.equal(c.rates.lan1, undefined, 'no rate across the restart');
+	assert.equal(c.next.lan1.at, 30000, 'the new reading is the base');
+	const d = at(c.next, 1000 + 625000, 35000);
+	assert.equal(d.rates.lan1.rx, 1e6, 'and the next is rated');
 });
 
 /* ------------------------------------------------------------- view */
@@ -362,11 +400,13 @@ async function switchCalls(fn) {
 		delete REPLIES['luci.vantage.ports counters'];
 	}
 }
-const answer = ports => () => Promise.resolve({ v: 1, state: 'ok', took: 9, more: false, ports });
+/* the plugin's answer: a port with counters read at 7000 ms on the device's clock */
+const answer = ports => () => Promise.resolve({ v: 1, state: 'ok', took: 9, more: false,
+	ports: Object.fromEntries(Object.entries(ports).map(([ n, p ]) => [ n, p.rx_bytes != null ? Object.assign({ at: 7000 }, p) : p ])) });
 
 test('view: asked every poll while the first answer had counters, whatever later ones say', () => switchCalls(async c => {
 	c.reply = answer({ lan1: { rx_bytes: 1, tx_bytes: 2 } });
-	assert.deepEqual(JSON.parse(JSON.stringify((await c.ask())[0])), { state: 'ok', counters: { lan1: { rx: 1, tx: 2 } }, none: false });
+	assert.deepEqual(JSON.parse(JSON.stringify((await c.ask())[0])), { state: 'ok', counters: { lan1: { rx: 1, tx: 2, at: 7000 } }, none: false });
 	c.reply = answer({ lan1: { error: 'unknown' } });
 	for (let i = 0; i < 3; i++) assert.equal((await c.ask())[0].none, true);
 	assert.equal(c.asked, 4, 'decided by the first answer only');
@@ -390,7 +430,7 @@ test('view: once it has answered, no later answer ends the asking: not a missing
 		c.reply = reply;
 		await c.ask();
 		c.reply = answer({ lan1: { rx_bytes: 3, tx_bytes: 4 } });
-		assert.deepEqual((await c.ask())[0].counters.lan1, { rx: 3, tx: 4 }, 'asked again after ' + reply);
+		assert.deepEqual((await c.ask())[0].counters.lan1, { rx: 3, tx: 4, at: 7000 }, 'asked again after ' + reply);
 	}
 	assert.equal(c.asked, 1 + 2 * later.length);
 }));
@@ -429,7 +469,7 @@ test('view: busy is no answer this time: the page keeps asking, and the first re
 	assert.equal(c.asked, 5, 'asked every poll');
 	/* busy, then counters, then busy again: still asked */
 	c.reply = answer({ lan1: { rx_bytes: 1, tx_bytes: 2 } });
-	assert.deepEqual((await c.ask())[0].counters.lan1, { rx: 1, tx: 2 });
+	assert.deepEqual((await c.ask())[0].counters.lan1, { rx: 1, tx: 2, at: 7000 });
 	c.reply = busy;
 	await c.ask();
 	await c.ask();
@@ -453,10 +493,10 @@ test('view: a poll waits 2 s for the answer at most; while a call is out no othe
 	assert.equal(first[0], null, 'and goes on without it');
 	const second = await c.ask();
 	assert.deepEqual([ c.asked, second[0], c.timers.length ], [ 1, null, 0 ], 'not asked again while the first is out');
-	c.out.shift().resolve({ v: 1, state: 'ok', took: 2500, more: false, ports: { lan1: { rx_bytes: 1, tx_bytes: 2 } } });
+	c.out.shift().resolve({ v: 1, state: 'ok', took: 2500, more: false, ports: { lan1: { rx_bytes: 1, tx_bytes: 2, at: 7000 } } });
 	await c.flush();
 	c.reply = answer({ lan1: { rx_bytes: 3, tx_bytes: 4 } });
-	assert.deepEqual((await c.ask())[0].counters.lan1, { rx: 3, tx: 4 });
+	assert.deepEqual((await c.ask())[0].counters.lan1, { rx: 3, tx: 4, at: 7000 });
 	assert.equal(c.asked, 2);
 }));
 
@@ -493,6 +533,29 @@ test('view: a port counts by its chip where the poll has its counters, never a l
 	}
 });
 
+test('view: a chip\'s counters are rated by when the device read them, however late each answer came in', () => {
+	const savedL = global.L, savedW = global.window;
+	global.L = { env: {} };
+	global.window = { sessionStorage: { getItem: () => null, setItem() {} }, localStorage: { getItem: () => null, setItem() {} } };
+	try {
+		const self = Object.create(view);
+		self.initState({ board: {}, canWrite: false, canRdns: false, mdns: null });
+		const wan = { interface: 'wan', up: true, proto: 'dhcp', device: 'wan', l3_device: 'wan', metric: 10, route: [ { target: '0.0.0.0', mask: 0, nexthop: '203.0.113.1' } ] };
+		const dsa = { devtype: 'dsa', carrier: true, speed: '1000F', statistics: { rx_bytes: 1, tx_bytes: 1 } };
+		/* poll k: the batch at 5 s steps; the chip read at 5 s steps on the device's clock, its answer held back 0.1 s, then 1.5 s, ... */
+		const raw = k => ({ at: 1.8e12 + k * 5000 + (k % 2 ? 1500 : 100), info: { localtime: 1.8e9 + k * 5 }, stat: '', ifaces: [ wan ], wifi: null, hints: {}, thermal: [], fdb: [], assoc: {}, hapd: {}, hapdStatus: {}, iwinfo: {},
+			devs: { lan1: dsa, wan: dsa }, hw: { state: 'ok', none: false, counters: Object.assign(Object.create(null), { lan1: { rx: k * 5 * 19e6 / 8, tx: k * 5 * 1e6 / 8, at: 123e6 + k * 5000 } }) } });
+		self.ingest(raw(0));
+		for (let k = 1; k < 6; k++) {
+			self.ingest(raw(k));
+			assert.deepEqual(JSON.parse(JSON.stringify(self.st.devRates.lan1)), { rx: 19e6, tx: 1e6 }, 'poll ' + k);
+		}
+	} finally {
+		global.L = savedL;
+		global.window = savedW;
+	}
+});
+
 test('view: a busy answer reaches ingest as none (the kernel\'s counters for that step), and the next poll asks again', async () => {
 	const saved = { L: global.L, document: global.document };
 	global.document = { hidden: false, documentElement: { getAttribute: () => null } };
@@ -503,7 +566,7 @@ test('view: a busy answer reaches ingest as none (the kernel\'s counters for tha
 		const self = Object.create(view);
 		assert.equal((await self.fetch()).hw, null);
 		REPLIES['luci.vantage.ports counters'] = () => { asked++; return answer({ lan1: { rx_bytes: 1, tx_bytes: 2 } })(); };
-		assert.deepEqual(JSON.parse(JSON.stringify((await self.fetch()).hw.counters)), { lan1: { rx: 1, tx: 2 } });
+		assert.deepEqual(JSON.parse(JSON.stringify((await self.fetch()).hw.counters)), { lan1: { rx: 1, tx: 2, at: 7000 } });
 		assert.equal(asked, 2);
 	} finally {
 		Object.assign(global, saved);
@@ -523,7 +586,7 @@ test('view: the call is a request of its own, in every poll\'s fetch, and what i
 	try {
 		const self = Object.create(view);
 		const raw = await self.fetch();
-		assert.deepEqual([ asked, JSON.parse(JSON.stringify(raw.hw)) ], [ 1, { state: 'ok', counters: { lan1: { rx: 1, tx: 2 } }, none: false } ]);
+		assert.deepEqual([ asked, JSON.parse(JSON.stringify(raw.hw)) ], [ 1, { state: 'ok', counters: { lan1: { rx: 1, tx: 2, at: 7000 } }, none: false } ]);
 		await self.fetch();
 		assert.equal(asked, 2, 'every poll');
 	} finally {

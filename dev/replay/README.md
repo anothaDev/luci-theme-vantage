@@ -225,7 +225,7 @@ DSA (`dsa.js`), to see the dashboard count such ports by the chip's own
 counters (#156): netifd types them `dsa`, their kernel counters see a
 fiftieth of their traffic (what passes the CPU), and `luci.vantage.ports
 counters` answers as the dashboard's plugin does on a router, with the
-chip's counters at the ports' full rates. The Ports tile and the Wired
+chip's counters at the ports' full rates, each with the time it was read. The Ports tile and the Wired
 branch then show `lan1` at about 18 Mbit/s down, not a fiftieth of it.
 Without `--dsa` that call answers as on a device without a DSA port
 (`state: 'none'`), and the dashboard asks no more. Combine it with

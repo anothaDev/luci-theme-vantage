@@ -1103,8 +1103,8 @@ const PORTS_RUN = "function read_port(name) {\n\tlet p = popen(ETHTOOL + ' -S ' 
 const PORTS_COUNT = "function counters() {\n\tlet t0 = now_ms(), self_file = open(SELF, 'r');\n\n\tif (!self_file || self_file.lock('xn') !== true)\n" +
 	"\t\treturn { v: 1, state: 'busy', took: now_ms() - t0, more: false, ports: {} };\n\n\tlet ports = {}, d = dsa_ports();\n\n\tif (!length(d.found))\n" +
 	"\t\treturn { v: 1, state: 'none', took: now_ms() - t0, more: false, ports };\n\n\tif (!access(ETHTOOL, 'x'))\n" +
-	"\t\treturn { v: 1, state: 'no-ethtool', took: now_ms() - t0, more: d.more, ports };\n\n\tfor (let name in d.found)\n" +
-	"\t\tports[name] = (now_ms() - t0 < BUDGET_MS) ? read_port(name) : { error: 'time' };\n\n\treturn { v: 1, state: 'ok', took: now_ms() - t0, more: d.more, ports };\n}";
+	"\t\treturn { v: 1, state: 'no-ethtool', took: now_ms() - t0, more: d.more, ports };\n\n\tfor (let name in d.found) {\n\t\tlet at = now_ms();\n\n" +
+	"\t\tports[name] = (at - t0 < BUDGET_MS) ? { ...read_port(name), at } : { error: 'time', at };\n\t}\n\n\treturn { v: 1, state: 'ok', took: now_ms() - t0, more: d.more, ports };\n}";
 const PORTS_PINS = [
 	[ '\\b(?:popen|access|lsdir|readfile|ETHTOOL|NET)\\b', [
 		'import { access, lsdir, open, popen, readfile } from \'fs\';',
@@ -1129,8 +1129,8 @@ const PORTS_PINS = [
 		'let ports = {}, d = dsa_ports();',
 		'if (!length(d.found))',
 		'return { v: 1, state: \'no-ethtool\', took: now_ms() - t0, more: d.more, ports };',
-		'for (let name in d.found)',
-		'ports[name] = (now_ms() - t0 < BUDGET_MS) ? read_port(name) : { error: \'time\' };',
+		'for (let name in d.found) {',
+		'ports[name] = (at - t0 < BUDGET_MS) ? { ...read_port(name), at } : { error: \'time\', at };',
 		'return { v: 1, state: \'ok\', took: now_ms() - t0, more: d.more, ports };'
 	] ],
 	/* the one file opened, its own, for reading, and locked without waiting */
@@ -1150,7 +1150,7 @@ const PORTS_PINS = [
 		'if (length(found) >= MAX_PORTS) {',
 		'let text = p.read(MAX_OUT + 1);',
 		'if (p.close() !== 0 || type(text) != \'string\' || length(text) > MAX_OUT)',
-		'ports[name] = (now_ms() - t0 < BUDGET_MS) ? read_port(name) : { error: \'time\' };'
+		'ports[name] = (at - t0 < BUDGET_MS) ? { ...read_port(name), at } : { error: \'time\', at };'
 	] ],
 	/* rpcd's two calls, and nothing else of the command line: one method, which takes nothing */
 	[ '\\b(?:ARGV|print)\\b', [
@@ -1189,7 +1189,7 @@ const PORTS_TOP = [
 ];
 const PORTS_NAMES = [
 	'BUDGET_MS', 'COUNTERS', 'ETHTOOL', 'MAX_OUT', 'MAX_PORTS', 'MAX_UEVENT', 'NET', 'RE_LINE', 'RE_PORT', 'SELF',
-	'c', 'counters', 'd', 'dsa', 'dsa_ports', 'found', 'i', 'l', 'lines', 'm', 'more', 'n', 'name', 'now_ms', 'p', 'parse',
+	'at', 'c', 'counters', 'd', 'dsa', 'dsa_ports', 'found', 'i', 'l', 'lines', 'm', 'more', 'n', 'name', 'now_ms', 'p', 'parse',
 	'ports', 'read_port', 'seen', 'self_file', 't', 't0', 'text'
 ];
 /* the top-level statements of `code` (comment lines out), a constant or a function by its head */
@@ -1278,7 +1278,8 @@ test('switch counters: the plugin rules catch each breach', () => {
 		'a found name changed': add('d.found[0] = \'-x\';'),
 		'no port cap': swap('\t\tif (length(found) >= MAX_PORTS) {\n\t\t\tmore = true;\n\t\t\tbreak;\n\t\t}\n\n', ''),
 		'a larger port cap': swap('const MAX_PORTS = 32;', 'const MAX_PORTS = 4096;'),
-		'no time budget': swap('ports[name] = (now_ms() - t0 < BUDGET_MS) ? read_port(name) : { error: \'time\' };', 'ports[name] = read_port(name);'),
+		'no time budget': swap('ports[name] = (at - t0 < BUDGET_MS) ? { ...read_port(name), at } : { error: \'time\', at };', 'ports[name] = { ...read_port(name), at };'),
+		'a reading timed by the call, not the port': swap('\t\tlet at = now_ms();\n', '\t\tlet at = t0;\n'),
 		'a longer budget': swap('const BUDGET_MS = 1000;', 'const BUDGET_MS = 30000;'),
 		'the output read whole': swap('let text = p.read(MAX_OUT + 1);', 'let text = p.read(\'all\');'),
 		'too much output taken': swap('|| length(text) > MAX_OUT)', ')'),
