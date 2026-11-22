@@ -1302,8 +1302,9 @@ return view.extend({
 		}, function(e) {
 			return { absent: WG_ABSENT.test(String(e && e.message)) };
 		}).then(function(a) {
-			var at = Date.now(), took = at - asked, d = a.reply ? model.tile(a.reply) : null;
+			/* first: whatever follows, this provider can be asked again */
 			s.call = null;
+			var at = Date.now(), took = at - asked, d = a.reply ? model.tile(a.reply) : null;
 			if (a.absent && !s.answered) { s.off = true; return; }
 			if (a.reply) { s.answered = true; s.last = { data: d, at: at }; }
 			s.failed = !a.reply;
