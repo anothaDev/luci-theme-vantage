@@ -21,7 +21,8 @@
 //
 // Not measured: the kernel's own work to print the real table. For that
 // it also times one plain read of /proc/net/nf_conntrack when there is
-// one (read only, nothing parsed).
+// one, and counts how many of its lines the plugin's layout table fits
+// (read only; no line is kept or shown, only counts by protocol).
 'use strict';
 
 import { chmod, lstat, mkdir, open, readfile, rename, rmdir, stat, unlink, writefile } from 'fs';
@@ -330,13 +331,28 @@ function read(neigh, now) {
 	return { load: t1 - t0, count: t2 - t1, save: t3 - t2, all: t3 - t0, st };
 }
 
+// the real table: how long the kernel takes to print it, and whether the
+// plugin's layout table fits its lines (those it does not go to
+// parse_slow, at several times the cost); nothing of it is kept or shown
 let real = open('/proc/net/nf_conntrack', 'r');
 if (real) {
 	let t0 = now_ms(), n = 0;
 	while (real.read('line'))
 		n++;
 	real.close();
-	print(sprintf('this device\'s own table: %d entries, read (not parsed) in %d ms\n', n, now_ms() - t0));
+	let t1 = now_ms(), fit = 0, e = [], other = {};
+	real = open('/proc/net/nf_conntrack', 'r');
+	for (let l = real.read('line'); l; l = real.read('line')) {
+		if (parse(l, e) && substr(e[1], 0, 4) == 'src=' && substr(e[3], 0, 4) == 'src=' && e[2] >= 0 && e[4] >= 0)
+			fit++;
+		else {
+			let k = split(l, ' ')[6] ?? '?';
+			other[k] = (other[k] ?? 0) + 1;
+		}
+	}
+	real.close();
+	print(sprintf('this device\'s own table: %d entries, read (not parsed) in %d ms; the layout table fits %d of them%s\n',
+		n, t1 - t0, fit, length(other) ? sprintf(' (the others by protocol: %J)', other) : ''));
 }
 
 print(sprintf('the plugin stops reading the table after %d ms. This process before the reads: %s KiB\n', STOP_MS, memory().VmRSS ?? '?'));
