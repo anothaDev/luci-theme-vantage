@@ -137,6 +137,12 @@ var callRoutes = rpc.declare({ object: 'luci.vantage', method: 'routes', expect:
    and answers them together, so a collector that does not answer would
    hold back every other reply of the poll */
 var callCollector = rpc.declare({ object: 'vantage.collector', method: 'report', expect: { '': {} }, nobatch: true });
+/* luci-app-vantage-traffic's plugin (experimental, #110): the bytes from
+   and to each host as this router's connection tracking counts them, by
+   MAC, one read shared by every caller. No group of the dashboard grants
+   it: the package's own does, so only a login that holds that one asks
+   (canTraffic, looked up once a page). It takes no argument */
+var callTraffic = rpc.declare({ object: 'luci.vantage.traffic', method: 'hosts', expect: { '': {} } });
 /* LuCI's own (luci-proto-wireguard's rpcd plugin, its status page's
    call): every WireGuard interface with its peers, without private or
    preshared keys; it takes no argument and writes nothing. No group of
@@ -1007,11 +1013,13 @@ return view.extend({
 				self.fetch(),
 				/* reverse DNS is an optional grant: without it, skip it quietly */
 				L.resolveDefault(callAccess('access-group', 'luci-app-vantage-rdns', 'read'), false),
-				L.resolveDefault(ui.menu.load(), null)
+				L.resolveDefault(ui.menu.load(), null),
+				/* per-device traffic is a package and a group of its own: without either, no call (fetch) */
+				L.resolveDefault(callAccess('access-group', 'luci-app-vantage-traffic', 'read'), false)
 			]);
 		}).then(function(r) {
 			menuTree = r[7] || null;
-			return { board: r[1] || {}, canWrite: r[2] === true, mdns: r[4], raw: r[5], canRdns: r[6] === true };
+			return { board: r[1] || {}, canWrite: r[2] === true, mdns: r[4], raw: r[5], canRdns: r[6] === true, canTraffic: r[8] === true };
 		});
 	},
 
@@ -1238,7 +1246,10 @@ return view.extend({
 			slow ? L.resolveDefault(callThermal(), null) : Promise.resolve(kept.thermal),
 			slow ? L.resolveDefault(callWired(), null) : Promise.resolve(kept.wired),
 			/* null when the call fails (an older plugin): netifd's metrics decide */
-			L.resolveDefault(callRoutes(), null)
+			L.resolveDefault(callRoutes(), null),
+			/* per-device traffic with the slow part, for a login that may
+			   ask (canTraffic); undefined when not asked, null for a failed call */
+			slow && self.canTraffic ? L.resolveDefault(callTraffic(), null) : Promise.resolve(undefined)
 		]).then(function(r) {
 			var wifiDevs = (r[4] && typeof r[4] === 'object') ? r[4] : null;
 			var wiredReply = (r[7] && typeof r[7] === 'object') ? r[7] : {};
@@ -1374,7 +1385,7 @@ return view.extend({
 					/* no answer (an older plugin, a lookup not sent, a failed call)
 					   keeps the last one: no tunnel blinking off */
 					routes: r[8] && Array.isArray(r[8].routes) ? (self.kernelRoutes = r[8].routes) : (self.kernelRoutes || null),
-					collector: null, wg: null, provided: null,
+					collector: null, wg: null, provided: null, traffic: r[9],
 					assoc: assoc, hapd: hapd, hapdStatus: hapdStatus, iwinfo: iwinfo, survey: survey, at: Date.now(), started: started };
 				return Promise.all([ collected, tunnels, provided ]).then(function(x) { raw.collector = self.collectorAnswer(); raw.wg = x[1]; raw.provided = x[2]; return raw; });
 			});
@@ -1400,6 +1411,7 @@ return view.extend({
 			});
 		this.board = data.board || {};
 		this.canWrite = data.canWrite;
+		this.canTraffic = data.canTraffic === true;
 		var held = heldCpu(readCpu(), now);
 		this.st = {
 			clock: null, stat: null, cpu: held, cores: held ? held.cores.length : null, cpuMeasured: false,
@@ -1413,6 +1425,7 @@ return view.extend({
 			wireless: null,
 			wg: [], wgSeen: false, wgPrev: null, wgRates: Object.create(null),
 			portsSeen: false,
+			traffic: null, trafficRates: null, trafficPrev: null, trafficSeen: 0,
 			ext: Object.create(null),
 			lastOk: 0, lastErr: null, paused: false
 		};
@@ -1532,6 +1545,8 @@ return view.extend({
 			var r = st.staRates[c.mac];
 			series.push(h, [ at, c.signal != null ? -c.signal : NaN, r ? r.tx : NaN, r ? r.rx : NaN ], 10 * 60 * 1000, 150);
 		});
+
+		this.noteTraffic(raw.traffic);
 
 		/* presence: new since the page opened, recently gone */
 		var p = insight.presence(st.presence, m.clients, now, GONE_KEEP_MS,
@@ -4173,11 +4188,69 @@ return view.extend({
 
 	/* what the Clients list shows for a wired host: portRate's, except
 	   for one sharing its port here that a paired access point has alone
-	   on a port of its own: the rate that access point reports for it
-	   (null where it shares that port too). Top talkers keeps portRate:
-	   a paired access point's hosts are not ranked */
+	   on a port of its own: the rate that access point reports for it;
+	   else, for one sharing its port, the rate through this router
+	   (trafficRate; null without luci-app-vantage-traffic). Top talkers
+	   keeps portRate: neither kind of host is ranked */
 	listRate: function(c) {
-		return c.shared && c.behind ? c.behind.rate || null : this.portRate(c);
+		return c.shared && c.behind && c.behind.rate ? c.behind.rate : c.shared ? this.trafficRate(c) : this.portRate(c);
+	},
+
+	/* luci-app-vantage-traffic's answer for a slow poll (undefined: not
+	   asked; null: a failed call): the rates between its last two reads,
+	   by MAC, in st.trafficRates, and the answer in st.traffic. A failed
+	   call keeps them two slow polls, then none: no rate rather than an
+	   old one shown as current */
+	noteTraffic: function(reply) {
+		if (reply === undefined) return;
+		var st = this.st, now = Date.now(), t = model.trafficHosts(reply);
+		if (!t) {
+			if (st.traffic && !(now - st.trafficSeen <= 2 * (lowPower() ? LOW_SLOW_MS : POLL_S * 1000)))
+				st.traffic = st.trafficRates = st.trafficPrev = null;
+			return;
+		}
+		st.trafficSeen = now;
+		/* a read the plugin already gave: its rates stand */
+		if (!st.traffic || st.traffic.at !== t.at) {
+			var r = model.rates(st.trafficPrev, t.counters, t.at);
+			st.trafficPrev = r.next;
+			st.trafficRates = r.rates;
+		}
+		st.traffic = t;
+	},
+
+	/* a wired host's rate as this router's connection tracking counts it:
+	   only for one that shares its port (a port to itself counts all of
+	   its traffic, also with the devices beside it) and whose traffic this
+	   device routes: not the gateway, nor a host on a line's port or on a
+	   line's own network (a dumb access point's hosts reach the gateway
+	   past it, bridged, uncounted). null otherwise and without the package */
+	trafficRate: function(c) {
+		var t = this.st && this.st.trafficRates, m = this.m;
+		if (!t || !c.shared || c.ap || c.gateway || this.linePort(c.port, m)) return null;
+		var onLine = ((m && m.uplinks) || []).some(function(x) {
+			var l3 = x && x.l3dev;
+			return !!l3 && !!c.bridge && (c.bridge === l3 || (c.vlan != null && c.bridge + '.' + c.vlan === l3));
+		});
+		return onLine ? null : t[c.mac] || null;
+	},
+
+	/* what may make the rate through this router too low: lines for a
+	   host's details */
+	trafficNotes: function() {
+		var t = this.st.traffic, out = [];
+		if (!t) return out;
+		if (t.partial) out.push(_('From part of the connection table: reading all of it took too long'));
+		if (t.hw) out.push(fmt.N_(t.hw, '%d connection offloaded to hardware may be missing', '%d connections offloaded to hardware may be missing').format(t.hw));
+		if (t.zeroed) out.push(_('Another program resets the connection counters (nlbwmon?): too low'));
+		return out;
+	},
+
+	/* where the rate through this router comes from, and how often the
+	   plugin reads its table */
+	trafficEvery: function() {
+		var t = this.st.traffic;
+		return _('Through this router, from its connection tracking (read every %d s)').format(Math.max(1, Math.round((t ? t.every : 5000) / 1000)));
 	},
 
 	sortValue: function(c, key) {
@@ -4459,10 +4532,11 @@ return view.extend({
 	/* a wired host's row. Its link is its port's when it has the port to
 	   itself; on a shared port (a switch or another access point behind
 	   it) neither the speed nor the traffic is its own, unless a paired
-	   access point it is behind has it alone on a port (listRate) */
+	   access point it is behind has it alone on a port, or this router
+	   counts it (luci-app-vantage-traffic; listRate) */
 	wiredCells: function(c, maxRate) {
 		var r = this.listRate(c), total = r ? r.rx + r.tx : 0;
-		var theirs = c.shared && r ? c.behind : null;
+		var theirs = c.shared && r && c.behind && c.behind.rate ? c.behind : null, ours = c.shared && !!r && !theirs;
 		var bar = E('span', { 'class': 'vt-mini-fill' });
 		setW(bar, maxRate > 0 ? total / maxRate * 100 : 0);
 		var tags = [];
@@ -4487,12 +4561,12 @@ return view.extend({
 			this.whoCell(c, tags),
 			link,
 			E('td', { 'class': 'vt-td-net', 'data-title': _('Network') }, [ E('div', { 'class': 'vt-net' }, [ E('span', { 'class': 'vt-net-ssid' }, [ c.network || c.bridge || fmt.DASH ]) ]) ]),
-			E('td', { 'class': 'vt-td-live', 'data-title': _('Live') }, c.shared && !theirs ? [
+			E('td', { 'class': 'vt-td-live', 'data-title': _('Live') }, c.shared && !theirs && !ours ? [
 				E('span', { 'class': 'vt-muted', 'title': _('Not counted per device on a shared port') }, [ fmt.DASH ])
 			] : [
 				E('div', { 'class': 'vt-live-cell' }, [
 					/* no title (null: no attribute) on any other row */
-					E('span', { 'class': 'vt-tn vt-live-total', 'title': theirs ? _('Counted by %s on its port %s').format(theirs.name, theirs.port) : null }, [ r ? fmt.bits(total) : fmt.DASH ]),
+					E('span', { 'class': 'vt-tn vt-live-total', 'title': theirs ? _('Counted by %s on its port %s').format(theirs.name, theirs.port) : ours ? this.trafficEvery() : null }, [ r ? fmt.bits(total) : fmt.DASH ]),
 					E('span', { 'class': 'vt-mini' }, [ bar ]),
 					E('span', { 'class': 'vt-live-split vt-tn', 'title': r ? _('To device %s, from device %s').format(fmt.bits(r.tx), fmt.bits(r.rx)) : '' }, [ r ? fmt.rates(r.tx, r.rx) : '' ])
 				])
@@ -5180,7 +5254,8 @@ return view.extend({
 
 	drawerWired: function(c) {
 		var self = this, r = this.listRate(c), shared = c.shared ? this.st.devRates[c.port] : null;
-		var theirs = c.shared && r ? c.behind : null;
+		var theirs = c.shared && r && c.behind && c.behind.rate ? c.behind : null, ours = c.shared && !!r && !theirs;
+		var counting = this.st.traffic;
 		var title = this.drawerWho(c);
 		var rename = this.canWrite ? E('button', { 'type': 'button', 'class': 'vt-btn vt-btn-ghost', 'click': function() { self.startRename(c); } }, [ icon('pencil'), E('span', {}, [ c.alias ? _('Rename', 'vantage') : _('Name this device') ]) ]) : '';
 		var speed = c.speed ? model.speedLabel(c.speed) : fmt.DASH;
@@ -5205,10 +5280,17 @@ return view.extend({
 					'↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx),
 					E('small', {}, [ _('Counted by %s on its port %s').format(theirs.name, theirs.port) ]),
 					shared ? E('small', {}, [ _('the port in total: %s').format('↓ ' + fmt.bits(shared.tx) + ' · ↑ ' + fmt.bits(shared.rx)) ]) : ''
-				] : c.shared ? [
-					E('span', { 'class': 'vt-muted' }, [ _('Not counted per device on a shared port') ]),
+				] : ours ? [
+					'↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx),
+					E('small', {}, [ this.trafficEvery() ]),
+					E('small', {}, [ _('Not counted: traffic with devices on the same network') ])
+				].concat(this.trafficNotes().map(function(n) { return E('small', {}, [ n ]); }), [
 					shared ? E('small', {}, [ _('the port in total: %s').format('↓ ' + fmt.bits(shared.tx) + ' · ↑ ' + fmt.bits(shared.rx)) ]) : ''
-				] : r ?'↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx) : _('measuring')),
+				]) : c.shared ? [
+					E('span', { 'class': 'vt-muted' }, [ _('Not counted per device on a shared port') ])
+				].concat(counting && counting.acct === false ? [ E('small', {}, [ _('Connection accounting is off on this router: per-device traffic counts nothing') ]) ] : [], [
+					shared ? E('small', {}, [ _('the port in total: %s').format('↓ ' + fmt.bits(shared.tx) + ' · ↑ ' + fmt.bits(shared.rx)) ]) : ''
+				]) : r ?'↓ ' + fmt.bits(r.tx) + ' · ↑ ' + fmt.bits(r.rx) : _('measuring')),
 				kv(_('Network'), [ c.network || c.bridge || fmt.DASH, c.vlan != null ? E('small', {}, [ _('VLAN %d').format(c.vlan) ]) : '' ]),
 				kv(_('Last heard'), c.seen == null ? _('static entry') : fmt.ago(c.seen * 1000))
 			].concat(c.behind ? [ kv(_('Access point'), [ c.behind.name, E('small', {}, [ _('its port %s').format(c.behind.port) ]), alsoLine(c.behind) ]) ] : [])) ]),

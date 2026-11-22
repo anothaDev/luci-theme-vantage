@@ -44,6 +44,9 @@ var AP_BANDS = [ '2g', '5g', '6g', '60g' ];
 /* an interface or port name, as the collector takes one (a netdev's) */
 var AP_IFNAME = /^[A-Za-z0-9_.-]{1,15}$/;
 
+/* per-device traffic (luci.vantage.traffic hosts): the plugin's own cap */
+var MAX_TRAFFIC_HOSTS = 512;
+
 /* WireGuard (luci.wireguard getWgInstances, LuCI's own), cut to what a
    tile can hold: the page never trusts a reply to be smaller */
 var MAX_WG_IFACES = 8, MAX_WG_PEERS = 128, MAX_WG_ALLOWED = 8;
@@ -416,6 +419,29 @@ return baseclass.extend({
 			next[k] = r.state === 'skip' ? p : cur;
 		});
 		return { next: next, rates: rates };
+	},
+
+	/* luci.vantage.traffic hosts (luci-app-vantage-traffic, #110), checked
+	   and cut to the plugin's own cap: { at, every, acct, partial, hw,
+	   zeroed, counters: { mac: { rx, tx } } }, bytes from and to each
+	   host since the plugin began counting it, or null. at is when the
+	   plugin read its table (ms on the router's monotonic clock): the
+	   rates come from two reads, whoever asked for them */
+	trafficHosts: function(reply) {
+		var r = obj(reply), counters = Object.create(null);
+		if (!finite(r.at) || !Array.isArray(r.hosts)) return null;
+		r.hosts.slice(0, MAX_TRAFFIC_HOSTS).forEach(function(h) {
+			h = obj(h);
+			var mac = typeof h.mac === 'string' ? names.normMac(h.mac) : null;
+			if (mac && !own(counters, mac) && finite(h.rx) && finite(h.tx) && h.rx >= 0 && h.tx >= 0) counters[mac] = { rx: h.rx, tx: h.tx };
+		});
+		var n = function(v) { return finite(v) && v > 0 ? Math.floor(v) : 0; };
+		return {
+			at: r.at, every: finite(r.every) && r.every >= 1000 ? r.every : 5000,
+			acct: r.acct === true ? true : r.acct === false ? false : null,
+			partial: r.partial === 'entries' || r.partial === 'time' ? r.partial : false,
+			hw: n(r.hw), zeroed: n(r.zeroed), counters: counters
+		};
 	},
 
 	/* ------------------------------------------------------------ uplink */

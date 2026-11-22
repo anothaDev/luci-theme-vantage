@@ -49,9 +49,12 @@
  *   granted, and every grant is used by a declare (no stale privilege);
  *   `session access` is the only call left to the platform (rpcd grants it
  *   to every session through its `unauthenticated` group);
- * - three declared calls are granted by no group of the dashboard, each
+ * - four declared calls are granted by no group of the dashboard, each
  *   by another package's own group: the add-on's `vantage.collector
- *   report` (below), LuCI's `luci.wireguard getWgInstances`
+ *   report` (below), luci-app-vantage-traffic's `luci.vantage.traffic
+ *   hosts` (below; declared once without parameters, called only after
+ *   rpcd said the login holds that package's group), LuCI's
+ *   `luci.wireguard getWgInstances`
  *   (luci-proto-wireguard's rpcd plugin, the call of its status page:
  *   the WireGuard interfaces and their peers, without private or
  *   preshared keys; it takes no argument and writes nothing), and the
@@ -85,9 +88,10 @@
  *   app file requires a LuCI module that loads other configs on its own
  *   (`network` loads `wireless`, `firewall` and `tools.*` load more), or
  *   loads modules by a computed name;
- * - the view probes exactly four groups: its names group (write), its
- *   rdns group (read), the add-on's view group (read) and LuCI's
- *   luci-proto-wireguard (read); it reads its own session's ACL once,
+ * - the view probes exactly five groups: its names group (write), its
+ *   rdns group (read), luci-app-vantage-traffic's (read), the add-on's
+ *   view group (read) and LuCI's luci-proto-wireguard (read); it reads
+ *   its own session's ACL once,
  *   for the provider tiles only;
  * - the dashboard's menu entry is gated by the read group; the firewall
  *   overview's (Network -> Firewall -> Overview) by luci-app-firewall,
@@ -185,10 +189,19 @@ const READ_UBUS = {
 const COLLECTOR_CALL = 'vantage.collector report';
 /* And luci-app-vantage-traffic's counters (#110, experimental): the bytes
    from and to each host as this router's connection tracking counts them,
-   by MAC; the plugin takes no argument and writes nothing. The package's
-   own group grants it (TRAFFIC_GROUP), no group of the dashboard. */
+   by MAC; the plugin takes no argument and writes nothing. No group of
+   the dashboard grants it: the package's own does (TRAFFIC_GROUP), so the
+   dashboard asks rpcd once a page whether the login holds that group
+   (TRAFFIC_PROBE, in the batch load() sends anyway) and calls only then
+   (TRAFFIC_ASK); without the package there is no such group and no call.
+   Declared in this one form, called in that one place. */
 const TRAFFIC_CALL = 'luci.vantage.traffic hosts';
 const TRAFFIC_GROUP = 'luci-app-vantage-traffic';
+const TRAFFIC_DECLARE = "var callTraffic = rpc.declare({ object: 'luci.vantage.traffic', method: 'hosts', expect: { '': {} } });";
+const TRAFFIC_PROBE = "\t\t\t\tL.resolveDefault(ui.menu.load(), null),\n" +
+	"\t\t\t\t/* per-device traffic is a package and a group of its own: without either, no call (fetch) */\n" +
+	"\t\t\t\tL.resolveDefault(callAccess('access-group', 'luci-app-vantage-traffic', 'read'), false)\n\t\t\t]);\n\t\t}).then(function(r) {\n";
+const TRAFFIC_ASK = "\t\t\tslow && self.canTraffic ? L.resolveDefault(callTraffic(), null) : Promise.resolve(undefined)\n";
 /* And LuCI's own WireGuard status (luci-proto-wireguard's rpcd plugin):
    `wg show all dump` by interface, each with its peers (name, public key,
    endpoint, allowed IPs, last handshake, byte counters, keepalive); the
@@ -601,11 +614,12 @@ test('the JavaScript is analysable', () => {
 
 test('every declared call is granted and every grant is used', () => {
 	const granted = grantedCalls();
-	/* the three calls another package's group grants, and no fourth: LuCI's WireGuard status and the provider
-	   tiles' status (their own tests below), and the collector's report, which the add-on's view group grants,
-	   and that group grants nothing else */
-	assert.deepEqual(foreignCalls(sources), [ WIREGUARD_CALL, COLLECTOR_CALL, TILE_CALL ], 'declared but not granted by the dashboard');
+	/* the four calls another package's group grants, and no fifth: per-device traffic, LuCI's WireGuard status
+	   and the provider tiles' status (their own tests below), and the collector's report, which the add-on's
+	   view group grants, and that group grants nothing else; so does per-device traffic's */
+	assert.deepEqual(foreignCalls(sources), [ TRAFFIC_CALL, WIREGUARD_CALL, COLLECTOR_CALL, TILE_CALL ], 'declared but not granted by the dashboard');
 	assert.deepEqual([ ...pairs(apsAcl[APS_VIEW_GROUP].read.ubus) ], [ COLLECTOR_CALL ]);
+	assert.deepEqual([ ...pairs(trafficAcl[TRAFFIC_GROUP].read.ubus) ], [ TRAFFIC_CALL ]);
 	assert.deepEqual([ ...granted ].filter(k => !declared.has(k)).sort(), [], 'granted but never declared');
 	/* read grants are not write methods */
 	for (const k of pairs(acl[READ_GROUP].read.ubus)) assert.ok(!/^uci (add|set|delete|commit|rename|order|apply|confirm|revert)$/.test(k), k);
@@ -790,7 +804,7 @@ test('the view probes the names and rdns groups, the add-on\'s for the access po
 	const probes = [ ...view.matchAll(/callAccess\('access-group', '([^']+)', '(\w+)'\)/g) ].map(m => m[1] + ' ' + m[2]);
 	/* the third: asked once, so that a login without the add-on's read group (or without the add-on) never calls its collector;
 	   the last, likewise, LuCI's own group for its WireGuard status: without it (or without luci-proto-wireguard) no call */
-	assert.deepEqual(probes, [ WRITE_GROUP + ' write', RDNS_GROUP + ' read', APS_VIEW_GROUP + ' read', WIREGUARD_GROUP + ' read' ]);
+	assert.deepEqual(probes, [ WRITE_GROUP + ' write', RDNS_GROUP + ' read', TRAFFIC_GROUP + ' read', APS_VIEW_GROUP + ' read', WIREGUARD_GROUP + ' read' ]);
 	assert.deepEqual(Object.keys(menu), [ 'admin/dashboard', 'admin/status/dashboard', 'admin/network/firewall/overview' ]);
 	/* luci-mod-dashboard's page, behind that package's own group: Vantage grants nothing for it */
 	assert.deepEqual(menu['admin/status/dashboard'].depends.acl, [ 'luci-mod-dashboard-index' ]);
@@ -831,8 +845,8 @@ test('negative controls: any other call no group grants, another method or form 
 		[ 'the same in the firewall overview', add(FIREWALL_VIEW, "var callWgKeys = rpc.declare({ object: 'luci.wireguard', method: 'generatePsk' });"), 'luci.wireguard generatePsk' ]
 	]) {
 		assert.notDeepEqual(mutant, sources, what + ': the mutation applies');
-		assert.deepEqual(foreignCalls(mutant), [ WIREGUARD_CALL, COLLECTOR_CALL, TILE_CALL, extra ].sort(), what);
-		assert.notDeepEqual(foreignCalls(mutant), [ WIREGUARD_CALL, COLLECTOR_CALL, TILE_CALL ], what);
+		assert.deepEqual(foreignCalls(mutant), [ TRAFFIC_CALL, WIREGUARD_CALL, COLLECTOR_CALL, TILE_CALL, extra ].sort(), what);
+		assert.notDeepEqual(foreignCalls(mutant), [ TRAFFIC_CALL, WIREGUARD_CALL, COLLECTOR_CALL, TILE_CALL ], what);
 	}
 	/* its one form: this method, no parameters, in the dashboard, once */
 	for (const [ what, mutant, why ] of [
@@ -1628,6 +1642,76 @@ test('traffic: one group, luci.vantage.traffic hosts to read and nothing else; n
 			for (const k of pairs((grp[kind] || {}).ubus)) assert.ok(!k.startsWith('luci.vantage.traffic '), `${name}.${kind}: ${k}`);
 	}
 	assert.ok(!grantedCalls().has(TRAFFIC_CALL));
+	assert.ok(declared.has(TRAFFIC_CALL));
+});
+
+/* The dashboard's side in `srcs`: one declare of the object, in the
+   dashboard, exactly TRAFFIC_DECLARE (this method, no parameters, so no
+   argument can be sent), one call, without an argument, in TRAFFIC_ASK,
+   which runs only where the probe's answer (TRAFFIC_PROBE, kept as
+   canTraffic) is yes */
+function trafficProblems(srcs) {
+	const out = [];
+	let declares = 0, calls = 0;
+	for (const { file, text } of srcs) {
+		const dash = file.endsWith('view/vantage/overview.js');
+		for (const m of text.matchAll(/^.*\bobject\s*:\s*['"]luci\.vantage\.traffic\b.*$/gm)) {
+			declares++;
+			if (!dash || m[0] !== TRAFFIC_DECLARE) out.push(`${file}: ${m[0].trim()}`);
+		}
+		for (const m of text.matchAll(/\bcallTraffic\b(\s*\(([^)]*)\))?/g)) {
+			const line = text.slice(text.lastIndexOf('\n', m.index) + 1, text.indexOf('\n', m.index) + 1);
+			if (line === TRAFFIC_DECLARE + '\n') continue;
+			if (dash && line === TRAFFIC_ASK && m[2] === '') { calls++; continue; }
+			out.push(`${file}: ${line.trim()}`);
+		}
+		/* the probe's answer: set once from it, read once, by TRAFFIC_ASK */
+		const flags = [ ...text.matchAll(/^.*(?:\.canTraffic\b|\bcanTraffic\s*:).*$/gm) ].map(m => m[0].trim());
+		if (dash) {
+			if (!text.includes(TRAFFIC_PROBE)) out.push(`${file}: the probe is not the last of load()'s batch`);
+			if (JSON.stringify(flags) !== JSON.stringify([
+				'return { board: r[1] || {}, canWrite: r[2] === true, mdns: r[4], raw: r[5], canRdns: r[6] === true, canTraffic: r[8] === true };',
+				TRAFFIC_ASK.trim(),
+				'this.canTraffic = data.canTraffic === true;'
+			])) out.push(`${file}: canTraffic: ${flags.join(' | ')}`);
+		}
+		else if (flags.length) out.push(`${file}: canTraffic`);
+	}
+	if (declares !== 1 || calls !== 1) out.push(`${declares} declares of luci.vantage.traffic, ${calls} calls`);
+	return out;
+}
+
+test('traffic: the dashboard declares the call once, without parameters, and calls it only for a login rpcd says holds the group', () => {
+	assert.deepEqual(trafficProblems(sources), []);
+	const view = sources.find(s => s.file.endsWith('view/vantage/overview.js')).text;
+	assert.ok(view.includes('\n' + TRAFFIC_DECLARE + '\n'), 'the declare, a line of its own');
+	assert.doesNotMatch(TRAFFIC_DECLARE, /\b(params|filter|nobatch)\b/);
+	assert.equal([ ...view.matchAll(/callAccess\('access-group', 'luci-app-vantage-traffic', 'read'\)/g) ].length, 1, 'asked about once');
+});
+
+test('negative controls: another form, method, argument or place of the traffic call, or a call without the group, fails', () => {
+	const DASH = 'view/vantage/overview.js';
+	const edit = (from, to) => mutate(DASH, t => { assert.ok(t.includes(from), from); return t.replace(from, to); });
+	const add = (file, code) => mutate(file, t => t + '\n' + code + '\n');
+	for (const [ what, mutant, why ] of [
+		[ 'a parameter', edit(TRAFFIC_DECLARE, TRAFFIC_DECLARE.replace("method: 'hosts',", "method: 'hosts', params: [ 'cmd' ],")), /overview\.js: var callTraffic = .*params/ ],
+		[ 'another method under the name', edit(TRAFFIC_DECLARE, TRAFFIC_DECLARE.replace("'hosts'", "'reset'")), /overview\.js: var callTraffic = .*reset/ ],
+		[ 'a second declare', add(DASH, "var callTraffic2 = rpc.declare({ object: 'luci.vantage.traffic', method: 'hosts' });"), /2 declares of luci\.vantage\.traffic/ ],
+		[ 'a declare in a module', add('vantage/model.js', TRAFFIC_DECLARE), /model\.js: var callTraffic = / ],
+		[ 'an argument', edit('L.resolveDefault(callTraffic(), null)', "L.resolveDefault(callTraffic({ cmd: 'x' }), null)"), /overview\.js: .*callTraffic\(\{ cmd/ ],
+		[ 'a second call', add(DASH, 'L.resolveDefault(callTraffic(), null);'), /overview\.js: L\.resolveDefault\(callTraffic\(\), null\);/ ],
+		[ 'called without the group', edit('slow && self.canTraffic ? L.resolveDefault(callTraffic(), null)', 'slow ? L.resolveDefault(callTraffic(), null)'), /overview\.js: slow \? L\.resolveDefault/ ],
+		[ 'the answer set elsewhere', add(DASH, 'self.canTraffic = true;'), /canTraffic: .*self\.canTraffic = true/ ],
+		[ 'the probe moved', edit("\t\t\t\tL.resolveDefault(callAccess('access-group', 'luci-app-vantage-traffic', 'read'), false)\n", "\t\t\t\tL.resolveDefault(callAccess('access-group', 'luci-app-vantage-names', 'write'), false)\n"), /the probe is not the last/ ],
+		[ 'the call passed on', add(DASH, 'var t = callTraffic;'), /overview\.js: var t = callTraffic;/ ]
+	]) {
+		assert.notDeepEqual(mutant, sources, what + ': the mutation applies');
+		assert.match(trafficProblems(mutant).join('\n'), why, what);
+	}
+	/* the dashboard's groups granting it would leave nothing foreign to allow */
+	const granting = JSON.parse(JSON.stringify(acl));
+	granting[READ_GROUP].read.ubus['luci.vantage.traffic'] = [ 'hosts' ];
+	assert.ok(pairs(granting[READ_GROUP].read.ubus).has(TRAFFIC_CALL), 'what the test above refuses');
 });
 
 /* The plugin's source rules: every line of code (comment lines left out)

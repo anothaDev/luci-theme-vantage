@@ -10,7 +10,7 @@
    usage: node server.js --mirror <dir> [--port 8025] [--theme-dir <htdocs/luci-static/name>]
                          [--theme <name>] [--templates <ucode/template dir>] [--rootfs <dir>]
                          [--app-dir <package dir>]... [--keep-uniwrt] [--[no-]synthetic] [--demo]
-                         [--wired | --big] [--multiwan] [--fullvpn] [--aps] [--wg] [--tiles]
+                         [--wired | --big] [--multiwan] [--fullvpn] [--aps] [--wg] [--tiles] [--traffic]
                          [--lang <LuCI language, e.g. de or zh_Hans>] [--fixtures <dir>]...
 
    Pages are rendered like the device does: the dispatcher logic below
@@ -47,6 +47,11 @@
    provider in tiles/ (vantage.tile.dns) and a modem stand-in, each granted
    by an ACL group of its own. Without it no session holds such a grant and
    the objects are absent, as on a device without a provider package.
+
+   --traffic answers luci.vantage.traffic hosts, luci-app-vantage-traffic's
+   per-device counters, for the wired hosts luci.vantage wired lists
+   (traffic.js), and holds that package's group. Without it the object is
+   absent and the group not held, as on a router without the package.
 
    --fixtures <dir> (repeatable) adds hand-written data for pages the
    recording lacks (fixtures.js): rpcd plugin stand-ins, uci configs, a small
@@ -88,6 +93,7 @@ const fullvpn = require('./fullvpn');
 const aps = require('./aps');
 const wg = require('./wg');
 const tiles = require('./tiles');
+const traffic = require('./traffic');
 
 /* ------------------------------------------------------------ arguments */
 
@@ -95,6 +101,7 @@ function parseArgs(argv) {
 	const o = { port: 8025, synthetic: true };
 	for (let i = 0; i < argv.length; i++) {
 		const m = /^--(mirror|port|theme-dir|theme|templates|rootfs|app-dir|lang|fixtures)(?:=(.*))?$/.exec(argv[i]);
+		if (argv[i] === '--traffic') { o.traffic = true; continue; }
 		if (!m) { if (argv[i] === '--keep-uniwrt') o.keepUniwrt = true; else if (argv[i] === '--synthetic') o.synthetic = true; else if (argv[i] === '--no-synthetic') o.synthetic = false; else if (argv[i] === '--demo') o.demo = true; else if (argv[i] === '--wired') o.wired = true; else if (argv[i] === '--big') o.big = true; else if (argv[i] === '--multiwan') o.multiwan = true; else if (argv[i] === '--fullvpn') o.fullvpn = true; else if (argv[i] === '--aps') o.aps = true; else if (argv[i] === '--wg') o.wg = true; else if (argv[i] === '--tiles') o.tiles = true; else if (argv[i] === '-h' || argv[i] === '--help') o.help = true; else o.bad = argv[i]; continue; }
 		const v = (m[2] !== undefined) ? m[2] : argv[++i];
 		if (m[1] === 'app-dir') (o.appDirs = o.appDirs || []).push(v);
@@ -104,7 +111,7 @@ function parseArgs(argv) {
 	return o;
 }
 
-const USAGE = 'usage: server.js --mirror <dir> [--port 8025] [--theme-dir <htdocs/luci-static/name>] [--theme <name>] [--templates <dir>] [--rootfs <dir>] [--app-dir <pkg>]... [--keep-uniwrt] [--no-synthetic] [--demo] [--wired | --big] [--multiwan] [--fullvpn] [--aps] [--wg] [--tiles] [--lang <lang>] [--fixtures <dir>]...';
+const USAGE = 'usage: server.js --mirror <dir> [--port 8025] [--theme-dir <htdocs/luci-static/name>] [--theme <name>] [--templates <dir>] [--rootfs <dir>] [--app-dir <pkg>]... [--keep-uniwrt] [--no-synthetic] [--demo] [--wired | --big] [--multiwan] [--fullvpn] [--aps] [--wg] [--tiles] [--traffic] [--lang <lang>] [--fixtures <dir>]...';
 const opts = parseArgs(process.argv.slice(2));
 if (opts.help || opts.bad || !opts.mirror) {
 	console.error(opts.bad ? `unknown argument ${opts.bad}\n${USAGE}` : USAGE);
@@ -499,6 +506,7 @@ for (const d of appDirs.concat(themeDir ? [ path.resolve(themeDir, '../../..') ]
 	}
 }
 if (opts.tiles) grantGroups(tiles.acl());
+if (opts.traffic) grantGroups(traffic.acl());
 
 /* ucode environment the templates see */
 function templateEnv(req, resolved, loggedIn, form) {
@@ -661,6 +669,15 @@ function ubusReply(msg) {
 	   --tiles tiles.js's, else absent */
 	if (/^vantage\.tile\./.test(object) && !store.plugins.has(object))
 		return Object.assign(reply, opts.tiles ? tiles.transform(object, method, args) : { error: { code: -32000, message: 'Object not found' } });
+	/* luci-app-vantage-traffic, its rpcd object and its ACL group: there
+	   with --traffic (traffic.js answers for the wired hosts this replay
+	   lists, as the other modes made them); else the group is not held
+	   and the object is absent, as on a router without the package */
+	if (object === 'session' && method === 'access' && args && args.scope === 'access-group' && args.object === 'luci-app-vantage-traffic')
+		return Object.assign(reply, { result: [ 0, { access: !!opts.traffic } ] });
+	if (object === 'luci.vantage.traffic')
+		return Object.assign(reply, opts.traffic ? traffic.transform(object, method, args,
+			ubusReply({ jsonrpc: '2.0', id: reply.id, method: 'call', params: [ sid, 'luci.vantage', 'wired', {} ] })) : { error: { code: -32000, message: 'Object not found' } });
 	/* luci-proto-wireguard, its rpcd object and its ACL group: there with
 	   --wg (wg.js answers the status call), or where the recording or a
 	   fixture's plugin has the object; else the group is not held and the

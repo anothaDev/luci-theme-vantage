@@ -8,7 +8,7 @@ Nothing is forwarded anywhere; there is no upstream.
         [--theme-dir <pkg>/htdocs/luci-static/<name>] [--theme <name>] \
         [--templates <pkg>/ucode/template] [--rootfs <device rootfs dump>] \
         [--app-dir <luci-app package dir>]... [--keep-uniwrt] [--no-synthetic] \
-        [--demo] [--wired | --big] [--multiwan] [--fullvpn] [--aps] [--wg] [--tiles] [--lang <lang>] [--fixtures <dir>]...
+        [--demo] [--wired | --big] [--multiwan] [--fullvpn] [--aps] [--wg] [--tiles] [--traffic] [--lang <lang>] [--fixtures <dir>]...
 
 Open <http://127.0.0.1:8025/>. Any username/password logs in; the session
 lasts until the replay restarts (log in again after a restart).
@@ -315,6 +315,22 @@ that answers a `vantage.tile.*` object answers it in either case (its
 grant comes from an `--app-dir`'s ACL file). Numbers and names are
 invented. Combine it with the other modes. The contract, and how to try
 a provider of your own here: [`docs/TILES.md`](../../docs/TILES.md).
+
+## Per-device traffic (`--traffic`)
+
+Answers `luci.vantage.traffic hosts` as luci-app-vantage-traffic's rpcd
+plugin does on a router (#110, experimental), to work on the dashboard's
+rate through the router for hosts that share a port (`traffic.js`): one
+read every 5 s, shared by every call in between, with byte counters that
+only grow for each wired host the replay's own `luci.vantage wired` lists
+(as the other modes made it), a rate per host from a hash of its MAC and
+a fifth of them idle. The session holds the package's group. Without
+`--traffic` the object is absent (uhttpd's "Object not found") and the
+group is not held, as on a router without the package, so the dashboard
+asks for nothing. Use it with `--wired` (three hosts share `lan2`) or
+`--big`: on the recorded access point every host is on the line's own
+network, where the dashboard shows no such rate. No address of either end
+is in the answer. Combine it with the other modes.
 
 ## Translation preview (`--lang`)
 
