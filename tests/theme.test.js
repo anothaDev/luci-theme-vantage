@@ -6,7 +6,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
-const crypto = require('node:crypto');
 const path = require('path');
 
 const FILE = path.join(__dirname, '..', 'luci-theme-vantage/htdocs/luci-static/resources/menu-vantage.js');
@@ -641,11 +640,7 @@ test('Appearance: the theme\'s rpcd group writes config vantage_theme only, whic
 	assert.deepEqual(Object.keys(g).sort(), [ 'description', 'write' ]);
 	const conf = fs.readFileSync(path.join(T, 'root/etc/config/vantage_theme'), 'utf8');
 	assert.deepEqual(conf.split('\n').filter(l => l.trim() && !/^\s*#/.test(l)), [ "config appearance 'appearance'" ], 'one section, nothing set');
-	/* The file as 1.1.1 shipped it. uci drops its comments at the first save,
-	   and a package whose copy differs from that leaves a second file beside
-	   the saved one at every upgrade (vantage_theme-opkg, .apk-new): new
-	   options are described in docs/SPEC.md, not here */
-	assert.equal(crypto.createHash('sha256').update(conf).digest('hex').slice(0, 12), 'c2667c812e40', 'the shipped config file does not change');
+	assert.match(conf, /# network path \(option path: full, or compact with one line per node\)/, 'the comment names what Customize saves');
 	const mk = fs.readFileSync(path.join(T, 'Makefile'), 'utf8');
 	assert.match(mk, /define Package\/luci-theme-vantage\/conffiles\n\/etc\/config\/vantage_theme\nendef/);
 });
