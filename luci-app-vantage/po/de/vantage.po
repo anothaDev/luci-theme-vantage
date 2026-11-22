@@ -54,8 +54,8 @@ msgstr "%d verbunden"
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4244
 msgid "%d connection offloaded to hardware may be missing"
 msgid_plural "%d connections offloaded to hardware may be missing"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "%d an die Hardware ausgelagerte Verbindung fehlt möglicherweise"
+msgstr[1] "%d an die Hardware ausgelagerte Verbindungen fehlen möglicherweise"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:152
 msgid "%d day ago"
@@ -724,7 +724,7 @@ msgstr "Verbindung"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5291
 msgid "Connection accounting is off on this router: per-device traffic counts nothing"
-msgstr ""
+msgstr "Die Verbindungszählung ist auf diesem Router abgeschaltet: Datenverkehr pro Gerät wird nicht erfasst"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5098
 msgid "Copied"

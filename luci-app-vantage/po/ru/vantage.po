@@ -58,9 +58,9 @@ msgstr "%d подключено"
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:4244
 msgid "%d connection offloaded to hardware may be missing"
 msgid_plural "%d connections offloaded to hardware may be missing"
-msgstr[0] ""
-msgstr[1] ""
-msgstr[2] ""
+msgstr[0] "%d соединение с аппаратным ускорением может не учитываться"
+msgstr[1] "%d соединения с аппаратным ускорением могут не учитываться"
+msgstr[2] "%d соединений с аппаратным ускорением могут не учитываться"
 
 #: luci-app-vantage/htdocs/luci-static/resources/vantage/fmt.js:152
 msgid "%d day ago"
@@ -739,7 +739,7 @@ msgstr "Соединение"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5291
 msgid "Connection accounting is off on this router: per-device traffic counts nothing"
-msgstr ""
+msgstr "Учёт соединений на этом маршрутизаторе отключён: трафик по устройствам не считается"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5098
 msgid "Copied"

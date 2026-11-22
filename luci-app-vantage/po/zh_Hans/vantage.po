@@ -711,7 +711,7 @@ msgstr "连接"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5291
 msgid "Connection accounting is off on this router: per-device traffic counts nothing"
-msgstr ""
+msgstr "此路由器已关闭连接计数：不统计各设备的流量"
 
 #: luci-app-vantage/htdocs/luci-static/resources/view/vantage/overview.js:5098
 msgid "Copied"
