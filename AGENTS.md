@@ -88,8 +88,10 @@ add-ons to it) plus offline tooling. No npm, no
    commit message. Point out any ACL change to the human.
    The dashboard starts one program: its executable rpcd plugin
    `luci.vantage.ports` runs `/usr/sbin/ethtool -S` with the name of one
-   of the device's own DSA ports and nothing else (#156); the ports, the
-   name rule, the caps and that command line are pinned in
+   of the device's own DSA ports and nothing else (#156), one call at a
+   time, through `popen`, which hands that line to `/bin/sh -c`; the
+   ports, the name rule (no character the shell reads), the caps and
+   that command line are pinned in
    `test_acl_policy.js`, and `luci.vantage` and every other file of the
    dashboard and the theme start nothing (but the theme's uci-defaults
    script, which the package manager runs at install). Apart from that, the add-on
