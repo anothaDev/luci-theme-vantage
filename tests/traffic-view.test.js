@@ -115,7 +115,7 @@ function page(m, answers) {
 	const self = Object.create(dview);
 	Object.assign(self, { m, ui: {}, el: {}, quiet: {}, canWrite: false });
 	self.st = { staRates: {}, devRates: { lan1: { rx: 7e6, tx: 7e6 }, lan2: { rx: 1000, tx: 3000 } }, clientHist: {}, gone: [],
-		traffic: null, trafficRates: null, trafficPrev: null, trafficSeen: 0 };
+		traffic: null, trafficRates: null, trafficPrev: null, trafficSeen: 0, trafficNew: 0 };
 	for (const a of answers || []) self.noteTraffic(a);
 	return self;
 }
@@ -202,6 +202,43 @@ test('traffic view: a read given twice keeps its rates; a failed call keeps them
 	self.noteTraffic(null);
 	assert.equal(self.listRate(printer), null, 'then none, not an old rate shown as current');
 	assert.equal(live(self, printer).textContent, fmt.DASH);
+	/* the same read given on and on (the plugin reads no more): its rates
+	   stand twice its every, then none, as for a failed call; a new read
+	   starts over from itself, not from the old one */
+	const stuck = page(m, [ ANSWER(1000, 0), ANSWER(6000, 1) ]);
+	now += 10000;
+	stuck.noteTraffic(ANSWER(6000, 1));
+	assert.deepEqual(stuck.listRate(printer), { rx: 1600, tx: 16000 }, 'twice its every: kept');
+	now += 1;
+	stuck.noteTraffic(ANSWER(6000, 1));
+	assert.equal(stuck.listRate(printer), null, 'longer: none');
+	assert.equal(live(stuck, printer).textContent, fmt.DASH);
+	stuck.noteTraffic(ANSWER(6000, 1));
+	assert.equal(stuck.listRate(printer), null, 'and none while it lasts');
+	stuck.noteTraffic(ANSWER(611000, 2));
+	assert.equal(stuck.listRate(printer), null, 'the next read: a base, not a rate over the stall');
+	now += 5000;
+	stuck.noteTraffic(ANSWER(616000, 3));
+	assert.deepEqual(stuck.listRate(printer), { rx: 1600, tx: 16000 });
+	/* a slow plugin's every (2 minutes) or this page's slow poll (Low-power router, 30 s): the same read is usual that long */
+	const slow = page(m, [ ANSWER(1000, 0, { every: 120000 }), ANSWER(121000, 1, { every: 120000 }) ]);
+	now += 240000;
+	slow.noteTraffic(ANSWER(121000, 1, { every: 120000 }));
+	assert.notEqual(slow.listRate(printer), null, 'twice a slow every: kept');
+	now += 1;
+	slow.noteTraffic(ANSWER(121000, 1, { every: 120000 }));
+	assert.equal(slow.listRate(printer), null);
+	const doc = global.document;
+	global.document = Object.assign({}, doc, { documentElement: { getAttribute: k => k === 'data-vt-power' ? 'low' : null } });
+	try {
+		const low = page(m, [ ANSWER(1000, 0), ANSWER(6000, 1) ]);
+		now += 60000;
+		low.noteTraffic(ANSWER(6000, 1));
+		assert.notEqual(low.listRate(printer), null, 'twice the slow poll of a Low-power page: kept');
+		now += 1;
+		low.noteTraffic(ANSWER(6000, 1));
+		assert.equal(low.listRate(printer), null);
+	} finally { global.document = doc; }
 	/* the read stopped short, connections offloaded to hardware, counters reset by another program */
 	const noted = page(m, [ ANSWER(1000, 0), ANSWER(31000, 6, { partial: 'time', hw: 3, zeroed: 2, every: 30000 }) ]);
 	const text = details(noted, printer);

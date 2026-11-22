@@ -1566,7 +1566,7 @@ return view.extend({
 			wireless: null,
 			wg: [], wgSeen: false, wgPrev: null, wgRates: Object.create(null),
 			portsSeen: false,
-			traffic: null, trafficRates: null, trafficPrev: null, trafficSeen: 0,
+			traffic: null, trafficRates: null, trafficPrev: null, trafficSeen: 0, trafficNew: 0,
 			ext: Object.create(null),
 			lastOk: 0, lastErr: null, paused: false
 		};
@@ -4483,22 +4483,28 @@ return view.extend({
 	   none came; null: a failed call): the rates between its last two reads,
 	   by MAC, in st.trafficRates, and the answer in st.traffic. A failed
 	   call keeps them two slow polls, then none: no rate rather than an
-	   old one shown as current */
+	   old one shown as current. So does a read given again for longer
+	   than twice its every, or twice this page's slow poll (st.trafficNew:
+	   when the read came first): the plugin answers its last read while
+	   one runs or within its every, but no longer than that */
 	noteTraffic: function(reply) {
 		if (reply === undefined) return;
-		var st = this.st, now = Date.now(), t = model.trafficHosts(reply);
+		var st = this.st, now = Date.now(), t = model.trafficHosts(reply), slowMs = lowPower() ? LOW_SLOW_MS : POLL_S * 1000;
 		if (!t) {
-			if (st.traffic && !(now - st.trafficSeen <= 2 * (lowPower() ? LOW_SLOW_MS : POLL_S * 1000)))
+			if (st.traffic && !(now - st.trafficSeen <= 2 * slowMs))
 				st.traffic = st.trafficRates = st.trafficPrev = null;
 			return;
 		}
 		st.trafficSeen = now;
-		/* a read the plugin already gave: its rates stand */
+		/* a read the plugin already gave: its rates stand, a while */
 		if (!st.traffic || st.traffic.at !== t.at) {
 			var r = model.rates(st.trafficPrev, t.counters, t.at);
 			st.trafficPrev = r.next;
 			st.trafficRates = r.rates;
+			st.trafficNew = now;
 		}
+		else if (!(now - st.trafficNew <= 2 * Math.max(t.every, slowMs)))
+			st.trafficRates = st.trafficPrev = null;
 		st.traffic = t;
 	},
 
