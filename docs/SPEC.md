@@ -982,7 +982,7 @@ the contract. For provider authors: [`docs/TILES.md`](TILES.md).
   the checked steps), the note, and the items in a grid: a label over
   its value, a counter as its rate between two answers, a meter for
   `max`, the page's own five minutes of a `trend` value as a bare line
-  (90 points at most an item). Title, note and labels are looked up in
+  from its lowest to its highest value (90 points at most an item). Title, note and labels are looked up in
   LuCI's catalogues (`_()`), so a provider's own catalogue translates
   them; a `text` value is shown as it came. An answer that cannot be
   read keeps the tile's last title, icon and link. The page keeps

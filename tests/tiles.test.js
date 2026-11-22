@@ -628,6 +628,22 @@ test('the page keeps the dashboard\'s reading of an answer, never the answer: a 
 	assert.equal(a.dns.data.items.length, 5, 'its four, and one of the forty long labels: cut alike, one a label');
 }));
 
+test('a trend is drawn between the lowest and the highest value of its window: levels in dBm make a line, not a flat one', () => withDom(() => {
+	const at = k => 1e12 + k * 15e3;
+	const ys = (values, unit) => {
+		const reply = v => ({ v: 1, title: 'Modem', items: [ { label: 'Level', value: v, unit, trend: true } ] });
+		const self = page({ modem: ans(reply(values[0])) });
+		values.slice(1).forEach((v, k) => self.noteTiles(self.m, { modem: ans(reply(v), { at: at(k + 1) }) }, at(k + 1)));
+		self.paintTiles();
+		const d = self.tiles.xmodem.find('vt-spark-line')[0].getAttribute('d');
+		return [ ...d.matchAll(/[ML][\d.]+ ([\d.]+)/g) ].map(m => +m[1]);
+	};
+	/* 26 units high: the lowest at the bottom, the highest at the top */
+	assert.deepEqual(ys([ -97, -103, -91, -100 ], 'dBm'), [ 13, 26, 0, 19.5 ]);
+	assert.deepEqual(ys([ 40, 46, 52 ], ''), [ 26, 13, 0 ], 'the same for values above zero');
+	assert.deepEqual(ys([ -97, -97, -97 ], 'dBm'), [ 13, 13, 13 ], 'one that holds still: across the middle');
+}));
+
 test('a provider\'s dBm and MHz: 0 is a value, a fraction has three digits, in the dashboard\'s forms', () => withDom(() => {
 	const self = page({ modem: ans({ v: 1, title: 'Modem', items: [
 		{ label: 'TX', value: 0, unit: 'dBm' }, { label: 'RSRP', value: -97.123456, unit: 'dBm' }, { label: 'RSSI', value: -65, unit: 'dBm' },

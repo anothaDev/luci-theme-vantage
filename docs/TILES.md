@@ -82,7 +82,7 @@ item: { label, value | text, unit?, rate?, max?, level?, trend? }
 | `rate` | `true` | The value is a counter (0 or more, unit `''` or `B`): the tile shows its rate between two answers, `/s` for a count and traffic for bytes. |
 | `max` | a number above 0 | A thin meter, value of max. Not with `rate`. |
 | `level` | `ok`, `warn`, `err` or `off` | The value's colour: amber for `warn`, red for `err`, grey for `off`; `warn` and `err` also as a word for screen readers. |
-| `trend` | `true` | The page keeps this value (5 minutes) and draws a small line of it. Values only. |
+| `trend` | `true` | The page keeps this value (5 minutes) and draws a small line of it, from its lowest to its highest value in that time. Values only. |
 
 Text is cut to its length with an ellipsis, and control, bidirectional
 and invisible characters are replaced with `�`. Numbers come out as

@@ -696,6 +696,16 @@ function tileValue(x, perSec) {
 	}
 	return tileNum(v);
 }
+/* the page's values of an item (trend) as a bare line between their
+   lowest and their highest: a provider's numbers may all be below zero
+   (a level in dBm), where a sparkline's scale starts at 0. One that
+   holds still: a line across the middle */
+function tileTrend(hist) {
+	var lo = Infinity, hi = -Infinity;
+	hist.forEach(function(p) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); });
+	var span = hi - lo;
+	return sparkline(hist.map(function(p) { return [ p[0], span > 0 ? p[1] - lo : 1 ]; }), [ 1 ], span > 0 ? span : 2, 'vt-spark-ext', { quiet: true, bare: true });
+}
 /* value of max as a thin bar, in the level's colours */
 function tileMeter(x) {
 	var f = E('span', { 'class': 'vt-bar-fill' + (x.level === 'err' ? ' vt-bg-err' : x.level === 'warn' ? ' vt-bg-warn' : '') });
@@ -5232,7 +5242,7 @@ return view.extend({
 					E('span', { 'class': 'vt-label' }, [ _(x.label) ]),
 					E('span', { 'class': 'vt-ext-val vt-tn' + level }, [ tileValue(x, r ? r.rx / 8 : null) ].concat(x.level === 'err' || x.level === 'warn' ? [ E('span', { 'class': 'vt-sr' }, [ ' ' + (x.level === 'err' ? _('Error') : _('Warning')) ]) ] : [])),
 					x.max != null ? tileMeter(x) : '',
-					x.trend ? sparkline(t.hist[x.label] || [], [ 1 ], 0, 'vt-spark-ext', { quiet: true, bare: true }) : ''
+					x.trend ? tileTrend(t.hist[x.label] || []) : ''
 				]);
 			})) : ''
 		]);
