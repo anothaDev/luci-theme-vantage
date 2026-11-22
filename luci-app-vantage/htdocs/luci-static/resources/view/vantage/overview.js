@@ -141,8 +141,11 @@ var callCollector = rpc.declare({ object: 'vantage.collector', method: 'report',
    and to each host as this router's connection tracking counts them, by
    MAC, one read shared by every caller. No group of the dashboard grants
    it: the package's own does, so only a login that holds that one asks
-   (canTraffic, looked up once a page). It takes no argument */
-var callTraffic = rpc.declare({ object: 'luci.vantage.traffic', method: 'hosts', expect: { '': {} } });
+   (canTraffic, looked up once a page). It takes no argument. In a request
+   of its own (nobatch), never waited for (takeTraffic): rpcd runs the
+   plugin as a process, and a read of a large table takes it a second or
+   two */
+var callTraffic = rpc.declare({ object: 'luci.vantage.traffic', method: 'hosts', expect: { '': {} }, nobatch: true });
 /* LuCI's own (luci-proto-wireguard's rpcd plugin, its status page's
    call): every WireGuard interface with its peers, without private or
    preshared keys; it takes no argument and writes nothing. No group of
@@ -1057,7 +1060,7 @@ return view.extend({
 				/* reverse DNS is an optional grant: without it, skip it quietly */
 				L.resolveDefault(callAccess('access-group', 'luci-app-vantage-rdns', 'read'), false),
 				L.resolveDefault(ui.menu.load(), null),
-				/* per-device traffic is a package and a group of its own: without either, no call (fetch) */
+				/* per-device traffic is a package and a group of its own: without either, no call (takeTraffic) */
 				L.resolveDefault(callAccess('access-group', 'luci-app-vantage-traffic', 'read'), false)
 			]);
 		}).then(function(r) {
@@ -1258,6 +1261,18 @@ return view.extend({
 		return out;
 	},
 
+	/* luci-app-vantage-traffic's answer for a poll: the one that came in
+	   since the last poll (undefined: none; null: a failed call). With the
+	   slow part, a login that may ask (canTraffic) asks again, one call at
+	   a time, and no poll waits for it: its answer is the next poll's */
+	takeTraffic: function(slow) {
+		var self = this, got = this.trafficGot;
+		this.trafficGot = undefined;
+		if (slow && this.canTraffic && !this.trafficCall)
+			this.trafficCall = L.resolveDefault(callTraffic(), null).then(function(v) { self.trafficGot = v; self.trafficCall = null; });
+		return got;
+	},
+
 	/* one poll's worth of raw replies; missing pieces degrade to {} */
 	fetch: function() {
 		var started = Date.now(), self = this;
@@ -1277,6 +1292,7 @@ return view.extend({
 		var tunnels = slow ? this.askWireguard() : Promise.resolve(this.wgLast || null);
 		/* and so do the provider tiles (askTiles): their last answers between slow polls */
 		var provided = slow ? this.askTiles() : Promise.resolve(this.tileAnswers());
+		var traffic = this.takeTraffic(slow);
 		return Promise.all([
 			L.resolveDefault(callInfo(), {}),
 			L.resolveDefault(callRead('/proc/stat'), ''),
@@ -1289,10 +1305,7 @@ return view.extend({
 			slow ? L.resolveDefault(callThermal(), null) : Promise.resolve(kept.thermal),
 			slow ? L.resolveDefault(callWired(), null) : Promise.resolve(kept.wired),
 			/* null when the call fails (an older plugin): netifd's metrics decide */
-			L.resolveDefault(callRoutes(), null),
-			/* per-device traffic with the slow part, for a login that may
-			   ask (canTraffic); undefined when not asked, null for a failed call */
-			slow && self.canTraffic ? L.resolveDefault(callTraffic(), null) : Promise.resolve(undefined)
+			L.resolveDefault(callRoutes(), null)
 		]).then(function(r) {
 			var wifiDevs = (r[4] && typeof r[4] === 'object') ? r[4] : null;
 			var wiredReply = (r[7] && typeof r[7] === 'object') ? r[7] : {};
@@ -1428,7 +1441,7 @@ return view.extend({
 					/* no answer (an older plugin, a lookup not sent, a failed call)
 					   keeps the last one: no tunnel blinking off */
 					routes: r[8] && Array.isArray(r[8].routes) ? (self.kernelRoutes = r[8].routes) : (self.kernelRoutes || null),
-					collector: null, wg: null, provided: null, traffic: r[9],
+					collector: null, wg: null, provided: null, traffic: traffic,
 					assoc: assoc, hapd: hapd, hapdStatus: hapdStatus, iwinfo: iwinfo, survey: survey, at: Date.now(), started: started };
 				return Promise.all([ collected, tunnels, provided ]).then(function(x) { raw.collector = self.collectorAnswer(); raw.wg = x[1]; raw.provided = x[2]; return raw; });
 			});
@@ -4357,8 +4370,8 @@ return view.extend({
 		return c.shared && c.behind && c.behind.rate ? c.behind.rate : c.shared ? this.trafficRate(c) : this.portRate(c);
 	},
 
-	/* luci-app-vantage-traffic's answer for a slow poll (undefined: not
-	   asked; null: a failed call): the rates between its last two reads,
+	/* luci-app-vantage-traffic's answer for a poll (takeTraffic; undefined:
+	   none came; null: a failed call): the rates between its last two reads,
 	   by MAC, in st.trafficRates, and the answer in st.traffic. A failed
 	   call keeps them two slow polls, then none: no rate rather than an
 	   old one shown as current */

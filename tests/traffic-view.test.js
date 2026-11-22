@@ -248,29 +248,56 @@ async function polls(may, fn) {
 	}
 }
 
-test('traffic view: a login without the group never calls; with it, once a slow poll, without an argument', async () => {
+test('traffic view: a login without the group never calls; with it, once a slow poll, without an argument, and no poll waits for it', async () => {
+	const flush = () => new Promise(r => setImmediate(r));
 	await polls(false, async c => {
-		for (let i = 0; i < 6; i++) { assert.equal((await c.self.fetch()).traffic, undefined); c.t += 5000; }
+		for (let i = 0; i < 6; i++) { assert.equal((await c.self.fetch()).traffic, undefined); await flush(); c.t += 5000; }
 		assert.equal(c.asked, 0);
 	});
 	await polls(undefined, async c => {
 		await c.self.fetch();
+		await flush();
 		assert.equal(c.asked, 0, 'load()\'s own first poll, before the answer about the group');
 	});
 	await polls(true, async c => {
 		const a = await c.self.fetch();
-		assert.deepEqual([ c.asked, c.args, a.traffic.at ], [ 1, [], 1000 ]);
+		assert.deepEqual([ c.asked, c.args, a.traffic ], [ 1, [], undefined ], 'asked, and the poll goes on without it');
+		await flush();
 		c.t += 5000;
-		await c.self.fetch();
-		assert.equal(c.asked, 2, 'every poll that has a slow part');
+		const b = await c.self.fetch();
+		assert.deepEqual([ c.asked, b.traffic.at ], [ 2, 1000 ], 'its answer is the next poll\'s; asked again');
+		/* a call that stays out: no second one beside it, and no poll waits */
+		let hold;
+		c.reply = () => new Promise(r => { hold = r; });
+		await flush();
+		c.t += 5000;
+		const d = await c.self.fetch();
+		c.t += 5000;
+		const e = await c.self.fetch();
+		assert.deepEqual([ c.asked, e.traffic ], [ 3, undefined ], 'one at a time');
+		hold(ANSWER(11000, 2));
+		await flush();
+		c.t += 5000;
+		assert.equal((await c.self.fetch()).traffic.at, 11000, 'late, then the next poll\'s');
+		assert.ok(d);
+		/* the call that poll made, settled */
+		c.reply = () => Promise.resolve(ANSWER(1000, 0));
+		hold(ANSWER(16000, 3));
+		await flush();
 		/* Low-power router: the slow part every 30 s, and the call with it */
+		const before = c.asked;
 		c.low = true;
 		c.t += 30000;
 		await c.self.fetch();
+		await flush();
 		c.t += 5000;
-		const kept = await c.self.fetch();
-		assert.deepEqual([ c.asked, kept.traffic ], [ 3, undefined ], 'between slow polls: not asked');
+		await c.self.fetch();
+		await flush();
+		assert.equal(c.asked, before + 1, 'between slow polls: not asked');
 		c.reply = () => Promise.reject(new Error('RPC call to luci.vantage.traffic/hosts failed with error -32000: Object not found'));
+		c.t += 30000;
+		await c.self.fetch();
+		await flush();
 		c.t += 30000;
 		assert.equal((await c.self.fetch()).traffic, null, 'a failed call is null');
 	});

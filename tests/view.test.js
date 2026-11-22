@@ -2386,7 +2386,7 @@ test('paired access points: the collector\'s call is a request of its own, and a
 	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
 	/* LuCI sends the calls of one moment as one request and answers them together, unless one says nobatch */
 	const alone = [ ...src.matchAll(/rpc\.declare\(\{ object: '([^']+)', method: '([^']+)'[^\n]*\bnobatch: true[^\n]*\}\)/g) ].map(m => m[1] + ' ' + m[2]);
-	assert.deepEqual(alone, [ 'vantage.collector report' ]);
+	assert.deepEqual(alone, [ 'vantage.collector report', 'luci.vantage.traffic hosts' ]);
 
 	/* it does not answer: the device's own calls are made and answered as always */
 	const first = c.poll();

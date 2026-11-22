@@ -201,14 +201,17 @@ const COLLECTOR_CALL = 'vantage.collector report';
    dashboard asks rpcd once a page whether the login holds that group
    (TRAFFIC_PROBE, in the batch load() sends anyway) and calls only then
    (TRAFFIC_ASK); without the package there is no such group and no call.
-   Declared in this one form, called in that one place. */
+   Declared in this one form, a request of its own (the plugin is a
+   process of rpcd's, and a read may take seconds: no poll waits for it),
+   called in that one place. */
 const TRAFFIC_CALL = 'luci.vantage.traffic hosts';
 const TRAFFIC_GROUP = 'luci-app-vantage-traffic';
-const TRAFFIC_DECLARE = "var callTraffic = rpc.declare({ object: 'luci.vantage.traffic', method: 'hosts', expect: { '': {} } });";
+const TRAFFIC_DECLARE = "var callTraffic = rpc.declare({ object: 'luci.vantage.traffic', method: 'hosts', expect: { '': {} }, nobatch: true });";
 const TRAFFIC_PROBE = "\t\t\t\tL.resolveDefault(ui.menu.load(), null),\n" +
-	"\t\t\t\t/* per-device traffic is a package and a group of its own: without either, no call (fetch) */\n" +
+	"\t\t\t\t/* per-device traffic is a package and a group of its own: without either, no call (takeTraffic) */\n" +
 	"\t\t\t\tL.resolveDefault(callAccess('access-group', 'luci-app-vantage-traffic', 'read'), false)\n\t\t\t]);\n\t\t}).then(function(r) {\n";
-const TRAFFIC_ASK = "\t\t\tslow && self.canTraffic ? L.resolveDefault(callTraffic(), null) : Promise.resolve(undefined)\n";
+const TRAFFIC_ASK = "\t\tif (slow && this.canTraffic && !this.trafficCall)\n" +
+	"\t\t\tthis.trafficCall = L.resolveDefault(callTraffic(), null).then(function(v) { self.trafficGot = v; self.trafficCall = null; });\n";
 /* And LuCI's own WireGuard status (luci-proto-wireguard's rpcd plugin):
    `wg show all dump` by interface, each with its peers (name, public key,
    endpoint, allowed IPs, last handshake, byte counters, keepalive); the
@@ -1654,9 +1657,9 @@ test('traffic: one group, luci.vantage.traffic hosts to read and nothing else; n
 
 /* The dashboard's side in `srcs`: one declare of the object, in the
    dashboard, exactly TRAFFIC_DECLARE (this method, no parameters, so no
-   argument can be sent), one call, without an argument, in TRAFFIC_ASK,
-   which runs only where the probe's answer (TRAFFIC_PROBE, kept as
-   canTraffic) is yes */
+   argument can be sent; a request of its own), one call, without an
+   argument, in TRAFFIC_ASK, which runs only where the probe's answer
+   (TRAFFIC_PROBE, kept as canTraffic) is yes */
 function trafficProblems(srcs) {
 	const out = [];
 	let declares = 0, calls = 0;
@@ -1669,7 +1672,7 @@ function trafficProblems(srcs) {
 		for (const m of text.matchAll(/\bcallTraffic\b(\s*\(([^)]*)\))?/g)) {
 			const line = text.slice(text.lastIndexOf('\n', m.index) + 1, text.indexOf('\n', m.index) + 1);
 			if (line === TRAFFIC_DECLARE + '\n') continue;
-			if (dash && line === TRAFFIC_ASK && m[2] === '') { calls++; continue; }
+			if (dash && TRAFFIC_ASK.endsWith('\n' + line) && text.includes(TRAFFIC_ASK) && m[2] === '') { calls++; continue; }
 			out.push(`${file}: ${line.trim()}`);
 		}
 		/* the probe's answer: set once from it, read once, by TRAFFIC_ASK */
@@ -1678,7 +1681,7 @@ function trafficProblems(srcs) {
 			if (!text.includes(TRAFFIC_PROBE)) out.push(`${file}: the probe is not the last of load()'s batch`);
 			if (JSON.stringify(flags) !== JSON.stringify([
 				'return { board: r[1] || {}, canWrite: r[2] === true, mdns: r[4], raw: r[5], canRdns: r[6] === true, canTraffic: r[8] === true };',
-				TRAFFIC_ASK.trim(),
+				'if (slow && this.canTraffic && !this.trafficCall)',
 				'this.canTraffic = data.canTraffic === true;'
 			])) out.push(`${file}: canTraffic: ${flags.join(' | ')}`);
 		}
@@ -1692,7 +1695,8 @@ test('traffic: the dashboard declares the call once, without parameters, and cal
 	assert.deepEqual(trafficProblems(sources), []);
 	const view = sources.find(s => s.file.endsWith('view/vantage/overview.js')).text;
 	assert.ok(view.includes('\n' + TRAFFIC_DECLARE + '\n'), 'the declare, a line of its own');
-	assert.doesNotMatch(TRAFFIC_DECLARE, /\b(params|filter|nobatch)\b/);
+	assert.doesNotMatch(TRAFFIC_DECLARE, /\b(params|filter)\b/);
+	assert.match(TRAFFIC_DECLARE, /, nobatch: true \}\);$/, 'a request of its own: no poll waits for a read');
 	assert.equal([ ...view.matchAll(/callAccess\('access-group', 'luci-app-vantage-traffic', 'read'\)/g) ].length, 1, 'asked about once');
 });
 
@@ -1707,7 +1711,8 @@ test('negative controls: another form, method, argument or place of the traffic 
 		[ 'a declare in a module', add('vantage/model.js', TRAFFIC_DECLARE), /model\.js: var callTraffic = / ],
 		[ 'an argument', edit('L.resolveDefault(callTraffic(), null)', "L.resolveDefault(callTraffic({ cmd: 'x' }), null)"), /overview\.js: .*callTraffic\(\{ cmd/ ],
 		[ 'a second call', add(DASH, 'L.resolveDefault(callTraffic(), null);'), /overview\.js: L\.resolveDefault\(callTraffic\(\), null\);/ ],
-		[ 'called without the group', edit('slow && self.canTraffic ? L.resolveDefault(callTraffic(), null)', 'slow ? L.resolveDefault(callTraffic(), null)'), /overview\.js: slow \? L\.resolveDefault/ ],
+		[ 'called without the group', edit('if (slow && this.canTraffic && !this.trafficCall)', 'if (slow && !this.trafficCall)'), /0 calls|canTraffic: / ],
+		[ 'in the poll\'s batch', edit(TRAFFIC_DECLARE, TRAFFIC_DECLARE.replace(', nobatch: true', '')), /overview\.js: var callTraffic = / ],
 		[ 'the answer set elsewhere', add(DASH, 'self.canTraffic = true;'), /canTraffic: .*self\.canTraffic = true/ ],
 		[ 'the probe moved', edit("\t\t\t\tL.resolveDefault(callAccess('access-group', 'luci-app-vantage-traffic', 'read'), false)\n", "\t\t\t\tL.resolveDefault(callAccess('access-group', 'luci-app-vantage-names', 'write'), false)\n"), /the probe is not the last/ ],
 		[ 'the call passed on', add(DASH, 'var t = callTraffic;'), /overview\.js: var t = callTraffic;/ ]
