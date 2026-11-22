@@ -69,7 +69,7 @@ item: { label, value | text, unit?, rate?, max?, level?, trend? }
 | `icon` | `pulse`, `globe`, `signal`, `port`, `lock`, `cpu`, `memory`, `disk`, `router`, `wifi` or `users` | The dashboard's own drawing of that name in the head; anything else is `pulse`. |
 | `state` | `ok`, `warn`, `err` or `off` | A dot in the head: green, amber, red or grey, with "Warning" or "Error" for screen readers. Never one of the dashboard's health checks, and never the mark in the page title. |
 | `note` | text, up to 64 characters | One line under the head, looked up in LuCI's catalogues. |
-| `every` | a whole number of seconds, 5 to 300 | How often your data changes: the dashboard asks no more often than that. Without it, with every slow poll. |
+| `every` | a whole number of seconds, 5 to 300 | How often your data changes: the dashboard asks again no sooner than that after it last asked, at the first slow poll after that. Without it, with every slow poll. |
 | `page` | a LuCI page by its menu path: `admin` and 1 to 4 more steps of `A-Z a-z 0-9 _ -`, up to 32 characters each (`admin/network/dhcp`) | A link in the head, named with LuCI's own title for that page, only where this login's menu has the page. |
 | `items` | a list | At most 8 are shown, of the first 32 looked at. |
 
@@ -99,9 +99,9 @@ those characters.
 - At most three providers a page, the first three by id. A fourth is
   not asked and has no tile, without a word.
 - It asks with the slow part of its poll (every 5 s; every 30 s on a
-  Low-power router), no more often than `every`, in a request of its
-  own, and waits for the answer 2 s at most. An answer still out is not
-  asked again beside itself; it shows when it comes.
+  Low-power router), never sooner than `every` after it last asked, in
+  a request of its own, and waits for the answer 2 s at most. An answer
+  still out is not asked again beside itself; it shows when it comes.
 - An answer that took over half a second makes it wait ten times as
   long before it asks again, four minutes at most: rpcd runs a ucode
   method inside its own process and answers nobody else meanwhile. A

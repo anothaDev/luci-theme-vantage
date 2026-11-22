@@ -953,8 +953,9 @@ the contract. For provider authors: [`docs/TILES.md`](TILES.md).
   called in one place, for ids from the session's ACL. No group of the
   dashboard or the add-on grants a `vantage.tile.` object.
 - **Cost.** A provider is asked with the slow part of the poll (every
-  poll; every 30 s on a Low-power router), no more often than its
-  `every`, and not while its call is out; the poll waits for it 2 s at
+  poll; every 30 s on a Low-power router), never sooner than its
+  `every` after the last question (at the first slow poll after that),
+  and not while its call is out; the poll waits for it 2 s at
   most (also at page load, so a slow provider delays the first paint by
   up to 2 s), and a late answer is the next poll's. After an answer
   that took over 500 ms the next call waits ten times as long, four

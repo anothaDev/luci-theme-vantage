@@ -1294,9 +1294,10 @@ return view.extend({
 			if (a.reply) { s.answered = true; s.last = { data: d, at: at }; }
 			s.failed = !a.reply;
 			/* asked again: a minute on when it went away; ten times as late
-			   as a slow answer took (slowWait); else when its data changes (every) */
-			var wait = a.absent ? TILE_RETRY_MS : slowWait(took, TILE_SLOW_MS) || (d && d.every ? d.every * 1000 - POLL_S * 500 : 0);
-			s.wait = wait > 0 ? { from: at, until: at + wait } : null;
+			   as a slow answer took (slowWait); and never sooner than its
+			   data changes (every) after this question */
+			var until = Math.max(at + (a.absent ? TILE_RETRY_MS : slowWait(took, TILE_SLOW_MS)), d && d.every ? asked + d.every * 1000 : 0);
+			s.wait = until > at ? { from: asked, until: until } : null;
 		});
 		return s.call;
 	},

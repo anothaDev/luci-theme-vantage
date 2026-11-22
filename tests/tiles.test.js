@@ -311,6 +311,21 @@ test('a provider is asked with the slow poll, no more often than its data change
 	assert.equal(c.asked('dns'), 9);
 }));
 
+test('a provider is never asked sooner than its every after the last question: at the first poll after that', async () => {
+	for (const took of [ 0, 300 ]) for (const every of [ 5, 6, 7, 8, 9, 10, 12, 13, 17, 23, 300 ]) await tilePolls(async c => {
+		c.acl = dump({ 'vantage.tile.dns': [ 'status' ] });
+		/* when each question was made: the call's answer comes `took` later */
+		const at = [];
+		c.answer.dns = () => { at.push(c.t - took); return Promise.resolve({ v: 1, title: 'T', every, items: [] }); };
+		c.took = took;
+		await c.poll(0);
+		for (let i = 0; i < 200; i++) { c.took = took; await c.poll(5e3); }
+		const gaps = at.slice(1).map((t, i) => t - at[i]);
+		assert.ok(gaps.length >= 3, every + ' s: asked ' + at.length + ' times');
+		for (const g of gaps) assert.ok(g >= every * 1000 && g < every * 1000 + 5e3 + took, every + ' s, calls of ' + took + ' ms: a question ' + g + ' ms after the last');
+	});
+});
+
 test('after a slow answer the wait is four minutes at most; a call that was out while the computer slept makes none', () => tilePolls(async c => {
 	c.acl = dump({ 'vantage.tile.dns': [ 'status' ] });
 	c.answer.dns = () => Promise.resolve({ v: 1, title: 'T', items: [ { label: 'a', value: c.t } ] });
