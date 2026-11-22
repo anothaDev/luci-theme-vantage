@@ -1464,6 +1464,19 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-port-rates { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: var(--vt-fs-sm); font-weight: var(--vt-fw-semibold); white-space: nowrap; }
 .vt-app .vt-port-note { font-size: var(--vt-fs-micro); color: var(--vt-text-3); }
 
+/* Provider tiles (#129): another package's data, drawn here: a note,
+   then its items, as many in a row as fit, each a label over its value
+   with a meter or the page's values of it under it */
+.vt-app .vt-ext { display: flex; flex-direction: column; gap: var(--vt-sp-2); }
+.vt-app .vt-ext-note { margin: 0; }
+.vt-app .vt-ext-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 112px), 1fr)); gap: var(--vt-sp-3) var(--vt-sp-4); }
+.vt-app .vt-ext-item { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.vt-app .vt-ext-item .vt-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vt-app .vt-ext-val { font-size: var(--vt-fs-lg); font-weight: var(--vt-fw-semibold); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vt-app .vt-ext-bar { margin-top: 2px; }
+.vt-app .vt-ext-item .vt-spark { height: 22px; }
+.vt-app .vt-spark-ext { --vt-sc: var(--vt-chart-1); }
+
 /* ------------------------------------------------------------ 11. drawer */
 
 .vt-app .vt-drawer-back {

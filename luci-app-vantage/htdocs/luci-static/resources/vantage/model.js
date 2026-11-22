@@ -58,6 +58,20 @@ var WG_CIDR = /^[0-9A-Fa-f.:]{2,45}[/]\d{1,3}$/;
    now, past it nothing has passed since */
 var WG_RECENT_S = 180;
 
+/* Provider tiles (#129): what another package's provider may hand the
+   dashboard (model.tile), version 1 of the contract. Caps and forms the
+   page holds every answer to, whatever the provider did */
+var TILE_V = 1, MAX_TILE_ITEMS = 8;
+var TILE_LEVELS = [ 'ok', 'warn', 'err', 'off' ];
+var TILE_UNITS = [ '', '%', 'ms', 's', 'dBm', 'dB', 'MHz', 'B', 'bit/s' ];
+/* the dashboard's own icons a provider may name; any other is the first */
+var TILE_ICONS = [ 'pulse', 'globe', 'signal', 'port', 'lock', 'cpu', 'memory', 'disk', 'router', 'wifi', 'users' ];
+/* a LuCI page as its menu path: admin and one to four more steps */
+var TILE_PAGE = /^admin(\/[A-Za-z0-9_-]{1,32}){1,4}$/;
+var TILE_EVERY_MIN = 5, TILE_EVERY_MAX = 300;
+/* |value| below this: a counter of bytes or events, never a float's noise */
+var TILE_NUM_MAX = 1e15;
+
 /* the Ethernet ports the Ports tile lists at most: a 48-port switch with
    its uplinks fits */
 var MAX_PORTS = 64;
@@ -894,6 +908,73 @@ return baseclass.extend({
 			out.push({ name: ifname, port: count(x.listen_port, 65535) || null, peers: peers });
 		});
 		return out;
+	},
+
+	/* --------------------------------------------------- provider tiles */
+
+	/* A provider's answer (vantage.tile.<id> status, another package's)
+	   in the form of contract version 1, or null. The answer:
+	     { v: 1, title, icon?, state?, note?, every?, page?, items: [ item ] }
+	     title  its name, 1-32 characters: an English text, looked up in
+	            LuCI's catalogues as the dashboard's own are
+	     icon   one of TILE_ICONS, the dashboard's own drawings
+	     state  'ok', 'warn', 'err' or 'off': the dot by its name. Never a
+	            health check, never the page title's mark
+	     note   one line under the name, up to 64 characters
+	     every  how often its data changes, 5-300 s: it is asked no more
+	            often than that (default: with every slow poll)
+	     page   a LuCI page by its menu path ('admin/network/dhcp'),
+	            linked where this login's menu has it
+	     items  at most 8 (more are left out), each
+	            { label, value | text, unit?, rate?, max?, level?, trend? }:
+	            label  1-32 characters, looked up as the title is; one
+	                   item a label (a second one is left out)
+	            value  a number the dashboard writes out by its unit:
+	                   '' (a count), '%', 'ms', 's' (a duration), 'dBm',
+	                   'dB', 'MHz', 'B' (bytes) or 'bit/s'
+	            rate   true: value is a counter, shown as its rate between
+	                   two answers ('' a second; 'B' as traffic, in the
+	                   speed unit picked)
+	            max    above 0: a meter, value of max (not with rate)
+	            text   instead of a value: up to 48 characters, as it is
+	            level  'ok', 'warn', 'err' or 'off': the value's colour
+	            trend  true: the page keeps its values and draws them
+	   A key it does not know is left out, so a later version can add
+	   one; an item not of this form is left out, and an answer without
+	   v 1 and a title is none. Text is made safe and cut to its length
+	   (fmt.safeText). -> { title, icon, state, note, every, page: [ step ]
+	   | null, items: [ { label, value, text, unit, rate, max, level,
+	   trend } ] }; value is null for a text, text null for a value */
+	TILE_ICONS: TILE_ICONS,
+	tile: function(reply) {
+		function str(v, max) {
+			if (typeof v !== 'string') return null;
+			v = fmt.safeText(v.trim(), max);
+			return v ? v : null;
+		}
+		function level(v) { return TILE_LEVELS.indexOf(v) >= 0 ? v : null; }
+		function value(v) { return finite(v) && Math.abs(v) < TILE_NUM_MAX ? v : null; }
+		if (!reply || typeof reply !== 'object' || Array.isArray(reply) || reply.v !== TILE_V) return null;
+		var title = str(reply.title, 32);
+		if (!title) return null;
+		var every = finite(reply.every) && reply.every % 1 === 0 && reply.every >= TILE_EVERY_MIN && reply.every <= TILE_EVERY_MAX ? reply.every : null;
+		var page = typeof reply.page === 'string' && TILE_PAGE.test(reply.page) ? reply.page.split('/') : null;
+		var seen = Object.create(null), items = [];
+		arr(reply.items).slice(0, MAX_TILE_ITEMS * 4).forEach(function(x) {
+			if (items.length >= MAX_TILE_ITEMS || !x || typeof x !== 'object' || Array.isArray(x)) return;
+			var label = str(x.label, 32), v = value(x.value), t = v == null ? str(x.text, 48) : null;
+			var unit = x.unit == null ? '' : x.unit, rate = x.rate === true;
+			if (!label || seen[label.toLowerCase()] || (v == null && t == null) || TILE_UNITS.indexOf(unit) < 0) return;
+			/* a counter's rate is of a count or of bytes, and never below zero */
+			if (rate && (v == null || v < 0 || (unit !== '' && unit !== 'B'))) return;
+			seen[label.toLowerCase()] = true;
+			var max = !rate && v != null && finite(x.max) && x.max > 0 && x.max < TILE_NUM_MAX ? x.max : null;
+			items.push({ label: label, value: v, text: t, unit: v == null ? '' : unit, rate: rate, max: max, level: level(x.level), trend: v != null && x.trend === true });
+		});
+		return {
+			title: title, icon: TILE_ICONS.indexOf(reply.icon) >= 0 ? reply.icon : TILE_ICONS[0], state: level(reply.state),
+			note: str(reply.note, 64), every: every, page: page, items: items
+		};
 	},
 
 	/* ------------------------------------------------------------ ports */

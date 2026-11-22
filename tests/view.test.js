@@ -3081,8 +3081,8 @@ test('WireGuard tile: built once like any tile, named for Customize, its link Lu
 	assert.match(src, /this\.paintSsids\(\);\n\t\tthis\.paintWireguard\(\);\n/);
 	/* the layout is told whether a tunnel was seen, and stores under the same keys as before
 	   (the Ports tile's condition follows the tunnel's in both calls: its own test) */
-	assert.match(src, /wired = !!this\.m\.wired, wg = !!this\.m\.wg, ports = !!this\.m\.portsTile;\n\t\tvar list = this\.drag \? this\.drag\.list : this\.layoutFor\(tier, wired, wg, ports\);/);
-	assert.match(src, /layout\.same\(list, layout\.defaults\(l\.tier, l\.wired, l\.wg, l\.ports\)\)/);
+	assert.match(src, /wired = !!this\.m\.wired, wg = !!this\.m\.wg, ports = !!this\.m\.portsTile, extra = this\.m\.extra;\n\t\tvar list = this\.drag \? this\.drag\.list : this\.layoutFor\(tier, wired, wg, ports, extra\);/);
+	assert.match(src, /layout\.same\(list, layout\.defaults\(l\.tier, l\.wired, l\.wg, l\.ports, l\.extra\)\)/);
 }));
 
 /* ------------------------------------------------------------ Ports tile */
@@ -3335,9 +3335,9 @@ test('Ports tile: built once like any tile, named for Customize, laid out by the
 	/* painted with the other tiles, after the WireGuard tile */
 	assert.match(src, /this\.paintWireguard\(\);\n\t\tthis\.paintPorts\(\);\n/);
 	/* the layout is told whether two ports were seen, and stores under the same keys as before */
-	assert.match(src, /wg = !!this\.m\.wg, ports = !!this\.m\.portsTile;\n\t\tvar list = this\.drag \? this\.drag\.list : this\.layoutFor\(tier, wired, wg, ports\);/);
-	assert.match(src, /return layout\.normalize\(this\.layouts\[k\] \|\| null, tier, wired, wg, ports\);/);
-	assert.match(src, /layout\.same\(list, layout\.defaults\(l\.tier, l\.wired, l\.wg, l\.ports\)\)/);
+	assert.match(src, /wg = !!this\.m\.wg, ports = !!this\.m\.portsTile, extra = this\.m\.extra;\n\t\tvar list = this\.drag \? this\.drag\.list : this\.layoutFor\(tier, wired, wg, ports, extra\);/);
+	assert.match(src, /return layout\.normalize\(this\.layouts\[k\] \|\| null, tier, wired, wg, ports, extra\);/);
+	assert.match(src, /layout\.same\(list, layout\.defaults\(l\.tier, l\.wired, l\.wg, l\.ports, l\.extra\)\)/);
 	assert.match(src, /this\.laidPorts !== !!this\.m\.portsTile/);
 }));
 

@@ -49,17 +49,29 @@
  *   granted, and every grant is used by a declare (no stale privilege);
  *   `session access` is the only call left to the platform (rpcd grants it
  *   to every session through its `unauthenticated` group);
- * - two declared calls are granted by no group of the dashboard, each by
- *   another package's own group, and by name: the add-on's
- *   `vantage.collector report` (below), and LuCI's `luci.wireguard
- *   getWgInstances` (luci-proto-wireguard's rpcd plugin, the call of its
- *   status page: the WireGuard interfaces and their peers, without
- *   private or preshared keys; it takes no argument and writes nothing).
- *   LuCI's group luci-proto-wireguard grants that one to read, so only a
+ * - three declared calls are granted by no group of the dashboard, each
+ *   by another package's own group: the add-on's `vantage.collector
+ *   report` (below), LuCI's `luci.wireguard getWgInstances`
+ *   (luci-proto-wireguard's rpcd plugin, the call of its status page:
+ *   the WireGuard interfaces and their peers, without private or
+ *   preshared keys; it takes no argument and writes nothing), and the
+ *   provider tiles' `vantage.tile.<id> status` (#129: another package's
+ *   data for a tile the dashboard draws itself). LuCI's group
+ *   luci-proto-wireguard grants the WireGuard call to read, so only a
  *   login that holds that group is answered; the dashboard's ACL says
  *   nothing of the object. It is declared once, in the dashboard, in one
  *   exact form without parameters, and called without arguments; the
  *   object's other methods, which make keys, are declared nowhere;
+ * - the provider tiles' call is the one other dynamic declare: in the
+ *   dashboard, in one exact helper (TILE_HELPER) whose object is the
+ *   fixed prefix `vantage.tile.` and an id of a-z only, checked by the
+ *   pinned TILE_OBJ, its one method `status`, no parameters, so no
+ *   argument can be sent; it is called in one place, for ids that come
+ *   only from the session's own ACL (rpcd's `session access` without an
+ *   object, declared once in one exact form without parameters and
+ *   called once), never another LuCI or OpenWrt object. No group of the
+ *   dashboard or the add-on mentions a `vantage.tile.` object or a
+ *   `vantage-tile-` group: a provider's package ships its own;
  * - calls on uci objects name the `vantage` config literally, except the
  *   firewall overview (view/vantage/firewall.js), which reads `firewall`
  *   with uci get, finds the uplink with network.interface dump and
@@ -74,7 +86,8 @@
  *   loads modules by a computed name;
  * - the view probes exactly four groups: its names group (write), its
  *   rdns group (read), the add-on's view group (read) and LuCI's
- *   luci-proto-wireguard (read);
+ *   luci-proto-wireguard (read); it reads its own session's ACL once,
+ *   for the provider tiles only;
  * - the dashboard's menu entry is gated by the read group; the firewall
  *   overview's (Network -> Firewall -> Overview) by luci-app-firewall,
  *   LuCI's own group for the firewall pages, which already lets its holder
@@ -167,6 +180,24 @@ const COLLECTOR_CALL = 'vantage.collector report';
 const WIREGUARD_CALL = 'luci.wireguard getWgInstances';
 const WIREGUARD_GROUP = 'luci-proto-wireguard';
 const WIREGUARD_DECLARE = "var callWireguard = rpc.declare({ object: 'luci.wireguard', method: 'getWgInstances', expect: { '': {} }, reject: true });";
+/* And the provider tiles (#129): another package's ubus object
+   vantage.tile.<id>, its method status, which takes nothing and answers
+   data the dashboard checks and draws as text. No group of the dashboard
+   grants it: the provider's package ships its own group, so the call
+   fails for a login without it and where no such package is installed.
+   The object is the fixed prefix and an id of 1-7 letters a-z, so it
+   names no LuCI or OpenWrt object; the dashboard asks only the ids its
+   session's own ACL names (TILE_ACLS: rpcd's session access without an
+   object and a function answers the session's whole ACL, as LuCI's
+   dispatcher asks it), in one helper of one exact form. */
+const TILE_CALL = 'vantage.tile.* status';
+const TILE_OBJ_LINE = 'var TILE_OBJ = /^vantage\\.tile\\.[a-z]{1,7}$/;';
+const TILE_HELPER = "var tileCalls = {};\nfunction tileCall(id) {\n\tvar obj = 'vantage.tile.' + id;\n\tif (!TILE_OBJ.test(obj)) return Promise.reject(new Error('not a provider'));\n" +
+	"\tif (!tileCalls[obj]) tileCalls[obj] = rpc.declare({ object: obj, method: 'status', expect: { '': {} }, reject: true, nobatch: true });\n\treturn tileCalls[obj]();\n}\n";
+const TILE_ACLS = "var callAcls = rpc.declare({ object: 'session', method: 'access', expect: { '': {} } });";
+/* where the ids come from, and the one call: in askTiles and askTile */
+const TILE_FROM_ACL = "\t\tif (!this.tilesMay) this.tilesMay = L.resolveDefault(callAcls(), null).then(tileIds, function() { return []; });\n";
+const TILE_ASK = '\t\ts.call = tileCall(id).then(';
 const READ_FILES = { '/proc/stat': [ 'read' ] };
 const RDNS_UBUS = { 'network.rrdns': [ 'lookup' ] };
 const WRITE_UBUS = { 'luci.vantage': [ 'set_alias', 'set_quiet' ] };
@@ -229,6 +260,13 @@ function analyse(srcs) {
 				declared.set(k, (declared.get(k) || []).concat(file));
 			}
 			for (const m of text.matchAll(/(?<!function )\bhostapd\(\w+, (?!')/g)) problems.push(`${file}: hostapd() with a non-literal method at ${m.index}`);
+		}
+		/* the provider tiles' helper: TILE_HELPER exactly, with the
+		   pinned TILE_OBJ (tileProblems holds it to one file and one
+		   use); its one method is the only one it can declare */
+		if (text.includes(TILE_HELPER) && text.includes('\n' + TILE_OBJ_LINE + '\n')) {
+			dynamic++;
+			declared.set(TILE_CALL, (declared.get(TILE_CALL) || []).concat(file));
 		}
 		if (literal + dynamic !== total) problems.push(`${file}: ${total - literal - dynamic} rpc.declare() call(s) with a non-literal object or method`);
 	}
@@ -541,9 +579,10 @@ test('the JavaScript is analysable', () => {
 
 test('every declared call is granted and every grant is used', () => {
 	const granted = grantedCalls();
-	/* the two calls another package's group grants, and no third: LuCI's WireGuard status (its own test below),
-	   and the collector's report, which the add-on's view group grants, and that group grants nothing else */
-	assert.deepEqual(foreignCalls(sources), [ WIREGUARD_CALL, COLLECTOR_CALL ], 'declared but not granted by the dashboard');
+	/* the three calls another package's group grants, and no fourth: LuCI's WireGuard status and the provider
+	   tiles' status (their own tests below), and the collector's report, which the add-on's view group grants,
+	   and that group grants nothing else */
+	assert.deepEqual(foreignCalls(sources), [ WIREGUARD_CALL, COLLECTOR_CALL, TILE_CALL ], 'declared but not granted by the dashboard');
 	assert.deepEqual([ ...pairs(apsAcl[APS_VIEW_GROUP].read.ubus) ], [ COLLECTOR_CALL ]);
 	assert.deepEqual([ ...granted ].filter(k => !declared.has(k)).sort(), [], 'granted but never declared');
 	/* read grants are not write methods */
@@ -770,8 +809,8 @@ test('negative controls: any other call no group grants, another method or form 
 		[ 'the same in the firewall overview', add(FIREWALL_VIEW, "var callWgKeys = rpc.declare({ object: 'luci.wireguard', method: 'generatePsk' });"), 'luci.wireguard generatePsk' ]
 	]) {
 		assert.notDeepEqual(mutant, sources, what + ': the mutation applies');
-		assert.deepEqual(foreignCalls(mutant), [ WIREGUARD_CALL, COLLECTOR_CALL, extra ].sort(), what);
-		assert.notDeepEqual(foreignCalls(mutant), [ WIREGUARD_CALL, COLLECTOR_CALL ], what);
+		assert.deepEqual(foreignCalls(mutant), [ WIREGUARD_CALL, COLLECTOR_CALL, TILE_CALL, extra ].sort(), what);
+		assert.notDeepEqual(foreignCalls(mutant), [ WIREGUARD_CALL, COLLECTOR_CALL, TILE_CALL ], what);
 	}
 	/* its one form: this method, no parameters, in the dashboard, once */
 	for (const [ what, mutant, why ] of [
@@ -794,6 +833,104 @@ test('negative controls: any other call no group grants, another method or form 
 	assert.match(callProblems(add(DASH, "callWireguard.call(null, 'x');")).join('\n'), /overview\.js: callWireguard used other than in a direct call/);
 	/* a declare spelled so that its object is not a literal is no declare the analysis can read */
 	assert.match(analyse(add(DASH, "var callW = rpc.declare({ object: 'luci.' + 'wireguard', method: 'generatePsk' });")).problems.join('\n'), /overview\.js: 1 rpc\.declare\(\) call\(s\) with a non-literal object or method/);
+});
+
+/* The provider tiles' calls in `srcs`: the helper in its one form, in the
+   dashboard only and once, with the pinned TILE_OBJ; the helper called
+   once, in askTile, for an id; the session's ACL declared once in its one
+   form (no parameters: the whole ACL, never a question about an object
+   of the caller's choosing) and called once, where it feeds tileIds; no
+   other mention of a vantage.tile object in a declare. */
+function tileProblems(srcs) {
+	const out = [];
+	let helpers = 0, objs = 0, prefixes = 0, asks = 0, acls = 0, fromAcl = 0;
+	for (const { file, text } of srcs) {
+		const dash = file.endsWith('view/vantage/overview.js');
+		const h = text.split(TILE_HELPER).length - 1, o = text.split('\n' + TILE_OBJ_LINE + '\n').length - 1;
+		helpers += h; objs += o;
+		if ((h || o) && !dash) out.push(`${file}: the provider helper outside the dashboard`);
+		for (const m of text.matchAll(/^.*\bTILE_OBJ\s*=.*$/gm)) if (m[0] !== TILE_OBJ_LINE) out.push(`${file}: ${m[0].trim()}`);
+		for (const m of text.matchAll(/^.*['"`]vantage\.tile\b.*$/gm))
+			if (dash && m[0] === "\tvar obj = 'vantage.tile.' + id;") prefixes++;
+			else out.push(`${file}: ${m[0].trim()}`);
+		/* tileCall: its definition and one call, an id and nothing else */
+		for (const m of text.matchAll(/\btileCall\b(\s*\(([^)]*)\))?/g)) {
+			const line = text.slice(text.lastIndexOf('\n', m.index) + 1, text.indexOf('\n', m.index));
+			if (line === 'function tileCall(id) {') continue;
+			if (dash && line.startsWith(TILE_ASK) && m[2] === 'id') { asks++; continue; }
+			out.push(`${file}: ${line.trim()}`);
+		}
+		/* the session's ACL: one declare without parameters, one call, read by tileIds */
+		for (const m of text.matchAll(/^.*\bobject\s*:\s*['"]session['"].*$/gm)) {
+			if (m[0] === TILE_ACLS && dash) { acls++; continue; }
+			if (/\bparams: \[ 'scope', 'object', 'function' \]/.test(m[0]) && dash) continue;
+			out.push(`${file}: ${m[0].trim()}`);
+		}
+		for (const m of text.matchAll(/\bcallAcls\b\s*\(([^)]*)\)/g)) {
+			if (dash && m[1] === '' && text.includes(TILE_FROM_ACL) && text.indexOf(TILE_FROM_ACL) < m.index && m.index < text.indexOf(TILE_FROM_ACL) + TILE_FROM_ACL.length) { fromAcl++; continue; }
+			out.push(`${file}: callAcls(${m[1]})`);
+		}
+	}
+	if (helpers !== 1 || objs !== 1 || prefixes !== 1) out.push(`${helpers} provider helpers, ${objs} TILE_OBJ, ${prefixes} objects made from the prefix`);
+	if (asks !== 1) out.push(`${asks} provider calls`);
+	if (acls !== 1 || fromAcl !== 1) out.push(`${acls} declares of the session's ACL, ${fromAcl} calls`);
+	return out;
+}
+
+test('provider tiles: one helper for vantage.tile.<id> status, called for ids from the session\'s own ACL only; no group of the dashboard or the add-on grants it', () => {
+	assert.deepEqual(tileProblems(sources), []);
+	const view = sources.find(s => s.file.endsWith('view/vantage/overview.js')).text;
+	/* the id: from the ACL's ubus part, by TILE_OBJ, and checked again in the helper */
+	assert.ok(view.includes("\t\tif (TILE_OBJ.test(obj) && Array.isArray(ubus[obj]) && ubus[obj].indexOf('status') >= 0) out.push(obj.slice(13));\n"), 'tileIds reads object names it checks');
+	assert.equal('vantage.tile.'.length, 13);
+	assert.ok(new RegExp(/^vantage\.tile\.[a-z]{1,7}$/).test('vantage.tile.dns'));
+	for (const bad of [ 'luci.vantage', 'vantage.tile.', 'vantage.tile.dns.x', 'vantage.tile.DNS', 'vantage.tile.dns2', 'vantage.tile.abcdefgh', 'vantage.tile.*', 'file' ])
+		assert.ok(!/^vantage\.tile\.[a-z]{1,7}$/.test(bad), bad);
+	/* the ids of the ACL are all it asks for: a declared call, granted by no group of the dashboard */
+	assert.ok(declared.has(TILE_CALL));
+	assert.ok(!grantedCalls().has(TILE_CALL));
+	for (const [ name, g ] of Object.entries(acl).concat(Object.entries(apsAcl))) {
+		assert.ok(!/^vantage-tile-/.test(name), name);
+		for (const kind of [ 'read', 'write' ])
+			for (const k of pairs((g[kind] || {}).ubus)) assert.ok(!/^vantage\.tile\b/.test(k), `${name}.${kind}: ${k}`);
+	}
+	assert.doesNotMatch(JSON.stringify(acl) + JSON.stringify(apsAcl), /vantage[.-]tile/);
+	/* the session's ACL: session access, which rpcd grants every session (PLATFORM) */
+	assert.ok(PLATFORM.has('session access'));
+	assert.ok(view.includes('\n' + TILE_ACLS + '\n'));
+});
+
+test('negative controls: another form, object, method or argument of the provider call, or another use of the session\'s ACL, fails', () => {
+	const DASH = 'view/vantage/overview.js';
+	const edit = (from, to) => mutate(DASH, t => { assert.ok(t.includes(from), from); return t.replace(from, to); });
+	const add = (file, code) => mutate(file, t => t + '\n' + code + '\n');
+	const helper = TILE_HELPER;
+	for (const [ what, mutant, why ] of [
+		[ 'a parameter', edit("object: obj, method: 'status', expect", "object: obj, method: 'status', params: [ 'cmd' ], expect"), /1 rpc\.declare\(\) call\(s\) with a non-literal|0 provider helpers/ ],
+		[ 'another method', edit("object: obj, method: 'status',", "object: obj, method: 'set',"), /0 provider helpers/ ],
+		[ 'another prefix', edit("var obj = 'vantage.tile.' + id;", "var obj = 'luci.' + id;"), /0 provider helpers/ ],
+		[ 'a wider id', edit(TILE_OBJ_LINE, TILE_OBJ_LINE.replace('[a-z]', '[a-z.]')), /TILE_OBJ = .*\[a-z\.\]/ ],
+		[ 'no check of the id', edit("\tif (!TILE_OBJ.test(obj)) return Promise.reject(new Error('not a provider'));\n", ''), /0 provider helpers/ ],
+		[ 'a second helper', add(DASH, helper.replace(/tileCall/g, 'tileCall2').replace(/tileCalls/g, 'tileCalls2')), /2 objects made from the prefix/ ],
+		[ 'the helper in a module', add('vantage/model.js', helper), /model\.js: the provider helper outside the dashboard/ ],
+		[ 'an argument to the call', edit('return tileCalls[obj]();', "return tileCalls[obj]({ cmd: 'x' });"), /0 provider helpers/ ],
+		[ 'a literal id', add(DASH, "tileCall('dns');"), /overview\.js: tileCall\('dns'\);/ ],
+		[ 'a second call', add(DASH, 'tileCall(id);'), /overview\.js: tileCall\(id\);/ ],
+		[ 'the helper passed on', add(DASH, 'var f = tileCall;'), /overview\.js: var f = tileCall;/ ],
+		[ 'a provider object named elsewhere', add(DASH, "var callT = rpc.declare({ object: 'vantage.tile.dns', method: 'status' });"), /overview\.js: var callT = rpc\.declare\(\{ object: 'vantage\.tile\.dns'/ ],
+		[ 'the ACL asked about an object', edit(TILE_ACLS, TILE_ACLS.replace("method: 'access',", "method: 'access', params: [ 'scope', 'object' ],")), /overview\.js: var callAcls = .*params|0 declares of the session's ACL/ ],
+		[ 'the ACL read twice', add(DASH, 'callAcls();'), /overview\.js: callAcls\(\)/ ],
+		[ 'the ACL with an argument', edit('L.resolveDefault(callAcls(), null)', "L.resolveDefault(callAcls('ubus'), null)"), /overview\.js: callAcls\('ubus'\)/ ],
+		[ 'another session method', add(DASH, "var callSess = rpc.declare({ object: 'session', method: 'get' });"), /overview\.js: var callSess = /]
+	]) {
+		assert.notDeepEqual(mutant, sources, what + ': the mutation applies');
+		const found = tileProblems(mutant).concat(analyse(mutant).problems).join('\n');
+		assert.match(found, why, what);
+	}
+	/* the dashboard's groups granting it would leave nothing foreign to allow */
+	const granting = JSON.parse(JSON.stringify(acl));
+	granting[READ_GROUP].read.ubus['vantage.tile.dns'] = [ 'status' ];
+	assert.match(JSON.stringify(granting), /vantage[.-]tile/, 'what the ACL test above refuses');
 });
 
 test('the firewall overview: behind LuCI\'s firewall group, uci get on firewall and the interface dump, nothing else declared', () => {
