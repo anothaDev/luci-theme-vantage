@@ -1299,8 +1299,8 @@ test('report: a port\'s switch counters beside the kernel\'s, where the plugin h
 		const u = Object.assign({}, REPORT_UBUS, { 'luci.vantage.ports counters': { v: 1, state: 'ok', ports: { lan2: bad } } });
 		assert.deepEqual(reportRun({ ubus: u, arp: HW_ARP }).out.ports.lan2, { speed: 100, rx_bytes: 300, tx_bytes: 400, hosts: 1 }, JSON.stringify(bad));
 	}
-	/* no such object (a dashboard before it), or an answer of nothing to get: the report as before */
-	for (const reply of [ null, { v: 1, state: 'none', ports: {} }, { v: 1, state: 'no-ethtool', ports: {} }, 'x' ]) {
+	/* no such object (a dashboard before it), an answer of nothing to get, or another read running (busy): the report as before */
+	for (const reply of [ null, { v: 1, state: 'none', ports: {} }, { v: 1, state: 'no-ethtool', ports: {} }, { v: 1, state: 'busy', took: 0, more: false, ports: {} }, 'x' ]) {
 		const u = Object.assign({}, REPORT_UBUS, { 'luci.vantage.ports counters': reply });
 		assert.deepEqual(reportRun({ ubus: u, arp: HW_ARP }).out, reportRun({ ubus: REPORT_UBUS, arp: HW_ARP }).out, JSON.stringify(reply));
 	}

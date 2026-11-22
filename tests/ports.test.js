@@ -54,7 +54,8 @@ const MT7530 = (rx, tx) => nic([ [ 'TxDrop', 0 ], [ 'TxCrcErr', 0 ], [ 'TxUnicas
    ethtool. o.ports: { name: uevent text } (a DSA port's by default);
    o.out: { port: what ethtool prints }; o.code: { port: its exit code };
    o.ethtool: false for none, 'plain' for a file that is not executable;
-   o.step: ms the copy's clock moves at each reading */
+   o.sleep: { port: s ethtool waits before it prints, then notes the port in slept };
+   o.step: ms the copy's clock moves at each reading. The copy locks itself (SELF) */
 function setup(o) {
 	o = o || {};
 	const dir = mkTmp('vantage-ports-');
@@ -64,6 +65,8 @@ function setup(o) {
 	fs.mkdirSync(path.join(dir, 'bin'));
 	fs.mkdirSync(path.join(dir, 'out'));
 	fs.mkdirSync(path.join(dir, 'code'));
+	fs.mkdirSync(path.join(dir, 'sleep'));
+	for (const [ port, sec ] of Object.entries(o.sleep || {})) fs.writeFileSync(path.join(dir, 'sleep', port), String(sec));
 	for (const [ name, uevent ] of Object.entries(o.ports || {})) {
 		fs.mkdirSync(path.join(net, name));
 		fs.writeFileSync(path.join(net, name, 'uevent'), uevent == null ? 'DEVTYPE=dsa\nINTERFACE=' + name + '\nIFINDEX=9\n' : uevent);
@@ -72,6 +75,7 @@ function setup(o) {
 	for (const [ port, code ] of Object.entries(o.code || {})) fs.writeFileSync(path.join(dir, 'code', port), String(code));
 	if (o.ethtool !== false) {
 		fs.writeFileSync(bin, '#!/bin/sh\nprintf \'%s\\n\' "$*" >> \'' + dir + '/calls\'\n[ "$#" -eq 2 ] && [ "$1" = -S ] || exit 64\n' +
+			'[ -f \'' + dir + '/sleep/\'"$2" ] && { sleep "$(cat \'' + dir + '/sleep/\'"$2")"; printf \'%s\\n\' "$2" >> \'' + dir + '/slept\'; }\n' +
 			'[ -f \'' + dir + '/out/\'"$2" ] || exit 1\ncat \'' + dir + '/out/\'"$2" && printf \'%s\\n\' "$2" >> \'' + dir + '/finished\'\n' +
 			'[ -f \'' + dir + '/code/\'"$2" ] && exit "$(cat \'' + dir + '/code/\'"$2")"\nexit 0\n', { mode: o.ethtool === 'plain' ? 0o644 : 0o755 });
 	}
@@ -79,8 +83,9 @@ function setup(o) {
 	for (const [ from, to ] of [
 		[ /^const NET = .*$/m, 'const NET = ' + JSON.stringify(net) + ';' ],
 		[ /^const ETHTOOL = .*$/m, 'const ETHTOOL = ' + JSON.stringify(bin) + ';' ],
+		[ /^const SELF = .*$/m, 'const SELF = ' + JSON.stringify(path.join(dir, 'plugin.uc')) + ';' ],
 		[ CLOCK_FN, 'let ticks = 0;\nfunction now_ms() {\n\treturn ' + o.step + ' * ticks++;\n}' ]
-	].slice(0, o.step == null ? 2 : 3)) {
+	].slice(0, o.step == null ? 3 : 4)) {
 		const next = src.replace(from, () => to);
 		assert.notEqual(next, src, 'the test can change ' + from);
 		src = next;
@@ -99,6 +104,11 @@ function exec(dir, argv, input) {
 function counters(o, input) {
 	const r = exec(setup(o), [ 'call', 'counters' ], input);
 	return Object.assign(JSON.parse(r.out), { calls: r.calls, finished: r.finished });
+}
+const lines = (dir, f) => fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8').split('\n').filter(Boolean) : [];
+async function until(what, ok) {
+	for (let i = 0; i < 300 && !ok(); i++) await new Promise(r => setTimeout(r, 20));
+	assert.ok(ok(), what);
 }
 const without = (r, ...keys) => { const c = Object.assign({}, r); for (const k of keys) delete c[k]; return c; };
 
@@ -232,6 +242,52 @@ test('plugin: after its time budget no port is read; the rest are said to be lef
 	assert.deepEqual(counters(Object.assign({ step: 1000 }, o)).calls, []);
 });
 
+test('plugin: one read at a time: a call that finds the lock held answers busy at once and starts nothing', { skip: NO_UCODE }, async () => {
+	const o = { ports: { lan1: null, lan2: null }, out: { lan1: MT7530(1, 2), lan2: MT7530(3, 4) } };
+	const dir = setup(o), held = path.join(dir, 'held');
+	/* another process holds the lock on the plugin's file, as a call that is reading does */
+	const holder = require('child_process').spawn(UCODE, ucodeArgs().concat([ '-e', 'import { open, writefile } from "fs"; let f = open(' + JSON.stringify(path.join(dir, 'plugin.uc')) +
+		', "r"); f.lock("x"); writefile(' + JSON.stringify(held) + ', "1"); sleep(1500);' ]), { stdio: 'ignore' });
+	await until('the lock is held', () => fs.existsSync(held));
+	const t = Date.now(), busy = exec(dir, [ 'call', 'counters' ]);
+	assert.ok(Date.now() - t < 1000, 'answered at once, not after the holder');
+	assert.deepEqual(without(JSON.parse(busy.out), 'took'), { v: 1, state: 'busy', more: false, ports: {} });
+	assert.deepEqual(busy.calls, [], 'no program started');
+	await new Promise(r => holder.once('exit', r));
+	const ok = exec(dir, [ 'call', 'counters' ]);
+	assert.deepEqual([ JSON.parse(ok.out).state, ok.calls ], [ 'ok', [ '-S lan1', '-S lan2' ] ], 'free again once the holder is gone');
+	/* the plugin's file opened for reading: not written, not even touched */
+	const before = fs.statSync(path.join(dir, 'plugin.uc'));
+	exec(dir, [ 'call', 'counters' ]);
+	assert.deepEqual([ fs.statSync(path.join(dir, 'plugin.uc')).mtimeMs, fs.statSync(path.join(dir, 'plugin.uc')).size ], [ before.mtimeMs, before.size ]);
+});
+
+test('plugin: the lock goes with a call rpcd kills, and stays while that call\'s ethtool still runs', { skip: NO_UCODE }, async () => {
+	const dir = setup({ ports: { lan1: null, lan2: null }, out: { lan1: MT7530(1, 2), lan2: MT7530(3, 4) }, sleep: { lan1: 2 } });
+	const call = () => require('child_process').spawn(UCODE, ucodeArgs().concat([ path.join(dir, 'plugin.uc'), 'call', 'counters' ]), { cwd: dir, stdio: 'ignore' });
+	/* a call whose ethtool hangs (here: sleeps 2 s), killed as rpcd kills one after its timeout */
+	const a = call();
+	await until('its ethtool runs', () => lines(dir, 'calls').length === 1);
+	const gone = new Promise(r => a.once('exit', r));
+	a.kill('SIGKILL');
+	await gone;
+	/* the shell and ethtool it started hold the lock: no second ethtool meanwhile */
+	assert.deepEqual([ JSON.parse(exec(dir, [ 'call', 'counters' ]).out).state, lines(dir, 'calls') ], [ 'busy', [ '-S lan1' ] ]);
+	await until('that ethtool ended', () => lines(dir, 'slept').length === 1);
+	await until('the lock is free', () => JSON.parse(exec(dir, [ 'call', 'counters' ]).out).state === 'ok');
+	/* a call killed with nothing of its own left running frees the lock at once */
+	fs.unlinkSync(path.join(dir, 'sleep', 'lan1'));
+	const held = path.join(dir, 'held');
+	const holder = require('child_process').spawn(UCODE, ucodeArgs().concat([ '-e', 'import { open, writefile } from "fs"; let f = open(' + JSON.stringify(path.join(dir, 'plugin.uc')) +
+		', "r"); f.lock("xn"); writefile(' + JSON.stringify(held) + ', "1"); sleep(30000);' ]), { stdio: 'ignore' });
+	await until('the lock is held', () => fs.existsSync(held));
+	assert.equal(JSON.parse(exec(dir, [ 'call', 'counters' ]).out).state, 'busy');
+	const killed = new Promise(r => holder.once('exit', r));
+	holder.kill('SIGKILL');
+	await killed;
+	assert.equal(JSON.parse(exec(dir, [ 'call', 'counters' ]).out).state, 'ok');
+});
+
 /* ------------------------------------------------------------- model */
 
 test('model: switchCounters keeps the counters of well-formed ports and says when there is nothing to ask for', () => {
@@ -249,6 +305,8 @@ test('model: switchCounters keeps the counters of well-formed ports and says whe
 	assert.equal(model.switchCounters({ v: 1, state: 'ok', ports: { lan1: { error: 'time' } } }).none, false);
 	for (const junk of [ null, {}, 'x', [ 1 ], { v: 2, state: 'ok', ports: {} }, { v: 1, state: 'later', ports: {} } ])
 		assert.equal(model.switchCounters(junk), null, JSON.stringify(junk));
+	/* another call was reading: no answer this time, as a failed call, never "nothing to get" */
+	assert.equal(model.switchCounters({ v: 1, state: 'busy', took: 0, more: false, ports: {} }), null);
 	/* the plugin's own cap */
 	const many = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [ 'p' + i, { rx_bytes: i, tx_bytes: i } ]));
 	assert.equal(Object.keys(model.switchCounters({ v: 1, state: 'ok', ports: many }).counters).length, 32);
@@ -347,6 +405,30 @@ test('view: the first answer that says there is nothing to get, or no object, en
 	assert.equal(c.asked, 2, 'the first answer after it does');
 }));
 
+test('view: busy is no answer this time: the page keeps asking, and the first real answer decides', () => switchCalls(async c => {
+	const busy = () => Promise.resolve({ v: 1, state: 'busy', took: 0, more: false, ports: {} });
+	c.reply = busy;
+	for (let i = 0; i < 5; i++) assert.equal((await c.ask())[0], null, 'busy ' + i);
+	assert.equal(c.asked, 5, 'asked every poll');
+	/* busy, then counters, then busy again: still asked */
+	c.reply = answer({ lan1: { rx_bytes: 1, tx_bytes: 2 } });
+	assert.deepEqual((await c.ask())[0].counters.lan1, { rx: 1, tx: 2 });
+	c.reply = busy;
+	await c.ask();
+	await c.ask();
+	assert.equal(c.asked, 8);
+	/* busy first, then an answer of nothing to get: that one ends the asking */
+	c.self = Object.create(view);
+	c.asked = 0;
+	c.reply = busy;
+	await c.ask();
+	c.reply = () => Promise.resolve({ v: 1, state: 'none', took: 0, more: false, ports: {} });
+	await c.ask();
+	await c.ask();
+	await c.ask();
+	assert.equal(c.asked, 2);
+}));
+
 test('view: a poll waits 2 s for the answer at most; while a call is out no other is made', () => switchCalls(async c => {
 	const first = await c.ask();
 	assert.deepEqual([ c.asked, c.timers.map(t => t.ms), first[0] ], [ 1, [ 2000 ], undefined ], 'the poll waits, with a deadline');
@@ -391,6 +473,25 @@ test('view: a port counts by its chip where the poll has its counters, never a l
 	} finally {
 		global.L = savedL;
 		global.window = savedW;
+	}
+});
+
+test('view: a busy answer reaches ingest as none (the kernel\'s counters for that step), and the next poll asks again', async () => {
+	const saved = { L: global.L, document: global.document };
+	global.document = { hidden: false, documentElement: { getAttribute: () => null } };
+	global.L = { resolveDefault: (p, d) => Promise.resolve(p).then(v => v == null ? d : v, () => d) };
+	let asked = 0;
+	REPLIES['luci.vantage.ports counters'] = () => { asked++; return Promise.resolve({ v: 1, state: 'busy', took: 0, more: false, ports: {} }); };
+	try {
+		const self = Object.create(view);
+		assert.equal((await self.fetch()).hw, null);
+		REPLIES['luci.vantage.ports counters'] = () => { asked++; return answer({ lan1: { rx_bytes: 1, tx_bytes: 2 } })(); };
+		assert.deepEqual(JSON.parse(JSON.stringify((await self.fetch()).hw.counters)), { lan1: { rx: 1, tx: 2 } });
+		assert.equal(asked, 2);
+	} finally {
+		Object.assign(global, saved);
+		if (saved.document === undefined) delete global.document;
+		delete REPLIES['luci.vantage.ports counters'];
 	}
 });
 

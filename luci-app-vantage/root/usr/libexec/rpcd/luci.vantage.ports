@@ -18,8 +18,9 @@
 //   counters  { v: 1, state, took, more, ports: { <port>: counted } }
 //
 //     state  'ok': ETHTOOL ran for the ports listed. 'none': this device
-//            has no DSA port; 'no-ethtool': it has, and no ETHTOOL. In
-//            both no program is started and ports is empty.
+//            has no DSA port; 'no-ethtool': it has, and no ETHTOOL;
+//            'busy': another call is reading (below). In these no program
+//            is started and ports is empty.
 //     ports  this device's DSA ports (those the kernel gives DEVTYPE=dsa),
 //            by name, in name order, MAX_PORTS at most (more: there were
 //            others). Each is
@@ -43,13 +44,24 @@
 // RE_PORT keeps a name to letters, digits, '_' and '-', never first: the
 // shell then reads the line as three plain words, and ethtool reads the
 // third as a device's name, never as an option.
+//
+// One read at a time: rpcd starts a process for every call that comes,
+// and each ethtool -S holds the kernel's rtnl lock while it reads the
+// chip. The lock is on this file itself (SELF), opened for reading, so
+// nothing is written for it; it is taken without waiting before anything
+// is read or started, and a call that finds it held answers busy at once.
+// The descriptor stays open across exec on purpose: the shell and ethtool
+// hold the lock too, so that after rpcd kills a call whose ethtool hangs
+// in a switch driver, no other ethtool of this plugin starts until that
+// one has ended. The kernel drops the lock when the last of them ends.
 
 'use strict';
 
-import { access, lsdir, popen, readfile } from 'fs';
+import { access, lsdir, open, popen, readfile } from 'fs';
 
 const NET = '/sys/class/net';
 const ETHTOOL = '/usr/sbin/ethtool';
+const SELF = '/usr/libexec/rpcd/luci.vantage.ports';
 const MAX_PORTS = 32;             // ports read each time; the add-on's report lists 32 at most
 const BUDGET_MS = 1000;           // no port is read after this
 const MAX_OUT = 32768;            // bytes of one ethtool run read: the drivers below fill 3 KiB or so
@@ -145,7 +157,12 @@ function read_port(name) {
 }
 
 function counters() {
-	let t0 = now_ms(), ports = {}, d = dsa_ports();
+	let t0 = now_ms(), self_file = open(SELF, 'r');
+
+	if (!self_file || self_file.lock('xn') !== true)
+		return { v: 1, state: 'busy', took: now_ms() - t0, more: false, ports: {} };
+
+	let ports = {}, d = dsa_ports();
 
 	if (!length(d.found))
 		return { v: 1, state: 'none', took: now_ms() - t0, more: false, ports };

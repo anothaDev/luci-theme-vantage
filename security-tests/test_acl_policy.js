@@ -107,7 +107,9 @@
  *   of one of the device's own DSA ports, which it finds in
  *   /sys/class/net (DEVTYPE=dsa) and holds to RE_PORT (popen hands the
  *   line to /bin/sh: letters, digits, _ and -, never first, are plain
- *   words to it and a device to ethtool); its one method, counters,
+ *   words to it and a device to ethtool); one read at a time: it locks
+ *   its own file, opened for reading, before it reads or starts anything,
+ *   and answers busy where the lock is held; its one method, counters,
  *   takes nothing; it reads MAX_PORTS ports, none after BUDGET_MS, and
  *   MAX_OUT bytes of each run at most; the read group grants it, no
  *   other group of any Vantage package mentions it, and the dashboard
@@ -1076,8 +1078,10 @@ test('the firewall overview: behind LuCI\'s firewall group, uci get on firewall 
    of its own per call. The rules below hold it to that one program, at
    that one path, with that one option and a port name of the device's
    own: every line of code that mentions a file, the program, a name or a
-   cap is listed (checkPins), and the two functions that find the ports
-   and run the program are pinned whole. */
+   cap is listed (checkPins), and the three functions that take the lock,
+   find the ports and run the program are pinned whole. One read at a
+   time: the plugin locks its own file, opened for reading, before it
+   reads or starts anything, and answers busy where another holds it. */
 const THEME_PKG = path.resolve(process.env.VANTAGE_THEME_PKG || path.join(__dirname, '..', 'luci-theme-vantage'));
 const PORTS_OBJECT = 'luci.vantage.ports';
 const PORTS_CALL = PORTS_OBJECT + ' counters';
@@ -1085,7 +1089,7 @@ const PORTS_REL = 'root/usr/libexec/rpcd/luci.vantage.ports';
 const portsPlugin = fs.readFileSync(path.join(PKG, PORTS_REL), 'utf8');
 /* a port's name: to /bin/sh (popen) a plain word, to ethtool a device and never an option */
 const PORTS_RE_PORT = 'const RE_PORT = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,14}$/;';
-const PORTS_PATHS = { NET: '/sys/class/net', ETHTOOL: '/usr/sbin/ethtool' };
+const PORTS_PATHS = { NET: '/sys/class/net', ETHTOOL: '/usr/sbin/ethtool', SELF: '/usr/libexec/rpcd/luci.vantage.ports' };
 const PORTS_CAPS = { MAX_PORTS: 32, BUDGET_MS: 1000, MAX_OUT: 32768, MAX_UEVENT: 512 };
 /* the ports: a name of /sys/class/net that RE_PORT takes and whose uevent says DEVTYPE=dsa, MAX_PORTS at most */
 const PORTS_FIND = "function dsa_ports() {\n\tlet found = [], more = false;\n\n\tfor (let n in sort(lsdir(NET) ?? [])) {\n\t\tif (!match(n, RE_PORT))\n\t\t\tcontinue;\n\n" +
@@ -1094,9 +1098,15 @@ const PORTS_FIND = "function dsa_ports() {\n\tlet found = [], more = false;\n\n\
 /* the one program: ETHTOOL -S <port>, MAX_OUT bytes of its output read, its exit code checked */
 const PORTS_RUN = "function read_port(name) {\n\tlet p = popen(ETHTOOL + ' -S ' + name, 'r');\n\n\tif (!p)\n\t\treturn { error: 'failed' };\n\n" +
 	"\tlet text = p.read(MAX_OUT + 1);\n\n\tif (p.close() !== 0 || type(text) != 'string' || length(text) > MAX_OUT)\n\t\treturn { error: 'failed' };\n\n\treturn parse(text);\n}";
+/* the lock, taken without waiting before anything is read or started; held elsewhere: busy, and nothing started */
+const PORTS_COUNT = "function counters() {\n\tlet t0 = now_ms(), self_file = open(SELF, 'r');\n\n\tif (!self_file || self_file.lock('xn') !== true)\n" +
+	"\t\treturn { v: 1, state: 'busy', took: now_ms() - t0, more: false, ports: {} };\n\n\tlet ports = {}, d = dsa_ports();\n\n\tif (!length(d.found))\n" +
+	"\t\treturn { v: 1, state: 'none', took: now_ms() - t0, more: false, ports };\n\n\tif (!access(ETHTOOL, 'x'))\n" +
+	"\t\treturn { v: 1, state: 'no-ethtool', took: now_ms() - t0, more: d.more, ports };\n\n\tfor (let name in d.found)\n" +
+	"\t\tports[name] = (now_ms() - t0 < BUDGET_MS) ? read_port(name) : { error: 'time' };\n\n\treturn { v: 1, state: 'ok', took: now_ms() - t0, more: d.more, ports };\n}";
 const PORTS_PINS = [
 	[ '\\b(?:popen|access|lsdir|readfile|ETHTOOL|NET)\\b', [
-		'import { access, lsdir, popen, readfile } from \'fs\';',
+		'import { access, lsdir, open, popen, readfile } from \'fs\';',
 		'const NET = \'/sys/class/net\';',
 		'const ETHTOOL = \'/usr/sbin/ethtool\';',
 		'for (let n in sort(lsdir(NET) ?? [])) {',
@@ -1115,12 +1125,19 @@ const PORTS_PINS = [
 		'return { found, more };',
 		'function read_port(name) {',
 		'let p = popen(ETHTOOL + \' -S \' + name, \'r\');',
-		'let t0 = now_ms(), ports = {}, d = dsa_ports();',
+		'let ports = {}, d = dsa_ports();',
 		'if (!length(d.found))',
 		'return { v: 1, state: \'no-ethtool\', took: now_ms() - t0, more: d.more, ports };',
 		'for (let name in d.found)',
 		'ports[name] = (now_ms() - t0 < BUDGET_MS) ? read_port(name) : { error: \'time\' };',
 		'return { v: 1, state: \'ok\', took: now_ms() - t0, more: d.more, ports };'
+	] ],
+	/* the one file opened, its own, for reading, and locked without waiting */
+	[ '\\b(?:open|lock|SELF|self_file)\\b', [
+		'import { access, lsdir, open, popen, readfile } from \'fs\';',
+		'const SELF = \'/usr/libexec/rpcd/luci.vantage.ports\';',
+		'let t0 = now_ms(), self_file = open(SELF, \'r\');',
+		'if (!self_file || self_file.lock(\'xn\') !== true)'
 	] ],
 	/* the caps, each used where it bounds */
 	[ '\\b(?:MAX_PORTS|BUDGET_MS|MAX_OUT|MAX_UEVENT)\\b', [
@@ -1155,9 +1172,9 @@ function checkPortsSource(src) {
 	assert.ok(src.startsWith('#!/usr/bin/ucode -S\n'), 'strict ucode');
 	assert.match(src, /^'use strict';$/m);
 	const code = codeOf(src, 'the switch counters plugin');
-	assert.deepEqual(linesWith(code, 'import'), [ 'import { access, lsdir, popen, readfile } from \'fs\';' ]);
-	/* no other way to a program, a file, the environment or standard input */
-	const word = /\b(system|exec|execv|execvp|uloop|fork|spawn|require|loadfile|loadstring|include|render|writefile|unlink|rename|mkdir|chmod|symlink|open|connect|cursor|global|getenv|stdin|sleep|signal)\b/.exec(code);
+	assert.deepEqual(linesWith(code, 'import'), [ 'import { access, lsdir, open, popen, readfile } from \'fs\';' ]);
+	/* no other way to a program, a file, the environment or standard input (open: its own file, pinned below) */
+	const word = /\b(system|exec|execv|execvp|uloop|fork|spawn|require|loadfile|loadstring|include|render|writefile|unlink|rename|mkdir|chmod|symlink|connect|cursor|global|getenv|stdin|sleep|signal)\b/.exec(code);
 	assert.equal(word, null, word && `"${word[1]}" is banned in the switch counters plugin`);
 	assert.doesNotMatch(code, /(^|[^.\w])call\s*\(/m, 'the call() builtin is banned in the switch counters plugin');
 	for (const [ name, v ] of Object.entries(PORTS_PATHS)) {
@@ -1169,7 +1186,7 @@ function checkPortsSource(src) {
 		assert.match(src, new RegExp('\\nconst ' + name + ' = ' + v + ';'), name + ' = ' + v);
 		assert.equal([ ...code.matchAll(new RegExp('\\b' + name + '\\s*(?:[-+*/%&|^]|<<|>>)?=(?!=)', 'g')) ].length, 1, name + ' is defined once and never assigned');
 	}
-	for (const [ what, fn ] of [ [ 'dsa_ports', PORTS_FIND ], [ 'read_port', PORTS_RUN ] ]) {
+	for (const [ what, fn ] of [ [ 'dsa_ports', PORTS_FIND ], [ 'read_port', PORTS_RUN ], [ 'counters', PORTS_COUNT ] ]) {
 		const found = new RegExp('^function ' + what + '\\(.*\\) \\{\\n[\\s\\S]*?\\n\\}$', 'm').exec(src);
 		assert.equal(found && found[0], fn, what + '(), exactly');
 	}
@@ -1187,7 +1204,7 @@ test('switch counters: the plugin starts ethtool alone, at its one path, with -S
 });
 
 test('switch counters: the plugin rules catch each breach', () => {
-	const at = '\tlet t0 = now_ms(), ports = {}, d = dsa_ports();\n';
+	const at = '\tlet ports = {}, d = dsa_ports();\n';
 	assert.ok(portsPlugin.includes(at), 'insertion point');
 	const add = code => portsPlugin.replace(at, at + '\t' + code + '\n');
 	const swap = (from, to) => { assert.ok(portsPlugin.includes(from), from); return portsPlugin.replace(from, to); };
@@ -1202,12 +1219,12 @@ test('switch counters: the plugin rules catch each breach', () => {
 		'a second popen': add('let q = popen(\'reboot\', \'r\');'),
 		'popen under another name': add('let run = popen; run(\'reboot\');'),
 		'system': add('system([ ETHTOOL, \'-S\', \'lan1\' ]);'),
-		'uloop': swap('import { access, lsdir, popen, readfile } from \'fs\';', 'import { access, lsdir, popen, readfile } from \'fs\';\nimport * as uloop from \'uloop\';'),
+		'uloop': swap('import { access, lsdir, open, popen, readfile } from \'fs\';', 'import { access, lsdir, open, popen, readfile } from \'fs\';\nimport * as uloop from \'uloop\';'),
 		'the call builtin': add('call(print, null, null, \'x\');'),
 		'a builtin by name': add('global[\'sys\' + \'tem\'](\'reboot\');'),
 		'a name from the caller': swap('else if (ARGV[0] == \'call\' && ARGV[1] == \'counters\')', 'else if (ARGV[0] == \'call\' && ARGV[1] == \'port\')\n\tprint(sprintf(\'%J\', read_port(ARGV[2])), \'\\n\');\nelse if (ARGV[0] == \'call\' && ARGV[1] == \'counters\')'),
 		'a method that takes an argument': swap('print(\'{ "counters": {} }\\n\');', 'print(\'{ "counters": { "port": "string" } }\\n\');'),
-		'standard input read': swap('import { access, lsdir, popen, readfile } from \'fs\';', 'import { access, lsdir, popen, readfile, stdin } from \'fs\';'),
+		'standard input read': swap('import { access, lsdir, open, popen, readfile } from \'fs\';', 'import { access, lsdir, open, popen, readfile, stdin } from \'fs\';'),
 		'the environment read': add('let n2 = getenv(\'PORT\');'),
 		'a name not checked': swap('\t\tif (!match(n, RE_PORT))\n\t\t\tcontinue;\n', ''),
 		'a wider pattern': swap(PORTS_RE_PORT, 'const RE_PORT = /^[A-Za-z0-9_.;-]{1,15}$/;'),
@@ -1224,8 +1241,22 @@ test('switch counters: the plugin rules catch each breach', () => {
 		'the exit code ignored': swap('if (p.close() !== 0 || type(text)', 'if (p.close() === null || type(text)'),
 		'a larger output cap': swap('const MAX_OUT = 32768;', 'const MAX_OUT = 16777216;'),
 		'the uevent read unbounded': swap('readfile(NET + \'/\' + n + \'/uevent\', MAX_UEVENT)', 'readfile(NET + \'/\' + n + \'/uevent\')'),
-		'a file written': swap('import { access, lsdir, popen, readfile } from \'fs\';', 'import { access, lsdir, popen, readfile, writefile } from \'fs\';'),
-		'code in a template literal': add('let t = \`\${reboot()}\`;')
+		'a file written': swap('import { access, lsdir, open, popen, readfile } from \'fs\';', 'import { access, lsdir, open, popen, readfile, writefile } from \'fs\';'),
+		'code in a template literal': add('let t = \`\${reboot()}\`;'),
+		/* the lock: on its own file, for reading, without waiting, before anything */
+		'no lock': swap('\tif (!self_file || self_file.lock(\'xn\') !== true)\n\t\treturn { v: 1, state: \'busy\', took: now_ms() - t0, more: false, ports: {} };\n\n', ''),
+		'a lock that waits': swap('self_file.lock(\'xn\')', 'self_file.lock(\'x\')'),
+		'a shared lock': swap('self_file.lock(\'xn\')', 'self_file.lock(\'sn\')'),
+		'the file opened for writing': swap('open(SELF, \'r\')', 'open(SELF, \'r+\')'),
+		'the file opened to append': swap('open(SELF, \'r\')', 'open(SELF, \'a\')'),
+		'another file locked': swap('open(SELF, \'r\')', 'open(\'/tmp/vantage.lock\', \'w\')'),
+		'SELF elsewhere': swap('const SELF = \'/usr/libexec/rpcd/luci.vantage.ports\';', 'const SELF = \'/tmp/vantage.lock\';'),
+		'a second file opened': add('let f2 = open(\'/etc/shadow\', \'r\');'),
+		'busy where the lock is not held': swap('if (!self_file || self_file.lock(\'xn\') !== true)', 'if (!self_file && self_file.lock(\'xn\') !== true)'),
+		'the ports read before the lock': swap('\tlet t0 = now_ms(), self_file = open(SELF, \'r\');\n', '\tlet d0 = dsa_ports();\n\tlet t0 = now_ms(), self_file = open(SELF, \'r\');\n'),
+		'a program started while busy': swap('\t\treturn { v: 1, state: \'busy\', took: now_ms() - t0, more: false, ports: {} };', '\t\treturn { v: 1, state: \'busy\', took: now_ms() - t0, more: false, ports: { lan1: read_port(\'lan1\') } };'),
+		'the lock let go': add('self_file.lock(\'u\');'),
+		'the lock closed early': add('self_file.close();')
 	};
 	for (const [ name, src ] of Object.entries(MUTANTS)) {
 		assert.notEqual(src, portsPlugin, name + ': the mutation applies');

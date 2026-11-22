@@ -586,7 +586,9 @@ text around it so it looks the same size.
   line, the throughput chart and the fast lane take from the kernel's.
   A rate is only ever of two readings of one source: a port whose
   chip's counters stayed out of a poll has no rate for that step, nor
-  for the step back. The first answer that says there is nothing to
+  for the step back. An answer that another call was reading (`busy`)
+  is none for that poll, and the page asks again. The first answer
+  that says there is nothing to
   get (no DSA port, no `ethtool`, or every port read with names the
   plugin does not know) or that there is no such object ends the asking
   for the page, so a device without such a switch starts no process for
@@ -880,7 +882,14 @@ text around it so it looks the same size.
   process of its own for each call (and once with `list` when rpcd
   starts), kills it after its own timeout (30 s as OpenWrt sets it) and
   answers others meanwhile. Its one method, `counters`, takes nothing:
-  the call's arguments are not read. It lists the device's DSA ports,
+  the call's arguments are not read. One call reads at a time: it first
+  locks its own file, opened for reading, without waiting, and where
+  another holds the lock it answers `busy` at once and starts nothing
+  (rpcd and uhttpd start as many calls as come, and each `ethtool -S`
+  holds the kernel's rtnl lock while it reads the chip). The shell and
+  `ethtool` it starts hold the lock too, so after rpcd kills a call
+  whose `ethtool` hangs, no other starts until that one has ended. It
+  lists the device's DSA ports,
   the entries of `/sys/class/net` whose `uevent` says `DEVTYPE=dsa`, by
   a name of letters, digits, `_` and `-` (not first, 15 at most), 32 at
   most in name order; where there is none, or no `/usr/sbin/ethtool`
@@ -1495,7 +1504,8 @@ measured on few devices so far.
   -S` and the name of one of the device's own DSA ports, which the plugin
   finds in `/sys/class/net` and holds to letters, digits, `_` and `-`
   (never first), at most 32 ports, none after its first second and 32
-  KiB of each run read; nothing the caller sends reaches the command,
+  KiB of each run read, one call at a time (a lock on its own file,
+  opened for reading); nothing the caller sends reaches the command,
   and without a DSA port or `ethtool` nothing is started. Its read group
   grants the call and no other group of a Vantage package names it;
   `luci.vantage` starts nothing. `test_acl_policy.js` pins all of it.

@@ -465,7 +465,8 @@ return baseclass.extend({
 	   own cap: { state, counters: { port: { rx, tx } }, none } or null.
 	   none: the answer says there is nothing to ask for (no DSA port, no
 	   ethtool, or every port read with names the plugin does not know:
-	   one driver, which says the same at every call) */
+	   one driver, which says the same at every call). 'busy' (another
+	   call was reading) is null too: no answer this time, never none */
 	switchCounters: function(reply) {
 		var r = obj(reply), ports = obj(r.ports), counters = Object.create(null), read = 0, unknown = 0;
 		if (r.v !== 1 || SWITCH_STATES.indexOf(r.state) < 0) return null;
