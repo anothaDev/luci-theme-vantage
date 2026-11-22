@@ -326,6 +326,42 @@ test('a provider is never asked sooner than its every after the last question: a
 	});
 });
 
+test('a provider whose call fails is asked ever less often, four minutes apart at most, also while its tile is hidden; an answer ends that', async () => {
+	const BROKEN = 'RPC call to vantage.tile.dns/status failed with ubus code 9: Unspecified error';
+	for (const hide of [ false, true ]) await tilePolls(async c => {
+		c.acl = dump({ 'vantage.tile.dns': [ 'status' ] });
+		c.self.lay = { list: [ { id: 'hero', c: 0, w: 4 }, { id: 'xdns', c: 3, w: 1, hide } ] };
+		const at = [];
+		c.answer.dns = () => { at.push(c.t); return Promise.reject(new Error(BROKEN)); };
+		await c.poll(0);
+		for (let i = 0; i < 240; i++) await c.poll(5e3);
+		/* 20 minutes: 10 s, then twice as long each time, up to four minutes */
+		assert.deepEqual(at.slice(1).map((t, i) => (t - at[i]) / 1000), [ 10, 20, 40, 80, 160, 240, 240, 240 ], hide ? 'hidden' : 'shown');
+		const shown = await c.poll(5e3);
+		assert.deepEqual(shown.dns, { data: null, at: 0, failed: true }, 'no answer yet: "Did not answer in time"');
+		/* it answers again: back to every slow poll */
+		c.answer.dns = () => { at.push(c.t); return Promise.resolve({ v: 1, title: 'T', items: [] }); };
+		const n = at.length;
+		while (at.length === n) await c.poll(5e3);
+		await c.poll(5e3);
+		assert.equal(at.length, hide ? n + 1 : n + 2, hide ? 'hidden and answered: not asked' : 'every slow poll again');
+	});
+	/* a call that was out while the computer slept, then failed: the next question 10 s on, not ten hours */
+	await tilePolls(async c => {
+		c.acl = dump({ 'vantage.tile.dns': [ 'status' ] });
+		c.answer.dns = () => Promise.resolve({ v: 1, title: 'T', items: [] });
+		await c.poll(0);
+		c.took = 3600e3;
+		c.answer.dns = () => Promise.reject(new Error('XHR request timed out'));
+		await c.poll(5e3);
+		c.answer.dns = () => Promise.resolve({ v: 1, title: 'T', items: [] });
+		await c.poll(5e3);
+		assert.equal(c.asked('dns'), 2);
+		assert.equal((await c.poll(5e3)).dns.failed, false);
+		assert.equal(c.asked('dns'), 3);
+	});
+});
+
 test('after a slow answer the wait is four minutes at most; a call that was out while the computer slept makes none', () => tilePolls(async c => {
 	c.acl = dump({ 'vantage.tile.dns': [ 'status' ] });
 	c.answer.dns = () => Promise.resolve({ v: 1, title: 'T', items: [ { label: 'a', value: c.t } ] });

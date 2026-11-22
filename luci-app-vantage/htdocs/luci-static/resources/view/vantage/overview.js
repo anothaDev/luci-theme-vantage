@@ -1256,8 +1256,9 @@ return view.extend({
 	   provider whose first answer says it is not there (WG_ABSENT's
 	   answers: no such object, access denied) is not asked again on this
 	   page and has no tile (tileState[id].off); one that went away
-	   later, once a minute. One whose tile the layout hides is not
-	   asked. The poll waits for them TILE_WAIT_MS at most; a call that
+	   later, once a minute; one whose call failed otherwise, ever less
+	   often (askTile). One whose tile the layout hides is not asked once
+	   it has answered. The poll waits for them TILE_WAIT_MS at most; a call that
 	   stays out is not made again beside itself and no later poll waits
 	   for it: its answer, late, is the next poll's */
 	askTiles: function() {
@@ -1278,7 +1279,7 @@ return view.extend({
 	   (then null: nothing for the poll to wait for) */
 	askTile: function(id, now) {
 		var self = this, ts = this.tileState || (this.tileState = Object.create(null));
-		var s = ts[id] || (ts[id] = { off: false, answered: false, last: null, failed: false, wait: null, call: null });
+		var s = ts[id] || (ts[id] = { off: false, answered: false, last: null, failed: false, fails: 0, wait: null, call: null });
 		if (s.off || s.call) return null;
 		if (s.wait && now >= s.wait.from && now < s.wait.until) return null;
 		if (s.answered && this.tileHidden(id)) return null;
@@ -1293,10 +1294,14 @@ return view.extend({
 			if (a.absent && !s.answered) { s.off = true; return; }
 			if (a.reply) { s.answered = true; s.last = { data: d, at: at }; }
 			s.failed = !a.reply;
+			s.fails = a.reply || a.absent ? 0 : s.fails + 1;
 			/* asked again: a minute on when it went away; ten times as late
-			   as a slow answer took (slowWait); and never sooner than its
-			   data changes (every) after this question */
-			var until = Math.max(at + (a.absent ? TILE_RETRY_MS : slowWait(took, TILE_SLOW_MS)), d && d.every ? asked + d.every * 1000 : 0);
+			   as a slow answer took (slowWait); after a call that failed
+			   otherwise, two polls on and twice as late after each further
+			   one, SLOW_WAIT_MAX_MS at most; and never sooner than its data
+			   changes (every) after this question */
+			var back = s.fails ? Math.min(POLL_S * 1000 * Math.pow(2, s.fails), SLOW_WAIT_MAX_MS) : 0;
+			var until = Math.max(at + (a.absent ? TILE_RETRY_MS : Math.max(slowWait(took, TILE_SLOW_MS), back)), d && d.every ? asked + d.every * 1000 : 0);
 			s.wait = until > at ? { from: asked, until: until } : null;
 		});
 		return s.call;

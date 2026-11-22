@@ -109,8 +109,11 @@ those characters.
 - A first answer that says the object is not there (not found, access
   denied) means no tile on that page. An object that goes away later is
   asked once a minute; its last answer stays for that minute, then the
-  tile says "Did not answer in time". Any other failure says the same.
-- A tile hidden under Customize is not asked after its first answer.
+  tile says "Did not answer in time". Any other failure says the same,
+  and makes it wait: 10 s, then twice as long after each further
+  failure, four minutes at most, until an answer comes.
+- A tile hidden under Customize is not asked after its first answer
+  (before it, as above).
 
 ## How the tile looks
 

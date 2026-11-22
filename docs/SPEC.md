@@ -965,8 +965,9 @@ the contract. For provider authors: [`docs/TILES.md`](TILES.md).
   denied) means no tile and no further call on that page; an object
   that goes away later is asked once a minute, its last answer shown
   for that minute, then "Did not answer in time" (also after any other
-  failure). A tile hidden under Customize is not asked after its first
-  answer.
+  failure, which makes the next call wait 10 s, twice as long after each
+  further one, four minutes at most). A tile hidden under Customize is
+  not asked after its first answer.
 - **Drawing.** The view draws the tile from its own parts: the icon
   and title, then the provider's id in a source tag (`vt-src`, the
   look of a client's name source), so that no provider passes for a
