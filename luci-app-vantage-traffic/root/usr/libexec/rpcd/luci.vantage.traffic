@@ -65,7 +65,7 @@
 // each) and the theme's Low-power router option (uci
 // vantage_theme.appearance.power). Writes only its own state, in DIR
 // (/var/run: RAM, gone at reboot; the package's postrm removes it):
-//   lock         held while a read runs, so that one runs at a time
+//   lock         held while a read runs, so that one runs at a time (0600)
 //   state.json   { v, at, flows: { key: [ orig bytes, reply bytes, read
 //                at ] }, totals: { mac: [ rx, tx, counted at ] } }, at:
 //                when the read that wrote it began; about 100 bytes an
@@ -388,15 +388,15 @@ function feed(f, neigh, now, stop, st) {
 
 /* -------------------------------------------------------------- state */
 
-// DIR as this plugin makes it: a directory, not a link, no access for
-// group or others
+// DIR as this plugin makes it: a directory, not a link, root's, no
+// access for group or others
 function dir_ok() {
 	let st = lstat(DIR);
 	if (!st) {
 		mkdir(DIR, 0700);
 		st = lstat(DIR);
 	}
-	return st?.type == 'directory' && !(st.mode & 0077);
+	return st?.type == 'directory' && st.uid === 0 && !(st.mode & 0077);
 }
 
 // text written whole beside the file, then put in its place: a call that
@@ -483,7 +483,7 @@ function hosts() {
 	if (fresh(last, t0))
 		return last.text;
 
-	let lock = open(DIR + '/lock', 'a');
+	let lock = open(DIR + '/lock', 'a', 0600);
 	if (!lock || lock.lock('xn') !== true)
 		return last?.text;
 

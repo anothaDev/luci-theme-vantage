@@ -68,11 +68,13 @@ const LARGEST = "\tdir_ok();\n\tflows = {};\n\ttotals = {};\n\tlet top = 1844674
 	"\tprint(sprintf('%J\\n', { saved, size: length(readfile(DIR + '/state.json')), flows: length(flows), totals: length(totals), before }));\n";
 
 /* The plugin with its table, switch and state directory in dir, the
-   test's clock (NOW, STEP), the stubs' data from STUB, modes that hand
-   out both parses, its limits, and a state at its largest written and
-   read back, and what the stubs and the clock saw on stderr */
-function pluginCopy(src, dir) {
+   state directory's owner this process's account (root's on a router, or
+   uid), the test's clock (NOW, STEP), the stubs' data from STUB, modes
+   that hand out both parses, its limits, and a state at its largest
+   written and read back, and what the stubs and the clock saw on stderr */
+function pluginCopy(src, dir, uid) {
 	const swaps = [
+		[ /st\.uid === 0/, 'st.uid === ' + (uid == null ? process.getuid() : uid) ],
 		[ /^const TABLE = .*$/m, 'const TABLE = ' + JSON.stringify(path.join(dir, 'nf_conntrack')) + ';' ],
 		[ /^const ACCT = .*$/m, 'const ACCT = ' + JSON.stringify(path.join(dir, 'acct')) + ';' ],
 		[ /^const DIR = .*$/m, 'const DIR = ' + JSON.stringify(path.join(dir, 'state')) + ';' ],
@@ -92,9 +94,9 @@ function pluginCopy(src, dir) {
 }
 
 /* a directory for one run of calls: the copy and the files it reads */
-function setup(source) {
+function setup(source, uid) {
 	const dir = mkTmp('vantage-traffic-');
-	fs.writeFileSync(path.join(dir, 'plugin.uc'), pluginCopy(source == null ? fs.readFileSync(PLUGIN, 'utf8') : source, dir));
+	fs.writeFileSync(path.join(dir, 'plugin.uc'), pluginCopy(source == null ? fs.readFileSync(PLUGIN, 'utf8') : source, dir, uid));
 	return dir;
 }
 /* the plugin run as rpcd runs it: argv, what it printed, what the stubs saw */
@@ -496,7 +498,7 @@ test('traffic plugin: its state in a directory of its own, 0700, its files 0600,
 	const state = path.join(dir, 'state');
 	assert.equal(fs.statSync(state).mode & 0o777, 0o700);
 	assert.deepEqual(fs.readdirSync(state).sort(), [ 'answer.json', 'lock', 'state.json' ]);
-	for (const f of [ 'answer.json', 'state.json' ]) assert.equal(fs.statSync(path.join(state, f)).mode & 0o777, 0o600, f);
+	for (const f of [ 'answer.json', 'lock', 'state.json' ]) assert.equal(fs.statSync(path.join(state, f)).mode & 0o777, 0o600, f);
 	const st = JSON.parse(fs.readFileSync(path.join(state, 'state.json'), 'utf8'));
 	assert.deepEqual(Object.keys(st).sort(), [ 'at', 'flows', 'totals', 'v' ]);
 	assert.deepEqual([ st.at, st.totals ], [ 0, { [M1]: [ 1, 2, 0 ] } ]);
@@ -527,12 +529,14 @@ test('traffic plugin: its state in a directory of its own, 0700, its files 0600,
 });
 
 test('traffic plugin: a state directory it did not make is refused, and nothing is read or written', { skip: NO_UCODE }, () => {
-	for (const make of [
-		d => { fs.mkdirSync(d, { mode: 0o755 }); fs.chmodSync(d, 0o755); },
-		d => { const real = d + '-real'; fs.mkdirSync(real, { mode: 0o700 }); fs.symlinkSync(real, d); },
-		d => fs.writeFileSync(d, 'a file')
+	for (const [ make, uid ] of [
+		[ d => { fs.mkdirSync(d, { mode: 0o755 }); fs.chmodSync(d, 0o755); } ],
+		[ d => { const real = d + '-real'; fs.mkdirSync(real, { mode: 0o700 }); fs.symlinkSync(real, d); } ],
+		[ d => fs.writeFileSync(d, 'a file') ],
+		/* 0700, but another account's (on a router: not root's) */
+		[ d => fs.mkdirSync(d, { mode: 0o700 }), process.getuid() + 1 ]
 	]) {
-		const dir = setup(), state = path.join(dir, 'state');
+		const dir = setup(null, uid), state = path.join(dir, 'state');
 		make(state);
 		const [ r ] = calls([ call([ line(at(OUT, { ob: 1, rb: 2 })) ], 0) ], dir);
 		assert.deepEqual([ r.reply, r.dumps, r.uci ], [ {}, 0, 0 ]);

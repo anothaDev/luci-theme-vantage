@@ -2182,7 +2182,7 @@ const TRAFFIC_PINS = [
 		'let text = readfile(DIR + \'/state.json\', MAX_STATE + 1), st = null;',
 		'let text = readfile(DIR + \'/answer.json\', MAX_ANSWER), a = null;',
 		'let acct = acct_on(), f = (acct !== false) ? open(TABLE, \'r\') : null;',
-		'let lock = open(DIR + \'/lock\', \'a\');'
+		'let lock = open(DIR + \'/lock\', \'a\', 0600);'
 	] ],
 	[ '\\b(?:TABLE|ACCT|THEME|DIR)\\b', [
 		'const TABLE = \'/proc/net/nf_conntrack\';',
@@ -2198,10 +2198,10 @@ const TRAFFIC_PINS = [
 		'let text = readfile(DIR + \'/state.json\', MAX_STATE + 1), st = null;',
 		'let text = readfile(DIR + \'/answer.json\', MAX_ANSWER), a = null;',
 		'let acct = acct_on(), f = (acct !== false) ? open(TABLE, \'r\') : null;',
-		'let lock = open(DIR + \'/lock\', \'a\');'
+		'let lock = open(DIR + \'/lock\', \'a\', 0600);'
 	] ],
-	/* the directory: its own (a directory, not a link, closed to others) or none */
-	[ '\\bst(?:\\?)?\\.(?:type|mode)\\b', [ 'return st?.type == \'directory\' && !(st.mode & 0077);' ] ],
+	/* the directory: its own (a directory, not a link, root's, closed to others) or none */
+	[ '\\bst(?:\\?)?\\.(?:type|mode|uid)\\b', [ 'return st?.type == \'directory\' && st.uid === 0 && !(st.mode & 0077);' ] ],
 	/* writes: whole, 0600, then in place, of these two files only */
 	[ '\\b(?:put|tmp)\\b', [
 		'function put(name, text) {',
@@ -2210,8 +2210,8 @@ const TRAFFIC_PINS = [
 		'return put(\'state.json\', sprintf(\'%J\', { v: 2, at: now, flows, totals }));',
 		'put(\'answer.json\', text);'
 	] ],
-	/* one read at a time */
-	[ '\\block\\b', [ 'let lock = open(DIR + \'/lock\', \'a\');', 'if (!lock || lock.lock(\'xn\') !== true)' ] ],
+	/* one read at a time; the lock file 0600 */
+	[ '\\block\\b', [ 'let lock = open(DIR + \'/lock\', \'a\', 0600);', 'if (!lock || lock.lock(\'xn\') !== true)' ] ],
 	[ '\\bcursor\\b', [
 		'import { cursor } from \'uci\';',
 		'return cursor().get(THEME, \'appearance\', \'power\') == \'low\';'
@@ -2280,9 +2280,11 @@ test('traffic: the plugin rules catch each breach', () => {
 		'a shadowed directory': add('let DIR = \'/tmp\';'),
 		'the state elsewhere': swap('const DIR = \'/var/run/vantage-traffic\';', 'const DIR = \'/tmp/vantage-traffic\';'),
 		'the directory open to others': swap('mkdir(DIR, 0700);', 'mkdir(DIR, 0755);'),
-		'a directory others may enter taken': swap('return st?.type == \'directory\' && !(st.mode & 0077);', 'return st?.type == \'directory\';'),
-		'a link taken': swap('return st?.type == \'directory\' && !(st.mode & 0077);', 'return st?.type != \'file\' && !(st.mode & 0077);'),
+		'a directory others may enter taken': swap('return st?.type == \'directory\' && st.uid === 0 && !(st.mode & 0077);', 'return st?.type == \'directory\' && st.uid === 0;'),
+		'a link taken': swap('return st?.type == \'directory\' && st.uid === 0 && !(st.mode & 0077);', 'return st?.type != \'file\' && st.uid === 0 && !(st.mode & 0077);'),
+		'another account\'s directory taken': swap('return st?.type == \'directory\' && st.uid === 0 && !(st.mode & 0077);', 'return st?.type == \'directory\' && !(st.mode & 0077);'),
 		'files others may read': swap('chmod(tmp, 0600)', 'chmod(tmp, 0644)'),
+		'a lock file others may read': swap('open(DIR + \'/lock\', \'a\', 0600)', 'open(DIR + \'/lock\', \'a\')'),
 		'a file written in place': swap('return writefile(tmp, text) == length(text) && chmod(tmp, 0600) && rename(tmp, file) === true;', 'return writefile(file, text) == length(text) && chmod(file, 0600);'),
 		'a third file': swap('put(\'answer.json\', text);', 'put(\'answer.json\', text);\n\tput(\'flows.json\', sprintf(\'%J\', flows));'),
 		'the entries in the answer file': swap('put(\'answer.json\', text);', 'put(\'answer.json\', sprintf(\'%J\', flows));'),
