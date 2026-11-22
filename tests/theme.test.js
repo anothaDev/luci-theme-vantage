@@ -641,6 +641,11 @@ test('Appearance: the theme\'s rpcd group writes config vantage_theme only, whic
 	const conf = fs.readFileSync(path.join(T, 'root/etc/config/vantage_theme'), 'utf8');
 	assert.deepEqual(conf.split('\n').filter(l => l.trim() && !/^\s*#/.test(l)), [ "config appearance 'appearance'" ], 'one section, nothing set');
 	assert.match(conf, /# network path \(option path: full, or compact with one line per node\)/, 'the comment names what Customize saves');
+	/* the packaged copy that opkg and apk put beside a saved file at every
+	   upgrade goes at install: two literal paths, and nothing else is removed */
+	const defaults = fs.readFileSync(path.join(T, 'root/etc/uci-defaults/30_luci-theme-vantage'), 'utf8');
+	assert.deepEqual(defaults.split('\n').filter(l => /\brm\b/.test(l) && !/^\s*#/.test(l)),
+		[ 'rm -f /etc/config/vantage_theme-opkg /etc/config/vantage_theme.apk-new' ]);
 	const mk = fs.readFileSync(path.join(T, 'Makefile'), 'utf8');
 	assert.match(mk, /define Package\/luci-theme-vantage\/conffiles\n\/etc\/config\/vantage_theme\nendef/);
 });
