@@ -18,6 +18,18 @@ points without Dropbear; per-port traffic that a switch chip forwards
 without the kernel counting it; the collector under a user of its own
 instead of root; finding a moved access point over IPv6.
 
+### Per-device traffic (experimental)
+
+Since 1.1.2 the optional `luci-app-vantage-traffic` counts the traffic
+through a router of each device that shares a port, from connection
+tracking, without firewall rules
+([#110](https://github.com/anothaDev/luci-theme-vantage/issues/110) by
+@MohdMusab; see the spec, "Per-device traffic"). Still open: what a read
+costs small routers with large connection tables, and whether it should
+move out of rpcd if that is too much; flows offloaded to hardware;
+whether Top talkers should rank these devices; living beside nlbwmon,
+which resets the same counters.
+
 ### WireGuard tile
 
 Since 1.1, from LuCI's own `luci.wireguard getWgInstances`

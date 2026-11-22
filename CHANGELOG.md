@@ -39,6 +39,22 @@ Each release ships both packages, `luci-theme-vantage` and
   makes one call more per page and looks as before. Experimental: what
   a package sends and how the dashboard shows it may change in any
   release. For package authors: [Provider tiles](docs/TILES.md).
+- **Traffic per device for devices that share a port** (optional add-on
+  `luci-app-vantage-traffic`, experimental; #110,
+  [@MohdMusab](https://github.com/MohdMusab)). On a router, devices
+  behind a switch, or behind an access point that is not paired, share
+  one port, and the Clients list had no traffic for them. With this
+  add-on on the router, the list and a device's details show the traffic
+  that passes the router for each of them, counted from the router's own
+  connection tracking, and say so: what devices of one network send each
+  other is not in it. It adds no firewall rule and changes no setting;
+  one read serves every open dashboard, and a slow read makes the next
+  wait longer. A device's own port and a paired access point's count
+  still come first, and Top talkers is unchanged. Seeing it needs a
+  permission of its own, `luci-app-vantage-traffic`. Install it on the
+  router: `apk add luci-app-vantage-traffic` (24.10: `opkg install
+  luci-app-vantage-traffic`). See
+  [Per-device traffic](docs/INSTALL.md#per-device-traffic-optional-experimental).
 
 ## 1.1.1 - 2026-11-21
 
