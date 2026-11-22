@@ -65,7 +65,8 @@
  * - the provider tiles' call is the one other dynamic declare: in the
  *   dashboard, in one exact helper (TILE_HELPER) whose object is the
  *   fixed prefix `vantage.tile.` and an id of a-z only, checked by the
- *   pinned TILE_OBJ, its one method `status`, no parameters, so no
+ *   pinned TILE_OBJ (only tested, never changed; the helper's declares
+ *   are its own), its one method `status`, no parameters, so no
  *   argument can be sent; it is called in one place, for ids that come
  *   only from the session's own ACL (rpcd's `session access` without an
  *   object, declared once in one exact form without parameters and
@@ -850,6 +851,10 @@ function tileProblems(srcs) {
 		helpers += h; objs += o;
 		if ((h || o) && !dash) out.push(`${file}: the provider helper outside the dashboard`);
 		for (const m of text.matchAll(/^.*\bTILE_OBJ\s*=.*$/gm)) if (m[0] !== TILE_OBJ_LINE) out.push(`${file}: ${m[0].trim()}`);
+		/* the check only tested, never changed (TILE_OBJ.test = ...); the
+		   helper's declares only in the helper (tileCalls[...] = callX) */
+		for (const m of text.matchAll(/^.*\bTILE_OBJ\s*[.[](?!test\(obj\)).*$/gm)) out.push(`${file}: ${m[0].trim()}`);
+		if ((text.match(/\btileCalls\b/g) || []).length !== h * (TILE_HELPER.match(/\btileCalls\b/g) || []).length) out.push(`${file}: tileCalls used outside the helper`);
 		for (const m of text.matchAll(/^.*['"`]vantage\.tile\b.*$/gm))
 			if (dash && m[0] === "\tvar obj = 'vantage.tile.' + id;") prefixes++;
 			else out.push(`${file}: ${m[0].trim()}`);
@@ -921,7 +926,9 @@ test('negative controls: another form, object, method or argument of the provide
 		[ 'the ACL asked about an object', edit(TILE_ACLS, TILE_ACLS.replace("method: 'access',", "method: 'access', params: [ 'scope', 'object' ],")), /overview\.js: var callAcls = .*params|0 declares of the session's ACL/ ],
 		[ 'the ACL read twice', add(DASH, 'callAcls();'), /overview\.js: callAcls\(\)/ ],
 		[ 'the ACL with an argument', edit('L.resolveDefault(callAcls(), null)', "L.resolveDefault(callAcls('ubus'), null)"), /overview\.js: callAcls\('ubus'\)/ ],
-		[ 'another session method', add(DASH, "var callSess = rpc.declare({ object: 'session', method: 'get' });"), /overview\.js: var callSess = /]
+		[ 'another session method', add(DASH, "var callSess = rpc.declare({ object: 'session', method: 'get' });"), /overview\.js: var callSess = /],
+		[ 'the helper\'s declares filled elsewhere', add(DASH, "tileCalls['vantage' + '.tile.dns'] = callRead;"), /overview\.js: tileCalls used outside the helper/ ],
+		[ 'the id check changed', add(DASH, 'TILE_OBJ.test = function() { return true; };'), /overview\.js: TILE_OBJ\.test = function/ ]
 	]) {
 		assert.notDeepEqual(mutant, sources, what + ': the mutation applies');
 		const found = tileProblems(mutant).concat(analyse(mutant).problems).join('\n');
