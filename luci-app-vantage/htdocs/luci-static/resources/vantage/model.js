@@ -47,6 +47,11 @@ var AP_IFNAME = /^[A-Za-z0-9_.-]{1,15}$/;
 /* per-device traffic (luci.vantage.traffic hosts): the plugin's own cap */
 var MAX_TRAFFIC_HOSTS = 512;
 
+/* a switch chip's own counters (luci.vantage.ports counters): the
+   plugin's own cap, and what its answer says */
+var MAX_SWITCH_PORTS = 32;
+var SWITCH_STATES = [ 'ok', 'none', 'no-ethtool' ];
+
 /* WireGuard (luci.wireguard getWgInstances, LuCI's own), cut to what a
    tile can hold: the page never trusts a reply to be smaller */
 var MAX_WG_IFACES = 8, MAX_WG_PEERS = 128, MAX_WG_ALLOWED = 8;
@@ -404,17 +409,20 @@ return baseclass.extend({
 		return { at: now, local: local };
 	},
 
-	/* Rates for a set of counters { key: { rx, tx } } captured at `at`.
-	   Returns { next, rates }; next holds only keys present now, so the
-	   state cannot grow with every station that ever associated. */
+	/* Rates for a set of counters { key: { rx, tx, src } } captured at
+	   `at`. Returns { next, rates }; next holds only keys present now, so
+	   the state cannot grow with every station that ever associated. src
+	   names where a key's counters come from (a switch port's: its chip,
+	   'switch', or the kernel, none): a rate is only ever of two readings
+	   of one source, so a key whose source changed starts over. */
 	rates: function(prevMap, counters, at) {
 		var next = Object.create(null), rates = Object.create(null), self = this;
 		Object.keys(obj(counters)).forEach(function(k) {
 			var c = counters[k];
 			if (!c) return;
 			var p = own(prevMap, k) ? prevMap[k] : null;
-			var cur = { at: at, rx: num(c.rx), tx: num(c.tx) };
-			var r = self.counterRate(p, cur);
+			var cur = { at: at, rx: num(c.rx), tx: num(c.tx), src: c.src || null };
+			var r = p && p.src !== cur.src ? { state: 'first' } : self.counterRate(p, cur);
 			if (r.state === 'ok') rates[k] = { rx: r.rx, tx: r.tx };
 			next[k] = r.state === 'skip' ? p : cur;
 		});
@@ -442,6 +450,26 @@ return baseclass.extend({
 			partial: r.partial === 'entries' || r.partial === 'time' ? r.partial : false,
 			hw: n(r.hw), zeroed: n(r.zeroed), counters: counters
 		};
+	},
+
+	/* luci.vantage.ports counters (#156): the byte counters a DSA switch
+	   chip keeps for its ports, which count what it forwards from one
+	   port to another too (the kernel's count what passes the CPU), as
+	   the plugin read them with ethtool. Checked and cut to the plugin's
+	   own cap: { state, counters: { port: { rx, tx } }, none } or null.
+	   none: the answer says there is nothing to ask for (no DSA port, no
+	   ethtool, or every port read with names the plugin does not know:
+	   one driver, which says the same at every call) */
+	switchCounters: function(reply) {
+		var r = obj(reply), ports = obj(r.ports), counters = Object.create(null), read = 0, unknown = 0;
+		if (r.v !== 1 || SWITCH_STATES.indexOf(r.state) < 0) return null;
+		Object.keys(ports).slice(0, MAX_SWITCH_PORTS).forEach(function(n) {
+			var p = obj(ports[n]);
+			if (!AP_IFNAME.test(n)) return;
+			if (p.error === 'unknown' || p.error === 'failed') { read++; if (p.error === 'unknown') unknown++; return; }
+			if (finite(p.rx_bytes) && finite(p.tx_bytes) && p.rx_bytes >= 0 && p.tx_bytes >= 0) { read++; counters[n] = { rx: p.rx_bytes, tx: p.tx_bytes }; }
+		});
+		return { state: r.state, counters: counters, none: r.state !== 'ok' || (read > 0 && unknown === read) };
 	},
 
 	/* ------------------------------------------------------------ uplink */

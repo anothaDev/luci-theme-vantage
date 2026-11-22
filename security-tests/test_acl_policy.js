@@ -93,6 +93,18 @@
  *   view group (read) and LuCI's luci-proto-wireguard (read); it reads
  *   its own session's ACL once,
  *   for the provider tiles only;
+ * - the app's executable rpcd plugin (root/usr/libexec/rpcd/
+ *   luci.vantage.ports, #156) is the one file of the dashboard and the
+ *   theme that starts a program: /usr/sbin/ethtool with -S and the name
+ *   of one of the device's own DSA ports, which it finds in
+ *   /sys/class/net (DEVTYPE=dsa) and holds to RE_PORT (popen hands the
+ *   line to /bin/sh: letters, digits, _ and -, never first, are plain
+ *   words to it and a device to ethtool); its one method, counters,
+ *   takes nothing; it reads MAX_PORTS ports, none after BUDGET_MS, and
+ *   MAX_OUT bytes of each run at most; the read group grants it, no
+ *   other group of any Vantage package mentions it, and the dashboard
+ *   declares it once without parameters and calls it in one place
+ *   without arguments; luci.vantage still starts nothing;
  * - the dashboard's menu entry is gated by the read group; the firewall
  *   overview's (Network -> Firewall -> Overview) by luci-app-firewall,
  *   LuCI's own group for the firewall pages, which already lets its holder
@@ -182,6 +194,9 @@ const READ_UBUS = {
 	/* LuCI's own: swconfig dev <switch> show, the switch name quoted */
 	'luci': [ 'getSwconfigPortState' ],
 	'luci.vantage': [ 'routes', 'survey', 'thermal', 'wired', 'wireless' ],
+	/* the app's executable plugin: a DSA switch chip's own byte counters,
+	   ethtool -S on each of the device's DSA ports (#156; PORTS_* below) */
+	'luci.vantage.ports': [ 'counters' ],
 	/* not survey (#124): luci.vantage survey reads it through nl80211 */
 	'iwinfo': [ 'assoclist', 'info' ],
 	'hostapd.*': [ 'get_clients', 'get_status' ],
@@ -999,6 +1014,281 @@ test('the firewall overview: behind LuCI\'s firewall group, uci get on firewall 
 	assert.deepEqual(declares, [ 'uci get', 'network.interface dump' ]);
 });
 
+/* ------------------------------------ luci-app-vantage: luci.vantage.ports */
+
+/* The app's executable rpcd plugin (#156): the byte counters a DSA switch
+   chip keeps for its ports, read with ethtool. rpcd runs it as a process
+   of its own per call. The rules below hold it to that one program, at
+   that one path, with that one option and a port name of the device's
+   own: every line of code that mentions a file, the program, a name or a
+   cap is listed (checkPins), and the two functions that find the ports
+   and run the program are pinned whole. */
+const THEME_PKG = path.resolve(process.env.VANTAGE_THEME_PKG || path.join(__dirname, '..', 'luci-theme-vantage'));
+const PORTS_OBJECT = 'luci.vantage.ports';
+const PORTS_CALL = PORTS_OBJECT + ' counters';
+const PORTS_REL = 'root/usr/libexec/rpcd/luci.vantage.ports';
+const portsPlugin = fs.readFileSync(path.join(PKG, PORTS_REL), 'utf8');
+/* a port's name: to /bin/sh (popen) a plain word, to ethtool a device and never an option */
+const PORTS_RE_PORT = 'const RE_PORT = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,14}$/;';
+const PORTS_PATHS = { NET: '/sys/class/net', ETHTOOL: '/usr/sbin/ethtool' };
+const PORTS_CAPS = { MAX_PORTS: 32, BUDGET_MS: 1000, MAX_OUT: 32768, MAX_UEVENT: 512 };
+/* the ports: a name of /sys/class/net that RE_PORT takes and whose uevent says DEVTYPE=dsa, MAX_PORTS at most */
+const PORTS_FIND = "function dsa_ports() {\n\tlet found = [], more = false;\n\n\tfor (let n in sort(lsdir(NET) ?? [])) {\n\t\tif (!match(n, RE_PORT))\n\t\t\tcontinue;\n\n" +
+	"\t\tlet dsa = false;\n\n\t\tfor (let l in split(readfile(NET + '/' + n + '/uevent', MAX_UEVENT) ?? '', '\\n'))\n\t\t\tif (l == 'DEVTYPE=dsa')\n\t\t\t\tdsa = true;\n\n" +
+	"\t\tif (!dsa)\n\t\t\tcontinue;\n\n\t\tif (length(found) >= MAX_PORTS) {\n\t\t\tmore = true;\n\t\t\tbreak;\n\t\t}\n\n\t\tpush(found, n);\n\t}\n\n\treturn { found, more };\n}";
+/* the one program: ETHTOOL -S <port>, MAX_OUT bytes of its output read, its exit code checked */
+const PORTS_RUN = "function read_port(name) {\n\tlet p = popen(ETHTOOL + ' -S ' + name, 'r');\n\n\tif (!p)\n\t\treturn { error: 'failed' };\n\n" +
+	"\tlet text = p.read(MAX_OUT + 1);\n\n\tif (p.close() !== 0 || type(text) != 'string' || length(text) > MAX_OUT)\n\t\treturn { error: 'failed' };\n\n\treturn parse(text);\n}";
+const PORTS_PINS = [
+	[ '\\b(?:popen|access|lsdir|readfile|ETHTOOL|NET)\\b', [
+		'import { access, lsdir, popen, readfile } from \'fs\';',
+		'const NET = \'/sys/class/net\';',
+		'const ETHTOOL = \'/usr/sbin/ethtool\';',
+		'for (let n in sort(lsdir(NET) ?? [])) {',
+		'for (let l in split(readfile(NET + \'/\' + n + \'/uevent\', MAX_UEVENT) ?? \'\', \'\\n\'))',
+		'let p = popen(ETHTOOL + \' -S \' + name, \'r\');',
+		'if (!access(ETHTOOL, \'x\'))'
+	] ],
+	/* the name ethtool gets: one of dsa_ports(), each in turn */
+	[ '\\b(?:name|found|RE_PORT|read_port|dsa_ports)\\b|\\bd\\b', [
+		'const RE_PORT = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,14}$/;',
+		'function dsa_ports() {',
+		'let found = [], more = false;',
+		'if (!match(n, RE_PORT))',
+		'if (length(found) >= MAX_PORTS) {',
+		'push(found, n);',
+		'return { found, more };',
+		'function read_port(name) {',
+		'let p = popen(ETHTOOL + \' -S \' + name, \'r\');',
+		'let t0 = now_ms(), ports = {}, d = dsa_ports();',
+		'if (!length(d.found))',
+		'return { v: 1, state: \'no-ethtool\', took: now_ms() - t0, more: d.more, ports };',
+		'for (let name in d.found)',
+		'ports[name] = (now_ms() - t0 < BUDGET_MS) ? read_port(name) : { error: \'time\' };',
+		'return { v: 1, state: \'ok\', took: now_ms() - t0, more: d.more, ports };'
+	] ],
+	/* the caps, each used where it bounds */
+	[ '\\b(?:MAX_PORTS|BUDGET_MS|MAX_OUT|MAX_UEVENT)\\b', [
+		'const MAX_PORTS = 32;             // ports read each time; the add-on\'s report lists 32 at most',
+		'const BUDGET_MS = 1000;           // no port is read after this',
+		'const MAX_OUT = 32768;            // bytes of one ethtool run read: the drivers below fill 3 KiB or so',
+		'const MAX_UEVENT = 512;           // bytes of a device\'s uevent read',
+		'for (let l in split(readfile(NET + \'/\' + n + \'/uevent\', MAX_UEVENT) ?? \'\', \'\\n\'))',
+		'if (length(found) >= MAX_PORTS) {',
+		'let text = p.read(MAX_OUT + 1);',
+		'if (p.close() !== 0 || type(text) != \'string\' || length(text) > MAX_OUT)',
+		'ports[name] = (now_ms() - t0 < BUDGET_MS) ? read_port(name) : { error: \'time\' };'
+	] ],
+	/* rpcd's two calls, and nothing else of the command line: one method, which takes nothing */
+	[ '\\b(?:ARGV|print)\\b', [
+		'if (ARGV[0] == \'list\')',
+		'print(\'{ "counters": {} }\\n\');',
+		'else if (ARGV[0] == \'call\' && ARGV[1] == \'counters\')',
+		'print(sprintf(\'%J\', counters()), \'\\n\');'
+	] ],
+	/* the counters' names (COUNTERS), and no member reached by a literal name */
+	[ '\\[\\s*[\'"]', [
+		'[ \'RxBytes\', \'TxBytes\' ],             // mt7530: MT7530, MT7531, MT7988 (until Linux 6.16)',
+		'[ \'RxGoodByte\', \'TxByte\' ],           // qca8k: QCA8337, QCA8327',
+		'[ \'in_good_octets\', \'out_octets\' ],   // mv88e6xxx: Marvell',
+		'[ \'RxOctets\', \'TxOctets\' ],           // b53, bcm_sf2: Broadcom',
+		'[ \'RxGoodBytes\', \'TxGoodBytes\' ],     // lantiq_gswip',
+		'[ \'IfInOctets\', \'IfOutOctets\' ]       // rtl8366rb'
+	] ]
+];
+function checkPortsSource(src) {
+	assert.ok(src.startsWith('#!/usr/bin/ucode -S\n'), 'strict ucode');
+	assert.match(src, /^'use strict';$/m);
+	const code = codeOf(src, 'the switch counters plugin');
+	assert.deepEqual(linesWith(code, 'import'), [ 'import { access, lsdir, popen, readfile } from \'fs\';' ]);
+	/* no other way to a program, a file, the environment or standard input */
+	const word = /\b(system|exec|execv|execvp|uloop|fork|spawn|require|loadfile|loadstring|include|render|writefile|unlink|rename|mkdir|chmod|symlink|open|connect|cursor|global|getenv|stdin|sleep|signal)\b/.exec(code);
+	assert.equal(word, null, word && `"${word[1]}" is banned in the switch counters plugin`);
+	assert.doesNotMatch(code, /(^|[^.\w])call\s*\(/m, 'the call() builtin is banned in the switch counters plugin');
+	for (const [ name, v ] of Object.entries(PORTS_PATHS)) {
+		assert.ok(src.includes('\nconst ' + name + ' = \'' + v + '\';\n'), name + ' = ' + v);
+		assert.equal([ ...code.matchAll(new RegExp('\\b' + name + '\\s*=(?!=)', 'g')) ].length, 1, name + ' is defined once and never assigned');
+	}
+	assert.ok(src.includes('\n' + PORTS_RE_PORT + '\n'), 'RE_PORT, exactly');
+	for (const [ name, v ] of Object.entries(PORTS_CAPS)) {
+		assert.match(src, new RegExp('\\nconst ' + name + ' = ' + v + ';'), name + ' = ' + v);
+		assert.equal([ ...code.matchAll(new RegExp('\\b' + name + '\\s*(?:[-+*/%&|^]|<<|>>)?=(?!=)', 'g')) ].length, 1, name + ' is defined once and never assigned');
+	}
+	for (const [ what, fn ] of [ [ 'dsa_ports', PORTS_FIND ], [ 'read_port', PORTS_RUN ] ]) {
+		const found = new RegExp('^function ' + what + '\\(.*\\) \\{\\n[\\s\\S]*?\\n\\}$', 'm').exec(src);
+		assert.equal(found && found[0], fn, what + '(), exactly');
+	}
+	checkPins(src, 'the switch counters plugin', PORTS_PINS);
+}
+
+test('switch counters: the plugin starts ethtool alone, at its one path, with -S and a DSA port\'s name of the device\'s own; its method takes nothing', () => {
+	checkPortsSource(portsPlugin);
+	/* the pattern itself: no option, nothing the shell reads otherwise, an interface name's length */
+	const re = new RegExp(PORTS_RE_PORT.slice('const RE_PORT = /'.length, -2));
+	for (const ok of [ 'lan1', 'wan', 'lan-1', 'port_2', 'sfp', 'p0', 'x'.repeat(15) ]) assert.ok(re.test(ok), ok);
+	for (const bad of [ '', '-S', '-lan1', '--help', 'lan 1', 'lan1;reboot', 'a|b', 'a&b', '$(id)', '`id`', 'a\'b', 'a"b', 'a\\b', 'a*', 'a?',
+		'[a]', '~root', 'a>b', 'a<b', 'a\nb', 'a\tb', '#a', 'a.b', '..', 'a/b', 'a=b', 'a{b}', 'x'.repeat(16), 'lan1\u0000x', 'l\u00e4n' ])
+		assert.ok(!re.test(bad), JSON.stringify(bad));
+});
+
+test('switch counters: the plugin rules catch each breach', () => {
+	const at = '\tlet t0 = now_ms(), ports = {}, d = dsa_ports();\n';
+	assert.ok(portsPlugin.includes(at), 'insertion point');
+	const add = code => portsPlugin.replace(at, at + '\t' + code + '\n');
+	const swap = (from, to) => { assert.ok(portsPlugin.includes(from), from); return portsPlugin.replace(from, to); };
+	const MUTANTS = {
+		'another program': swap('const ETHTOOL = \'/usr/sbin/ethtool\';', 'const ETHTOOL = \'/bin/sh\';'),
+		'ethtool from the PATH': swap('const ETHTOOL = \'/usr/sbin/ethtool\';', 'const ETHTOOL = \'ethtool\';'),
+		'another option': swap('popen(ETHTOOL + \' -S \' + name, \'r\')', 'popen(ETHTOOL + \' -s \' + name + \' speed 10\', \'r\')'),
+		'a second option': swap('popen(ETHTOOL + \' -S \' + name, \'r\')', 'popen(ETHTOOL + \' -S \' + name + \' --all-groups\', \'r\')'),
+		'a second program': swap('popen(ETHTOOL + \' -S \' + name, \'r\')', 'popen(ETHTOOL + \' -S \' + name + \'; reboot\', \'r\')'),
+		'the path reassigned': add('ETHTOOL = \'/tmp/x\';'),
+		'the path shadowed': add('let ETHTOOL = \'/tmp/x\';'),
+		'a second popen': add('let q = popen(\'reboot\', \'r\');'),
+		'popen under another name': add('let run = popen; run(\'reboot\');'),
+		'system': add('system([ ETHTOOL, \'-S\', \'lan1\' ]);'),
+		'uloop': swap('import { access, lsdir, popen, readfile } from \'fs\';', 'import { access, lsdir, popen, readfile } from \'fs\';\nimport * as uloop from \'uloop\';'),
+		'the call builtin': add('call(print, null, null, \'x\');'),
+		'a builtin by name': add('global[\'sys\' + \'tem\'](\'reboot\');'),
+		'a name from the caller': swap('else if (ARGV[0] == \'call\' && ARGV[1] == \'counters\')', 'else if (ARGV[0] == \'call\' && ARGV[1] == \'port\')\n\tprint(sprintf(\'%J\', read_port(ARGV[2])), \'\\n\');\nelse if (ARGV[0] == \'call\' && ARGV[1] == \'counters\')'),
+		'a method that takes an argument': swap('print(\'{ "counters": {} }\\n\');', 'print(\'{ "counters": { "port": "string" } }\\n\');'),
+		'standard input read': swap('import { access, lsdir, popen, readfile } from \'fs\';', 'import { access, lsdir, popen, readfile, stdin } from \'fs\';'),
+		'the environment read': add('let n2 = getenv(\'PORT\');'),
+		'a name not checked': swap('\t\tif (!match(n, RE_PORT))\n\t\t\tcontinue;\n', ''),
+		'a wider pattern': swap(PORTS_RE_PORT, 'const RE_PORT = /^[A-Za-z0-9_.;-]{1,15}$/;'),
+		'a leading dash allowed': swap(PORTS_RE_PORT, 'const RE_PORT = /^[A-Za-z0-9_-]{1,15}$/;'),
+		'any device, not a DSA port': swap('\t\tif (!dsa)\n\t\t\tcontinue;\n', ''),
+		'the ports from elsewhere': swap('for (let n in sort(lsdir(NET) ?? [])) {', 'for (let n in sort(lsdir(\'/tmp\') ?? [])) {'),
+		'a found name changed': add('d.found[0] = \'-x\';'),
+		'no port cap': swap('\t\tif (length(found) >= MAX_PORTS) {\n\t\t\tmore = true;\n\t\t\tbreak;\n\t\t}\n\n', ''),
+		'a larger port cap': swap('const MAX_PORTS = 32;', 'const MAX_PORTS = 4096;'),
+		'no time budget': swap('ports[name] = (now_ms() - t0 < BUDGET_MS) ? read_port(name) : { error: \'time\' };', 'ports[name] = read_port(name);'),
+		'a longer budget': swap('const BUDGET_MS = 1000;', 'const BUDGET_MS = 30000;'),
+		'the output read whole': swap('let text = p.read(MAX_OUT + 1);', 'let text = p.read(\'all\');'),
+		'too much output taken': swap('|| length(text) > MAX_OUT)', ')'),
+		'the exit code ignored': swap('if (p.close() !== 0 || type(text)', 'if (p.close() === null || type(text)'),
+		'a larger output cap': swap('const MAX_OUT = 32768;', 'const MAX_OUT = 16777216;'),
+		'the uevent read unbounded': swap('readfile(NET + \'/\' + n + \'/uevent\', MAX_UEVENT)', 'readfile(NET + \'/\' + n + \'/uevent\')'),
+		'a file written': swap('import { access, lsdir, popen, readfile } from \'fs\';', 'import { access, lsdir, popen, readfile, writefile } from \'fs\';'),
+		'code in a template literal': add('let t = \`\${reboot()}\`;')
+	};
+	for (const [ name, src ] of Object.entries(MUTANTS)) {
+		assert.notEqual(src, portsPlugin, name + ': the mutation applies');
+		assert.throws(() => checkPortsSource(src), assert.AssertionError, name);
+	}
+});
+
+/* every file the dashboard and the theme ship to the device, as text, by package-relative path */
+function coreFiles() {
+	const out = [];
+	const walk = (base, pkg, dir) => {
+		if (!fs.existsSync(dir)) return;
+		for (const e of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1)) {
+			const p = path.join(dir, e.name);
+			if (e.isDirectory()) walk(base, pkg, p);
+			else out.push({ rel: pkg + '/' + path.relative(base, p), text: fs.readFileSync(p, 'utf8') });
+		}
+	};
+	walk(PKG, 'luci-app-vantage', path.join(PKG, 'root'));
+	walk(THEME_PKG, 'luci-theme-vantage', path.join(THEME_PKG, 'root'));
+	walk(THEME_PKG, 'luci-theme-vantage', path.join(THEME_PKG, 'ucode'));
+	return out;
+}
+/* what starts a program from ucode, or reaches what does by name ('system' quoted is the ubus object or uci config) */
+const STARTS = /(?<!['"])\b(popen|system|exec|execv|execvp|uloop|fork|spawn)\b(?!['"])|(^|[^.\w])call\s*\(|\bglobal\s*\[/m;
+function programFiles(files) {
+	const out = { shell: [], starts: [], libexec: [] };
+	for (const f of files) {
+		if (/^[^/]+\/root\/usr\/libexec\//.test(f.rel)) out.libexec.push(f.rel);
+		/* data: uci defaults, menu and ACL files */
+		if (/\.json$/.test(f.rel) || /^[^/]+\/root\/etc\/config\/[a-z_]+$/.test(f.rel)) continue;
+		/* the theme's uci-defaults script: the package manager runs it once, at install */
+		if (f.text.startsWith('#!/bin/sh\n')) { out.shell.push(f.rel); continue; }
+		/* the rest is ucode: templates, rpcd plugins, scripts */
+		if (STARTS.test(f.text)) out.starts.push(f.rel);
+	}
+	return out;
+}
+
+test('switch counters: of the dashboard\'s and the theme\'s files, the plugin alone starts a program; luci.vantage still starts none', () => {
+	const files = coreFiles(), found = programFiles(files);
+	assert.ok(files.some(f => f.rel.endsWith('/luci.vantage')) && files.some(f => f.rel.endsWith('/sysauth.ut')), 'found the files');
+	assert.deepEqual(found.starts, [ 'luci-app-vantage/' + PORTS_REL ]);
+	assert.deepEqual(found.libexec, [ 'luci-app-vantage/' + PORTS_REL ]);
+	assert.deepEqual(found.shell, [ 'luci-theme-vantage/root/etc/uci-defaults/30_luci-theme-vantage' ]);
+	/* a second program anywhere else is caught: in luci.vantage, a template, a new script */
+	const plus = (rel, text) => programFiles(files.concat([ { rel, text } ]));
+	assert.notDeepEqual(plus('luci-app-vantage/root/usr/share/rpcd/ucode/luci.vantage2', 'import { popen } from \'fs\';\n').starts, found.starts);
+	assert.notDeepEqual(plus('luci-theme-vantage/ucode/template/themes/vantage/x.ut', '{% system(\'id\') %}').starts, found.starts);
+	assert.notDeepEqual(plus('luci-app-vantage/root/usr/libexec/vantage/x', '#!/bin/sh\nid\n').shell, found.shell);
+	assert.notDeepEqual(plus('luci-app-vantage/root/usr/libexec/rpcd/luci.vantage.x', '#!/usr/bin/ucode\nprint(1);\n').libexec, found.libexec);
+	/* luci.vantage, inside rpcd: its own rules still refuse every way to a program */
+	for (const [ what, src ] of [
+		[ 'popen', plugin.replace('import { access, lsdir, readfile } from \'fs\';', 'import { access, lsdir, popen, readfile } from \'fs\';') ],
+		[ 'system', plugin.replace('\tlet wl = cursor();\n', '\tlet wl = cursor();\n\tsystem([ \'/usr/sbin/ethtool\', \'-S\', \'lan1\' ]);\n') ],
+		[ 'uloop', plugin.replace('import { connect } from \'ubus\';', 'import { connect } from \'ubus\';\nimport * as uloop from \'uloop\';') ]
+	]) {
+		assert.notEqual(src, plugin, what + ': the mutation applies');
+		assert.throws(() => checkPluginSource(src), assert.AssertionError, what);
+	}
+});
+
+test('switch counters: the read group grants counters, and no other group of any Vantage package mentions the object', () => {
+	assert.deepEqual(acl[READ_GROUP].read.ubus[PORTS_OBJECT], [ 'counters' ]);
+	const themeAcl = JSON.parse(fs.readFileSync(path.join(THEME_PKG, 'root/usr/share/rpcd/acl.d/luci-theme-vantage.json'), 'utf8'));
+	const groups = Object.entries(acl).concat(Object.entries(apsAcl), Object.entries(trafficAcl), Object.entries(themeAcl));
+	const mentions = [];
+	for (const [ name, g ] of groups) for (const kind of [ 'read', 'write' ])
+		for (const k of pairs((g[kind] || {}).ubus)) if (k.startsWith(PORTS_OBJECT + ' ')) mentions.push(`${name}.${kind}: ${k}`);
+	assert.deepEqual(mentions, [ READ_GROUP + '.read: ' + PORTS_CALL ]);
+	assert.ok(declared.has(PORTS_CALL), 'the dashboard declares it');
+});
+
+/* The dashboard's side in `srcs`: one declare of the object, in the
+   dashboard, exactly PORTS_DECLARE (this method, no parameters, so no
+   argument can be sent), and one call, without an argument, in PORTS_ASK */
+const PORTS_DECLARE = "var callSwitchCounters = rpc.declare({ object: 'luci.vantage.ports', method: 'counters', expect: { '': {} }, reject: true, nobatch: true });";
+const PORTS_ASK = '\t\tvar call = this.hwCall = callSwitchCounters().then(function(v) {\n';
+function portsCallProblems(srcs) {
+	const out = [];
+	let declares = 0, calls = 0;
+	for (const { file, text } of srcs) {
+		const dash = file.endsWith('view/vantage/overview.js');
+		for (const m of text.matchAll(/^.*\bobject\s*:\s*['"]luci\.vantage\.ports\b.*$/gm)) {
+			declares++;
+			if (!dash || m[0] !== PORTS_DECLARE) out.push(`${file}: ${m[0].trim()}`);
+		}
+		for (const m of text.matchAll(/\bcallSwitchCounters\b(\s*\(([^)]*)\))?/g)) {
+			const line = text.slice(text.lastIndexOf('\n', m.index) + 1, text.indexOf('\n', m.index) + 1);
+			if (line === PORTS_DECLARE + '\n') continue;
+			if (dash && line === PORTS_ASK && m[2] === '') { calls++; continue; }
+			out.push(`${file}: ${line.trim()}`);
+		}
+	}
+	if (declares !== 1 || calls !== 1) out.push(`${declares} declares of luci.vantage.ports, ${calls} calls`);
+	return out;
+}
+
+test('switch counters: the dashboard declares the call once, without parameters, and calls it in one place without arguments', () => {
+	assert.deepEqual(portsCallProblems(sources), []);
+	assert.doesNotMatch(PORTS_DECLARE, /\b(params|filter)\b/);
+	const DASH = 'view/vantage/overview.js';
+	const edit = (from, to) => mutate(DASH, t => { assert.ok(t.includes(from), from); return t.replace(from, to); });
+	const add = (file, code) => mutate(file, t => t + '\n' + code + '\n');
+	for (const [ what, mutant, why ] of [
+		[ 'a parameter', edit(PORTS_DECLARE, PORTS_DECLARE.replace("method: 'counters',", "method: 'counters', params: [ 'port' ],")), /overview\.js: var callSwitchCounters = .*params/ ],
+		[ 'another method under the name', edit(PORTS_DECLARE, PORTS_DECLARE.replace("'counters'", "'reset'")), /overview\.js: var callSwitchCounters = .*reset/ ],
+		[ 'a second declare', add(DASH, "var callPorts2 = rpc.declare({ object: 'luci.vantage.ports', method: 'counters', params: [ 'port' ] });"), /2 declares of luci\.vantage\.ports/ ],
+		[ 'a declare in a module', add('vantage/model.js', PORTS_DECLARE), /model\.js: var callSwitchCounters = / ],
+		[ 'an argument', edit('callSwitchCounters().then(', "callSwitchCounters({ port: '-x' }).then("), /overview\.js: .*callSwitchCounters\(\{ port/ ],
+		[ 'a second call', add(DASH, 'callSwitchCounters();'), /overview\.js: callSwitchCounters\(\);/ ],
+		[ 'the call passed on', add(DASH, 'var t = callSwitchCounters;'), /overview\.js: var t = callSwitchCounters;/ ]
+	]) {
+		assert.notDeepEqual(mutant, sources, what + ': the mutation applies');
+		assert.match(portsCallProblems(mutant).join('\n'), why, what);
+	}
+});
+
 /* ------------------------------------------------ luci-app-vantage-aps */
 
 const APS_PKG = path.resolve(process.env.VANTAGE_APS_PKG || path.join(__dirname, '..', 'luci-app-vantage-aps'));
@@ -1325,7 +1615,9 @@ const REPORT_PINS = [
 		'let i = ubus.call(\'iwinfo\', \'info\', { device: dev });',
 		'let a = ubus.call(\'iwinfo\', \'assoclist\', { device: dev })?.results;',
 		'let lan = null, gw = null, dump = ubus.call(\'network.interface\', \'dump\')?.interface;',
-		'let hosts = ubus.call(\'luci.vantage\', \'wired\')?.hosts, uplinks = {}, any = false;'
+		'let hosts = ubus.call(\'luci.vantage\', \'wired\')?.hosts, uplinks = {}, any = false;',
+		/* the switch chip's counters (#156): the dashboard's plugin runs ethtool, the report only asks */
+		'let hw = nports ? ubus.call(\'luci.vantage.ports\', \'counters\')?.ports : null;'
 	] ],
 	[ '\\b(?:getenv|exit|print|sleep)\\b', [
 		'let who = getenv(\'SSH_PUBKEYINFO\');',

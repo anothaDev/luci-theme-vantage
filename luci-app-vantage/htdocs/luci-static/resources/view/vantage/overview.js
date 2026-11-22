@@ -78,6 +78,9 @@ var COLLECTOR_WAIT_MS = 4 * 1000;
 /* where no collector answers at all (the add-on installed and nothing
    paired: no such object), it is asked again only this often */
 var COLLECTOR_RETRY_MS = 60 * 1000;
+/* how long a poll waits for a switch chip's own counters (askSwitch):
+   the plugin reads no port after its first second */
+var SWITCH_WAIT_MS = 2 * 1000;
 /* LuCI's WireGuard status (luci.wireguard getWgInstances) has the router
    run `wg show all dump` and, for each peer whose endpoint is configured
    by name, look that name up: inside rpcd, which answers nothing else
@@ -146,6 +149,13 @@ var callCollector = rpc.declare({ object: 'vantage.collector', method: 'report',
    plugin as a process, and a read of a large table takes it a second or
    two */
 var callTraffic = rpc.declare({ object: 'luci.vantage.traffic', method: 'hosts', expect: { '': {} }, nobatch: true });
+/* the byte counters a DSA switch chip keeps for its ports, which count
+   what it forwards from port to port too (#156): the app's executable
+   rpcd plugin, which runs ethtool once a port in a process of its own.
+   It takes no argument. In a request of its own (nobatch), so that its
+   runs hold back no other reply of the poll; a failed call is rejected,
+   so that no object is told from an answer */
+var callSwitchCounters = rpc.declare({ object: 'luci.vantage.ports', method: 'counters', expect: { '': {} }, reject: true, nobatch: true });
 /* LuCI's own (luci-proto-wireguard's rpcd plugin, its status page's
    call): every WireGuard interface with its peers, without private or
    preshared keys; it takes no argument and writes nothing. No group of
@@ -1153,6 +1163,36 @@ return view.extend({
 		return this.collector && !(Date.now() - this.collectorAt > limit) ? this.collector : null;
 	},
 
+	/* A switch chip's own byte counters for its ports (#156), checked
+	   (model.switchCounters), or null. Asked every poll, in a request of
+	   its own; the poll waits SWITCH_WAIT_MS for it at most, and while a
+	   call is out no other is made (that poll has none). Where the first
+	   answer says there is nothing to get (no DSA port, no ethtool, a
+	   driver whose counters the plugin does not know), or the object is
+	   not there (the answers WG_ABSENT names), the page asks no more: a
+	   device without a switch starts no process for it every poll */
+	askSwitch: function() {
+		var self = this;
+		if (this.hwOff || this.hwCall) return Promise.resolve(null);
+		var call = this.hwCall = callSwitchCounters().then(function(v) {
+			return model.switchCounters(v);
+		}, function(e) {
+			if (WG_ABSENT.test(String(e && e.message))) self.hwOff = true;
+			return null;
+		}).then(function(c) {
+			self.hwCall = null;
+			if (c && !self.hwAnswered) {
+				self.hwAnswered = true;
+				if (c.none) self.hwOff = true;
+			}
+			return c;
+		});
+		return new Promise(function(resolve) {
+			var timer = setTimeout(function() { resolve(null); }, SWITCH_WAIT_MS);
+			call.then(function(c) { clearTimeout(timer); resolve(c); });
+		});
+	},
+
 	/* LuCI's WireGuard status for a slow poll: { reply, at } (at: when it
 	   came in) or null, kept in this.wgLast. Asked only by a login that
 	   holds LuCI's own group for it, looked up once (wgMay): without
@@ -1293,6 +1333,8 @@ return view.extend({
 		/* and so do the provider tiles (askTiles): their last answers between slow polls */
 		var provided = slow ? this.askTiles() : Promise.resolve(this.tileAnswers());
 		var traffic = this.takeTraffic(slow);
+		/* and a switch chip's own counters, every poll (askSwitch) */
+		var counted = this.askSwitch();
 		return Promise.all([
 			L.resolveDefault(callInfo(), {}),
 			L.resolveDefault(callRead('/proc/stat'), ''),
@@ -1443,7 +1485,7 @@ return view.extend({
 					routes: r[8] && Array.isArray(r[8].routes) ? (self.kernelRoutes = r[8].routes) : (self.kernelRoutes || null),
 					collector: null, wg: null, provided: null, traffic: traffic,
 					assoc: assoc, hapd: hapd, hapdStatus: hapdStatus, iwinfo: iwinfo, survey: survey, at: Date.now(), started: started };
-				return Promise.all([ collected, tunnels, provided ]).then(function(x) { raw.collector = self.collectorAnswer(); raw.wg = x[1]; raw.provided = x[2]; return raw; });
+				return Promise.all([ collected, tunnels, provided, counted ]).then(function(x) { raw.collector = self.collectorAnswer(); raw.wg = x[1]; raw.provided = x[2]; raw.hw = x[3]; return raw; });
 			});
 		});
 	},
@@ -1550,11 +1592,18 @@ return view.extend({
 		this.noteTiles(m, raw.provided, now);
 		if (m.device.memory) series.push(st.hist.mem, [ at, m.device.memory.usedPct ], WINDOW_MS, HIST_MAX);
 
-		/* interface counters */
+		/* interface counters; a DSA port's from its switch chip where this
+		   poll has them (askSwitch, #156): the kernel's count only what
+		   passes the CPU. Not a line's own device, whose rate the line, the
+		   chart and the fast lane take from the kernel's. A port whose
+		   chip's counters stayed out has no rate for that step (model.rates):
+		   none rather than one of the kernel's against the chip's */
+		var hw = raw.hw && raw.hw.counters, lineDevs = m.uplinks.map(function(x) { return x.statsDev; });
 		var devCounters = Object.create(null);
 		Object.keys(raw.devs || {}).forEach(function(n) {
-			var s = raw.devs[n] && raw.devs[n].statistics;
-			if (s) devCounters[n] = { rx: s.rx_bytes, tx: s.tx_bytes };
+			var s = raw.devs[n] && raw.devs[n].statistics, c = hw && hw[n] && lineDevs.indexOf(n) < 0 ? hw[n] : null;
+			if (c) devCounters[n] = { rx: c.rx, tx: c.tx, src: 'switch' };
+			else if (s) devCounters[n] = { rx: s.rx_bytes, tx: s.tx_bytes };
 		});
 		var dr = model.rates(st.devPrev, devCounters, at);
 		st.devPrev = dr.next;
