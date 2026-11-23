@@ -19,7 +19,7 @@
 </p>
 
 <p align="center"><sub>The video and screenshots use recorded data with addresses and names
-replaced. The larger access point further down is generated.</sub></p>
+replaced. The larger access point and the router further down are generated.</sub></p>
 
 ## What you get
 
@@ -36,7 +36,8 @@ port.
   the details.
 - **A live network path.** Your internet lines, this device, its radios
   and SSIDs, and its wired ports, with packets that move at the real
-  uplink rate. Click anything for details.
+  uplink rate. Click anything for details. On a big network, **Compact**
+  under Customize makes every network, port and access point one line.
 - **Your other access points too** (optional add-on,
   `luci-app-vantage-aps`). Pair each access point once and the router's
   dashboard shows its SSIDs, clients and wired devices beside its own.
@@ -49,7 +50,8 @@ port.
 - **Every client, by name.** Your alias, a name from DHCP, mDNS, WPS or
   reverse DNS, or else the vendor. You get signal, link rate, Wi-Fi
   generation, live traffic and an experience score that explains itself.
-  Wired devices are listed too, with their port and link speed.
+  Wired devices are listed too, with their port and link speed, and a
+  device you named stays in the list while it's offline.
 - **Live charts.** Five minutes of throughput for the uplink and every
   radio, in the chart style you choose, plus radio cards, top talkers
   (Wi-Fi clients, and wired devices that have a port to themselves, so a
@@ -60,26 +62,36 @@ port.
 - **Every port.** On a device with two Ethernet ports or more, a tile
   shows each one: link and speed, live traffic, the wired devices behind
   it and which port your internet line leaves through. Errors and drops
-  show up only where there are any.
+  show up only where there are any. With `ethtool` installed, the ports
+  of a switch chip (DSA) also count what the chip forwards by itself.
 - **Firewall overview.** What's open from the internet, which zones reach
   which, and warnings for risky setups. Every item links to the LuCI page
   that changes it.
 - **Your own layout.** Drag, resize or hide tiles, with one layout per
   screen size. With the Vantage theme, your layout and chart style are
   saved on the router, so every browser matches.
+- **Tiles from other packages** (experimental). Another package can add a
+  read-only tile of its own. The dashboard draws it in its own look and
+  marks it with the package's id; see [`docs/TILES.md`](docs/TILES.md).
+- **Settings that fit your router.** With the Vantage theme, Appearance
+  shows traffic in bits or bytes per second, and its Low-power router
+  mode asks for the slow parts only every 30 seconds and stops the
+  motion.
 
 **The theme** (`luci-theme-vantage`) restyles every LuCI page.
 
 - **Quick to get around.** An icon rail, breadcrumbs, and
   <kbd>Ctrl</kbd>+<kbd>K</kbd> or <kbd>/</kbd> to search every page you
-  can open.
+  can open. On the dashboard the search also finds clients, radios, Wi-Fi
+  networks and interfaces.
 - **Good on phones.** A bottom bar replaces the rail, and tables become
   cards.
 - **Light, dark or auto**, with no flash on load. Your choice and your
   background picks are saved on the router, so every browser matches.
 - **Tidier stock pages.** One control size, one tab style, field help
-  folded to its first line, spare row actions tucked into a ⋯ menu, and
-  coloured firewall verdicts.
+  folded to its first line, spare row actions tucked into a ⋯ menu,
+  coloured firewall verdicts, and Status → Firewall as a flow chart of
+  the way a packet takes.
 - **Its own login page**, with moving packets, a starfield or nothing.
 
 Nothing loads from the internet: Vantage uses system fonts and its own
@@ -87,8 +99,9 @@ icons, with no CDNs or frameworks. The one exception is **Check for
 updates** under Appearance, and only when you click it, or once a day in
 a browser where you switch **Daily update check** on (off by default; it
 shows GitHub Pages your computer's IP address and the address you opened
-LuCI at). The dashboard's only write is device
-names, and it never reads Wi-Fi keys. See [Security](#security).
+LuCI at). The dashboard's only writes are the names you give devices
+and their "Don't warn about its signal" marks, and it never reads Wi-Fi
+keys. See [Security](#security).
 
 ## Install
 
@@ -148,12 +161,28 @@ ready-made prompt for installing with a coding agent.
     <td align="center"><sub>Client details: experience score, signal and link info</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/palette.png" alt="Command palette listing pages and Appearance actions that match a search"></td>
-    <td width="50%"><img src="docs/screenshots/network-path.png" alt="Network path of a quad-radio access point with ten SSIDs and a Wired branch of six ports"></td>
+    <td width="50%" valign="middle"><img src="docs/screenshots/network-path.png" alt="Network path of a quad-radio access point with ten SSIDs and a Wired branch of six ports"></td>
+    <td width="50%"><img src="docs/screenshots/router.png" alt="Dashboard of a router without Wi-Fi: two internet lines, its own networks and switch ports, and three paired access points with their Wi-Fi networks, clients and wired devices"></td>
   </tr>
   <tr>
-    <td align="center"><sub><kbd>Ctrl</kbd>+<kbd>K</kbd> search over pages and Appearance options</sub></td>
     <td align="center"><sub>A larger access point (generated): four radios, ten networks, six wired ports</sub></td>
+    <td align="center"><sub>A router (generated): two internet lines and its paired access points</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="middle"><img src="docs/screenshots/compact-path.png" alt="The same quad-radio access point with the compact network path: every radio, network and port is one line with its clients and rates"></td>
+    <td width="50%"><img src="docs/screenshots/wireguard-ports.png" alt="Lower part of the router's dashboard: the WireGuard tile with two tunnels and their peers, and the Ports tile with two internet ports and two switch ports"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>That access point's path in compact form: one line each</sub></td>
+    <td align="center"><sub>Further down the router's dashboard: WireGuard peers and every port</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/palette.png" alt="Command palette listing the Wi-Fi networks, clients, pages and Appearance options that match a search"></td>
+    <td width="50%"><img src="docs/screenshots/firewall-flow.png" alt="LuCI's Status Firewall page as a flow chart of the chains a packet passes, with the input and forward chains' rules below"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><kbd>Ctrl</kbd>+<kbd>K</kbd> search over networks, clients, pages and Appearance options</sub></td>
+    <td align="center"><sub>LuCI's Status → Firewall page as a flow chart</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/status-overview.png" alt="LuCI Status Overview page restyled by the theme"></td>
@@ -181,7 +210,8 @@ the [spec](docs/SPEC.md#6-security-requirements).
 - **The dashboard only reads.** Its permissions cover read methods. The
   one program they can start is `ethtool -S` for the device's own DSA
   switch ports, where `ethtool` is installed, with nothing from the
-  browser on its command line. Its one write is device names, stored in
+  browser on its command line. Its only writes are device names and a
+  device's "Don't warn about its signal" mark, both stored in
   `/etc/config/vantage`.
 - **Wi-Fi keys stay out.** Wireless settings come through Vantage's own
   plugin, which leaves out Wi-Fi keys, SAE passwords and RADIUS secrets.
@@ -204,9 +234,10 @@ the [spec](docs/SPEC.md#6-security-requirements).
   MAC address and two byte counts per device, and it has its own permission
   (`luci-app-vantage-traffic`), since it shows how much each device
   sends and receives.
-- **Extras are separate permissions.** Renaming devices
-  (`luci-app-vantage-names`) and reverse DNS (`luci-app-vantage-rdns`) are
-  their own groups, so you can leave them out. The firewall overview only
+- **Extras are separate permissions.** Naming devices and silencing a
+  device's signal warning (`luci-app-vantage-names`) and reverse DNS
+  (`luci-app-vantage-rdns`) are their own groups, so you can leave them
+  out. The firewall overview only
   appears for users who already hold LuCI's firewall permission, and the
   WireGuard tile for those who hold LuCI's WireGuard one.
 - **Tiles from other packages are text.** A package may add a read-only
