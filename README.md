@@ -177,28 +177,34 @@ ready-made prompt for installing with a coding agent.
     <td align="center"><sub>Further down the router's dashboard: WireGuard peers and every port</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/palette.png" alt="Command palette listing the Wi-Fi networks, clients, pages and Appearance options that match a search"></td>
+    <td width="50%"><img src="docs/screenshots/firewall-overview.png" alt="Firewall overview of the router: a warning that SSH is open to the internet, what is open on the router and forwarded into the network, the zones with where each forwards, and a port forward that is switched off"></td>
     <td width="50%"><img src="docs/screenshots/firewall-flow.png" alt="LuCI's Status Firewall page as a flow chart of the chains a packet passes, with the input and forward chains' rules below"></td>
   </tr>
   <tr>
-    <td align="center"><sub><kbd>Ctrl</kbd>+<kbd>K</kbd> search over networks, clients, pages and Appearance options</sub></td>
+    <td align="center"><sub>Firewall overview of that router: what's open from the internet, the zones, and a warning</sub></td>
     <td align="center"><sub>LuCI's Status → Firewall page as a flow chart</sub></td>
   </tr>
   <tr>
+    <td width="50%"><img src="docs/screenshots/palette.png" alt="Command palette listing the Wi-Fi networks, clients, pages and Appearance options that match a search"></td>
     <td width="50%"><img src="docs/screenshots/status-overview.png" alt="LuCI Status Overview page restyled by the theme"></td>
-    <td width="50%"><img src="docs/screenshots/channel-analysis.png" alt="Channel Analysis page showing neighbouring networks"></td>
   </tr>
   <tr>
+    <td align="center"><sub><kbd>Ctrl</kbd>+<kbd>K</kbd> search over networks, clients, pages and Appearance options</sub></td>
     <td align="center"><sub>LuCI's Status page under the theme, with a combined memory bar</sub></td>
-    <td align="center"><sub>LuCI's Channel Analysis page (neighbouring networks are generated)</sub></td>
   </tr>
   <tr>
+    <td width="50%"><img src="docs/screenshots/channel-analysis.png" alt="Channel Analysis page showing neighbouring networks"></td>
     <td width="50%" valign="middle"><img src="docs/screenshots/login.png" alt="The theme's login page with moving packet traces on a dark grid"></td>
-    <td width="50%" align="center"><img src="docs/screenshots/mobile.png" alt="Dashboard on a phone-sized screen" width="40%"></td>
   </tr>
   <tr>
+    <td align="center"><sub>LuCI's Channel Analysis page (neighbouring networks are generated)</sub></td>
     <td align="center"><sub>Login page with grid packets, a starfield or nothing</sub></td>
-    <td align="center"><sub>Phone layout with the bottom bar and Wi-Fi/Wired switch</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/screenshots/mobile.png" alt="Dashboard on a phone-sized screen" width="20%"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><sub>Phone layout with the bottom bar and Wi-Fi/Wired switch</sub></td>
   </tr>
 </table>
 
