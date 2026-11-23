@@ -34,7 +34,7 @@ env:
   UCODE_REPO: https://github.com/jow-/ucode.git
   UCODE_REV: 85922056ef7abeace3cca3ab28bc1ac2d88e31b1
   # the SDK releases built (keep in step with the build matrix below)
-  SDK_APK: 25.12.4
+  SDK_APK: 25.12.6
   SDK_IPK: 24.10.8
 
 jobs:
@@ -107,7 +107,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - sdk: 25.12.4
+          - sdk: 25.12.6
             fmt: apk
           - sdk: 24.10.8
             fmt: ipk
