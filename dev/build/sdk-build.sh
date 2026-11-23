@@ -109,6 +109,16 @@ fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/vantage-build.XXXXXX")
 git clone --quiet --no-local "$repo" "$work/feed"
 git -C "$work/feed" checkout --quiet --detach "$rev"
+# Since OpenWrt 25.12.5 a package's date (SOURCE_DATE_EPOCH, every file's
+# time in it) is its newest file's, no longer its last commit's; a clone's
+# files all carry the time of the clone. Date each package's files by the
+# last commit that touched the package, as git dated it before, so that
+# every build of a commit stays byte-identical.
+for p in $packages; do
+	t=$(git -C "$work/feed" log -1 --format=%ct -- "$p")
+	[[ $t =~ ^[0-9]+$ ]] || die "no commit date for $p"
+	find "$work/feed/$p" -exec touch -h -d "@$t" {} +
+done
 mkdir "$work/artifacts" "$work/out"
 
 # openwrt/gh-action-sdk@f5813d30eeef3534b58ac7e79c5d8842b6035434 entrypoint.sh;
