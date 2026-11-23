@@ -96,7 +96,9 @@ jobs:
         run: node security-tests/check_private_addresses.js
 
   build:
-    name: Build packages (OpenWrt ${{ matrix.sdk }})
+    # named by OpenWrt line, not point release: the main branch's ruleset
+    # requires these names, so an SDK update does not change them
+    name: Build packages (OpenWrt ${{ matrix.line }})
     needs: checks
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -108,8 +110,10 @@ jobs:
       matrix:
         include:
           - sdk: 25.12.6
+            line: '25.12'
             fmt: apk
           - sdk: 24.10.8
+            line: '24.10'
             fmt: ipk
     env:
       SDK_RELEASE: ${{ matrix.sdk }}
