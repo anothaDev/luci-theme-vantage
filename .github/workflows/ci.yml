@@ -36,7 +36,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # a manual site run has a group of its own: it neither waits behind a
+  # push run on main nor takes that run's place in the queue
+  group: ci-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.site && '-site' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -311,6 +313,7 @@ jobs:
     needs: checks
     if: github.event_name == 'workflow_dispatch' && inputs.site && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       pages: write
       id-token: write
@@ -326,10 +329,12 @@ jobs:
       - name: Fetch the live package repositories
         run: |
           set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq signify-openbsd
           live="https://$GITHUB_REPOSITORY_OWNER.github.io/${GITHUB_REPOSITORY#*/}"
           latest="https://github.com/$GITHUB_REPOSITORY/releases/latest/download"
           a=${SDK_APK%.*} i=${SDK_IPK%.*}
-          get() { curl -fsSL --retry 3 --create-dirs -o "$2" "$1"; }
+          get() { mkdir -p "${2%/*}"; curl -fsSL --retry 3 -o "$2" "$1"; }
           fetch() { local line=$1 f; shift; for f in "$@"; do get "$live/$line/$f" "site/$line/$f"; done; }
           get "$latest/SHA256SUMS" release/SHA256SUMS
           get "$latest/packages.adb" release/packages.adb
@@ -344,9 +349,18 @@ jobs:
           fetch "$i" $(awk '{ print $2 }' "site/$i/SHA256SUMS")
           ( cd "site/$a" && sha256sum -c SHA256SUMS )
           ( cd "site/$i" && sha256sum -c SHA256SUMS )
-          # the 24.10 index is no release asset: it must list these packages
+          # the 24.10 index is no release asset: it must be signed with the
+          # project's key and list these packages
+          signify-openbsd -V -q -p keys/vantage-24.10.usign.pub -x "site/$i/Packages.sig" -m "site/$i/Packages"
           gunzip -c "site/$i/Packages.gz" | cmp - "site/$i/Packages"
-          for h in $(awk '{ print $1 }' "site/$i/SHA256SUMS"); do grep -qx "SHA256sum: $h" "site/$i/Packages"; done
+          for h in $(awk '{ print $1 }' "site/$i/SHA256SUMS"); do
+            grep -qx "SHA256sum: $h" "site/$i/Packages" || { echo "Packages does not list $h" >&2; exit 1; }
+          done
+          # the keys on main must be the ones that are live
+          for k in vantage-signing.pem vantage-24.10.usign.pub; do
+            get "$live/$k" "release/$k"
+            cmp "release/$k" "keys/$k"
+          done
 
       - name: Assemble the site
         run: |

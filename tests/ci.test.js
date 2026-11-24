@@ -54,9 +54,12 @@ function pagesDeploy(repo) {
 	   release that would depend on it */
 	assert.doesNotMatch(repo, /artifact_name|PAGES_ARTIFACT|\n {10}name:/);
 
+	assert.match(repo, /\n {4}environment:\n {6}name: github-pages\n/);
+
 	const list = steps(repo);
 	const upload = uses(list, 'actions/upload-pages-artifact');
 	assert.equal(upload.length, 1);
+	assert.match(upload[0], /\n {8}with:\n {10}path: site\n/);
 
 	const deploys = uses(list, 'actions/deploy-pages');
 	assert.equal(deploys.length, 2);
@@ -91,22 +94,58 @@ test('ci: the Pages jobs may write Pages and request an OIDC token, nothing else
 test('ci: the site job runs by hand on main only, with no secret, and publishes the live repositories only as the latest release', () => {
 	const site = job('site');
 	assert.match(CI, /\n {2}workflow_dispatch:\n {4}inputs:\n {6}site:\n {8}description: .+\n {8}type: boolean\n {8}default: false\n/);
-	assert.match(site, /\n {4}needs: checks\n {4}if: github\.event_name == 'workflow_dispatch' && inputs\.site && github\.ref == 'refs\/heads\/main'\n/);
-	assert.doesNotMatch(site, /secrets\.|github\.token|GH_TOKEN|GITHUB_TOKEN/);
+	assert.match(site, /\n {4}needs: checks\n {4}if: github\.event_name == 'workflow_dispatch' && inputs\.site && github\.ref == 'refs\/heads\/main'\n {4}runs-on: ubuntu-24\.04\n {4}timeout-minutes: \d+\n/);
+	assert.doesNotMatch(site, /\bsecrets\b|github\.token|GH_TOKEN|GITHUB_TOKEN/);
+	/* in a group of its own, so a push run on main and it never wait for
+	   or cancel each other */
+	assert.match(CI, /\n {2}group: ci-\$\{\{ github\.ref \}\}\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.site && '-site' \|\| '' \}\}\n/);
 
-	/* each line's checksum list is the latest release's before a name in
-	   it is fetched, and every package is checked against it */
-	const at = s => { const i = site.indexOf(s); assert.ok(i >= 0, s); return i; };
-	assert.ok(at('cmp "site/$a/SHA256SUMS" release/SHA256SUMS\n') < at('fetch "$a" $(awk'));
-	assert.ok(at('cmp "site/$i/SHA256SUMS" "release/SHA256SUMS-$i"\n') < at('fetch "$i" $(awk'));
-	assert.ok(at('fetch "$a" $(awk') < at('( cd "site/$a" && sha256sum -c SHA256SUMS )\n'));
-	assert.ok(at('fetch "$i" $(awk') < at('( cd "site/$i" && sha256sum -c SHA256SUMS )\n'));
-	assert.match(site, /\n {10}set -euo pipefail\n {10}live=/);
+	const list = steps(site);
+	assert.deepEqual(list.map(s => s.slice(14, s.indexOf('\n'))), [ 'Checkout (public key and site page)', 'Fetch the live package repositories',
+		'Assemble the site', 'Upload site', 'Deploy to GitHub Pages', 'Wait before deploying again', 'Deploy to GitHub Pages (second try)' ]);
 
-	/* the page's own files are the ones a release copies */
-	const page = text => text.split('\n').filter(l => /^\s+(cp keys\/|cp dev\/build\/|mkdir -p site\/screenshots )/.test(l));
-	assert.equal(page(site).length, 3);
-	assert.deepEqual(page(site), page(job('repository')));
+	/* the lines that make what it publishes the latest release's: each
+	   whole, not commented out, and in this order (a checksum list is
+	   compared before a name in it is fetched) */
+	let pos = list[1].indexOf('\n          set -euo pipefail\n');
+	assert.ok(pos >= 0);
+	for (const line of [
+		'latest="https://github.com/$GITHUB_REPOSITORY/releases/latest/download"',
+		'get() { mkdir -p "${2%/*}"; curl -fsSL --retry 3 -o "$2" "$1"; }',
+		'get "$latest/SHA256SUMS" release/SHA256SUMS',
+		'get "$latest/packages.adb" release/packages.adb',
+		'get "$latest/SHA256SUMS-$i" "release/SHA256SUMS-$i"',
+		'cmp "site/$a/SHA256SUMS" release/SHA256SUMS',
+		'cmp "site/$a/packages.adb" release/packages.adb',
+		'cmp "site/$i/SHA256SUMS" "release/SHA256SUMS-$i"',
+		'fetch "$a" $(awk \'{ print $2 }\' "site/$a/SHA256SUMS")',
+		'fetch "$i" $(awk \'{ print $2 }\' "site/$i/SHA256SUMS")',
+		'( cd "site/$a" && sha256sum -c SHA256SUMS )',
+		'( cd "site/$i" && sha256sum -c SHA256SUMS )',
+		'signify-openbsd -V -q -p keys/vantage-24.10.usign.pub -x "site/$i/Packages.sig" -m "site/$i/Packages"',
+		'gunzip -c "site/$i/Packages.gz" | cmp - "site/$i/Packages"',
+		'  grep -qx "SHA256sum: $h" "site/$i/Packages" || { echo "Packages does not list $h" >&2; exit 1; }',
+		'for k in vantage-signing.pem vantage-24.10.usign.pub; do',
+		'  get "$live/$k" "release/$k"',
+		'  cmp "release/$k" "keys/$k"'
+	]) {
+		const i = list[1].indexOf('\n          ' + line + '\n', pos);
+		assert.ok(i >= 0, 'missing, changed or out of order: ' + line);
+		pos = i + 1;
+	}
+
+	/* its "Assemble the site" step adds the page's own files and nothing
+	   else, as a release's does from the keys on */
+	const assemble = text => {
+		const s = steps(text).find(s => s.startsWith('      - name: Assemble the site\n'));
+		const i = s.indexOf('\n          cp keys/');
+		assert.ok(i >= 0);
+		return [ s.slice(0, i), s.slice(i).trimEnd() ];
+	};
+	const [ before, files ] = assemble(site);
+	assert.equal(before, '      - name: Assemble the site\n        run: |\n          set -euo pipefail');
+	assert.equal(files, assemble(job('repository'))[1]);
+	assert.equal(files.split('\n').length, 5);
 });
 
 test('ci: every action is pinned to a full commit SHA with its version in a comment', () => {
