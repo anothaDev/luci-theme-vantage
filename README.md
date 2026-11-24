@@ -15,11 +15,11 @@
 <br>
 
 <p align="center">
-  <a href="https://anothadev.github.io/luci-theme-vantage/"><img src="docs/screenshots/vantage-promo.webp" alt="A ten-second tour of Vantage: the dark dashboard with live charts and the network path, a client's details, Ctrl K search, and the switch from dark to light" width="100%"></a>
+  <a href="https://anothadev.github.io/luci-theme-vantage/"><img src="docs/screenshots/vantage-promo.webp" alt="A twenty-second tour of Vantage: the live dashboard, a warning and the client behind it, a router with its access points, WireGuard peers and ports, the firewall overview, Ctrl K search, restyled LuCI pages, dark and light, and the phone layout" width="100%"></a>
 </p>
 
 <p align="center"><sub>The video and screenshots use recorded data with addresses and names
-replaced. The larger access point and the router further down are generated.</sub></p>
+replaced. The router and the larger access point are generated.</sub></p>
 
 ## What you get
 
