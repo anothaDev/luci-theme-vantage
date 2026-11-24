@@ -247,6 +247,14 @@ SDK.
    (that builds again and needs the approval again). Leave the
    `vantage-*` artifacts: the re-run publishes from them.
 
+Between releases, a change to the site's page, its screenshots or the
+video (`dev/build/repo-index.html`, `docs/screenshots/`) is published by
+hand: Actions → CI → Run workflow on `main` with "site" ticked, or
+`gh workflow run ci.yml --ref main -f site=true`. The job "Republish the
+site page" fetches the package feeds as they are live, stops unless they
+are the latest release's, and deploys them unchanged with the page from
+`main`.
+
 ### Version numbers
 
 Three numbers and nothing else, so that both package managers put every
