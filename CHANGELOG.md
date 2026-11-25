@@ -42,7 +42,7 @@ packages are listed at
   them. A router whose VLANs are devices of their own (`eth0.1`,
   `eth0.3`) also shows an access point's clients on another VLAN than
   its own as that access point's, where they stayed wired hosts of the
-  router. Both need 1.2.1 on the access points as well.
+  router. The first needs 1.2.1 on the access points as well.
 - **Ports tile and LuCI's Port status: no line broken before its last
   word** (#168, [@VIKINGYFY](https://github.com/VIKINGYFY)). A port's
   errors and drops broke before the last word in a narrow cell, in

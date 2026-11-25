@@ -1253,7 +1253,9 @@ dashboard package itself stays read-only.
   this device. The wire is that port, or another VLAN of the port's
   device (`eth0.3` beside `eth0.1`): where each VLAN is a device of its
   own here, an access point's networks arrive on several (since 1.2.1;
-  before, the very port only). A host the access point lists as wired behind it gets a
+  before, the very port only). Not across to a port a line to the
+  internet leaves by, or from one: a bridged WAN on `eth0.2` is
+  upstream, and no access point on the LAN's VLAN has its hosts. A host the access point lists as wired behind it gets a
   note saying so, and one it lists as an address of its own (the bridge
   of another of its networks, #167) is that access point once more:
   left out of the wired hosts and named on the access point's own entry

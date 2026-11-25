@@ -428,7 +428,8 @@ function wireless_from_config() {
 // station's interface (<ifname>.staN) is an AP_VLAN one too and is left
 // out: iwinfo lists its station under the network's interface, the
 // others' only under their own. netifd knows only the ones it made
-// itself, so the kernel is asked: one dump, nothing sent to a driver.
+// itself, so the kernel is asked: one read-only dump (a driver may be
+// asked for an interface's transmit power while it answers, as for `iw dev`).
 function ap_vlans() {
 	let res = nl80211.request(nl80211.const.NL80211_CMD_GET_INTERFACE, nl80211.const.NLM_F_DUMP);
 	let aps = {}, out = {}, n = 0;

@@ -1401,7 +1401,7 @@ test('a network\'s VLAN interfaces: their stations are the network\'s clients, a
 test('paired access points: the wire is the port or another VLAN of its device; an address the access point calls its own is no host', () => {
 	const IOT_BR = '02:00:5e:10:00:03', FAR = '02:00:5e:10:00:04', STA = '00:00:5e:00:53:21', OTHER = '00:00:5e:00:53:33';
 	const vlan = { type: 'VLAN', devtype: 'vlan', carrier: true };
-	const build = (rep, fdb) => model.build(router({ aps: [ ap(AP1, 'ap-hall', rep) ] }, {
+	const build = (rep, fdb, more) => model.build(router({ aps: [ ap(AP1, 'ap-hall', rep) ] }, Object.assign({}, more, {
 		ifaces: router(null).ifaces.concat([ { interface: 'iot', up: true, l3_device: 'br-iot', device: 'br-iot', 'ipv4-address': [ { address: '198.51.100.1', mask: 24 } ], route: [] } ]),
 		devs: Object.assign({}, router(null).devs, {
 			'br-lan': { devtype: 'bridge', 'bridge-members': [ 'eth0.1', 'lan2', 'phy0-ap0' ], macaddr: '00:00:5e:00:53:f0' },
@@ -1415,7 +1415,7 @@ test('paired access points: the wire is the port or another VLAN of its device; 
 			{ mac: OTHER, port: 'eth0.3', bridge: 'br-iot', seen: 1 },
 			{ mac: FAR, port: 'lan2', bridge: 'br-lan', seen: 1 }
 		].concat(fdb || [])
-	}));
+	})));
 	const listed = m => m.wiredHosts.map(h => [ h.mac, h.port, h.peers ]);
 	/* a report from before 1.2.1 names one address: its bridges are hosts, as they were */
 	const before = build(report({ wired: [], stations: [] }));
@@ -1443,6 +1443,41 @@ test('paired access points: the wire is the port or another VLAN of its device; 
 	assert.deepEqual(both([ IOT_BR, OTHER ], { macs: [ OTHER ] }), [ HALL_MAC, DEN_MAC, OTHER ], 'two call it their own: it stays');
 	assert.deepEqual(both([ IOT_BR, OTHER ], { wired: [ { mac: OTHER, port: 'lan2', speed: 100, rx: null, tx: null } ] }), [ HALL_MAC, DEN_MAC, OTHER ], 'the other\'s wired host stays');
 	assert.deepEqual(both([ IOT_BR, OTHER ], { stations: [ { mac: IOT_BR, ifname: 'phy1-ap0', signal: -60 } ] }), [ HALL_MAC, DEN_MAC ], 'the other\'s station is that station, as before');
+	/* Pre-release review of 1.2.1. A name given to one of those addresses while it was listed as a device: it is there,
+	   on the access point's entry, and not among the named devices that are not connected */
+	const named = aliases => build(report({ wired: [], stations: [], macs: [ HALL_MAC, IOT_BR ] }), null, { aliases });
+	const withName = named({ [IOT_BR]: { name: 'Camera', sid: 'cfg01' }, '00:00:5e:00:53:99': { name: 'Tablet', sid: 'cfg02' } });
+	assert.deepEqual(withName.offline.map(c => c.name), [ 'Tablet' ], 'only the one that is nowhere');
+	assert.ok(withName.wiredHosts.every(h => h.mac !== IOT_BR));
+	/* An access point that is itself another one's station (a wireless link): its entry is that station, no wired host,
+	   so there is nothing here to name its addresses on, and they stay listed */
+	const linked = model.build(router({ aps: [ ap(AP1, 'ap-hall', report({ wired: [], stations: [], macs: [ HALL_MAC, IOT_BR ] })),
+		den({ stations: [ { mac: HALL_MAC, ifname: 'phy1-ap0', signal: -60 } ] }) ] }, {
+		devs: Object.assign({}, router(null).devs, { 'br-iot': { devtype: 'bridge', 'bridge-members': [ 'eth0.3' ] }, 'br-lan': { devtype: 'bridge', 'bridge-members': [ 'eth0.1', 'lan2', 'phy0-ap0' ] },
+			eth0: { devtype: 'ethernet', carrier: true }, 'eth0.1': vlan, 'eth0.3': vlan }),
+		fdb: [ { mac: HALL_MAC, port: 'eth0.1', bridge: 'br-lan', seen: 1 }, { mac: DEN_MAC, port: 'eth0.1', bridge: 'br-lan', seen: 1 }, { mac: IOT_BR, port: 'eth0.3', bridge: 'br-iot', seen: 1 } ]
+	}));
+	assert.deepEqual(linked.clients.filter(c => c.mac === HALL_MAC).map(c => c.ap.name), [ 'ap-den' ], 'the control: it is ap-den\'s station');
+	assert.deepEqual(linked.wiredHosts.map(h => [ h.mac, !!h.own ]), [ [ DEN_MAC, false ], [ IOT_BR, false ] ], 'its bridge is not taken unseen');
+	/* an address it reports as its station and as its own: that station, once, and on no list of its own addresses */
+	const twice = build(report({ wired: [], macs: [ HALL_MAC, STA, IOT_BR ] }));
+	assert.equal(twice.clients.filter(c => c.mac === STA).length, 1);
+	assert.deepEqual(twice.wiredHosts.filter(h => h.mac === HALL_MAC)[0].own.macs, [ '02:00:5E:10:00:03' ]);
+	/* The wire stops short of a line's own port. A bridged WAN on eth0.2 beside the LAN's eth0.1: what is heard there is
+	   upstream, and an access point on the LAN has none of it, as its own address or as its station */
+	const MODEM = '00:00:5e:00:53:a7';
+	const upstream = rep => model.build(router({ aps: [ ap(AP1, 'ap-hall', report(Object.assign({ wired: [], stations: [] }, rep))) ] }, {
+		ifaces: [ router(null).ifaces[0], { interface: 'wan', up: true, l3_device: 'br-wan', device: 'br-wan', 'ipv4-address': [ { address: '203.0.113.2', mask: 24 } ],
+			route: [ { target: '0.0.0.0', mask: 0, nexthop: '203.0.113.1' } ] } ],
+		devs: Object.assign({}, router(null).devs, { 'br-lan': { devtype: 'bridge', 'bridge-members': [ 'eth0.1', 'lan2', 'phy0-ap0' ] },
+			'br-wan': { type: 'bridge', devtype: 'bridge', 'bridge-members': [ 'eth0.2' ] }, eth0: { devtype: 'ethernet', carrier: true }, 'eth0.1': vlan, 'eth0.2': vlan }),
+		fdb: [ { mac: HALL_MAC, port: 'eth0.1', bridge: 'br-lan', seen: 1 }, { mac: MODEM, port: 'eth0.2', bridge: 'br-wan', seen: 1 }, { mac: GW_MAC, port: 'eth0.2', bridge: 'br-wan', seen: 1 } ]
+	}));
+	for (const rep of [ { macs: [ HALL_MAC, MODEM ] }, { stations: [ { mac: MODEM, ifname: 'phy1-ap0', signal: -60 } ] } ]) {
+		const u = upstream(rep);
+		assert.deepEqual([ u.uplink.port, u.wiredHosts.map(h => h.mac).sort(), u.clients.filter(c => c.mac === MODEM).length, u.wiredHosts.some(h => h.own) ],
+			[ 'eth0.2', [ HALL_MAC, MODEM, GW_MAC ].sort(), 0, false ], JSON.stringify(Object.keys(rep)));
+	}
 	/* an address anyone could claim: never one this device has no wire for, the gateway's or its own */
 	const gw = build(report({ wired: [], stations: [], macs: [ GW_MAC, OTHER ] }), [ { mac: GW_MAC, port: 'eth0.3', bridge: 'br-iot', seen: 1 } ]);
 	assert.deepEqual(listed(gw).map(h => h[0]), [ HALL_MAC, IOT_BR, STA, FAR, GW_MAC ], 'the gateway stays; a host on its wire that it calls its own is taken at its word');

@@ -1686,7 +1686,7 @@ return baseclass.extend({
 		   a wired host this device hears on the wire it hears an access
 		   point's own MAC on (that port, or another VLAN of the port's
 		   device: eth0.3 beside eth0.1, where each VLAN is a device of its
-		   own here), and never the gateway or this device:
+		   own here; sameWire), and never the gateway or this device:
 		   - one the access point reports as its station becomes that
 		     station, out of the wired hosts (a router's view of the Wi-Fi
 		     clients of its wired access points);
@@ -1737,7 +1737,15 @@ return baseclass.extend({
 			localHost[h.mac] = h;
 			if (!h.gateway && !ownMacs[h.mac] && !maybeGw[h.mac]) heardAt[h.mac] = h.port;
 		});
-		function behind(a, mac) { return !!portOf[a.id] && heardAt[mac] != null && under(heardAt[mac]) === under(portOf[a.id]) && mac !== a.mac; }
+		/* the wire an access point is heard on: its port, or another VLAN
+		   of the port's device; not across to a port a line to the
+		   internet leaves by, or from one: what is heard there is
+		   upstream of this device (a bridged WAN on eth0.2 beside the
+		   LAN's eth0.1) */
+		var linePorts = Object.create(null);
+		uplinks.forEach(function(u) { [ u.port, u.dev, u.l3dev, u.statsDev ].forEach(function(n) { if (typeof n === 'string') linePorts[n] = true; }); });
+		function sameWire(p, q) { return p === q || (!linePorts[p] && !linePorts[q] && under(p) === under(q)); }
+		function behind(a, mac) { return !!portOf[a.id] && heardAt[mac] != null && sameWire(heardAt[mac], portOf[a.id]) && mac !== a.mac; }
 		/* ips: the addresses a host moved from the wired list had there */
 		function who(mac, ips) {
 			var alias = raw.aliases && raw.aliases[mac], hint = hintOf(mac);
@@ -1929,6 +1937,8 @@ return baseclass.extend({
 		   details */
 		var here = Object.create(null);
 		[ clients, wired ].forEach(function(l) { l.forEach(function(c) { here[c.mac] = true; }); });
+		/* nor an address left out as an access point's own: it is there, on that entry */
+		Object.keys(apOwn).forEach(function(m) { here[m] = true; });
 		var offline = Object.keys(obj(raw.aliases)).filter(function(mac) {
 			return names.normMac(mac) === mac && !here[mac] && !ownMacs[mac];
 		}).slice(0, names.ALIAS_MAX).map(function(mac) {
