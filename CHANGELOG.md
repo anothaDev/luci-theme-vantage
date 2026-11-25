@@ -7,7 +7,7 @@ packages are listed at
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
-## 1.2.1 - unreleased
+## 1.2.1 - 2026-11-25
 
 - **Dashboard: the uplink's download and upload on a port that also
   carries the LAN** (#166,
