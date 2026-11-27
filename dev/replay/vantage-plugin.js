@@ -23,6 +23,11 @@
                              nl80211 (the model falls back to iwinfo
                              info's noise). survey() is the plugin's
                              reduction of an nl80211 dump, for the tests
+     luci.vantage stations   { device, macs }: no stations; the replay has
+                             no nl80211 (the stations keep iwinfo's
+                             counters). stations() is the plugin's
+                             reduction of its GET_STATION replies, for
+                             the tests
      luci.vantage set_alias  { mac, name, icon } -> uci vantage in the
                              store's overlay, committed at once
    tests/plugin.test.js checks this file, the real plugin (when a host
@@ -58,6 +63,7 @@ const POLICY = {
 	wired: {},
 	routes: {},
 	survey: { device: 'string' },
+	stations: { device: 'string', macs: 'array' },
 	set_alias: { mac: 'string', name: 'string', icon: 'string' },
 	set_quiet: { mac: 'string', quiet: 'boolean' }
 };
@@ -192,7 +198,16 @@ function qcaHtmode(c) {
    on qcawificfg80211, are named after one that exists(name)), the first
    section per name, no run state, no txpower */
 function wirelessFromConfig(sections, exists) {
-	const radios = new Map(), taken = new Set(), out = {};
+	const out = {};
+	for (const [ name, r ] of configRadios(sections, exists)) out[name] = Object.assign(reduceRadio(r), { source: 'config' });
+	return out;
+}
+
+/* the radios of those sections, as the plugin's config_radios(): each
+   with its whole section (config) and the interfaces wirelessFromConfig()
+   takes for it, in a Map by name */
+function configRadios(sections, exists) {
+	const radios = new Map(), taken = new Set();
 	const there = typeof exists === 'function' ? exists : () => false;
 	const list = Array.isArray(sections) ? sections.filter(s => s && typeof s === 'object') : [];
 	for (const s of list)
@@ -208,8 +223,7 @@ function wirelessFromConfig(sections, exists) {
 		r.interfaces.push({ ifname, section: s['.name'],
 			config: Object.assign({}, s, { network: typeof s.network === 'string' ? s.network.split(/\s+/).filter(n => n !== '') : s.network }) });
 	}
-	for (const [ name, r ] of radios) out[name] = Object.assign(reduceRadio(r), { source: 'config' });
-	return out;
+	return radios;
 }
 
 /* the interfaces hostapd made for a network's VLANs (#164), as the
@@ -369,6 +383,40 @@ function survey(dev, dump, wireless) {
 	return out;
 }
 
+/* stations: { mac: { rx_bytes, tx_bytes, rx_packets, tx_packets } } for
+   the MACs in macs on dev, as the plugin's stations(): only where
+   wireless(dev) says cfg80211 drives dev (its phy80211 check) and the uci
+   wireless sections give it a qcawificfg80211 radio (as configRadios()
+   names its interfaces, exists(name): the device is there). Each unicast
+   MAC is asked for once, MAX_STATIONS at most, of station(mac), which
+   stands for one NL80211_CMD_GET_STATION (its reply, as ucode's nl80211
+   gives it); a station without a counter is left out */
+const MAX_STATIONS = 128, MAX_COUNTER = Number.MAX_SAFE_INTEGER;
+function stations(dev, macs, sections, exists, wireless, station) {
+	const out = {}, asked = new Set();
+	if (typeof dev !== 'string' || !/^[A-Za-z0-9_.-]{1,15}$/.test(dev) || dev === '.' || dev === '..' || !wireless(dev) || !Array.isArray(macs)) return out;
+	const qca = [ ...configRadios(sections, exists).values() ].some(r => r.config.type === 'qcawificfg80211' && r.interfaces.some(i => i.ifname === dev));
+	if (!qca) return out;
+	const counter = v => Number.isInteger(v) && v >= 0 && v <= MAX_COUNTER ? v : null;
+	for (const m of macs.slice(0, MAX_STATIONS)) {
+		const mac = normMac(m);
+		if (!mac || isMulticast(mac) || asked.has(mac)) continue;
+		asked.add(mac);
+		const res = station(mac);
+		const s = (res && typeof res === 'object' && !Array.isArray(res) && res.sta_info && typeof res.sta_info === 'object' && !Array.isArray(res.sta_info)) ? res.sta_info : {};
+		const got = {
+			rx_bytes: counter(s.rx_bytes64) ?? counter(s.rx_bytes),
+			tx_bytes: counter(s.tx_bytes64) ?? counter(s.tx_bytes),
+			rx_packets: counter(s.rx_packets),
+			tx_packets: counter(s.tx_packets)
+		};
+		const c = {};
+		for (const [ k, v ] of Object.entries(got)) if (v != null) c[k] = v;
+		if (Object.keys(c).length) out[mac] = c;
+	}
+	return out;
+}
+
 /* thermal: [ { zone, type, temp } ] from a fixtures.js Fixtures (or
    nothing), as the plugin's thermal(): readfile with the same limits */
 function thermal(fixtures) {
@@ -485,6 +533,7 @@ function call(store, method, args) {
 	}
 	if (method === 'thermal') return { result: [ 0, { zones: thermal(store.fixtures) } ] };
 	if (method === 'survey') return { result: [ 0, { results: survey(args.device, null, () => false) } ] };
+	if (method === 'stations') return { result: [ 0, { stations: stations(args.device, args.macs, null, () => false, () => false, () => null) } ] };
 	if (method === 'wired') return { result: [ 0, { hosts: wired(store.synthetic && store.synthetic.fdb ? store.synthetic.fdb() : null) } ] };
 	if (method === 'routes') {
 		const dump = typeof store.ifaceDump === 'function' ? store.ifaceDump() : ((store.data('network.interface', 'dump', {}) || {}).interface || null);
@@ -494,4 +543,4 @@ function call(store, method, args) {
 	return { result: [ 0, (method === 'set_quiet' ? setQuiet : setAlias)(storeCursor(store), args) ] };
 }
 
-module.exports = { OBJECT, POLICY, MAX_ALIASES, MAX_QUIET, MAX_SURVEY, NAME_MAX, ICONS, normMac, validateName, reduceWireless, wirelessFromConfig, wirelessReply, apVlans, thermal, wired, routes, kernelLookup, survey, setAlias, setQuiet, argsOk, call };
+module.exports = { OBJECT, POLICY, MAX_ALIASES, MAX_QUIET, MAX_SURVEY, MAX_STATIONS, NAME_MAX, ICONS, normMac, validateName, reduceWireless, wirelessFromConfig, configRadios, wirelessReply, apVlans, thermal, wired, routes, kernelLookup, survey, stations, setAlias, setQuiet, argsOk, call };

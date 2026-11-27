@@ -1598,6 +1598,65 @@ test('a network\'s VLAN interfaces: their station lists every poll and nothing e
 	}
 });
 
+/* Qualcomm's qcawificfg80211 (QSDK firmware such as QWRT): its driver answers no station dump, so iwinfo's
+   assoclist has 0 bytes for every station; the plugin asks it for each station (luci.vantage stations) */
+test('a qcawificfg80211 radio from the config: its stations\' traffic from luci.vantage stations; a counter going back starts the rate over', async () => {
+	const asked = [];
+	const ifc = ifname => ({ ifname, section: ifname, config: { mode: 'ap', ssid: 'Home' } });
+	const sta = (mac, bytes) => ({ mac, signal: -50, rx: { bytes, packets: 0, rate: 866700 }, tx: { bytes, packets: 0, rate: 866700 } });
+	const saved = { L: global.L, window: global.window, now: Date.now };
+	let t = 1.8e12, own = 0, counters = { '00:00:5e:00:53:01': { rx_bytes: 1000, tx_bytes: 2000, rx_packets: 10, tx_packets: 20 } };
+	Date.now = () => t;
+	global.L = { env: {}, require: () => new Promise(() => {}), resolveDefault: (p, d) => Promise.resolve(p).then(v => v == null ? d : v, () => d) };
+	global.window = { sessionStorage: { getItem: () => null, setItem() {} }, localStorage: { getItem: () => null, setItem() {} } };
+	const calls = {
+		'luci.vantage wireless': () => Promise.resolve({
+			wifi0: { up: false, pending: false, disabled: false, source: 'config', config: { band: '5g' }, interfaces: [ ifc('ath0') ] },
+			radio1: { up: true, config: { band: '2g' }, interfaces: [ ifc('phy2g-ap0') ] } }),
+		'system info': () => Promise.resolve({ localtime: t / 1000 }),
+		'iwinfo assoclist': device => Promise.resolve({ ath0: [ sta('00:00:5E:00:53:01', own), sta('00:00:5E:00:53:02', 0) ], 'phy2g-ap0': [ sta('00:00:5E:00:53:03', 0) ] }[device] || []),
+		'iwinfo info': () => Promise.resolve({ channel: 36, frequency: 5180, bssid: '00:00:5E:00:53:A0', ssid: 'Home' }),
+		'luci.vantage stations': (device, macs) => { asked.push([ device, macs ]); return counters === 'fail' ? Promise.reject(new Error('RPCError')) : Promise.resolve(counters); }
+	};
+	Object.assign(REPLIES, calls);
+	try {
+		const self = Object.create(view);
+		self.initState({ board: {}, canWrite: false, canRdns: false, mdns: null });
+		const first = await self.fetch();
+		assert.deepEqual(asked, [ [ 'ath0', [ '00:00:5e:00:53:01', '00:00:5e:00:53:02' ] ] ], 'only the radio read from the config, its stations by MAC');
+		assert.deepEqual(first.assoc.ath0.map(s => [ s.rx.bytes, s.tx.bytes, s.rx.packets, s.tx.packets, s.rx.rate ]), [ [ 1000, 2000, 10, 20, 866700 ], [ 0, 0, 0, 0, 866700 ] ],
+			'the driver\'s counters where it has them; the rest of iwinfo\'s entry stays');
+		assert.deepEqual(first.assoc['phy2g-ap0'][0].rx.bytes, 0, 'a radio netifd reports keeps iwinfo\'s');
+		/* 5 s on: 5000 bytes up (rx) and 10000 down */
+		self.ingest(first);
+		t += 5000;
+		counters = { '00:00:5e:00:53:01': { rx_bytes: 6000, tx_bytes: 12000, rx_packets: 60, tx_packets: 120 } };
+		self.ingest(await self.fetch());
+		assert.deepEqual(self.st.staRates['00:00:5e:00:53:01'], { rx: 8000, tx: 16000 });
+		assert.deepEqual(self.m.clients.filter(c => c.mac === '00:00:5e:00:53:01').map(c => [ c.rxBytes, c.txBytes ]), [ [ 6000, 12000 ] ]);
+		/* a 32-bit counter wraps (or the station joined again): no rate for that step, never a negative one */
+		t += 5000;
+		counters = { '00:00:5e:00:53:01': { rx_bytes: 100, tx_bytes: 13000 } };
+		self.ingest(await self.fetch());
+		assert.equal(self.st.staRates['00:00:5e:00:53:01'], undefined);
+		t += 5000;
+		counters = { '00:00:5e:00:53:01': { rx_bytes: 5100, tx_bytes: 18000 } };
+		self.ingest(await self.fetch());
+		assert.deepEqual(self.st.staRates['00:00:5e:00:53:01'], { rx: 8000, tx: 8000 }, 'and from there on as before');
+		/* no answer: iwinfo's list as it was */
+		counters = 'fail';
+		assert.deepEqual((await self.fetch()).assoc.ath0.map(s => s.rx.bytes), [ 0, 0 ]);
+		/* a station iwinfo has bytes for: its list is iwinfo's, and nothing is asked */
+		asked.length = 0;
+		own = 7;
+		assert.deepEqual((await self.fetch()).assoc.ath0.map(s => s.rx.bytes), [ 7, 0 ]);
+		assert.deepEqual(asked, []);
+	} finally {
+		global.L = saved.L; global.window = saved.window; Date.now = saved.now;
+		for (const k of Object.keys(calls)) delete REPLIES[k];
+	}
+});
+
 /* #166 at the full poll (no fast lane here): two lines, each on a device that carries a LAN's VLAN too */
 test('a line with VLANs to take off: the poll\'s rate, each line\'s history and its details leave them out', () => {
 	const saved = global.window, savedL = global.L;

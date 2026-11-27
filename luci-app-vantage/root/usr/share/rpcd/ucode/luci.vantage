@@ -57,6 +57,13 @@
 //              dies (#124). Only an interface that cfg80211 drives (a
 //              phy80211 link in sysfs) is asked; any other device: no
 //              channels. Read group luci-app-vantage.
+//   stations   { device, macs }: the byte and packet counters of the
+//              stations macs names on one Wi-Fi interface of a Qualcomm
+//              qcawificfg80211 radio, whose driver answers no station
+//              dump (iwinfo's assoclist then has 0 for each): one
+//              read-only NL80211 GET_STATION a station, at most
+//              MAX_STATIONS. Any other interface: no stations, without
+//              the kernel being asked. Read group luci-app-vantage.
 //   set_alias  { mac, name, icon }: name one station, or remove its name
 //              with name ''. Validated here, whatever the browser did, and
 //              written to /etc/config/vantage only. Write group
@@ -114,6 +121,8 @@ const MAX_MHZ = 100000;          // a channel's frequency, MHz (60 GHz is 70200)
 const IFTYPE_AP = 3;             // enum nl80211_iftype, the kernel's ABI
 const IFTYPE_AP_VLAN = 4;
 const MAX_VLAN_IFS = 32;         // VLAN interfaces named in a wireless reply
+const MAX_STATIONS = 128;        // stations asked for in one stations call
+const MAX_COUNTER = 9007199254740991; // 2^53 - 1: the most a browser holds exactly
 
 // Patterns, compiled once: ucode compiles a regular expression literal each
 // time the code reaches it, and a counted repeat ({1,64}) costs musl
@@ -379,19 +388,14 @@ function qca_htmode(c) {
 	return (index(hw, 'be') >= 0) ? 'EHT' + ht[1] : (index(hw, 'ax') >= 0) ? 'HE' + ht[1] : (index(hw, 'ac') >= 0) ? 'VHT' + ht[1] : c.htmode;
 }
 
-// The same reply from /etc/config/wireless, for firmware whose driver
-// bypasses netifd. Only enabled interfaces that name their ifname (or, on
-// qcawificfg80211, are named after one), since the view can look nothing
-// else up; the first section to claim a name wins. Run state stays unknown
-// here: iwinfo is served by rpcd itself, so asking it from a plugin would
-// wait on rpcd. No txpower either: vendor drivers do not configure it in
-// dBm (mtkwifi: per cent).
-function wireless_from_config() {
+// The radios of /etc/config/wireless, each with its whole section
+// (config) and the interfaces wireless_from_config() takes for it
+function config_radios() {
 	let wl = cursor();
-	let radios = {}, taken = {}, out = {}, devs = null;
+	let radios = {}, taken = {}, devs = null;
 
 	if (!wl.load(WIRELESS))
-		return out;
+		return radios;
 
 	wl.foreach(WIRELESS, 'wifi-device', (s) => {
 		if (match(s['.name'], RE_NAME))
@@ -423,7 +427,20 @@ function wireless_from_config() {
 		});
 	});
 
-	for (let name, r in radios)
+	return radios;
+}
+
+// The same reply from /etc/config/wireless, for firmware whose driver
+// bypasses netifd. Only enabled interfaces that name their ifname (or, on
+// qcawificfg80211, are named after one), since the view can look nothing
+// else up; the first section to claim a name wins. Run state stays unknown
+// here: iwinfo is served by rpcd itself, so asking it from a plugin would
+// wait on rpcd. No txpower either: vendor drivers do not configure it in
+// dBm (mtkwifi: per cent).
+function wireless_from_config() {
+	let out = {};
+
+	for (let name, r in config_radios())
 		out[name] = { ...reduce_radio(r), source: 'config' };
 
 	return out;
@@ -822,17 +839,22 @@ function routes() {
 
 /* ------------------------------------------------------------- survey */
 
+// whether dev names an interface cfg80211 drives (its phy80211 link): any
+// other device would be refused by the kernel anyway, and is not asked
+function cfg80211_dev(dev) {
+	return netdev(dev) && dev != '.' && dev != '..' && access(NET + '/' + dev + '/phy80211');
+}
+
 // The channel survey of one Wi-Fi interface: [ { mhz, noise } ] for each
 // channel the driver reports with a noise value (dBm, a signed byte as
 // NL80211 carries it; 0 is "none"), at most MAX_SURVEY. Asked of the
-// kernel only for an interface cfg80211 drives (its phy80211 link): any
-// other device would be refused by the kernel anyway, and is not asked.
+// kernel only for an interface cfg80211 drives (cfg80211_dev).
 // The reply of a dump is an array of messages; null when it had none or
 // failed, false when it was cut short.
 function survey(dev) {
 	let out = [];
 
-	if (!netdev(dev) || dev == '.' || dev == '..' || !access(NET + '/' + dev + '/phy80211'))
+	if (!cfg80211_dev(dev))
 		return out;
 
 	let res = nl80211.request(nl80211.const.NL80211_CMD_GET_SURVEY, nl80211.const.NLM_F_DUMP, { dev });
@@ -848,6 +870,72 @@ function survey(dev) {
 
 		if (length(out) >= MAX_SURVEY)
 			break;
+	}
+
+	return out;
+}
+
+/* ----------------------------------------------------------- stations */
+
+// whether dev is an interface of a qcawificfg80211 radio, as
+// wireless_from_config() names them
+function qca_iface(dev) {
+	for (let name, r in config_radios())
+		if (r.config.type == 'qcawificfg80211')
+			for (let i in r.interfaces)
+				if (i.ifname == dev)
+					return true;
+
+	return false;
+}
+
+// a counter as the driver gives it, or null
+function counter(v) {
+	return (type(v) == 'int' && v >= 0 && v <= MAX_COUNTER) ? v : null;
+}
+
+// The counters of the stations on one Wi-Fi interface of a Qualcomm
+// qcawificfg80211 radio (QSDK firmware such as QWRT): { mac: { rx_bytes,
+// tx_bytes, rx_packets, tx_packets } }, rx what the interface received
+// from the station. That driver answers no station dump, which is what
+// iwinfo's assoclist reads, so there every station has 0 bytes; it does
+// answer for one station. So each station in macs (the view's, from that
+// assoclist: iwinfo is served by rpcd itself, which a plugin cannot wait
+// on) is asked for once, MAX_STATIONS at most, never with a dump. Only on
+// an interface cfg80211 drives that the wireless config gives such a
+// radio: any other driver answers the dump. A station without a counter
+// is left out. Without 64-bit byte counters (QSDK's driver has none) the
+// bytes wrap at 4 GiB: the view takes a counter going back as a new start.
+function stations(dev, macs) {
+	let out = {}, asked = {};
+
+	if (!cfg80211_dev(dev) || type(macs) != 'array' || !qca_iface(dev))
+		return out;
+
+	for (let m in slice(macs, 0, MAX_STATIONS)) {
+		let mac = norm_mac(m);
+
+		if (!mac || is_multicast(mac) || asked[mac])
+			continue;
+
+		asked[mac] = true;
+
+		let res = nl80211.request(nl80211.const.NL80211_CMD_GET_STATION, 0, { dev, mac });
+		let s = (type(res) == 'object' && type(res.sta_info) == 'object') ? res.sta_info : {};
+		let got = {
+			rx_bytes: counter(s.rx_bytes64) ?? counter(s.rx_bytes),
+			tx_bytes: counter(s.tx_bytes64) ?? counter(s.tx_bytes),
+			rx_packets: counter(s.rx_packets),
+			tx_packets: counter(s.tx_packets)
+		};
+		let c = {};
+
+		for (let k, v in got)
+			if (v != null)
+				c[k] = v;
+
+		if (length(c))
+			out[mac] = c;
 	}
 
 	return out;
@@ -1016,6 +1104,13 @@ const methods = {
 		args: { device: 'device' },
 		call: function(request) {
 			return { results: survey(request.args?.device) };
+		}
+	},
+
+	stations: {
+		args: { device: 'device', macs: [ 'mac' ] },
+		call: function(request) {
+			return { stations: stations(request.args?.device, request.args?.macs) };
 		}
 	},
 

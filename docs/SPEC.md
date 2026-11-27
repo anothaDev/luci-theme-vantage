@@ -892,7 +892,7 @@ text around it so it looks the same size.
 - ACL: three groups for the app, and the theme's own, below. `luci-app-vantage` (read): `system info/board`,
   `network.interface dump`, `network.device status`, `iwinfo
   info/assoclist`, `hostapd.* get_status/get_clients`, `luci-rpc
-  getHostHints`, `luci.vantage wireless/thermal/wired/routes/survey`,
+  getHostHints`, `luci.vantage wireless/thermal/wired/routes/survey/stations`,
   `luci.vantage.ports counters` (it starts `ethtool`, below), `umdns hosts`, `file read` of
   `/proc/stat`, `uci get` for `vantage`, and LuCI's own `luci
   getSwconfigPortState` (the link state of a swconfig switch's ports: LuCI
@@ -984,6 +984,24 @@ text around it so it looks the same size.
   NL80211 survey dump (`ucode-mod-nl80211`, NL80211_CMD_GET_SURVEY), and
   only for an interface that cfg80211 drives (`/sys/class/net/<if>/phy80211`);
   any other device gets no channels without the kernel being asked.
+  `stations({device, macs})` returns the byte and packet counters of
+  the stations `macs` names on one interface of a Qualcomm
+  `qcawificfg80211` radio (QSDK firmware such as QWRT): `{ mac: {
+  rx_bytes, tx_bytes, rx_packets, tx_packets } }`, integers only, rx
+  what the interface received from the station. That driver answers no
+  NL80211 station dump, which iwinfo's `assoclist` reads, so there every
+  station has 0 bytes; it answers NL80211_CMD_GET_STATION for one
+  station, which the plugin sends once for each unicast MAC, at most
+  128, never as a dump. Only for an interface that cfg80211 drives and
+  that the wireless config gives a `qcawificfg80211` radio (as the
+  config fallback names its interfaces); any other device gets no
+  stations without the kernel being asked. The MACs come from the view's
+  own `assoclist`: iwinfo is served by rpcd itself, which the plugin
+  cannot wait on. The view asks only for an interface of a radio read
+  from the config whose stations all read 0 bytes, and uses the counters
+  in iwinfo's place. That driver's byte counters are 32 bits wide: one
+  that goes back (a wrap at 4 GiB, a station that joined again) gives
+  that station no rate for that poll, never a negative one.
   `set_alias({mac, name, icon})`
   re-applies the view's rules on the device (unicast MAC, name of at most
   48 code points without control, bidi or invisible characters, refused
