@@ -192,7 +192,9 @@ var callAssoc = rpc.declare({ object: 'iwinfo', method: 'assoclist', params: [ '
    iwinfo backend but nl80211's (MediaTek's mtwifi in the mt798x builds,
    #124) */
 var callSurvey = rpc.declare({ object: 'luci.vantage', method: 'survey', params: [ 'device' ], expect: { results: [] } });
-var callRrdns = rpc.declare({ object: 'network.rrdns', method: 'lookup', params: [ 'addrs', 'timeout', 'limit' ], expect: { '': {} } });
+/* reject: a ubus status in the reply (not found, permission denied) is
+   an error to read (resolveMore), not an answer without names */
+var callRrdns = rpc.declare({ object: 'network.rrdns', method: 'lookup', params: [ 'addrs', 'timeout', 'limit' ], expect: { '': {} }, reject: true });
 var callMdns = rpc.declare({ object: 'umdns', method: 'hosts' });
 var callUciGet = rpc.declare({ object: 'uci', method: 'get', params: [ 'config' ], expect: { values: {} } });
 var callSetAlias = rpc.declare({ object: 'luci.vantage', method: 'set_alias', params: [ 'mac', 'name', 'icon' ] });
@@ -2055,10 +2057,13 @@ return view.extend({
 				st.rdns[ip] = { name: e && e.mac === held[ip] ? e.name : '', mac: held[ip], at: now };
 			});
 			/* rpcd-mod-rrdns is optional: when the object or the grant is
-			   missing the first call says so and reverse DNS stays off;
-			   a timeout or a network error only skips this batch */
+			   missing the first call says so and reverse DNS stays off:
+			   ubus' "not found" (4) or "permission denied" (6) in the
+			   reply, or uhttpd's own -32000 (no object) or -32002 (access
+			   denied). Anything else, a timeout (-32003) or a network
+			   error among them, only skips this batch */
 			callRrdns(ips, 1500, 1000).catch(function(e) {
-				if (/ubus code [2-6]\b|error -320\d\d\b/.test(String(e && e.message))) st.rdnsOff = true;
+				if (/ubus code [46]\b|error -3200[02]\b/.test(String(e && e.message))) st.rdnsOff = true;
 				return null;
 			}).then(function(res) {
 				var hit = false;

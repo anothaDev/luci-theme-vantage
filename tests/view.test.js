@@ -15,13 +15,14 @@ const UI = {};
 /* LuCI's poll: tests pause it */
 const POLL = { on: true, active() { return this.on; } };
 
-function loadView(dom) {
+function loadView(dom, rpc) {
 	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');
 	const stubs = {
 		view: { extend: p => p },
 		/* replies come from REPLIES['object method'](...args) when set,
-		   else from REPLIES['*'] (a device that answers nothing) */
-		rpc: { declare: o => function(...args) { const f = REPLIES[o.object + ' ' + o.method] || REPLIES['*']; return f ? f(...args) : Promise.resolve(null); } },
+		   else from REPLIES['*'] (a device that answers nothing); or
+		   an rpc module of the test's */
+		rpc: rpc || { declare: o => function(...args) { const f = REPLIES[o.object + ' ' + o.method] || REPLIES['*']; return f ? f(...args) : Promise.resolve(null); } },
 		poll: POLL, ui: UI, dom: dom || {}
 	};
 	const params = [], values = [];
@@ -650,6 +651,89 @@ test('reverse DNS switched off mid-way: every kept answer is dropped, also those
 		assert.deepEqual([ asked.length, Object.keys(self.st.rdns).length, rerendered ], [ 2, 0, 2 ], 'and nothing is asked or kept afterwards');
 	} finally { global.L = saved.L; Date.now = saved.now; delete REPLIES['network.rrdns lookup']; }
 });
+
+/* Which failure of the lookup means "no object or no grant". The frames
+   are what uhttpd sends back for a call: { result: [ status, data ] } or
+   { error: { code, message } }; a function that throws is the request
+   failing. Decoded twice: by the few lines of LuCI's rpc.js a declaration
+   goes through, written out here, and by rpc.js itself from the rootfs
+   dump (skipped without it), which must give the same. */
+function frameRpc(frames) {
+	const fail = (o, what) => Promise.reject(new Error('RPC call to ' + o.object + '/' + o.method + ' failed with ' + what));
+	return { declare: o => function() {
+		let f;
+		try { f = frames[o.object + ' ' + o.method](); } catch (e) { return Promise.reject(e); }
+		if (f.error) return fail(o, 'error ' + f.error.code + ': ' + f.error.message);
+		if (o.reject && f.result[0] !== 0) return fail(o, 'ubus code ' + f.result[0] + ': ?');
+		let ret = f.result.length > 1 ? f.result[1] : f.result[0];
+		const want = o.expect ? Object.values(o.expect)[0] : undefined;
+		if (o.expect && (ret == null || Object.prototype.toString.call(ret) !== Object.prototype.toString.call(want))) ret = want;
+		return Promise.resolve(ret);
+	} };
+}
+const RPC_JS = path.join(path.resolve(process.env.VANTAGE_ROOTFS || path.join(__dirname, '../../vantage-rootfs')), 'www/luci-static/resources/rpc.js');
+const NO_RPC = fs.existsSync(RPC_JS) ? false : 'no rpc.js in the rootfs dump (set VANTAGE_ROOTFS)';
+function luciRpc(frames) {
+	const request = { post: (url, msg) => {
+		let f;
+		try { f = frames[msg.params[1] + ' ' + msg.params[2]](); } catch (e) { return Promise.reject(e); }
+		return Promise.resolve({ ok: true, status: 200, json: () => Object.assign({ jsonrpc: '2.0', id: msg.id }, f) });
+	} };
+	return new Function('baseclass', 'request', fs.readFileSync(RPC_JS, 'utf8'))({ extend: p => p }, request);
+}
+
+async function rdnsFailures(makeRpc) {
+	const saved = { L: global.L, now: Date.now };
+	let t = 1.8e12;
+	Date.now = () => t;
+	/* the parts of LuCI's L rpc.js uses, and the view's */
+	global.L = { env: {}, url: (...p) => '/' + p.join('/'), isObject: v => v != null && typeof v === 'object' && !Array.isArray(v),
+		bind: (fn, self, ...args) => fn.bind(self, ...args), raise: (type, fmt, ...args) => { const e = new Error(fmt.format(...args)); e.name = type; throw e; },
+		require: () => new Promise(() => {}), resolveDefault: (p, d) => Promise.resolve(p).catch(() => d) };
+	const frames = {}, flush = () => new Promise(r => setTimeout(r, 0));
+	const A = { mac: '00:00:5e:00:53:41', ips: [ '192.0.2.41' ], nameSource: 'dhcp' }, B = { mac: '00:00:5e:00:53:42', ips: [ '192.0.2.42' ], nameSource: 'dhcp' };
+	const jsonrpc = (code, message) => () => ({ error: { code, message } });
+	try {
+		const rview = loadView(null, makeRpc(frames));
+		/* one client has a fresh name; the lookup for a second one fails */
+		const run = async failure => {
+			const self = Object.create(rview), asked = [];
+			let rerendered = 0;
+			self.st = { rdns: Object.create(null), mdnsOff: true, mdnsAt: 0 };
+			self.rerender = () => { rerendered++; };
+			frames['network.rrdns lookup'] = () => { asked.push('ok'); return { result: [ 0, { '192.0.2.41': 'a.lan', '192.0.2.42': 'b.lan' } ] }; };
+			self.resolveMore({ clients: [ A ], wiredHosts: [] }); await flush();
+			assert.deepEqual([ self.st.rdns['192.0.2.41'].name, rerendered ], [ 'a.lan', 1 ], 'an ordinary answer, as without the flag');
+			t += 60e3;
+			frames['network.rrdns lookup'] = () => { asked.push('failed'); return failure(); };
+			self.resolveMore({ clients: [ A, B ], wiredHosts: [] }); await flush();
+			const after = { off: self.st.rdnsOff === true, kept: Object.keys(self.st.rdns).sort().map(ip => ip + '=' + self.st.rdns[ip].name), rerendered };
+			/* is it asked again: at the next poll, and once the answers are 10 minutes old */
+			frames['network.rrdns lookup'] = () => { asked.push('again'); return { result: [ 0, {} ] }; };
+			t += 60e3; self.resolveMore({ clients: [ A, B ], wiredHosts: [] }); await flush();
+			const soon = asked.length;
+			t += 10 * 60e3; self.resolveMore({ clients: [ A, B ], wiredHosts: [] }); await flush();
+			return Object.assign(after, { asked: asked.join(' '), soon });
+		};
+		const OFF = { off: true, kept: [], rerendered: 2, asked: 'ok failed', soon: 2 };
+		const SKIPPED = { off: false, kept: [ '192.0.2.41=a.lan', '192.0.2.42=' ], rerendered: 1, asked: 'ok failed again', soon: 2 };
+		/* no object, no grant: off for the page, and no answer kept */
+		assert.deepEqual(await run(() => ({ result: [ 4 ] })), OFF, 'ubus: not found');
+		assert.deepEqual(await run(() => ({ result: [ 6 ] })), OFF, 'ubus: permission denied');
+		assert.deepEqual(await run(jsonrpc(-32000, 'Object not found')), OFF, 'uhttpd: no such object');
+		assert.deepEqual(await run(jsonrpc(-32002, 'Access denied')), OFF, 'uhttpd: access denied');
+		/* anything else skips that batch: its name is cleared and asked again after 10 minutes,
+		   the other client's fresh name stays, lookups stay on */
+		assert.deepEqual(await run(jsonrpc(-32003, 'Timeout')), SKIPPED, 'uhttpd: the call timed out');
+		assert.deepEqual(await run(jsonrpc(-32001, 'Session not found')), SKIPPED, 'uhttpd: no session');
+		for (const status of [ 1, 2, 3, 5, 7, 9, 10 ])
+			assert.deepEqual(await run(() => ({ result: [ status ] })), SKIPPED, 'ubus status ' + status + ' (7: timeout)');
+		assert.deepEqual(await run(() => { throw new Error('XHR request timed out'); }), SKIPPED, 'the request itself');
+	} finally { global.L = saved.L; Date.now = saved.now; }
+}
+
+test('reverse DNS: only "not found" and "permission denied" switch lookups off; a timeout or a network error skips that batch', () => rdnsFailures(frameRpc));
+test('reverse DNS: the same through LuCI\'s own rpc.js', { skip: NO_RPC }, () => rdnsFailures(luciRpc));
 
 /* the noise floor of the radio's channel, asked every poll (luci.vantage survey) */
 test('the channel survey reaches the model: a radio\'s noise is the survey\'s, at the poll and when the page is rebuilt', async () => {

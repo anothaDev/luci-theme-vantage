@@ -365,10 +365,22 @@ jobs:
               grep -qxF -- "$f" <<< "$have" || gh release upload "$TAG" "$f" --repo "$REPO"
             done
             # a create that was cut off after its draft was made leaves the
-            # release unpublished, and Pages would get ahead of it: with
-            # every asset there, publish it
+            # release unpublished, and Pages would get ahead of it: publish
+            # it, as this build's release only. It holds exactly this
+            # build's files (a draft may have others from before; a public
+            # release's other assets are not this step's business), and
+            # its tag is on the repository at this run's commit: publishing
+            # a draft whose tag is gone would make the tag anew
             draft=$(gh release view "$TAG" --repo "$REPO" --json isDraft --jq .isDraft)
-            [ "$draft" != true ] || gh release edit "$TAG" --repo "$REPO" --draft=false --verify-tag
+            if [ "$draft" = true ]; then
+              holds=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' | sort)
+              [ "$holds" = "$(ls | sort)" ] || {
+                echo "::error::the draft release does not hold exactly this build's files; it stays a draft"; exit 1; }
+              at=$(gh api "repos/$REPO/commits/refs/tags/$TAG" --jq .sha) || at=
+              [ "$at" = "$GITHUB_SHA" ] || {
+                echo "::error::tag $TAG is not at this run's commit on the repository (${at:-no such tag}); the release stays a draft"; exit 1; }
+              gh release edit "$TAG" --repo "$REPO" --draft=false
+            fi
           else
             gh release create "$TAG" --repo "$REPO" --verify-tag --title "Vantage ${TAG#v}" \
               --notes "Packages for OpenWrt ${SDK_APK} (apk) and ${SDK_IPK} (ipk), built by CI from ${GITHUB_SHA}. What changed: https://github.com/${REPO}/blob/${TAG}/CHANGELOG.md. See SHA256SUMS, SHA256SUMS-24.10, the BUILDINFO files and docs/INSTALL.md." \

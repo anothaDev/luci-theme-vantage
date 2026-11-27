@@ -480,6 +480,13 @@ test('ci: the site job runs by hand on main only, with no secret, and publishes 
    The stand-in keeps the "release" as a directory and logs each upload. */
 const GH = `#!/bin/bash
 set -eu
+if [ "$1" = api ]; then
+	# the commit a tag is at, peeled: none when the tag is not there
+	[ "$2" = "repos/$REPO/commits/refs/tags/$TAG" ] && [ "$3 $4" = '--jq .sha' ] || exit 64
+	echo "tag asked" >> "$STUB/log"
+	[ -e "$STUB/tag" ] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
+	cat "$STUB/tag"; exit 0
+fi
 [ "$1" = release ] || exit 64
 cmd=$2 tag=$3; shift 3
 remote="$STUB/remote"
@@ -492,7 +499,6 @@ view)
 	esac ;;
 edit)
 	case " $* " in *' --draft=false '*) ;; *) exit 64 ;; esac
-	case " $* " in *' --verify-tag '*) ;; *) exit 64 ;; esac
 	rm -f "$STUB/draft"; echo "publish $tag" >> "$STUB/log" ;;
 download)
 	while [ $# -gt 0 ]; do case $1 in --pattern) pat=$2; shift ;; --dir) dir=$2; shift ;; --repo) shift ;; esac; shift; done
@@ -520,7 +526,9 @@ test('ci: a release retry keeps an asset only when it is this build\'s file, and
 	const apk = sdk('SDK_APK'), ipk = sdk('SDK_IPK');
 
 	/* a build's two artifacts; remote: the release as it stands, or null for none */
-	const run = (remote, draft) => {
+	const SHA = '0'.repeat(40);
+	/* draft: the release is one; tag: the commit its tag is at on the repository, null for no tag */
+	const run = (remote, draft, tag = SHA) => {
 		const dir = mkTmp('vantage-release-test-'), stub = path.join(dir, 'stub');
 		const put = (d, files) => {
 			fs.mkdirSync(d, { recursive: true });
@@ -535,10 +543,11 @@ test('ci: a release retry keeps an asset only when it is this build\'s file, and
 		if (remote) put(path.join(stub, 'remote'), remote);
 		if (remote) fs.rmSync(path.join(stub, 'remote', 'SHA256SUMS'));
 		if (draft) fs.writeFileSync(path.join(stub, 'draft'), '');
+		if (tag) fs.writeFileSync(path.join(stub, 'tag'), tag + '\n');
 		fs.writeFileSync(path.join(dir, 'step.sh'), script);
 		const r = spawnSync('bash', [ path.join(dir, 'step.sh') ], { cwd: dir, encoding: 'utf8', env: Object.assign({}, process.env, {
 			PATH: path.join(stub, 'bin') + path.delimiter + process.env.PATH, STUB: stub, TAG: 'v0.0.1', REPO: 'example/vantage',
-			SDK_APK: apk, SDK_IPK: ipk, GITHUB_SHA: '0'.repeat(40) }) });
+			SDK_APK: apk, SDK_IPK: ipk, GITHUB_SHA: SHA }) });
 		let log = [];
 		try { log = fs.readFileSync(path.join(stub, 'log'), 'utf8').trim().split('\n'); } catch (e) {}
 		const there = n => { try { return fs.readFileSync(path.join(stub, 'remote', n), 'utf8'); } catch (e) { return null; } };
@@ -562,10 +571,33 @@ test('ci: a release retry keeps an asset only when it is this build\'s file, and
 	   that is public already is not edited (the retry above) */
 	const cutOff = run({ 'one-1.0-r1.apk': 'apk one', 'packages.adb': 'index' }, true);
 	assert.equal(cutOff.code, 0, cutOff.out);
-	assert.equal(cutOff.log[cutOff.log.length - 1], 'publish v0.0.1');
+	assert.deepEqual(cutOff.log.slice(-2), [ 'tag asked', 'publish v0.0.1' ], 'the tag is looked up, then the draft published, last');
 	assert.equal(cutOff.log.filter(l => l.startsWith('upload ')).length, ALL.length - 2);
 	assert.equal(cutOff.draft, false);
-	assert.equal(again.log.filter(l => l.startsWith('publish')).length, 0);
+	assert.deepEqual(again.log.filter(l => !l.startsWith('upload ')), [], 'a public release: no tag asked, nothing published');
+
+	/* a draft is published as this build's release only. One that holds a
+	   file this build does not have (an older package) stays a draft */
+	const published = l => l.filter(x => x.startsWith('publish')).length;
+	const stale = run({ 'one-1.0-r1.apk': 'apk one', 'one-0.9-r1.apk': 'an older package' }, true);
+	assert.notEqual(stale.code, 0);
+	assert.match(stale.out, /::error::the draft release does not hold exactly this build's files; it stays a draft/);
+	assert.deepEqual([ published(stale.log), stale.draft, stale.there('one-0.9-r1.apk') ], [ 0, true, 'an older package' ]);
+	/* the same on a release that is public already is left alone, as before */
+	const extra = run({ 'one-1.0-r1.apk': 'apk one', 'one-0.9-r1.apk': 'an older package' }, false);
+	assert.equal(extra.code, 0, extra.out);
+	assert.deepEqual([ published(extra.log), extra.there('one-0.9-r1.apk') ], [ 0, 'an older package' ]);
+	/* and one whose tag is gone from the repository, or is at another
+	   commit than this run's, stays a draft: publishing would make the tag */
+	for (const [ tag, said ] of [ [ null, /::error::tag v0\.0\.1 is not at this run's commit on the repository \(no such tag\); the release stays a draft/ ],
+		[ '1'.repeat(40), /::error::tag v0\.0\.1 is not at this run's commit on the repository \(1{40}\); the release stays a draft/ ] ]) {
+		const r = run({ 'one-1.0-r1.apk': 'apk one' }, true, tag);
+		assert.notEqual(r.code, 0, String(tag));
+		assert.match(r.out, said);
+		assert.deepEqual([ published(r.log), r.draft ], [ 0, true ], String(tag));
+	}
+	/* a public release is not asked about its tag */
+	assert.equal(run({ 'one-1.0-r1.apk': 'apk one' }, false, null).code, 0);
 
 	/* a retry where a package of that name is another file: the job fails,
 	   names it, and has uploaded nothing; the asset stays as it was */
