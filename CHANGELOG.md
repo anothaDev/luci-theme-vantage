@@ -7,7 +7,7 @@ packages are listed at
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
-## 1.2.2 - unreleased
+## 1.2.2 - 2026-11-27
 
 - **Paired access points: their own addresses leave the wired list on a
   wire that carries several VLANs** (#167,
@@ -47,13 +47,12 @@ packages are listed at
   command as root there instead of the read-only report. Every Dropbear
   that OpenWrt's service manager runs and that takes root logins is
   checked now, as configured and as running, and no router is let in
-  while one has such a command. Where routers
-  were let in before, their keys stay until you revoke them: the access
-  point's pairing page says so (remove the command or revoke the
-  routers), and the access point gives no report meanwhile, so the
-  router shows it as not reporting. An access point with a single
-  listener, as OpenWrt ships it, was not affected. Needs 1.2.2 on the
-  access points.
+  while one has such a command. Where routers were let in before, their
+  keys stay until you revoke them: the access point's pairing page says
+  so (remove the command or revoke the routers), and the access point
+  gives no report meanwhile, so the router shows it as not reporting. An
+  access point with a single listener, as OpenWrt ships it, was not
+  affected. Needs 1.2.2 on the access points.
 - **Firewall overview: IPv6 uplinks are checked too.** The overview
   found the internet side by masquerading, the wan names and the IPv4
   default route. With a separate IPv6 uplink (a tunnel, say) in a zone
@@ -98,12 +97,11 @@ packages are listed at
 - **Access points page: a service that does not start is said.** When
   the service that reads access points cannot be set up or shut down, or
   does not run afterwards, the page says so and a second try sets it
-  right; adding the same access point
-  again no longer answers "already on this dashboard". An access point
-  whose network was renumbered a second time is found again, and its
-  old address is no longer asked once it belongs to another network. An
-  access point with 16 Wi-Fi networks no longer loses the clients on
-  their VLAN interfaces.
+  right; adding the same access point again no longer answers "already
+  on this dashboard". An access point whose network was renumbered a
+  second time is found again, and its old address is no longer asked
+  once it belongs to another network. An access point with 16 Wi-Fi
+  networks no longer loses the clients on their VLAN interfaces.
 - **Network → Wireless: Mode, Band, Channel and Width open the theme's
   own list.** These four selects of "Operating frequency" were the last
   that still opened the browser's plain list.
