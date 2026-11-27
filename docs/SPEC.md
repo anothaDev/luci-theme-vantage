@@ -435,12 +435,14 @@ text around it so it looks the same size.
 - **Layout**: tiles are packed into columns (four, two or one by width);
   each tile has a column, a width and a place in the order, and stacks
   under the earlier tiles in its columns. A tile that ends above the
-  next tile in its columns grows down to meet it, so a short column
-  leaves no hole above a tile that spans it (#173); its content stays
-  at its top, and a tile with another already under part of it does not
-  grow. At the page's end a short column just ends: its last tile grows
-  only to close a gap of up to 48 px (the chart and the radio cards,
-  any gap). "Customize" lets the viewer drag
+  next tile grows down to meet it when that tile spans all of its
+  columns, so a short column leaves no hole above a wide tile (#173);
+  its content stays at its top, and a tile with another already under
+  part of it does not grow. Growing there moves no other tile and
+  leaves the page as long as it was. A tile only partly under the next
+  one, and a column's last tile at the page's end, grow only to close a
+  gap of up to 48 px (the chart and the radio cards, any gap): a short
+  column at the end just ends. "Customize" lets the viewer drag
   tiles, move them with buttons or arrow keys, change their width within
   a per-tile minimum and hide them. Saved per screen class (and
   separately for wired devices) and validated on read: under the Vantage

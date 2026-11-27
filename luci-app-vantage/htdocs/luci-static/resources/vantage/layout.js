@@ -294,21 +294,24 @@ return baseclass.extend({
 
 	/* where shown tiles go. items: [{ id, c, w, h }] in order, h measured;
 	   returns { rects: { id: { c, w, top, h } }, height }. A tile that
-	   ends above the next one in its columns stretches to meet it, so a
-	   short column leaves no hole over a tile that spans it (#173). At
-	   the end of the page only a little (any amount for FLEX tiles):
-	   there a short column just ends. */
+	   ends above the next one stretches to meet it when that one spans
+	   all its columns, so a short column leaves no hole over a wide tile
+	   (#173). Partly under the next one, or at the end of the page, only
+	   a little (any amount for FLEX tiles): stretching moves what comes
+	   later in its other columns, and at the end a short column just
+	   ends. */
 	pack: function(items, cols, gap) {
 		var bottoms = [], last = [], rects = Object.create(null), c, i;
 		for (c = 0; c < cols; c++) { bottoms.push(0); last.push(null); }
 
-		/* only a tile with nothing under it in any of its columns, or it
-		   would grow over that tile */
-		function stretch(col, top, any) {
+		/* the next tile is w columns from column `at` (none at the page's
+		   end). Only a tile with nothing under it in any of its columns
+		   grows, or it would grow over that tile */
+		function stretch(col, top, at, w) {
 			var id = last[col], r = id && rects[id];
 			if (!r) return;
 			var g = top - bottoms[col];
-			if (g <= 0 || !(any || FLEX[id] || g <= SNAP)) return;
+			if (g <= 0 || !(FLEX[id] || g <= SNAP || (r.c >= at && r.c + r.w <= at + w))) return;
 			for (var j = r.c; j < r.c + r.w; j++) if (last[j] !== id) return;
 			r.h += g;
 			for (var k = r.c; k < r.c + r.w; k++)
@@ -318,13 +321,13 @@ return baseclass.extend({
 		items.forEach(function(it) {
 			var w = Math.max(1, Math.min(cols, it.w | 0)), at = Math.max(0, Math.min(cols - w, it.c | 0)), top = 0;
 			for (i = at; i < at + w; i++) top = Math.max(top, bottoms[i]);
-			for (i = at; i < at + w; i++) stretch(i, top, true);
+			for (i = at; i < at + w; i++) stretch(i, top, at, w);
 			rects[it.id] = { c: at, w: w, top: top, h: Math.max(0, +it.h || 0) };
 			for (i = at; i < at + w; i++) { bottoms[i] = top + rects[it.id].h + gap; last[i] = it.id; }
 		});
 
 		var end = Math.max.apply(null, bottoms);
-		for (c = 0; c < cols; c++) stretch(c, end);
+		for (c = 0; c < cols; c++) stretch(c, end, 0, 0);
 		end = Math.max.apply(null, bottoms);
 		return { rects: rects, height: Math.max(0, end - gap) };
 	}
