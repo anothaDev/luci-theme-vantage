@@ -1643,9 +1643,35 @@ test('a qcawificfg80211 radio from the config: its stations\' traffic from luci.
 		counters = { '00:00:5e:00:53:01': { rx_bytes: 5100, tx_bytes: 18000 } };
 		self.ingest(await self.fetch());
 		assert.deepEqual(self.st.staRates['00:00:5e:00:53:01'], { rx: 8000, tx: 8000 }, 'and from there on as before');
-		/* no answer: iwinfo's list as it was */
+		/* no answer: iwinfo's list as it was, and no rate of iwinfo's 0 against the driver's bytes */
 		counters = 'fail';
-		assert.deepEqual((await self.fetch()).assoc.ath0.map(s => s.rx.bytes), [ 0, 0 ]);
+		t += 5000;
+		const failed = await self.fetch();
+		assert.deepEqual(failed.assoc.ath0.map(s => s.rx.bytes), [ 0, 0 ]);
+		self.ingest(failed);
+		assert.equal(self.st.staRates['00:00:5e:00:53:01'], undefined, 'the failed poll: no rate');
+		/* the next answer: the driver's again, a source the station did not have last poll: it starts over,
+		   no rate of several Gbit/s from 0 */
+		t += 5000;
+		counters = { '00:00:5e:00:53:01': { rx_bytes: 4000000000, tx_bytes: 4100000000 } };
+		self.ingest(await self.fetch());
+		assert.equal(self.st.staRates['00:00:5e:00:53:01'], undefined, 'recovered: started over');
+		t += 5000;
+		counters = { '00:00:5e:00:53:01': { rx_bytes: 4000005000, tx_bytes: 4100010000 } };
+		self.ingest(await self.fetch());
+		assert.deepEqual(self.st.staRates['00:00:5e:00:53:01'], { rx: 8000, tx: 16000 }, 'and rated from there');
+		/* the driver's answer leaves the station out: iwinfo's 0 for it, and it starts over again */
+		t += 5000;
+		counters = { '00:00:5e:00:53:02': { rx_bytes: 1, tx_bytes: 1 } };
+		self.ingest(await self.fetch());
+		assert.equal(self.st.staRates['00:00:5e:00:53:01'], undefined, 'left out: no rate');
+		assert.deepEqual(self.m.clients.filter(c => c.mac === '00:00:5e:00:53:01').map(c => c.bytesFrom), [ null ]);
+		t += 5000;
+		counters = { '00:00:5e:00:53:01': { rx_bytes: 4000010000, tx_bytes: 4100020000 } };
+		self.ingest(await self.fetch());
+		assert.equal(self.st.staRates['00:00:5e:00:53:01'], undefined, 'back: started over');
+		assert.deepEqual(self.m.clients.filter(c => c.mac === '00:00:5e:00:53:01').map(c => c.bytesFrom), [ 'driver' ]);
+		counters = 'fail';
 		/* a station iwinfo has bytes for: its list is iwinfo's, and nothing is asked */
 		asked.length = 0;
 		own = 7;

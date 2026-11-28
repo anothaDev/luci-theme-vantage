@@ -226,7 +226,12 @@ function hostapd(ifname, method) {
    driver's interfaces only) and its counters stand in for iwinfo's. Its
    byte counters are 32 bits wide: one that goes back, wrapped or after
    the station joined again, starts that station's rate over
-   (model.rates). Any other list, or no answer, stays as iwinfo gave it */
+   (model.rates). Any other list, or no answer, stays as iwinfo gave it.
+   Each station given the driver's counters says so (counters: 'driver',
+   the client's bytesFrom): a station whose counters come from iwinfo one
+   poll and from the driver the next (the call failed, or left it out)
+   starts its rate over too, rather than rating the driver's bytes
+   against iwinfo's 0 */
 function stationCounters(ifname, list) {
 	var none = function(s) { return !!s && typeof s === 'object' && !(+(s.rx && s.rx.bytes) > 0) && !(+(s.tx && s.tx.bytes) > 0); };
 	if (!Array.isArray(list) || !list.length || !list.every(none)) return Promise.resolve(list);
@@ -244,7 +249,7 @@ function stationCounters(ifname, list) {
 		return list.map(function(s) {
 			var mac = names.normMac(s.mac), c = mac && Object.prototype.hasOwnProperty.call(got, mac) ? got[mac] : null;
 			if (!c || typeof c !== 'object') return s;
-			return Object.assign({}, s, { rx: dir(s.rx, c.rx_bytes, c.rx_packets), tx: dir(s.tx, c.tx_bytes, c.tx_packets) });
+			return Object.assign({}, s, { rx: dir(s.rx, c.rx_bytes, c.rx_packets), tx: dir(s.tx, c.tx_bytes, c.tx_packets), counters: 'driver' });
 		});
 	});
 }
@@ -1743,7 +1748,9 @@ return view.extend({
 		/* station counters */
 		var staCounters = Object.create(null), local = m.clients.filter(function(c) { return !c.ap; });
 		/* a paired access point's stations have no counters here */
-		local.forEach(function(c) { staCounters[c.mac] = { rx: c.rxBytes, tx: c.txBytes }; });
+		/* src: whose counters (stationCounters), so that a station's rate
+		   is never of iwinfo's bytes against the driver's */
+		local.forEach(function(c) { staCounters[c.mac] = { rx: c.rxBytes, tx: c.txBytes, src: c.bytesFrom }; });
 		var sr = model.rates(st.staPrev, staCounters, at);
 		st.staPrev = sr.next;
 		if (Object.keys(sr.rates).length || !local.length) st.staRates = sr.rates;
