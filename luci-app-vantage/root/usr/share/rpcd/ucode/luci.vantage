@@ -893,13 +893,15 @@ function vlan_ports(sw, list, vid) {
 // reaches this device as and its other ports, as LuCI's switch page lays
 // them out. vlans: how many of the switch's VLANs the port is in, those
 // that reach no CPU port too (a port in one VLAN carries that VLAN and
-// nothing else, #166); left out where not every VLAN was read.
+// nothing else, #166); left out unless every switch_vlan section and
+// role was read and counted (one of a switch named another way, without
+// a VLAN or ports, or past a cap is not: swconfig may still apply it).
 // From the switch_vlan sections of the network config, or for a switch
 // they give no VLAN, from the roles board.json gives it (the first boot's
 // layout). Only switches /etc/board.json describes; {} without one, so a
 // device whose ports are all Linux ports (DSA) loads no network config.
 function switches() {
-	let board = null, known = {}, used = {}, out = {}, n = 0;
+	let board = null, known = {}, used = {}, out = {}, n = 0, sure = true;
 
 	try { board = json(readfile(BOARD, BOARD_MAX) ?? 'null'); }
 	catch (e) { return out; }
@@ -926,6 +928,9 @@ function switches() {
 				};
 		}
 
+		if (type(sw.roles) == 'array' && length(sw.roles) > 16)
+			sure = false;
+
 		if (length(cpu))
 			known[name] = { ports, cpu, seen: {}, roles: (type(sw.roles) == 'array') ? slice(sw.roles, 0, 16) : [] };
 	}
@@ -941,11 +946,15 @@ function switches() {
 			let id = s.vid ?? s.vlan;
 			let vid = (type(id) == 'string' && match(id, RE_VID)) ? +id : null;
 
-			if (!sw || vid == null || vid > 4094 || type(s.ports) != 'string')
+			if (!sw || vid == null || vid > 4094 || type(s.ports) != 'string') {
+				sure = false;
 				return;
+			}
 
-			if (++n > MAX_SWITCH_VLANS)
+			if (++n > MAX_SWITCH_VLANS) {
+				sure = false;
 				return false;
+			}
 
 			let v = vlan_ports(sw, s.ports, vid);
 
@@ -961,8 +970,6 @@ function switches() {
 		if (used[name])
 			continue;
 
-		sw.seen = {};
-
 		for (let r in sw.roles) {
 			let m = (type(r?.device) == 'string' && type(r.ports) == 'string') ? match(r.device, RE_VLAN_DEV) : null;
 			let vid = m ? +m[1] : null;
@@ -973,7 +980,7 @@ function switches() {
 		}
 	}
 
-	if (n <= MAX_SWITCH_VLANS)
+	if (sure)
 		for (let dev, e in out)
 			for (let p in e.ports)
 				p.vlans = known[e.name].seen[p.num] ?? 0;

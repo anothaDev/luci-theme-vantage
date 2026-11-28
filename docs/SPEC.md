@@ -552,10 +552,12 @@ text around it so it looks the same size.
   the chip's from the port's first reading, which gives no rate yet,
   and never shows another line's or the kernel's meanwhile. A poll that
   brings no rate of the chip's (no reading, a counter that went back)
-  shows the last one measured there, for 20 s at most and as no new
-  point of the history, then the kernel's again; a poll without the
-  switch map keeps the port. The fast lane leaves such a line to the
-  poll, and an answer of its own that comes in late changes nothing.
+  shows the last one measured there, for 20 s at most (by the browser's
+  clock) and as no new point of the history, then the kernel's again; a
+  poll without the switch map keeps the port, for 20 s since the map
+  last named it. The fast lane leaves such a line to the poll, and an
+  answer of its own that comes in late, or for a device that is no
+  longer the line's, changes nothing.
   The other lines to the internet stay the kernel's.
   Known limit, where the chip's counters are not to be had: with software flow
   offloading the kernel does not count on a VLAN's device what an
@@ -685,7 +687,11 @@ text around it so it looks the same size.
   for the page, so a device without such a switch starts no process for
   it every poll. Only the first: once it has answered, a later answer of
   any kind (rpcd's objects are gone for a moment while it reloads, at
-  every package install) is that poll's alone. Nothing is shown about traffic the counters miss.
+  every package install) is that poll's alone. Six answers running that
+  bring no counter of any port, on a page that has had none, end the
+  asking too (#166): a switch whose reads fail every time, whatever the
+  plugin makes of the reason, starts a program for half a minute and no
+  longer. A page that has had a counter once asks for good. Nothing is shown about traffic the counters miss.
 - **Throughput chart**: one row per line, then each radio, each
   with its own scale. Under "Customize", the viewer picks how download and
   upload share a row: overlaid on one scale (the default), overlaid on a
@@ -962,9 +968,11 @@ text around it so it looks the same size.
   the host's, learned from the first dump. The bridge forgets a host
   after about five minutes without traffic. Its switch map says of each
   port how many of the switch's VLANs the port is in (`vlans`; the VLANs
-  that reach no CPU port counted too, and left out where not every VLAN
-  section was read): a port in one VLAN carries that VLAN alone, which
-  the uplink's rate by its switch port needs (#166).
+  that reach no CPU port counted too, and left out unless every
+  `switch_vlan` section and role was read and counted: one of a switch
+  named another way, without a VLAN or ports, or past a cap is not, and
+  swconfig may still apply it): a port in one VLAN carries that VLAN
+  alone, which the uplink's rate by its switch port needs (#166).
   `routes` returns the default route the kernel takes to the internet,
   for IPv4 and IPv6 (family, device and metric; no gateways): one
   read-only lookup a family (RTM_GETROUTE with RTM_F_FIB_MATCH, as `ip
@@ -1066,9 +1074,10 @@ text around it so it looks the same size.
   reads its counters only with a poll interval set, by the board's
   device tree or `ar8xxx_mib_poll_interval` in the switch's uci
   section), so the page asks no more and starts nothing further. Any
-  other failure (no answer from the chip in time, no such switch), and
-  a counter the Realtek drivers print `error` for, is `failed`: that
-  call's, and asked again. A port's counters are the pair of
+  other failure (no answer from the chip in time, no such switch, a
+  driver without a `mib` attribute), and a byte counter the Realtek
+  drivers print `error` for, is `failed`: that call's, and asked again
+  (six such answers running end the asking, above). A port's counters are the pair of
   names its driver prints (`RxGoodByte`/`TxByte` ar8xxx,
   `RxOctets`/`TxOctets` b53, `IfInOctets`/`IfOutOctets` and
   `ifInOctets`/`ifOutOctets` the Realtek drivers), and ar8xxx's "No MIB

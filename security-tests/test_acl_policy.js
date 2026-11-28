@@ -1141,7 +1141,7 @@ const PORTS_DIR = "function dir_ok() {\n\tlet st = lstat(DIR);\n\n\tif (!st) {\n
 const PORTS_COUNT = "function counters() {\n\tlet t0 = now_ms(), lock = dir_ok() ? open(DIR + '/lock', 'a', 0600) : null;\n\n\tif (!lock || lock.lock('xn') !== true)\n\t\treturn { v: 1, state: 'busy', took: now_ms() - t0, more: false, ports: {} };\n\n\tlet ports = {}, d = dsa_ports();\n\n\tif (!length(d.found)) {\n\t\tlet swl = switch_ports(), switches = {};\n\n\t\tif (!length(swl.found) || !access(SWCONFIG, 'x'))\n\t\t\treturn { v: 1, state: 'none', took: now_ms() - t0, more: false, ports };\n\n\t\tfor (let swp in swl.found) {\n\t\t\tlet at = now_ms();\n\n\t\t\tswitches[swp.sw] ??= {};\n\t\t\tswitches[swp.sw][swp.num + ''] = (at - t0 < BUDGET_MS) ? { ...read_switch_port(swp.sw, swp.num), at } : { error: 'time', at };\n\t\t}\n\n\t\treturn { v: 1, state: 'ok', took: now_ms() - t0, more: swl.more, ports, switches };\n\t}\n\n\tif (!access(ETHTOOL, 'x'))\n\t\treturn { v: 1, state: 'no-ethtool', took: now_ms() - t0, more: d.more, ports };\n\n\tfor (let name in d.found) {\n\t\tlet at = now_ms();\n\n\t\tports[name] = (at - t0 < BUDGET_MS) ? { ...read_port(name), at } : { error: 'time', at };\n\t}\n\n\treturn { v: 1, state: 'ok', took: now_ms() - t0, more: d.more, ports };\n}";
 /* a swconfig switch's WAN ports (#166), where the device has no DSA port: the switches of /etc/board.json by a name RE_PORT
    takes, their ports of the role wan (never a CPU port) by an integer from 0 to 63, MAX_PORTS at most */
-const PORTS_SWFIND = "function switch_ports() {\n\tlet text = readfile(BOARD, BOARD_MAX), found = [], more = false;\n\t// json() throws on what it cannot read and nothing here catches: only\n\t// a file read whole that is an object by its ends reaches it\n\tlet whole = type(text) == 'string' && length(text) < BOARD_MAX && substr(text, 0, 1) == '{' && substr(rtrim(text), -1) == '}';\n\tlet board = whole ? json(text) : null;\n\tlet sws = (type(board?.switch) == 'object') ? board.switch : {};\n\n\tfor (let sw in sort(keys(sws))) {\n\t\tif (!match(sw, RE_PORT) || type(sws[sw]?.ports) != 'array')\n\t\t\tcontinue;\n\n\t\tfor (let swp in sws[sw].ports) {\n\t\t\tif (type(swp?.num) != 'int' || swp.num < 0 || swp.num > 63 || swp.device != null || swp.role !== 'wan')\n\t\t\t\tcontinue;\n\n\t\t\tif (length(found) >= MAX_PORTS) {\n\t\t\t\tmore = true;\n\t\t\t\tbreak;\n\t\t\t}\n\n\t\t\tpush(found, { sw, num: swp.num });\n\t\t}\n\t}\n\n\treturn { found, more };\n}";
+const PORTS_SWFIND = "function switch_ports() {\n\tlet text = readfile(BOARD, BOARD_MAX), found = [], more = false;\n\t// json() throws on what it cannot read and nothing here catches: only\n\t// a file read whole that is an object by its ends reaches it\n\tlet whole = type(text) == 'string' && length(text) < BOARD_MAX && substr(ltrim(text), 0, 1) == '{' && substr(rtrim(text), -1) == '}';\n\tlet board = whole ? json(text) : null;\n\tlet sws = (type(board?.switch) == 'object') ? board.switch : {};\n\n\tfor (let sw in sort(keys(sws))) {\n\t\tif (!match(sw, RE_PORT) || type(sws[sw]?.ports) != 'array')\n\t\t\tcontinue;\n\n\t\tfor (let swp in sws[sw].ports) {\n\t\t\tif (type(swp?.num) != 'int' || swp.num < 0 || swp.num > 63 || swp.device != null || swp.role !== 'wan')\n\t\t\t\tcontinue;\n\n\t\t\tif (length(found) >= MAX_PORTS) {\n\t\t\t\tmore = true;\n\t\t\t\tbreak;\n\t\t\t}\n\n\t\t\tpush(found, { sw, num: swp.num });\n\t\t}\n\t}\n\n\treturn { found, more };\n}";
 /* the other program: SWCONFIG dev <switch> port <number> get mib, a read; MAX_OUT bytes of its output, its exit code checked
    (SW_REFUSED with nothing printed is the driver's own no: unknown, as a driver whose names are not known) */
 const PORTS_SWRUN = "function read_switch_port(sw, num) {\n\tlet p = popen(SWCONFIG + ' dev ' + sw + ' port ' + num + ' get mib', 'r');\n\n\tif (!p)\n\t\treturn { error: 'failed' };\n\n\tlet text = p.read(MAX_OUT + 1), rc = p.close();\n\n\t// the driver's own no, the same at every call; any other failure\n\t// (no answer from the chip in time, no such switch) is this call's\n\tif (rc === SW_REFUSED && text === '')\n\t\treturn { error: 'unknown' };\n\n\tif (rc !== 0 || type(text) != 'string' || length(text) > MAX_OUT)\n\t\treturn { error: 'failed' };\n\n\treturn parse_mib(text);\n}";
@@ -1231,7 +1231,7 @@ const PORTS_PINS = [
 		'let text = p.read(MAX_OUT + 1);',
 		'if (p.close() !== 0 || type(text) != \'string\' || length(text) > MAX_OUT)',
 		'let text = readfile(BOARD, BOARD_MAX), found = [], more = false;',
-		'let whole = type(text) == \'string\' && length(text) < BOARD_MAX && substr(text, 0, 1) == \'{\' && substr(rtrim(text), -1) == \'}\';',
+		'let whole = type(text) == \'string\' && length(text) < BOARD_MAX && substr(ltrim(text), 0, 1) == \'{\' && substr(rtrim(text), -1) == \'}\';',
 		'if (length(found) >= MAX_PORTS) {',
 		'let text = p.read(MAX_OUT + 1), rc = p.close();',
 		'if (rc !== 0 || type(text) != \'string\' || length(text) > MAX_OUT)',
@@ -1252,7 +1252,7 @@ const PORTS_PINS = [
 		'function pair(seen, table) {',
 		'for (let c in table)',
 		'return pair(seen, COUNTERS);',
-		'return pair(seen, MIB_COUNTERS);'
+		'let got = pair(seen, MIB_COUNTERS);'
 	] ],
 	/* the counters' names (the two tables), and no member reached by a literal name */
 	[ '\\[\\s*[\'\\"]', [
@@ -1285,7 +1285,7 @@ const PORTS_TOP = [
 ];
 const PORTS_NAMES = [
 	'BOARD', 'BOARD_MAX', 'BUDGET_MS', 'COUNTERS', 'DIR', 'ETHTOOL', 'MAX_OUT', 'MAX_PORTS', 'MAX_UEVENT', 'MIB_COUNTERS', 'NET', 'RE_LINE', 'RE_MIB', 'RE_MIB_ERR', 'RE_PORT', 'SWCONFIG', 'SW_REFUSED',
-	'at', 'board', 'c', 'counters', 'd', 'dir_ok', 'dsa', 'dsa_ports', 'found', 'i', 'l', 'lines', 'lock', 'm', 'more', 'n', 'name', 'now_ms', 'num', 'p', 'pair', 'parse',
+	'at', 'bad', 'board', 'c', 'counters', 'd', 'dir_ok', 'dsa', 'dsa_ports', 'found', 'got', 'i', 'l', 'lines', 'lock', 'm', 'more', 'n', 'name', 'now_ms', 'num', 'p', 'pair', 'parse',
 	'parse_mib', 'ports', 'rc', 'read_port', 'read_switch_port', 'seen', 'st', 'sw', 'switch_ports', 'switches', 'swl', 'swp', 'sws', 't', 't0', 'table', 'text', 'whole'
 ];
 /* the top-level statements of `code` (comment lines out), a constant or a function by its head */
@@ -1409,7 +1409,7 @@ test('switch counters: the plugin rules catch each breach', () => {
 		'a found switch port changed': swap('\t\tfor (let swp in swl.found) {\n', '\t\tswl.found[0].sw = \'-x\';\n\n\t\tfor (let swp in swl.found) {\n'),
 		'a name from the caller for the switch': swap('let swl = switch_ports(), switches = {};', 'let swl = { found: [ { sw: ARGV[2], num: 1 } ], more: false }, switches = {};'),
 		'the swconfig table changed in place': add('MIB_COUNTERS[0][0] = \'TxByte\';'),
-		'ethtool\'s names taken from swconfig': swap('return pair(seen, MIB_COUNTERS);', 'return pair(seen, COUNTERS);'),
+		'ethtool\'s names taken from swconfig': swap('let got = pair(seen, MIB_COUNTERS);', 'let got = pair(seen, COUNTERS);'),
 		/* the lock: an empty file of its own, root's alone, in a directory that is; taken without waiting, before anything */
 		'no lock': swap('\tif (!lock || lock.lock(\'xn\') !== true)\n\t\treturn { v: 1, state: \'busy\', took: now_ms() - t0, more: false, ports: {} };\n\n', ''),
 		'a lock that waits': swap('lock.lock(\'xn\')', 'lock.lock(\'x\')'),

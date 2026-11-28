@@ -86,10 +86,14 @@ var COLLECTOR_RETRY_MS = 60 * 1000;
 /* how long a poll waits for a switch chip's own counters (askSwitch):
    the plugin reads no port after its first second */
 var SWITCH_WAIT_MS = 2 * 1000;
+/* answers in a row, from the page's first, that bring no counter of any
+   port: the page asks no more after them (a switch whose driver gives
+   none, whatever the plugin makes of its reason) */
+var SWITCH_DRY = 6;
 /* how long the line counted by its switch port's chip keeps the last
-   rate measured there, and the port, while polls bring no new one
-   (another call was reading the chip, a counter went back): three polls
-   and a little */
+   rate measured there while polls bring no new one (another call was
+   reading the chip, a counter went back), and its port while they bring
+   no switch map: three polls and a little, by the browser's clock */
 var CHIP_HOLD_MS = 20 * 1000;
 /* After a slow answer (slowWait) the next call waits ten times as long as
    that one took, SLOW_WAIT_MAX_MS at most. A call measured over
@@ -1233,6 +1237,9 @@ return view.extend({
 				self.hwAnswered = true;
 				if (c.none) self.hwOff = true;
 			}
+			/* never a counter on this page, in SWITCH_DRY answers running */
+			if (c && (self.hwGot || Object.keys(c.counters).length || Object.keys(c.swports).length)) self.hwGot = true;
+			else if (c && (self.hwDry = (self.hwDry || 0) + 1) >= SWITCH_DRY) self.hwOff = true;
 			return c;
 		});
 		return new Promise(function(resolve) {
@@ -1566,7 +1573,7 @@ return view.extend({
 				var switchState = Object.create(null);
 				Object.keys(swState).forEach(function(n) { switchState[n] = swState[n].ports; });
 				var raw = { info: info, lost: lost, stat: r[1] || '', ifaces: r[2] || [], devs: r[3] || {}, wifi: wifiDevs, hints: r[5] || self.hintsCache || {}, thermal: r[6] || [],
-					fdb: Array.isArray(wiredReply.hosts) ? wiredReply.hosts : [], fdbCrowded: wiredReply.crowded === true, wiredOk: wiredReply === r[7], switches: switches, switchState: switchState,
+					fdb: Array.isArray(wiredReply.hosts) ? wiredReply.hosts : [], fdbCrowded: wiredReply.crowded === true, wiredOk: switches === wiredReply.switches, switches: switches, switchState: switchState,
 					/* no answer (an older plugin, a lookup not sent, a failed call)
 					   keeps the last one: no tunnel blinking off */
 					routes: r[8] && Array.isArray(r[8].routes) ? (self.kernelRoutes = r[8].routes) : (self.kernelRoutes || null),
@@ -1612,7 +1619,7 @@ return view.extend({
 			portsSeen: false,
 			traffic: null, trafficRates: null, trafficPrev: null, trafficSeen: 0, trafficNew: 0, trafficAt: null,
 			ext: Object.create(null),
-			/* the main line counted by its switch port's chip (ingest): { key, sw, num, dev, rate, at } */
+			/* the main line counted by its switch port's chip (ingest): { key, sw, num, dev, rate, since, map } */
 			chip: null,
 			lastOk: 0, lastErr: null, paused: false
 		};
@@ -1709,9 +1716,11 @@ return view.extend({
 		   swconfig switch that the port has to itself (model.lineChip,
 		   #166), is counted by that port's chip, under the port's own
 		   name among the devices'. It keeps its port while the switch
-		   map is out for a poll: no answer says nothing of the port */
+		   map is out (no answer says nothing of the port), for
+		   CHIP_HOLD_MS since the map last named it */
 		var sp = raw.hw && raw.hw.swports, up = m.uplink, own = st.chip;
-		var chip = !up ? null : up.chip || (own && !raw.wiredOk && own.dev === up.statsDev ? own : null);
+		var kept = own && up && !up.chip && !raw.wiredOk && own.dev === up.statsDev && now - own.map < CHIP_HOLD_MS ? own : null;
+		var chip = up ? up.chip || kept : null;
 		var read = chip && sp && sp[chip.sw] ? sp[chip.sw][chip.num] || null : null;
 		if (read) devCounters[chip.key] = { rx: read.rx, tx: read.tx, src: 'switch', at: read.at };
 		var dr = model.rates(st.devPrev, devCounters, at);
@@ -1761,10 +1770,12 @@ return view.extend({
 		   last one measured for this port, none before the first, never
 		   another line's, for CHIP_HOLD_MS; then the line is the
 		   kernel's again */
-		var fresh = chip ? dr.rates[chip.key] || null : null, same = !!(own && chip && own.key === chip.key);
-		if (fresh) st.chip = { key: chip.key, sw: chip.sw, num: chip.num, dev: up.statsDev, rate: fresh, at: at };
-		else if (same && at - own.at < CHIP_HOLD_MS) st.chip = own;
-		else if (read && !same) st.chip = { key: chip.key, sw: chip.sw, num: chip.num, dev: up.statsDev, rate: null, at: at };
+		var fresh = chip ? dr.rates[chip.key] || null : null, same = !!(own && chip && own.key === chip.key && own.dev === up.statsDev);
+		/* since: when its rate was measured (the port taken, before the first); map: when the switch map last named the port */
+		var held = !fresh && same && now - own.since < CHIP_HOLD_MS, named = kept ? own.map : now;
+		if (fresh) st.chip = { key: chip.key, sw: chip.sw, num: chip.num, dev: up.statsDev, rate: fresh, since: now, map: named };
+		else if (held) st.chip = { key: own.key, sw: own.sw, num: own.num, dev: own.dev, rate: own.rate, since: own.since, map: named };
+		else if (read && !same) st.chip = { key: chip.key, sw: chip.sw, num: chip.num, dev: up.statsDev, rate: null, since: now, map: named };
 		else st.chip = null;
 		var upFast = !st.chip && fast && !!up && st.fastDev === up.statsDev;
 		var upRate = st.chip ? st.chip.rate : upFast ? st.uplinkRate : model.lineRate(up, st.devRates);
@@ -1772,7 +1783,7 @@ return view.extend({
 
 		/* throughput history (only for ticks that produced a rate: one
 		   held over from an earlier poll is no new point) */
-		if (upRate && !upFast && !(st.chip && st.chip.at !== at)) this.pushNet(lineKey(up), at, upRate);
+		if (upRate && !upFast && !held) this.pushNet(lineKey(up), at, upRate);
 		/* the other lines to the internet: this poll's (the fast lane
 		   samples the main one only) */
 		this.extraLines(m).forEach(function(x) { var r = model.lineRate(x, st.devRates); if (r) self.pushNet(lineKey(x), at, r); });
@@ -1999,8 +2010,9 @@ return view.extend({
 			/* rates from the browser's clock, samples on the device's timeline */
 			var now = Date.now(), at = now + (st.skew || 0), changed = false;
 			/* as it is now: a full poll may have given the line to the
-			   chip while this lane's answer was out, and its rate stands */
-			var byChip = !!st.chip;
+			   chip, or made another device the line, while this lane's
+			   answer was out: its rate is not the line's then */
+			var cur = self.m && self.m.uplink, byChip = !!st.chip, mine = !byChip && !!dev && !!cur && cur.statsDev === dev;
 			/* back after a pause (a hidden tab) or on another device: start
 			   over, so the first reading isn't an average over the gap */
 			if (!self.fastLive() || st.fastDev !== dev) { st.fastStat = null; st.fastPrev = null; }
@@ -2022,7 +2034,7 @@ return view.extend({
 			devs.forEach(function(n, i) { var c = r[1 + i] && r[1 + i].statistics; if (c) counters[n] = { rx: c.rx_bytes, tx: c.tx_bytes }; });
 			var dr = model.rates(st.fastPrev, counters, now), rate = model.lineRate(up, dr.rates);
 			st.fastPrev = dr.next;
-			if (rate && !byChip) { st.uplinkRate = rate; self.pushNet(lineKey(up), at, st.uplinkRate); changed = true; }
+			if (rate && mine) { st.uplinkRate = rate; self.pushNet(lineKey(up), at, st.uplinkRate); changed = true; }
 			/* both answered: the full poll leaves CPU and the uplink to this lane */
 			if (stat && (!dev || s)) st.fastAt = now;
 			if (changed) self.paintFast();

@@ -52,8 +52,8 @@
 //            SW_REFUSED and prints nothing: the driver answers "not
 //            supported", at every call (ar8216.c with its counters off,
 //            which is how many boards start). Any other error, and a
-//            counter the driver prints "error" for, is 'failed': this
-//            call's. The line to the internet that is such a port and
+//            byte counter the driver prints "error" for, is 'failed':
+//            this call's. The line to the internet that is such a port and
 //            has it to itself (tagged or untagged on the CPU's device)
 //            is counted there: the kernel counts on that device the
 //            other VLANs' traffic too, and with flow offloading not all
@@ -205,7 +205,7 @@ function parse(text) {
 // the driver's, then its counters; ar8xxx prints "No MIB data" for a
 // port that has counted nothing yet
 function parse_mib(text) {
-	let seen = {};
+	let seen = {}, bad = false;
 
 	if (text == 'No MIB data\n')
 		return { rx_bytes: 0, tx_bytes: 0 };
@@ -214,13 +214,17 @@ function parse_mib(text) {
 		let m = match(l, RE_MIB);
 
 		if (match(l, RE_MIB_ERR))
-			return { error: 'failed' };
+			bad = true;
 
 		if (m)
 			seen[m[1]] = (m[1] in seen) ? null : int(m[2]);
 	}
 
-	return pair(seen, MIB_COUNTERS);
+	let got = pair(seen, MIB_COUNTERS);
+
+	// no pair, and a counter the driver could not read: this reading's
+	// failure, not a driver whose names are not known
+	return (got.error && bad) ? { error: 'failed' } : got;
 }
 
 // ethtool -S on one port; name is one of dsa_ports()
@@ -247,7 +251,7 @@ function switch_ports() {
 	let text = readfile(BOARD, BOARD_MAX), found = [], more = false;
 	// json() throws on what it cannot read and nothing here catches: only
 	// a file read whole that is an object by its ends reaches it
-	let whole = type(text) == 'string' && length(text) < BOARD_MAX && substr(text, 0, 1) == '{' && substr(rtrim(text), -1) == '}';
+	let whole = type(text) == 'string' && length(text) < BOARD_MAX && substr(ltrim(text), 0, 1) == '{' && substr(rtrim(text), -1) == '}';
 	let board = whole ? json(text) : null;
 	let sws = (type(board?.switch) == 'object') ? board.switch : {};
 
