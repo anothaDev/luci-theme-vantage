@@ -478,17 +478,34 @@ return baseclass.extend({
 	   none: the answer says there is nothing to ask for (no DSA port, no
 	   ethtool, or every port read with names the plugin does not know:
 	   one driver, which says the same at every call). 'busy' (another
-	   call was reading) is null too: no answer this time, never none */
+	   call was reading) is null too: no answer this time, never none.
+	   swports: the same for the ports of a swconfig switch (#166), which
+	   are no devices: { switch: { number: { rx, tx, at } } }, by the
+	   switch's name and the port's number as swconfig has it */
 	switchCounters: function(reply) {
-		var r = obj(reply), ports = obj(r.ports), counters = Object.create(null), read = 0, unknown = 0;
+		var r = obj(reply), ports = obj(r.ports), switches = obj(r.switches), counters = Object.create(null), swports = Object.create(null), read = 0, unknown = 0, left = MAX_SWITCH_PORTS;
 		if (r.v !== 1 || SWITCH_STATES.indexOf(r.state) < 0) return null;
+		function counted(p) {
+			p = obj(p);
+			if (p.error === 'unknown' || p.error === 'failed') { read++; if (p.error === 'unknown') unknown++; return null; }
+			if (!(finite(p.rx_bytes) && finite(p.tx_bytes) && p.rx_bytes >= 0 && p.tx_bytes >= 0 && finite(p.at) && p.at >= 0)) return null;
+			read++;
+			return { rx: p.rx_bytes, tx: p.tx_bytes, at: p.at };
+		}
 		Object.keys(ports).slice(0, MAX_SWITCH_PORTS).forEach(function(n) {
-			var p = obj(ports[n]);
-			if (!AP_IFNAME.test(n)) return;
-			if (p.error === 'unknown' || p.error === 'failed') { read++; if (p.error === 'unknown') unknown++; return; }
-			if (finite(p.rx_bytes) && finite(p.tx_bytes) && p.rx_bytes >= 0 && p.tx_bytes >= 0 && finite(p.at) && p.at >= 0) { read++; counters[n] = { rx: p.rx_bytes, tx: p.tx_bytes, at: p.at }; }
+			var c = AP_IFNAME.test(n) ? counted(ports[n]) : null;
+			if (c) counters[n] = c;
 		});
-		return { state: r.state, counters: counters, none: r.state !== 'ok' || (read > 0 && unknown === read) };
+		Object.keys(switches).slice(0, 8).forEach(function(sw) {
+			var nums = Object.create(null), any = false;
+			if (!AP_IFNAME.test(sw)) return;
+			Object.keys(obj(switches[sw])).forEach(function(num) {
+				var c = /^[0-9]{1,2}$/.test(num) && left-- > 0 ? counted(switches[sw][num]) : null;
+				if (c) { nums[+num] = c; any = true; }
+			});
+			if (any) swports[sw] = nums;
+		});
+		return { state: r.state, counters: counters, swports: swports, none: r.state !== 'ok' || (read > 0 && unknown === read) };
 	},
 
 	/* ------------------------------------------------------------ uplink */
@@ -693,9 +710,27 @@ return baseclass.extend({
 		});
 	},
 
-	/* a line's rate from the devices' (rates): its device's, less the
+	/* The one port of a swconfig switch a line is (#166): the WAN port,
+	   whose VLAN reaches this device as the line's device, tagged
+	   (eth0.2) or untagged on the CPU's (eth0). Its chip counts the line
+	   and nothing else, which the kernel's counters of that device do
+	   not: an untagged one carries the other VLANs too, and with flow
+	   offloading the kernel sees only part of either. -> { sw, num, key }
+	   (key: the name its counters go by among the devices' rates), or
+	   null where the VLAN has no port or several: which of them is the
+	   line is not known then */
+	lineChip: function(line, switches) {
+		var sw = null, self = this;
+		[ line && line.dev, line && line.statsDev ].some(function(n) { return !!(sw = self.switchOf(switches, null, n)); });
+		return sw && sw.ports.length === 1 ? { sw: sw.name, num: sw.ports[0].num, key: sw.name + ':' + sw.ports[0].num } : null;
+	},
+
+	/* a line's rate from the devices' (rates): its own switch port's
+	   where the rates have it (lineChip), else its device's, less the
 	   VLANs lineVlans found on it; none while one of them has none */
 	lineRate: function(line, rates) {
+		var chip = line && line.chip && rates ? rates[line.chip.key] : null;
+		if (chip) return chip;
 		var r = line && rates ? rates[line.statsDev] : null, minus = line ? arr(line.minus) : [];
 		if (!r || !minus.length) return r || null;
 		var rx = r.rx, tx = r.tx;
@@ -1521,7 +1556,7 @@ return baseclass.extend({
 			var mac = macOf(hop, l3);
 			return mac ? linePort(mac, l3) : null;
 		}, kernel).slice(0, MAX_LINES))) : [];
-		uplinks.forEach(function(u) { u.minus = self.lineVlans(u, devs, raw.ifaces); });
+		uplinks.forEach(function(u) { u.minus = self.lineVlans(u, devs, raw.ifaces); u.chip = self.lineChip(u, raw.switches); });
 		/* the network on each bridge (or bridge VLAN: br-lan.10), and its
 		   IPv4 subnets for the hosts' addresses */
 		var lans = Object.create(null);

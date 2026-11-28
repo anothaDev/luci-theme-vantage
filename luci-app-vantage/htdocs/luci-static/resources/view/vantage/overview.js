@@ -86,6 +86,9 @@ var COLLECTOR_RETRY_MS = 60 * 1000;
 /* how long a poll waits for a switch chip's own counters (askSwitch):
    the plugin reads no port after its first second */
 var SWITCH_WAIT_MS = 2 * 1000;
+/* polls a line counted by its switch port's chip keeps its last rate
+   while the chip's counters stay out (another call was reading them) */
+var CHIP_MISS = 3;
 /* After a slow answer (slowWait) the next call waits ten times as long as
    that one took, SLOW_WAIT_MAX_MS at most. A call measured over
    REQUEST_MAX_MS (LuCI gives a request up after 20 s) was out while the
@@ -1607,6 +1610,8 @@ return view.extend({
 			portsSeen: false,
 			traffic: null, trafficRates: null, trafficPrev: null, trafficSeen: 0, trafficNew: 0, trafficAt: null,
 			ext: Object.create(null),
+			/* the uplink counted by its switch port's chip: the port's name, and the polls its counters stayed out (ingest) */
+			chipLine: null, chipMiss: 0,
 			lastOk: 0, lastErr: null, paused: false
 		};
 		this.ui = { sorts: readSorts(), kind: 'wifi', filter: '', chip: 'all', drawer: null, editing: null, hover: null, wgOpen: Object.create(null) };
@@ -1698,7 +1703,19 @@ return view.extend({
 			if (c) devCounters[n] = { rx: c.rx, tx: c.tx, src: 'switch', at: c.at };
 			else if (s) devCounters[n] = { rx: s.rx_bytes, tx: s.tx_bytes };
 		});
+		/* a line that is one port of a swconfig switch (model.lineChip,
+		   #166) is counted by that port's chip where this poll has its
+		   counters, under the port's own name among the devices' */
+		var sp = raw.hw && raw.hw.swports, chipHas = Object.create(null);
+		m.uplinks.forEach(function(x) {
+			var c = x.chip && sp && sp[x.chip.sw] ? sp[x.chip.sw][x.chip.num] : null;
+			if (x.chip) chipHas[x.chip.key] = !!c;
+			if (c) devCounters[x.chip.key] = { rx: c.rx, tx: c.tx, src: 'switch', at: c.at };
+		});
 		var dr = model.rates(st.devPrev, devCounters, at);
+		/* a poll without them keeps the port's last reading, so that the
+		   next rate is across both polls and not a start over */
+		Object.keys(chipHas).forEach(function(k) { if (!chipHas[k] && st.devPrev && st.devPrev[k]) dr.next[k] = st.devPrev[k]; });
 		st.devPrev = dr.next;
 		if (Object.keys(dr.rates).length || !Object.keys(devCounters).length) st.devRates = dr.rates;
 
@@ -1734,8 +1751,17 @@ return view.extend({
 		m.ssids.forEach(function(s) { var v = s.ifname ? sum([ s.ifname ], [ s.id ]) : null; if (v) st.ssidRates[s.id] = v; });
 		/* the uplink: the fast lane's own while it samples this uplink's
 		   device; else (no uplink, a new device, the lane stopped) this poll's */
-		var upFast = fast && !!m.uplink && st.fastDev === m.uplink.statsDev;
-		var upRate = upFast ? st.uplinkRate : model.lineRate(m.uplink, st.devRates);
+		/* by its switch port's chip (st.chipLine: the port's name) from
+		   the first poll that has the chip's counters: the kernel's rate
+		   of the line's device is not the line's then (model.lineChip),
+		   so neither the fast lane's nor this poll's is taken, and a poll
+		   without the chip's keeps the last rate, CHIP_MISS polls at most */
+		var chip = m.uplink && m.uplink.chip;
+		if (chip && chipHas[chip.key]) { st.chipLine = chip.key; st.chipMiss = 0; }
+		else if (chip && st.chipLine === chip.key && st.chipMiss < CHIP_MISS) st.chipMiss = st.chipMiss + 1;
+		else st.chipLine = null;
+		var upFast = !st.chipLine && fast && !!m.uplink && st.fastDev === m.uplink.statsDev;
+		var upRate = st.chipLine ? (st.devRates[st.chipLine] || st.uplinkRate) : upFast ? st.uplinkRate : model.lineRate(m.uplink, st.devRates);
 		st.uplinkRate = upRate || null;
 
 		/* throughput history (only for ticks that produced a rate) */
@@ -1953,7 +1979,10 @@ return view.extend({
 	},
 
 	fastSample: function() {
-		var self = this, st = this.st, up = this.m && this.m.uplink, dev = up && up.statsDev;
+		var self = this, st = this.st, up = this.m && this.m.uplink;
+		/* a line counted by its switch port's chip is the full poll's
+		   (ingest, st.chipLine): this lane reads the kernel's counters */
+		var byChip = !!(up && up.chip && st.chipLine === up.chip.key), dev = (up && !byChip && up.statsDev) || null;
 		/* the line's device, then the VLANs that come off it (model.lineVlans) */
 		var devs = dev ? [ dev ].concat(up.minus || []) : [];
 		if (document.hidden || !this.el || this.idle()) return Promise.resolve();
@@ -1966,7 +1995,7 @@ return view.extend({
 			   over, so the first reading isn't an average over the gap */
 			if (!self.fastLive() || st.fastDev !== dev) { st.fastStat = null; st.fastPrev = null; }
 			/* no uplink, or another device: no rate until this one has two samples */
-			if (st.fastDev !== (dev || null) && st.uplinkRate) { st.uplinkRate = null; changed = true; }
+			if (!byChip && st.fastDev !== (dev || null) && st.uplinkRate) { st.uplinkRate = null; changed = true; }
 			st.fastDev = dev || null;
 			var stat = model.parseStat(r[0]);
 			if (stat) {

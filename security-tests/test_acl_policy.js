@@ -1102,13 +1102,17 @@ test('the firewall overview: behind LuCI\'s firewall group, uci get on firewall 
 /* ------------------------------------ luci-app-vantage: luci.vantage.ports */
 
 /* The app's executable rpcd plugin (#156): the byte counters a DSA switch
-   chip keeps for its ports, read with ethtool. rpcd runs it as a process
-   of its own per call. The rules below hold it to that one program, at
-   that one path, with that one option and a port name of the device's
-   own: every line of code that mentions a file, the program, a name or a
-   cap is listed (checkPins), the four functions that check the lock's
-   directory, take the lock, find the ports and run the program are pinned
-   whole, and so are its top-level statements and every name it binds. One
+   chip keeps for its ports, read with ethtool, or on a device without a
+   DSA port those of its swconfig switches' ports, read with swconfig
+   (#166). rpcd runs it as a process of its own per call. The rules below
+   hold it to those two programs, each at its one path: ethtool with that
+   one option and a port name of the device's own, swconfig with "dev",
+   a switch's name of /etc/board.json, "port", one of its ports' numbers
+   and "get mib", which reads. Every line of code that mentions a file, a
+   program, a name or a cap is listed (checkPins), the six functions that
+   check the lock's directory, take the lock, find the ports and run the
+   programs are pinned whole, and so are its top-level statements and
+   every name it binds. One
    read at a time: before it reads or starts anything the plugin locks an
    empty file of its own (0600) in a directory it makes 0700 and takes only
    as root's alone, and answers busy where another holds the lock or it
@@ -1121,8 +1125,8 @@ const PORTS_REL = 'root/usr/libexec/rpcd/luci.vantage.ports';
 const portsPlugin = fs.readFileSync(path.join(PKG, PORTS_REL), 'utf8');
 /* a port's name: to /bin/sh (popen) a plain word, to ethtool a device and never an option */
 const PORTS_RE_PORT = 'const RE_PORT = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,14}$/;';
-const PORTS_PATHS = { NET: '/sys/class/net', ETHTOOL: '/usr/sbin/ethtool', DIR: '/var/run/vantage-ports' };
-const PORTS_CAPS = { MAX_PORTS: 32, BUDGET_MS: 1000, MAX_OUT: 32768, MAX_UEVENT: 512 };
+const PORTS_PATHS = { NET: '/sys/class/net', ETHTOOL: '/usr/sbin/ethtool', SWCONFIG: '/sbin/swconfig', BOARD: '/etc/board.json', DIR: '/var/run/vantage-ports' };
+const PORTS_CAPS = { BOARD_MAX: 65536, MAX_PORTS: 32, BUDGET_MS: 1000, MAX_OUT: 32768, MAX_UEVENT: 512 };
 /* the ports: a name of /sys/class/net that RE_PORT takes and whose uevent says DEVTYPE=dsa, MAX_PORTS at most */
 const PORTS_FIND = "function dsa_ports() {\n\tlet found = [], more = false;\n\n\tfor (let n in sort(lsdir(NET) ?? [])) {\n\t\tif (!match(n, RE_PORT))\n\t\t\tcontinue;\n\n" +
 	"\t\tlet dsa = false;\n\n\t\tfor (let l in split(readfile(NET + '/' + n + '/uevent', MAX_UEVENT) ?? '', '\\n'))\n\t\t\tif (l == 'DEVTYPE=dsa')\n\t\t\t\tdsa = true;\n\n" +
@@ -1134,19 +1138,26 @@ const PORTS_RUN = "function read_port(name) {\n\tlet p = popen(ETHTOOL + ' -S ' 
 const PORTS_DIR = "function dir_ok() {\n\tlet st = lstat(DIR);\n\n\tif (!st) {\n\t\tmkdir(DIR, 0700);\n\t\tst = lstat(DIR);\n\t}\n\n" +
 	"\treturn st?.type == 'directory' && st.uid === 0 && !(st.mode & 0077);\n}";
 /* the lock, taken without waiting before anything is read or started; held elsewhere or not to be had: busy, and nothing started */
-const PORTS_COUNT = "function counters() {\n\tlet t0 = now_ms(), lock = dir_ok() ? open(DIR + '/lock', 'a', 0600) : null;\n\n\tif (!lock || lock.lock('xn') !== true)\n" +
-	"\t\treturn { v: 1, state: 'busy', took: now_ms() - t0, more: false, ports: {} };\n\n\tlet ports = {}, d = dsa_ports();\n\n\tif (!length(d.found))\n" +
-	"\t\treturn { v: 1, state: 'none', took: now_ms() - t0, more: false, ports };\n\n\tif (!access(ETHTOOL, 'x'))\n" +
-	"\t\treturn { v: 1, state: 'no-ethtool', took: now_ms() - t0, more: d.more, ports };\n\n\tfor (let name in d.found) {\n\t\tlet at = now_ms();\n\n" +
-	"\t\tports[name] = (at - t0 < BUDGET_MS) ? { ...read_port(name), at } : { error: 'time', at };\n\t}\n\n\treturn { v: 1, state: 'ok', took: now_ms() - t0, more: d.more, ports };\n}";
+const PORTS_COUNT = "function counters() {\n\tlet t0 = now_ms(), lock = dir_ok() ? open(DIR + '/lock', 'a', 0600) : null;\n\n\tif (!lock || lock.lock('xn') !== true)\n\t\treturn { v: 1, state: 'busy', took: now_ms() - t0, more: false, ports: {} };\n\n\tlet ports = {}, d = dsa_ports();\n\n\tif (!length(d.found)) {\n\t\tlet swl = switch_ports(), switches = {};\n\n\t\tif (!length(swl.found) || !access(SWCONFIG, 'x'))\n\t\t\treturn { v: 1, state: 'none', took: now_ms() - t0, more: false, ports };\n\n\t\tfor (let swp in swl.found) {\n\t\t\tlet at = now_ms();\n\n\t\t\tswitches[swp.sw] ??= {};\n\t\t\tswitches[swp.sw][swp.num + ''] = (at - t0 < BUDGET_MS) ? { ...read_switch_port(swp.sw, swp.num), at } : { error: 'time', at };\n\t\t}\n\n\t\treturn { v: 1, state: 'ok', took: now_ms() - t0, more: swl.more, ports, switches };\n\t}\n\n\tif (!access(ETHTOOL, 'x'))\n\t\treturn { v: 1, state: 'no-ethtool', took: now_ms() - t0, more: d.more, ports };\n\n\tfor (let name in d.found) {\n\t\tlet at = now_ms();\n\n\t\tports[name] = (at - t0 < BUDGET_MS) ? { ...read_port(name), at } : { error: 'time', at };\n\t}\n\n\treturn { v: 1, state: 'ok', took: now_ms() - t0, more: d.more, ports };\n}";
+/* a swconfig switch's WAN ports (#166), where the device has no DSA port: the switches of /etc/board.json by a name RE_PORT
+   takes, their ports of the role wan (never a CPU port) by an integer from 0 to 63, MAX_PORTS at most */
+const PORTS_SWFIND = "function switch_ports() {\n\tlet board = json(readfile(BOARD, BOARD_MAX) ?? 'null'), found = [], more = false;\n\tlet sws = (type(board?.switch) == 'object') ? board.switch : {};\n\n\tfor (let sw in sort(keys(sws))) {\n\t\tif (!match(sw, RE_PORT) || type(sws[sw]?.ports) != 'array')\n\t\t\tcontinue;\n\n\t\tfor (let swp in sws[sw].ports) {\n\t\t\tif (type(swp?.num) != 'int' || swp.num < 0 || swp.num > 63 || swp.device != null || swp.role !== 'wan')\n\t\t\t\tcontinue;\n\n\t\t\tif (length(found) >= MAX_PORTS) {\n\t\t\t\tmore = true;\n\t\t\t\tbreak;\n\t\t\t}\n\n\t\t\tpush(found, { sw, num: swp.num });\n\t\t}\n\t}\n\n\treturn { found, more };\n}";
+/* the other program: SWCONFIG dev <switch> port <number> get mib, a read; MAX_OUT bytes of its output, its exit code checked
+   (an error with nothing printed is the driver's no: unknown, as a driver whose names are not known) */
+const PORTS_SWRUN = "function read_switch_port(sw, num) {\n\tlet p = popen(SWCONFIG + ' dev ' + sw + ' port ' + num + ' get mib', 'r');\n\n\tif (!p)\n\t\treturn { error: 'failed' };\n\n\tlet text = p.read(MAX_OUT + 1), rc = p.close();\n\n\t// refused by the driver: said on stderr, and the same at every call\n\tif (rc > 0 && text === '')\n\t\treturn { error: 'unknown' };\n\n\tif (rc !== 0 || type(text) != 'string' || length(text) > MAX_OUT)\n\t\treturn { error: 'failed' };\n\n\treturn parse_mib(text);\n}";
 const PORTS_PINS = [
-	[ '\\b(?:popen|access|lsdir|readfile|ETHTOOL|NET)\\b', [
+	[ '\\b(?:popen|access|lsdir|readfile|json|ETHTOOL|SWCONFIG|BOARD|NET)\\b', [
 		'import { access, lsdir, lstat, mkdir, open, popen, readfile } from \'fs\';',
 		'const NET = \'/sys/class/net\';',
 		'const ETHTOOL = \'/usr/sbin/ethtool\';',
+		'const SWCONFIG = \'/sbin/swconfig\';',
+		'const BOARD = \'/etc/board.json\';',
 		'for (let n in sort(lsdir(NET) ?? [])) {',
 		'for (let l in split(readfile(NET + \'/\' + n + \'/uevent\', MAX_UEVENT) ?? \'\', \'\\n\'))',
 		'let p = popen(ETHTOOL + \' -S \' + name, \'r\');',
+		'let board = json(readfile(BOARD, BOARD_MAX) ?? \'null\'), found = [], more = false;',
+		'let p = popen(SWCONFIG + \' dev \' + sw + \' port \' + num + \' get mib\', \'r\');',
+		'if (!length(swl.found) || !access(SWCONFIG, \'x\'))',
 		'if (!access(ETHTOOL, \'x\'))'
 	] ],
 	/* the name ethtool gets: one of dsa_ports(), each in turn */
@@ -1160,12 +1171,39 @@ const PORTS_PINS = [
 		'return { found, more };',
 		'function read_port(name) {',
 		'let p = popen(ETHTOOL + \' -S \' + name, \'r\');',
+		'let board = json(readfile(BOARD, BOARD_MAX) ?? \'null\'), found = [], more = false;',
+		'if (!match(sw, RE_PORT) || type(sws[sw]?.ports) != \'array\')',
+		'if (length(found) >= MAX_PORTS) {',
+		'push(found, { sw, num: swp.num });',
+		'return { found, more };',
 		'let ports = {}, d = dsa_ports();',
-		'if (!length(d.found))',
+		'if (!length(d.found)) {',
+		'if (!length(swl.found) || !access(SWCONFIG, \'x\'))',
+		'for (let swp in swl.found) {',
 		'return { v: 1, state: \'no-ethtool\', took: now_ms() - t0, more: d.more, ports };',
 		'for (let name in d.found) {',
 		'ports[name] = (at - t0 < BUDGET_MS) ? { ...read_port(name), at } : { error: \'time\', at };',
 		'return { v: 1, state: \'ok\', took: now_ms() - t0, more: d.more, ports };'
+	] ],
+	/* what swconfig gets (#166): a switch of switch_ports() and one of its ports' numbers, each in turn */
+	[ '\\b(?:sw|num|switch_ports|read_switch_port|switches|board|sws|swp|swl)\\b', [
+		'const BOARD = \'/etc/board.json\';',
+		'function switch_ports() {',
+		'let board = json(readfile(BOARD, BOARD_MAX) ?? \'null\'), found = [], more = false;',
+		'let sws = (type(board?.switch) == \'object\') ? board.switch : {};',
+		'for (let sw in sort(keys(sws))) {',
+		'if (!match(sw, RE_PORT) || type(sws[sw]?.ports) != \'array\')',
+		'for (let swp in sws[sw].ports) {',
+		'if (type(swp?.num) != \'int\' || swp.num < 0 || swp.num > 63 || swp.device != null || swp.role !== \'wan\')',
+		'push(found, { sw, num: swp.num });',
+		'function read_switch_port(sw, num) {',
+		'let p = popen(SWCONFIG + \' dev \' + sw + \' port \' + num + \' get mib\', \'r\');',
+		'let swl = switch_ports(), switches = {};',
+		'if (!length(swl.found) || !access(SWCONFIG, \'x\'))',
+		'for (let swp in swl.found) {',
+		'switches[swp.sw] ??= {};',
+		'switches[swp.sw][swp.num + \'\'] = (at - t0 < BUDGET_MS) ? { ...read_switch_port(swp.sw, swp.num), at } : { error: \'time\', at };',
+		'return { v: 1, state: \'ok\', took: now_ms() - t0, more: swl.more, ports, switches };'
 	] ],
 	/* the one file opened and the one directory made: its lock, root's alone, locked without waiting */
 	[ '\\b(?:open|lock|lstat|mkdir|DIR|dir_ok|st)\\b', [
@@ -1181,7 +1219,8 @@ const PORTS_PINS = [
 		'if (!lock || lock.lock(\'xn\') !== true)'
 	] ],
 	/* the caps, each used where it bounds */
-	[ '\\b(?:MAX_PORTS|BUDGET_MS|MAX_OUT|MAX_UEVENT)\\b', [
+	[ '\\b(?:BOARD_MAX|MAX_PORTS|BUDGET_MS|MAX_OUT|MAX_UEVENT)\\b', [
+		'const BOARD_MAX = 65536;          // bytes read of it',
 		'const MAX_PORTS = 32;             // ports read each time; the add-on\'s report lists 32 at most',
 		'const BUDGET_MS = 1000;           // no port is read after this',
 		'const MAX_OUT = 32768;            // bytes of one ethtool run read: the drivers below fill 3 KiB or so',
@@ -1190,6 +1229,11 @@ const PORTS_PINS = [
 		'if (length(found) >= MAX_PORTS) {',
 		'let text = p.read(MAX_OUT + 1);',
 		'if (p.close() !== 0 || type(text) != \'string\' || length(text) > MAX_OUT)',
+		'let board = json(readfile(BOARD, BOARD_MAX) ?? \'null\'), found = [], more = false;',
+		'if (length(found) >= MAX_PORTS) {',
+		'let text = p.read(MAX_OUT + 1), rc = p.close();',
+		'if (rc !== 0 || type(text) != \'string\' || length(text) > MAX_OUT)',
+		'switches[swp.sw][swp.num + \'\'] = (at - t0 < BUDGET_MS) ? { ...read_switch_port(swp.sw, swp.num), at } : { error: \'time\', at };',
 		'ports[name] = (at - t0 < BUDGET_MS) ? { ...read_port(name), at } : { error: \'time\', at };'
 	] ],
 	/* rpcd's two calls, and nothing else of the command line: one method, which takes nothing */
@@ -1199,23 +1243,31 @@ const PORTS_PINS = [
 		'else if (ARGV[0] == \'call\' && ARGV[1] == \'counters\')',
 		'print(sprintf(\'%J\', counters()), \'\\n\');'
 	] ],
-	/* the table: defined once, only read */
-	[ '\\bCOUNTERS\\b', [
+	/* the two tables: each defined once, only read, each by its own program's parser */
+	[ '\\b(?:COUNTERS|MIB_COUNTERS|pair|table)\\b', [
 		'const COUNTERS = [',
-		'for (let c in COUNTERS)'
+		'const MIB_COUNTERS = [',
+		'function pair(seen, table) {',
+		'for (let c in table)',
+		'return pair(seen, COUNTERS);',
+		'return pair(seen, MIB_COUNTERS);'
 	] ],
-	/* the counters' names (COUNTERS), and no member reached by a literal name */
-	[ '\\[\\s*[\'"]', [
+	/* the counters' names (the two tables), and no member reached by a literal name */
+	[ '\\[\\s*[\'\\"]', [
 		'[ \'RxBytes\', \'TxBytes\' ],             // mt7530: MT7530, MT7531, MT7988 (until Linux 6.16)',
 		'[ \'RxGoodByte\', \'TxByte\' ],           // qca8k: QCA8337, QCA8327',
 		'[ \'in_good_octets\', \'out_octets\' ],   // mv88e6xxx: Marvell',
 		'[ \'RxOctets\', \'TxOctets\' ],           // b53, bcm_sf2: Broadcom',
 		'[ \'RxGoodBytes\', \'TxGoodBytes\' ],     // lantiq_gswip',
-		'[ \'IfInOctets\', \'IfOutOctets\' ]       // rtl8366rb'
+		'[ \'IfInOctets\', \'IfOutOctets\' ]       // rtl8366rb',
+		'[ \'RxGoodByte\', \'TxByte\' ],           // ar8216.c: AR8327, AR8337, QCA8337 and the older Atheros',
+		'[ \'RxOctets\', \'TxOctets\' ],           // b53: Broadcom',
+		'[ \'IfInOctets\', \'IfOutOctets\' ],      // rtl8366rb.c, rtl8366s.c, rtl8367.c',
+		'[ \'ifInOctets\', \'ifOutOctets\' ]       // rtl8367b.c'
 	] ]
 ];
 /* Every name the plugin binds and every function it defines. At the
-   top: its imports, its constants, its six functions and rpcd's two
+   top: its imports, its constants, its ten functions and rpcd's two
    calls; inside the functions: their parameters and locals. No other
    function (none inside another, no arrow function), no try/catch, no
    name assigned that is not one of these. So a builtin the pinned
@@ -1223,14 +1275,16 @@ const PORTS_PINS = [
    shadowed, and no function of the plugin can be defined a second time */
 const PORTS_TOP = [
 	'#!/usr/bin/ucode -S', '\'use strict\';', 'import { access, lsdir, lstat, mkdir, open, popen, readfile } from \'fs\';',
-	'const NET', 'const ETHTOOL', 'const DIR', 'const MAX_PORTS', 'const BUDGET_MS', 'const MAX_OUT', 'const MAX_UEVENT', 'const RE_PORT', 'const RE_LINE', 'const COUNTERS',
-	'function now_ms()', 'function dsa_ports()', 'function parse(text)', 'function read_port(name)', 'function dir_ok()', 'function counters()',
+	'const NET', 'const ETHTOOL', 'const SWCONFIG', 'const BOARD', 'const BOARD_MAX', 'const DIR', 'const MAX_PORTS', 'const BUDGET_MS', 'const MAX_OUT', 'const MAX_UEVENT',
+	'const RE_PORT', 'const RE_LINE', 'const RE_MIB', 'const COUNTERS', 'const MIB_COUNTERS',
+	'function now_ms()', 'function dsa_ports()', 'function pair(seen, table)', 'function parse(text)', 'function parse_mib(text)', 'function read_port(name)',
+	'function switch_ports()', 'function read_switch_port(sw, num)', 'function dir_ok()', 'function counters()',
 	'if (ARGV[0] == \'list\')', 'else if (ARGV[0] == \'call\' && ARGV[1] == \'counters\')'
 ];
 const PORTS_NAMES = [
-	'BUDGET_MS', 'COUNTERS', 'DIR', 'ETHTOOL', 'MAX_OUT', 'MAX_PORTS', 'MAX_UEVENT', 'NET', 'RE_LINE', 'RE_PORT',
-	'at', 'c', 'counters', 'd', 'dir_ok', 'dsa', 'dsa_ports', 'found', 'i', 'l', 'lines', 'lock', 'm', 'more', 'n', 'name', 'now_ms', 'p', 'parse',
-	'ports', 'read_port', 'seen', 'st', 't', 't0', 'text'
+	'BOARD', 'BOARD_MAX', 'BUDGET_MS', 'COUNTERS', 'DIR', 'ETHTOOL', 'MAX_OUT', 'MAX_PORTS', 'MAX_UEVENT', 'MIB_COUNTERS', 'NET', 'RE_LINE', 'RE_MIB', 'RE_PORT', 'SWCONFIG',
+	'at', 'board', 'c', 'counters', 'd', 'dir_ok', 'dsa', 'dsa_ports', 'found', 'i', 'l', 'lines', 'lock', 'm', 'more', 'n', 'name', 'now_ms', 'num', 'p', 'pair', 'parse',
+	'parse_mib', 'ports', 'rc', 'read_port', 'read_switch_port', 'seen', 'st', 'sw', 'switch_ports', 'switches', 'swl', 'swp', 'sws', 't', 't0', 'table', 'text'
 ];
 /* the top-level statements of `code` (comment lines out), a constant or a function by its head */
 function portsTop(code) {
@@ -1266,18 +1320,18 @@ function checkPortsSource(src) {
 		assert.match(src, new RegExp('\\nconst ' + name + ' = ' + v + ';'), name + ' = ' + v);
 		assert.equal([ ...code.matchAll(new RegExp('\\b' + name + '\\s*(?:[-+*/%&|^]|<<|>>)?=(?!=)', 'g')) ].length, 1, name + ' is defined once and never assigned');
 	}
-	for (const [ what, fn ] of [ [ 'dsa_ports', PORTS_FIND ], [ 'read_port', PORTS_RUN ], [ 'dir_ok', PORTS_DIR ], [ 'counters', PORTS_COUNT ] ]) {
+	for (const [ what, fn ] of [ [ 'dsa_ports', PORTS_FIND ], [ 'read_port', PORTS_RUN ], [ 'switch_ports', PORTS_SWFIND ], [ 'read_switch_port', PORTS_SWRUN ], [ 'dir_ok', PORTS_DIR ], [ 'counters', PORTS_COUNT ] ]) {
 		const found = new RegExp('^function ' + what + '\\(.*\\) \\{\\n[\\s\\S]*?\\n\\}$', 'm').exec(src);
 		assert.equal(found && found[0], fn, what + '(), exactly');
 	}
 	checkPins(src, 'the switch counters plugin', PORTS_PINS);
 	assert.deepEqual(portsTop(code), PORTS_TOP, 'the top-level statements, exactly');
 	assert.deepEqual(portsNames(code), PORTS_NAMES, 'every name the plugin binds, exactly');
-	assert.equal((code.match(/\bfunction\b/g) || []).length, 6, 'six functions, at the top');
+	assert.equal((code.match(/\bfunction\b/g) || []).length, 10, 'ten functions, at the top');
 	assert.doesNotMatch(code, /=>|\btry\b|\bcatch\b/, 'no arrow function, no try/catch');
 }
 
-test('switch counters: the plugin starts ethtool alone, at its one path, with -S and a DSA port\'s name of the device\'s own; its method takes nothing', () => {
+test('switch counters: the plugin starts ethtool with -S and a DSA port\'s name of the device\'s own, or swconfig to read a switch port\'s counters, each at its one path; its method takes nothing', () => {
 	checkPortsSource(portsPlugin);
 	/* the pattern itself: no option, nothing the shell reads otherwise, an interface name's length */
 	const re = new RegExp(PORTS_RE_PORT.slice('const RE_PORT = /'.length, -2));
@@ -1328,6 +1382,31 @@ test('switch counters: the plugin rules catch each breach', () => {
 		'the uevent read unbounded': swap('readfile(NET + \'/\' + n + \'/uevent\', MAX_UEVENT)', 'readfile(NET + \'/\' + n + \'/uevent\')'),
 		'a file written': swap('import { access, lsdir, lstat, mkdir, open, popen, readfile } from \'fs\';', 'import { access, lsdir, lstat, mkdir, open, popen, readfile, writefile } from \'fs\';'),
 		'code in a template literal': add('let t = \`\${reboot()}\`;'),
+		/* swconfig (#166): that one program, to read one port's counters of a switch board.json names */
+		'another program for the switch': swap('const SWCONFIG = \'/sbin/swconfig\';', 'const SWCONFIG = \'/bin/sh\';'),
+		'swconfig from the PATH': swap('const SWCONFIG = \'/sbin/swconfig\';', 'const SWCONFIG = \'swconfig\';'),
+		'a switch setting written': swap('popen(SWCONFIG + \' dev \' + sw + \' port \' + num + \' get mib\', \'r\')', 'popen(SWCONFIG + \' dev \' + sw + \' port \' + num + \' set pvid 1\', \'r\')'),
+		'another attribute read': swap('popen(SWCONFIG + \' dev \' + sw + \' port \' + num + \' get mib\', \'r\')', 'popen(SWCONFIG + \' dev \' + sw + \' port \' + num + \' get link\', \'r\')'),
+		'the whole switch shown': swap('popen(SWCONFIG + \' dev \' + sw + \' port \' + num + \' get mib\', \'r\')', 'popen(SWCONFIG + \' dev \' + sw + \' show\', \'r\')'),
+		'the switch\'s counters reset': swap('popen(SWCONFIG + \' dev \' + sw + \' port \' + num + \' get mib\', \'r\')', 'popen(SWCONFIG + \' dev \' + sw + \' set reset_mibs\', \'r\')'),
+		'a second program after swconfig': swap('popen(SWCONFIG + \' dev \' + sw + \' port \' + num + \' get mib\', \'r\')', 'popen(SWCONFIG + \' dev \' + sw + \' port \' + num + \' get mib; reboot\', \'r\')'),
+		'a switch name not checked': swap('if (!match(sw, RE_PORT) || type(sws[sw]?.ports) != \'array\')', 'if (type(sws[sw]?.ports) != \'array\')'),
+		'a port number not checked': swap('if (type(swp?.num) != \'int\' || swp.num < 0 || swp.num > 63 || swp.device != null || swp.role !== \'wan\')', 'if (swp.device != null || swp.role !== \'wan\')'),
+		'a port number that is a string': swap('type(swp?.num) != \'int\' || ', ''),
+		'the CPU\'s port read too': swap(' || swp.device != null || swp.role', ' || swp.role'),
+		'every port of the switch read': swap(' || swp.role !== \'wan\')', ')'),
+		'the exit code not looked at': swap('if (rc !== 0 || type(text)', 'if (type(text)'),
+		'the switches from elsewhere': swap('const BOARD = \'/etc/board.json\';', 'const BOARD = \'/tmp/board.json\';'),
+		'the board file read whole': swap('json(readfile(BOARD, BOARD_MAX) ?? \'null\')', 'json(readfile(BOARD) ?? \'null\')'),
+		'a larger board cap': swap('const BOARD_MAX = 65536;', 'const BOARD_MAX = 16777216;'),
+		'no cap on the switches\' ports': swap('\t\t\tif (length(found) >= MAX_PORTS) {\n\t\t\t\tmore = true;\n\t\t\t\tbreak;\n\t\t\t}\n\n', ''),
+		'no time budget for a switch\'s ports': swap('= (at - t0 < BUDGET_MS) ? { ...read_switch_port(swp.sw, swp.num), at } : { error: \'time\', at };', '= { ...read_switch_port(swp.sw, swp.num), at };'),
+		'swconfig run without being there': swap('if (!length(swl.found) || !access(SWCONFIG, \'x\'))', 'if (!length(swl.found))'),
+		'swconfig on a device with DSA ports too': swap('\tif (!access(ETHTOOL, \'x\'))\n', '\tread_switch_port(\'switch0\', 1);\n\n\tif (!access(ETHTOOL, \'x\'))\n'),
+		'a found switch port changed': swap('\t\tfor (let swp in swl.found) {\n', '\t\tswl.found[0].sw = \'-x\';\n\n\t\tfor (let swp in swl.found) {\n'),
+		'a name from the caller for the switch': swap('let swl = switch_ports(), switches = {};', 'let swl = { found: [ { sw: ARGV[2], num: 1 } ], more: false }, switches = {};'),
+		'the swconfig table changed in place': add('MIB_COUNTERS[0][0] = \'TxByte\';'),
+		'ethtool\'s names taken from swconfig': swap('return pair(seen, MIB_COUNTERS);', 'return pair(seen, COUNTERS);'),
 		/* the lock: an empty file of its own, root's alone, in a directory that is; taken without waiting, before anything */
 		'no lock': swap('\tif (!lock || lock.lock(\'xn\') !== true)\n\t\treturn { v: 1, state: \'busy\', took: now_ms() - t0, more: false, ports: {} };\n\n', ''),
 		'a lock that waits': swap('lock.lock(\'xn\')', 'lock.lock(\'x\')'),

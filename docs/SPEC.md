@@ -540,7 +540,15 @@ text around it so it looks the same size.
   bridge's port): what that port carries for the access point's other
   networks is bridged on and counted once. The result reads a little high (the kernel counts a few bytes
   less a packet on the VLAN's device), and the counters since boot in
-  the line's details stay the device's. Known limit: with software flow
+  the line's details stay the device's. A line that is one port of a
+  swconfig switch (its VLAN reaches this device as the line's device,
+  tagged or untagged, and has that one port) is counted by that port's
+  own counters where the device gives them (`luci.vantage.ports`,
+  below, which reads the port the board file names as WAN): the chip
+  counts the line and nothing else, with or without flow offloading. It is rated from the first poll that has them, a poll
+  without them keeps the last rate (three polls at most, then the
+  kernel's again), and the fast lane leaves such a line to the poll.
+  Known limit, where the chip's counters are not to be had: with software flow
   offloading the kernel does not count on a VLAN's device what an
   offloaded connection brings in on it, only what it sends out there
   (measured on 24.10's kernel, a bridge over the VLAN's device): the
@@ -1022,9 +1030,29 @@ text around it so it looks the same size.
   lists the device's DSA ports,
   the entries of `/sys/class/net` whose `uevent` says `DEVTYPE=dsa`, by
   a name of letters, digits, `_` and `-` (not first, 15 at most), 32 at
-  most in name order; where there is none, or no `/usr/sbin/ethtool`
-  (not a dependency), it starts nothing and says so (`state` `none`,
-  `no-ethtool`). Otherwise it runs `ethtool -S <port>` for each, none
+  most in name order; where there is none it looks for a swconfig
+  switch (next), and without one of those either, or with DSA ports and
+  no `/usr/sbin/ethtool` (not a dependency), it starts nothing and says
+  so (`state` `none`, `no-ethtool`). On a device without a DSA port
+  (#166) it reads the WAN ports of the switches `/etc/board.json` names
+  (a name by the same rule; the ports of the role `wan`, never a CPU
+  port, by a number from 0 to 63; 32 in all, and one on nearly every
+  router: one program a call, since the dashboard rates nothing by a
+  LAN port there), each with `/sbin/swconfig dev <switch> port <number>
+  get mib` where that program is there, under the same lock, budget and
+  output cap, and answers them under `switches` by the switch's name
+  and the port's number. The kernel hands these counters out over its
+  "switch" netlink family alone, which ucode has no module for and
+  swconfig speaks: hence a program, as for LuCI's own switch page. A
+  read swconfig ends with an error and without output is `unknown`: the
+  driver refuses, at every call (ar8216.c reads its counters only with
+  a poll interval set, by the board's device tree or
+  `ar8xxx_mib_poll_interval` in the switch's uci section), so the page
+  asks no more and starts nothing further. A port's counters are the pair of
+  names its driver prints (`RxGoodByte`/`TxByte` ar8xxx,
+  `RxOctets`/`TxOctets` b53, `IfInOctets`/`IfOutOctets` and
+  `ifInOctets`/`ifOutOctets` the Realtek drivers), and ar8xxx's "No MIB
+  data" is 0. Otherwise it runs `ethtool -S <port>` for each, none
   after its first second (`time`), reads 32 KiB of each run at most,
   gives each port the time its `ethtool` started (`at`, ms on the
   device's monotonic clock), and keeps a run only when it exits 0 and starts with `NIC
@@ -1779,15 +1807,19 @@ measured on few devices so far.
   Invented locally administered MACs use the 02:00:5E:xx:xx:xx prefix
   (IANA OUI with the U/L bit set; e.g. the replay's synthetic BSSIDs);
   no other MACs pass.
-- The dashboard starts one program, from its executable rpcd plugin
-  `luci.vantage.ports` (#156), in a process of rpcd's: `/usr/sbin/ethtool
-  -S` and the name of one of the device's own DSA ports, which the plugin
-  finds in `/sys/class/net` and holds to letters, digits, `_` and `-`
-  (never first), at most 32 ports, none after its first second and 32
-  KiB of each run read, one call at a time (a lock on an empty file of
-  its own in `/var/run/vantage-ports`, the one thing it writes); nothing
-  the caller sends reaches the command,
-  and without a DSA port or `ethtool` nothing is started. Its read group
+- The dashboard starts one of two programs, from its executable rpcd
+  plugin `luci.vantage.ports` (#156, #166), in a process of rpcd's:
+  `/usr/sbin/ethtool -S` and the name of one of the device's own DSA
+  ports, which the plugin finds in `/sys/class/net` and holds to
+  letters, digits, `_` and `-` (never first); or, on a device without a
+  DSA port, `/sbin/swconfig dev <switch> port <number> get mib`, a read
+  of the WAN port's counters, with a switch's name from `/etc/board.json`
+  held to the same rule and a port's number the plugin prints itself.
+  At most 32 ports, none after its first second and 32 KiB of each run
+  read, one call at a time (a lock on an empty file of its own in
+  `/var/run/vantage-ports`, the one thing it writes); nothing the caller
+  sends reaches a command, and without a DSA port or `ethtool`, and
+  without a swconfig switch or `swconfig`, nothing is started. Its read group
   grants the call and no other group of a Vantage package names it;
   `luci.vantage` starts nothing. `test_acl_policy.js` pins all of it.
 - Apart from that, `luci-app-vantage-aps` (optional) is the only Vantage

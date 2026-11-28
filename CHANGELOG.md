@@ -7,6 +7,24 @@ packages are listed at
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
+## 1.2.3 - unreleased
+
+- **Dashboard: the uplink's download on a router with an older switch
+  and flow offloading** (#166,
+  [@milindpatel63](https://github.com/milindpatel63)). With the WAN on a
+  port of a swconfig switch and software flow offloading on, the kernel
+  counts only part of the traffic on the WAN's device, and 1.2.1 could
+  only get the upload right: the download still had the upload in it.
+  The dashboard now reads that port's own counters from the switch
+  (`swconfig … get mib`, which only reads), as it does on DSA switches,
+  and the uplink's two rates are the port's. It applies where the WAN is
+  the switch's WAN port (the one the device's board file names), tagged
+  or untagged, and the switch's driver gives byte counters (ar8xxx, b53,
+  the Realtek ones); elsewhere the rates are as before. An Atheros
+  switch gives them only with its counter polling on: some boards start
+  that way, on others it is `option ar8xxx_mib_poll_interval '500'` in
+  the switch's section of `/etc/config/network`.
+
 ## 1.2.2 - 2026-11-27
 
 - **Paired access points: their own addresses leave the wired list on a

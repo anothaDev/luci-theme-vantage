@@ -1,5 +1,5 @@
 #!/usr/bin/ucode -S
-// luci-app-vantage: a switch chip's own byte counters for its ports (#156).
+// luci-app-vantage: a switch chip's own byte counters for its ports (#156, #166).
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // On a DSA switch the kernel counts on each port only the frames that pass
@@ -15,13 +15,15 @@
 // luci-app-vantage. One method, which takes nothing (standard input is
 // not read):
 //
-//   counters  { v: 1, state, took, more, ports: { <port>: counted } }
+//   counters  { v: 1, state, took, more, ports: { <port>: counted },
+//               switches: { <switch>: { <number>: counted } } }
 //
-//     state  'ok': ETHTOOL ran for the ports listed. 'none': this device
-//            has no DSA port; 'no-ethtool': it has, and no ETHTOOL;
-//            'busy': another call is reading, or the lock could not be
-//            had at all (below). In these no program is started and ports
-//            is empty.
+//     state  'ok': ETHTOOL ran for the ports listed, or SWCONFIG for the
+//            switches' (below). 'none': this device has no DSA port and
+//            no swconfig switch to read; 'no-ethtool': it has DSA ports,
+//            and no ETHTOOL; 'busy': another call is reading, or the lock
+//            could not be had at all (below). In these no program is
+//            started and ports is empty.
 //     ports  this device's DSA ports (those the kernel gives DEVTYPE=dsa),
 //            by name, in name order, MAX_PORTS at most (more: there were
 //            others). Each is
@@ -39,18 +41,39 @@
 //              { error: 'failed' }  ETHTOOL failed, or printed something
 //                    else, or more than MAX_OUT bytes
 //              { error: 'time' }  not read: BUDGET_MS were over
+//     switches  only on a device without a DSA port: the WAN ports of
+//            its swconfig switches (#166), those /etc/board.json gives
+//            the role wan, by switch name and port number, MAX_PORTS at
+//            most in all: one on nearly every router, so one program a
+//            call. No other port: the dashboard rates nothing by them.
+//            Each is counted as a DSA port is: what "swconfig dev
+//            <switch> port <number> get mib" prints, by the names in
+//            MIB_COUNTERS; 'unknown' too where swconfig ends with an
+//            error and prints nothing: the driver refuses the read, at
+//            every call (ar8216.c with its counters off, which is how
+//            many boards start). A line to the internet that is such a
+//            port (tagged or untagged on the CPU's device) is counted
+//            there: the kernel counts on that device the other VLANs'
+//            traffic too, and with flow offloading not all of it.
 //     took   ms the call took
 //     (a port left out or that failed carries at too)
 //
 // The one file of the Vantage dashboard and theme that starts a program:
-// ETHTOOL, with -S and the name of one of this device's own DSA ports.
-// The names come from /sys/class/net and nothing else; nothing a caller
-// sends reaches the command. ucode reads a program's output only through
+// ETHTOOL, with -S and the name of one of this device's own DSA ports,
+// or, on a device without one, SWCONFIG with "dev", the name of one of
+// its switches, "port", its WAN port's number and "get mib": a read of
+// that port's counters, as LuCI's own switch page reads its links (the
+// kernel hands a swconfig switch's counters out over its "switch"
+// netlink family and nowhere else, and swconfig is what speaks it).
+// The names come from /sys/class/net, the switches' names and numbers
+// from /etc/board.json, and nothing else; nothing a caller sends reaches
+// a command. ucode reads a program's output only through
 // popen, which hands the command line to /bin/sh (OpenWrt 24.10's ucode
 // has no other way: no dup2, and uloop's process takes no setup), so
 // RE_PORT keeps a name to letters, digits, '_' and '-', never first: the
-// shell then reads the line as three plain words, and ethtool reads the
-// third as a device's name, never as an option.
+// shell then reads the line as plain words, and ethtool reads the
+// third as a device's name, never as an option. A switch's name is held
+// to the same, and a port's number is an integer the plugin prints.
 //
 // One read at a time: rpcd starts a process for every call that comes,
 // and each ethtool -S holds the kernel's rtnl lock while it reads the
@@ -72,6 +95,9 @@ import { access, lsdir, lstat, mkdir, open, popen, readfile } from 'fs';
 
 const NET = '/sys/class/net';
 const ETHTOOL = '/usr/sbin/ethtool';
+const SWCONFIG = '/sbin/swconfig';
+const BOARD = '/etc/board.json';
+const BOARD_MAX = 65536;          // bytes read of it
 const DIR = '/var/run/vantage-ports';
 const MAX_PORTS = 32;             // ports read each time; the add-on's report lists 32 at most
 const BUDGET_MS = 1000;           // no port is read after this
@@ -82,6 +108,9 @@ const MAX_UEVENT = 512;           // bytes of a device's uevent read
 const RE_PORT = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,14}$/;
 // a counter as ethtool prints it, "     <name>: <count>"
 const RE_LINE = /^ +(.+): ([0-9]{1,18})$/;
+// and as a swconfig switch driver does, "<name>   : <count>", ar8xxx's
+// byte counts with their size after them: "RxGoodByte  : 1024 (1.0 KiB)"
+const RE_MIB = /^([A-Za-z0-9_]+) *: ([0-9]{1,18})( \(.*\))?$/;
 
 // [ received, sent ]: the names switch drivers give their ports' byte
 // counters, as Linux 6.6 has them. Not the four the DSA core puts first
@@ -93,6 +122,14 @@ const COUNTERS = [
 	[ 'RxOctets', 'TxOctets' ],           // b53, bcm_sf2: Broadcom
 	[ 'RxGoodBytes', 'TxGoodBytes' ],     // lantiq_gswip
 	[ 'IfInOctets', 'IfOutOctets' ]       // rtl8366rb
+];
+// The names swconfig's switch drivers give them, as OpenWrt 25.12 has
+// the drivers (generic/files/drivers/net/phy).
+const MIB_COUNTERS = [
+	[ 'RxGoodByte', 'TxByte' ],           // ar8216.c: AR8327, AR8337, QCA8337 and the older Atheros
+	[ 'RxOctets', 'TxOctets' ],           // b53: Broadcom
+	[ 'IfInOctets', 'IfOutOctets' ],      // rtl8366rb.c, rtl8366s.c, rtl8367.c
+	[ 'ifInOctets', 'ifOutOctets' ]       // rtl8367b.c
 ];
 
 // ms on the monotonic clock
@@ -130,6 +167,16 @@ function dsa_ports() {
 	return { found, more };
 }
 
+// the pair of byte counters among the names a program printed, by the
+// table of that program's drivers
+function pair(seen, table) {
+	for (let c in table)
+		if (type(seen[c[0]]) == 'int' && type(seen[c[1]]) == 'int')
+			return { rx_bytes: seen[c[0]], tx_bytes: seen[c[1]] };
+
+	return { error: 'unknown' };
+}
+
 // one port's counters from what ethtool printed
 function parse(text) {
 	let lines = split(text, '\n'), seen = {};
@@ -145,11 +192,26 @@ function parse(text) {
 			seen[m[1]] = (m[1] in seen) ? null : int(m[2]);
 	}
 
-	for (let c in COUNTERS)
-		if (type(seen[c[0]]) == 'int' && type(seen[c[1]]) == 'int')
-			return { rx_bytes: seen[c[0]], tx_bytes: seen[c[1]] };
+	return pair(seen, COUNTERS);
+}
 
-	return { error: 'unknown' };
+// one switch port's counters from what swconfig printed: a heading of
+// the driver's, then its counters; ar8xxx prints "No MIB data" for a
+// port that has counted nothing yet
+function parse_mib(text) {
+	let seen = {};
+
+	if (text == 'No MIB data\n')
+		return { rx_bytes: 0, tx_bytes: 0 };
+
+	for (let l in split(text, '\n')) {
+		let m = match(l, RE_MIB);
+
+		if (m)
+			seen[m[1]] = (m[1] in seen) ? null : int(m[2]);
+	}
+
+	return pair(seen, MIB_COUNTERS);
 }
 
 // ethtool -S on one port; name is one of dsa_ports()
@@ -165,6 +227,54 @@ function read_port(name) {
 		return { error: 'failed' };
 
 	return parse(text);
+}
+
+// the WAN ports of this device's swconfig switches (role wan, never a
+// CPU port): [ { sw, num } ] from /etc/board.json (the system's own,
+// written at the first boot), in the switches' name order, MAX_PORTS at
+// most. A switch's name as RE_PORT has a port's, a port's number an
+// integer from 0 to 63
+function switch_ports() {
+	let board = json(readfile(BOARD, BOARD_MAX) ?? 'null'), found = [], more = false;
+	let sws = (type(board?.switch) == 'object') ? board.switch : {};
+
+	for (let sw in sort(keys(sws))) {
+		if (!match(sw, RE_PORT) || type(sws[sw]?.ports) != 'array')
+			continue;
+
+		for (let swp in sws[sw].ports) {
+			if (type(swp?.num) != 'int' || swp.num < 0 || swp.num > 63 || swp.device != null || swp.role !== 'wan')
+				continue;
+
+			if (length(found) >= MAX_PORTS) {
+				more = true;
+				break;
+			}
+
+			push(found, { sw, num: swp.num });
+		}
+	}
+
+	return { found, more };
+}
+
+// swconfig's counters of one switch port: sw and num of switch_ports()
+function read_switch_port(sw, num) {
+	let p = popen(SWCONFIG + ' dev ' + sw + ' port ' + num + ' get mib', 'r');
+
+	if (!p)
+		return { error: 'failed' };
+
+	let text = p.read(MAX_OUT + 1), rc = p.close();
+
+	// refused by the driver: said on stderr, and the same at every call
+	if (rc > 0 && text === '')
+		return { error: 'unknown' };
+
+	if (rc !== 0 || type(text) != 'string' || length(text) > MAX_OUT)
+		return { error: 'failed' };
+
+	return parse_mib(text);
 }
 
 // DIR as this plugin makes it: a directory, not a link, root's, no
@@ -188,8 +298,21 @@ function counters() {
 
 	let ports = {}, d = dsa_ports();
 
-	if (!length(d.found))
-		return { v: 1, state: 'none', took: now_ms() - t0, more: false, ports };
+	if (!length(d.found)) {
+		let swl = switch_ports(), switches = {};
+
+		if (!length(swl.found) || !access(SWCONFIG, 'x'))
+			return { v: 1, state: 'none', took: now_ms() - t0, more: false, ports };
+
+		for (let swp in swl.found) {
+			let at = now_ms();
+
+			switches[swp.sw] ??= {};
+			switches[swp.sw][swp.num + ''] = (at - t0 < BUDGET_MS) ? { ...read_switch_port(swp.sw, swp.num), at } : { error: 'time', at };
+		}
+
+		return { v: 1, state: 'ok', took: now_ms() - t0, more: swl.more, ports, switches };
+	}
 
 	if (!access(ETHTOOL, 'x'))
 		return { v: 1, state: 'no-ethtool', took: now_ms() - t0, more: d.more, ports };
