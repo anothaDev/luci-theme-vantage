@@ -730,12 +730,13 @@ test('ucode plugin: a switch VLAN behind a port, from board.json and the switch_
 		assert.equal(r.status, 0, r.stderr);
 		return JSON.parse(r.stdout)[0].reply;
 	};
-	const lan = n => ({ num: n, role: 'lan', index: n + 1 });
+	/* vlans: how many of the switch's VLANs the port is in (#166) */
+	const lan = (n, vlans = 1) => ({ num: n, role: 'lan', index: n + 1, vlans });
 	const r = run(SWITCH_BOARD, SWITCH_UCI);
 	assert.equal(r.hosts.length, 5, 'the hosts as before');
 	assert.deepEqual(r.switches, {
 		'eth1.1': { name: 'switch0', vlan: 1, ports: [ lan(0), lan(1), lan(2), lan(3) ] },
-		'eth1.2': { name: 'switch0', vlan: 2, ports: [ { num: 4, role: 'wan', index: null } ] }
+		'eth1.2': { name: 'switch0', vlan: 2, ports: [ { num: 4, role: 'wan', index: null, vlans: 1 } ] }
 	});
 	assert.ok(!JSON.stringify(r).includes('not-for-the-dashboard'), 'nothing else of the network config');
 
@@ -747,7 +748,8 @@ test('ucode plugin: a switch VLAN behind a port, from board.json and the switch_
 	assert.deepEqual(run(SWITCH_BOARD, []).switches, r.switches, 'no switch_vlan sections: board.json\'s roles');
 
 	/* vid over vlan; an untagged CPU port is the bare device; bad tokens,
-	   unknown switches and bad device names skipped */
+	   unknown switches and bad device names skipped. Ports 0 and 1 are in
+	   VLAN 6 as well, which reaches no CPU port: counted all the same */
 	const odd = run(SWITCH_BOARD, [
 		{ '.name': 'a', '.type': 'switch_vlan', device: 'switch0', vlan: '3', vid: '100', ports: '0 1t 5t' },
 		{ '.name': 'b', '.type': 'switch_vlan', device: 'switch0', vlan: '4', ports: '2 x 99 7 3* 5' },
@@ -756,8 +758,8 @@ test('ucode plugin: a switch VLAN behind a port, from board.json and the switch_
 		{ '.name': 'e', '.type': 'switch_vlan', device: 'switch0', vlan: '6', ports: '0 1' }
 	]);
 	assert.deepEqual(odd.switches, {
-		'eth1.100': { name: 'switch0', vlan: 100, ports: [ lan(0), lan(1) ] },
-		'eth1': { name: 'switch0', vlan: 4, ports: [ lan(2), { num: 7, role: null, index: null }, lan(3) ] }
+		'eth1.100': { name: 'switch0', vlan: 100, ports: [ lan(0, 2), lan(1, 2) ] },
+		'eth1': { name: 'switch0', vlan: 4, ports: [ lan(2), { num: 7, role: null, index: null, vlans: 1 }, lan(3) ] }
 	});
 	/* GL.iNet's layout (#67): ports with a role and no number, a role
 	   longer than "wan", the CPU tagged; the switch_vlan sections named,
@@ -765,8 +767,8 @@ test('ucode plugin: a switch VLAN behind a port, from board.json and the switch_
 	const gl = { model: { id: 'example,gl' }, switch: { switch0: { enable: true, reset: 0,
 		ports: [ 0, 1, 2, 3 ].map(n => ({ num: n, role: 'lan' })).concat([ { num: 4, role: 'secondwan' }, { num: 5, device: 'eth1', need_tag: true, want_untag: false } ]),
 		roles: [ { role: 'lan', ports: '0 1 2 3 5t', device: 'eth1.1' }, { role: 'secondwan', ports: '4 5t', device: 'eth1.2' } ] } } };
-	const plain = n => ({ num: n, role: 'lan', index: null });
-	const glWant = { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ plain(0), plain(1), plain(2), plain(3) ] }, 'eth1.2': { name: 'switch0', vlan: 2, ports: [ { num: 4, role: 'secondwan', index: null } ] } };
+	const plain = n => ({ num: n, role: 'lan', index: null, vlans: 1 });
+	const glWant = { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ plain(0), plain(1), plain(2), plain(3) ] }, 'eth1.2': { name: 'switch0', vlan: 2, ports: [ { num: 4, role: 'secondwan', index: null, vlans: 1 } ] } };
 	const named = [ { '.name': 'cfg01', '.type': 'switch', name: 'switch0', reset: '0', enable_vlan: '1' },
 		{ '.name': 'vlan_lan', '.type': 'switch_vlan', device: 'switch0', vlan: '1', ports: '0 1 2 3 5t' },
 		{ '.name': 'vlan_secondwan', '.type': 'switch_vlan', device: 'switch0', vlan: '2', ports: '4 5t' } ];
@@ -791,11 +793,13 @@ test('ucode plugin: a switch VLAN behind a port, from board.json and the switch_
 		'sw itch': { ports: [ { num: 0 }, { num: 5, device: 'eth2' } ], roles: [ { ports: '0 5t', device: 'eth2.1' } ] } } };
 	assert.deepEqual(run(hostile, [ { '.name': 'v', '.type': 'switch_vlan', device: 'switch0', vlan: '4095', ports: '0 5t' },
 		{ '.name': 'w', '.type': 'switch_vlan', device: 'switch0', vlan: '9', ports: '0 1 2 5t' } ]).switches,
-		{ 'eth1.9': { name: 'switch0', vlan: 9, ports: [ { num: 0, role: null, index: 1 }, { num: 1, role: null, index: 2 }, { num: 2, role: 'lan', index: null } ] } },
+		{ 'eth1.9': { name: 'switch0', vlan: 9, ports: [ { num: 0, role: null, index: 1, vlans: 1 }, { num: 1, role: null, index: 2, vlans: 1 }, { num: 2, role: 'lan', index: null, vlans: 1 } ] } },
 		'no VLAN 4095, no odd role, index or switch name');
 	assert.equal(run(hostile, [ { '.name': 'v', '.type': 'switch_vlan', device: 'switch1', vlan: '1', ports: '0 5t' } ]).switches, undefined, 'roles with VLAN 4095: none');
 	const many = Array.from({ length: 70 }, (_, i) => ({ '.name': 'v' + i, '.type': 'switch_vlan', device: 'switch0', vlan: String(i + 1), ports: '0 5t' }));
-	assert.equal(Object.keys(run(SWITCH_BOARD, many).switches).length, 64, 'at most 64 VLANs');
+	const capped = run(SWITCH_BOARD, many).switches;
+	assert.equal(Object.keys(capped).length, 64, 'at most 64 VLANs');
+	assert.ok(Object.values(capped).every(e => e.ports.every(q => q.vlans === undefined)), 'not every VLAN read: no port says how many it is in');
 	const evil = JSON.parse(JSON.stringify(SWITCH_BOARD));
 	evil.switch.switch0.ports[5].device = 'eth1;reboot';
 	assert.equal(run(evil, 'no load').switches, undefined, 'a CPU device that is no device name: no switch');

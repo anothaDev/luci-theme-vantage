@@ -19,8 +19,9 @@ packages are listed at
   (`swconfig … get mib`, which only reads), as it does on DSA switches,
   and the uplink's two rates are the port's. It applies where the WAN is
   the switch's WAN port (the one the device's board file names), tagged
-  or untagged, and the switch's driver gives byte counters (ar8xxx, b53,
-  the Realtek ones); elsewhere the rates are as before. An Atheros
+  or untagged, the port carries no other VLAN (IPTV beside the internet,
+  say), and the switch's driver gives byte counters (ar8xxx, b53, the
+  Realtek ones); elsewhere the rates are as before. An Atheros
   switch gives them only with its counter polling on: some boards start
   that way, on others it is `option ar8xxx_mib_poll_interval '500'` in
   the switch's section of `/etc/config/network`.

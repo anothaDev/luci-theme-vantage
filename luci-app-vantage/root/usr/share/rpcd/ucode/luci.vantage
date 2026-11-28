@@ -860,7 +860,9 @@ function switch_port(v) {
 
 // the network devices a switch VLAN reaches this device as (each CPU
 // port's device in it, with .vid where that port is tagged) and its other
-// ports, from a port list such as '0 1 2 3 5t'; null without a CPU port
+// ports, from a port list such as '0 1 2 3 5t'; null without a CPU port.
+// Each other port is counted in sw.seen, with or without a CPU port
+// (switches() says how many of its switch's VLANs a port is in)
 function vlan_ports(sw, list, vid) {
 	let devs = [], members = [];
 
@@ -877,16 +879,21 @@ function vlan_ports(sw, list, vid) {
 			if (dev && index(devs, dev) < 0)
 				push(devs, dev);
 		}
-		else
+		else {
+			sw.seen[num] = (sw.seen[num] ?? 0) + 1;
 			push(members, sw.ports[num] ?? { num, role: null, index: null });
+		}
 	}
 
 	return length(devs) ? { devs, members } : null;
 }
 
-// { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ { num, role, index } ] } }
-// for each VLAN of a swconfig switch: the network device it reaches this
-// device as and its other ports, as LuCI's switch page lays them out.
+// { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ { num, role, index,
+// vlans } ] } } for each VLAN of a swconfig switch: the network device it
+// reaches this device as and its other ports, as LuCI's switch page lays
+// them out. vlans: how many of the switch's VLANs the port is in, those
+// that reach no CPU port too (a port in one VLAN carries that VLAN and
+// nothing else, #166); left out where not every VLAN was read.
 // From the switch_vlan sections of the network config, or for a switch
 // they give no VLAN, from the roles board.json gives it (the first boot's
 // layout). Only switches /etc/board.json describes; {} without one, so a
@@ -920,7 +927,7 @@ function switches() {
 		}
 
 		if (length(cpu))
-			known[name] = { ports, cpu, roles: (type(sw.roles) == 'array') ? slice(sw.roles, 0, 16) : [] };
+			known[name] = { ports, cpu, seen: {}, roles: (type(sw.roles) == 'array') ? slice(sw.roles, 0, 16) : [] };
 	}
 
 	if (!length(known))
@@ -954,6 +961,8 @@ function switches() {
 		if (used[name])
 			continue;
 
+		sw.seen = {};
+
 		for (let r in sw.roles) {
 			let m = (type(r?.device) == 'string' && type(r.ports) == 'string') ? match(r.device, RE_VLAN_DEV) : null;
 			let vid = m ? +m[1] : null;
@@ -963,6 +972,11 @@ function switches() {
 				out[r.device] = { name, vlan: vid, ports: v.members };
 		}
 	}
+
+	if (n <= MAX_SWITCH_VLANS)
+		for (let dev, e in out)
+			for (let p in e.ports)
+				p.vlans = known[e.name].seen[p.num] ?? 0;
 
 	return out;
 }

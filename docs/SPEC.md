@@ -540,14 +540,23 @@ text around it so it looks the same size.
   bridge's port): what that port carries for the access point's other
   networks is bridged on and counted once. The result reads a little high (the kernel counts a few bytes
   less a packet on the VLAN's device), and the counters since boot in
-  the line's details stay the device's. A line that is one port of a
-  swconfig switch (its VLAN reaches this device as the line's device,
-  tagged or untagged, and has that one port) is counted by that port's
-  own counters where the device gives them (`luci.vantage.ports`,
-  below, which reads the port the board file names as WAN): the chip
-  counts the line and nothing else, with or without flow offloading. It is rated from the first poll that has them, a poll
-  without them keeps the last rate (three polls at most, then the
-  kernel's again), and the fast lane leaves such a line to the poll.
+  the line's details stay the device's. The main line, where it is one
+  port of a swconfig switch (its VLAN reaches this device as the line's
+  device, tagged or untagged, and has that one port, which is in no
+  other VLAN of the switch: `model.lineChip`), is counted by that
+  port's own counters where the device gives them
+  (`luci.vantage.ports`, below, which reads the port the board file
+  names as WAN): the chip counts the line and nothing else, with or
+  without flow offloading. A port another VLAN uses too (IPTV beside
+  the internet) is not taken: the chip would count both. The line is
+  the chip's from the port's first reading, which gives no rate yet,
+  and never shows another line's or the kernel's meanwhile. A poll that
+  brings no rate of the chip's (no reading, a counter that went back)
+  shows the last one measured there, for 20 s at most and as no new
+  point of the history, then the kernel's again; a poll without the
+  switch map keeps the port. The fast lane leaves such a line to the
+  poll, and an answer of its own that comes in late changes nothing.
+  The other lines to the internet stay the kernel's.
   Known limit, where the chip's counters are not to be had: with software flow
   offloading the kernel does not count on a VLAN's device what an
   offloaded connection brings in on it, only what it sends out there
@@ -951,7 +960,11 @@ text around it so it looks the same size.
   call parse thousands) or one MAC sits on two ports of a bridge (each
   row's time since heard is the dump's own). brforward's byte order is
   the host's, learned from the first dump. The bridge forgets a host
-  after about five minutes without traffic.
+  after about five minutes without traffic. Its switch map says of each
+  port how many of the switch's VLANs the port is in (`vlans`; the VLANs
+  that reach no CPU port counted too, and left out where not every VLAN
+  section was read): a port in one VLAN carries that VLAN alone, which
+  the uplink's rate by its switch port needs (#166).
   `routes` returns the default route the kernel takes to the internet,
   for IPv4 and IPv6 (family, device and metric; no gateways): one
   read-only lookup a family (RTM_GETROUTE with RTM_F_FIB_MATCH, as `ip
@@ -1042,13 +1055,20 @@ text around it so it looks the same size.
   get mib` where that program is there, under the same lock, budget and
   output cap, and answers them under `switches` by the switch's name
   and the port's number. The kernel hands these counters out over its
-  "switch" netlink family alone, which ucode has no module for and
-  swconfig speaks: hence a program, as for LuCI's own switch page. A
-  read swconfig ends with an error and without output is `unknown`: the
-  driver refuses, at every call (ar8216.c reads its counters only with
-  a poll interval set, by the board's device tree or
-  `ar8xxx_mib_poll_interval` in the switch's uci section), so the page
-  asks no more and starts nothing further. A port's counters are the pair of
+  "switch" netlink family, which ucode has no module for and swconfig
+  speaks (the Realtek drivers' debugfs file is not built into OpenWrt's
+  kernels): hence a program, as for LuCI's own switch page. The board
+  file reaches `json()` only read whole and an object by its ends: the
+  plugin catches nothing, and one that is corrupt within fails the call
+  (the page keeps the kernel's counters). A read swconfig ends with
+  status 246 and without output is `unknown`: the driver's own "not
+  supported" (256 less libnl's code for it), at every call (ar8216.c
+  reads its counters only with a poll interval set, by the board's
+  device tree or `ar8xxx_mib_poll_interval` in the switch's uci
+  section), so the page asks no more and starts nothing further. Any
+  other failure (no answer from the chip in time, no such switch), and
+  a counter the Realtek drivers print `error` for, is `failed`: that
+  call's, and asked again. A port's counters are the pair of
   names its driver prints (`RxGoodByte`/`TxByte` ar8xxx,
   `RxOctets`/`TxOctets` b53, `IfInOctets`/`IfOutOctets` and
   `ifInOctets`/`ifOutOctets` the Realtek drivers), and ar8xxx's "No MIB

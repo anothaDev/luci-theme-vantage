@@ -496,11 +496,11 @@ return baseclass.extend({
 			var c = AP_IFNAME.test(n) ? counted(ports[n]) : null;
 			if (c) counters[n] = c;
 		});
-		Object.keys(switches).slice(0, 8).forEach(function(sw) {
+		Object.keys(switches).slice(0, MAX_SWITCH_PORTS).forEach(function(sw) {
 			var nums = Object.create(null), any = false;
 			if (!AP_IFNAME.test(sw)) return;
 			Object.keys(obj(switches[sw])).forEach(function(num) {
-				var c = /^[0-9]{1,2}$/.test(num) && left-- > 0 ? counted(switches[sw][num]) : null;
+				var c = /^(?:0|[1-9][0-9]?)$/.test(num) && +num < 64 && left-- > 0 ? counted(switches[sw][num]) : null;
 				if (c) { nums[+num] = c; any = true; }
 			});
 			if (any) swports[sw] = nums;
@@ -525,8 +525,10 @@ return baseclass.extend({
 	/* The switch ports behind a port that is a VLAN on a swconfig switch
 	   (eth1.1): `map` is luci.vantage wired's switches, `states` LuCI's
 	   getSwconfigPortState replies by switch name. { name, vlan, ports:
-	   [ { num, label, link, speed } ], up } or null; link and speed stay
-	   null while the switch has not answered. */
+	   [ { num, label, link, speed, alone } ], up } or null; link and speed
+	   stay null while the switch has not answered; alone: the port is in
+	   this one VLAN of its switch (the plugin's vlans: 1), so what it
+	   carries is this VLAN's and nothing else. */
 	switchOf: function(map, states, port) {
 		var sw = typeof port === 'string' && own(map, port) ? obj(map[port]) : null;
 		if (!sw || typeof sw.name !== 'string' || !/^[A-Za-z0-9_.-]{1,32}$/.test(sw.name) || !finite(sw.vlan)) return null;
@@ -539,6 +541,7 @@ return baseclass.extend({
 			if (link) up++;
 			return {
 				num: p.num,
+				alone: p.vlans === 1,
 				/* "LAN 2" where board.json numbers the ports by role, else
 				   swconfig's own number: four "LAN" would tell them apart */
 				label: role && finite(p.index) ? role + ' ' + p.index : _('Port %d').format(p.num),
@@ -712,25 +715,25 @@ return baseclass.extend({
 
 	/* The one port of a swconfig switch a line is (#166): the WAN port,
 	   whose VLAN reaches this device as the line's device, tagged
-	   (eth0.2) or untagged on the CPU's (eth0). Its chip counts the line
+	   (eth0.2) or untagged on the CPU's (eth0). Where that VLAN has this
+	   one port and the port is in no other VLAN (alone: an IPTV VLAN on
+	   the same port would be counted with it), its chip counts the line
 	   and nothing else, which the kernel's counters of that device do
 	   not: an untagged one carries the other VLANs too, and with flow
 	   offloading the kernel sees only part of either. -> { sw, num, key }
-	   (key: the name its counters go by among the devices' rates), or
-	   null where the VLAN has no port or several: which of them is the
-	   line is not known then */
+	   (key: the name its counters go by among the devices'), or null:
+	   which port is the line, or what else the port carries, is not
+	   known then */
 	lineChip: function(line, switches) {
 		var sw = null, self = this;
 		[ line && line.dev, line && line.statsDev ].some(function(n) { return !!(sw = self.switchOf(switches, null, n)); });
-		return sw && sw.ports.length === 1 ? { sw: sw.name, num: sw.ports[0].num, key: sw.name + ':' + sw.ports[0].num } : null;
+		var p = sw && sw.ports.length === 1 ? sw.ports[0] : null;
+		return p && p.alone ? { sw: sw.name, num: p.num, key: sw.name + ':' + p.num } : null;
 	},
 
-	/* a line's rate from the devices' (rates): its own switch port's
-	   where the rates have it (lineChip), else its device's, less the
+	/* a line's rate from the devices' (rates): its device's, less the
 	   VLANs lineVlans found on it; none while one of them has none */
 	lineRate: function(line, rates) {
-		var chip = line && line.chip && rates ? rates[line.chip.key] : null;
-		if (chip) return chip;
 		var r = line && rates ? rates[line.statsDev] : null, minus = line ? arr(line.minus) : [];
 		if (!r || !minus.length) return r || null;
 		var rx = r.rx, tx = r.tx;
