@@ -192,6 +192,10 @@ var callAssoc = rpc.declare({ object: 'iwinfo', method: 'assoclist', params: [ '
    iwinfo backend but nl80211's (MediaTek's mtwifi in the mt798x builds,
    #124) */
 var callSurvey = rpc.declare({ object: 'luci.vantage', method: 'survey', params: [ 'device' ], expect: { results: [] } });
+/* the byte and packet counters of the stations named, by MAC, where
+   iwinfo has none: the plugin's, one GET_STATION a station, for the
+   interfaces of Qualcomm's qcawificfg80211 radios only (stationCounters) */
+var callStations = rpc.declare({ object: 'luci.vantage', method: 'stations', params: [ 'device', 'macs' ], expect: { stations: {} } });
 /* reject: a ubus status in the reply (not found, permission denied) is
    an error to read (resolveMore), not an answer without names */
 var callRrdns = rpc.declare({ object: 'network.rrdns', method: 'lookup', params: [ 'addrs', 'timeout', 'limit' ], expect: { '': {} }, reject: true });
@@ -213,6 +217,41 @@ function hostapd(ifname, method) {
 	if (!HOSTAPD_OBJ.test(obj)) return Promise.resolve(null);
 	if (!hostapdCalls[key]) hostapdCalls[key] = rpc.declare({ object: obj, method: method, expect: { '': {} } });
 	return L.resolveDefault(hostapdCalls[key](), null);
+}
+
+/* Qualcomm's qcawificfg80211 (QSDK firmware such as QWRT) answers no
+   station dump, so iwinfo's assoclist gives each of its stations 0
+   bytes. Where every station of an interface reads so, the plugin asks
+   the driver for each one (luci.vantage stations, which answers for that
+   driver's interfaces only) and its counters stand in for iwinfo's. Its
+   byte counters are 32 bits wide: one that goes back, wrapped or after
+   the station joined again, starts that station's rate over
+   (model.rates). Any other list, or no answer, stays as iwinfo gave it.
+   Each station given the driver's counters says so (counters: 'driver',
+   the client's bytesFrom): a station whose counters come from iwinfo one
+   poll and from the driver the next (the call failed, or left it out)
+   starts its rate over too, rather than rating the driver's bytes
+   against iwinfo's 0 */
+function stationCounters(ifname, list) {
+	var none = function(s) { return !!s && typeof s === 'object' && !(+(s.rx && s.rx.bytes) > 0) && !(+(s.tx && s.tx.bytes) > 0); };
+	if (!Array.isArray(list) || !list.length || !list.every(none)) return Promise.resolve(list);
+	var macs = list.map(function(s) { return names.normMac(s.mac); }).filter(function(m) { return !!m; });
+	if (!macs.length) return Promise.resolve(list);
+	return L.resolveDefault(callStations(ifname, macs), null).then(function(got) {
+		if (!got || typeof got !== 'object' || Array.isArray(got)) return list;
+		var count = function(v) { return typeof v === 'number' && isFinite(v) && v >= 0; };
+		var dir = function(own, bytes, packets) {
+			var o = Object.assign({}, own && typeof own === 'object' ? own : {});
+			if (count(bytes)) o.bytes = bytes;
+			if (count(packets)) o.packets = packets;
+			return o;
+		};
+		return list.map(function(s) {
+			var mac = names.normMac(s.mac), c = mac && Object.prototype.hasOwnProperty.call(got, mac) ? got[mac] : null;
+			if (!c || typeof c !== 'object') return s;
+			return Object.assign({}, s, { rx: dir(s.rx, c.rx_bytes, c.rx_packets), tx: dir(s.tx, c.tx_bytes, c.tx_packets), counters: 'driver' });
+		});
+	});
 }
 
 /* A provider's status call: its object made from an id of the session's
@@ -1425,7 +1464,7 @@ return view.extend({
 			var lost = !(typeof info.uptime === 'number' && isFinite(info.uptime));
 			var wifiDevs = (r[4] && typeof r[4] === 'object') ? r[4] : null;
 			var wiredReply = (r[7] && typeof r[7] === 'object') ? r[7] : {};
-			var ifnames = [], radioFirst = Object.create(null), surveyFor = Object.create(null);
+			var ifnames = [], radioFirst = Object.create(null), surveyFor = Object.create(null), fromConfig = Object.create(null);
 			Object.keys(wifiDevs || {}).forEach(function(rn) {
 				var ifs = (wifiDevs[rn] && Array.isArray(wifiDevs[rn].interfaces)) ? wifiDevs[rn].interfaces : [], first = true;
 				/* a radio read from the config has no run state: each of
@@ -1436,6 +1475,7 @@ return view.extend({
 						ifnames.push(i.ifname);
 						if (first || cfg) radioFirst[i.ifname] = true;
 						if (first) surveyFor[i.ifname] = true;
+						if (cfg) fromConfig[i.ifname] = true;
 						first = false;
 					}
 				});
@@ -1502,7 +1542,10 @@ return view.extend({
 				vlans[of].forEach(function(ifn) { per.push(L.resolveDefault(callAssoc(ifn), []).then(function(v) { return [ 'assoc', ifn, v ]; })); });
 			});
 			ifnames.forEach(function(ifn) {
-				per.push(L.resolveDefault(callAssoc(ifn), []).then(function(v) { return [ 'assoc', ifn, v ]; }));
+				/* a radio read from the config may be Qualcomm's, whose
+				   stations iwinfo gives no traffic (stationCounters) */
+				per.push(L.resolveDefault(callAssoc(ifn), []).then(function(v) { return fromConfig[ifn] ? stationCounters(ifn, v) : v; })
+					.then(function(v) { return [ 'assoc', ifn, v ]; }));
 				if (slow) per.push(hostapd(ifn, 'get_clients').then(function(v) { return [ 'hapd', ifn, v ]; }));
 				per.push(hostapd(ifn, 'get_status').then(function(v) { return [ 'hapdStatus', ifn, v ]; }));
 				if (slow && (radioFirst[ifn] || !hapdKnown[ifn]) && iwDue(ifn))
@@ -1705,7 +1748,9 @@ return view.extend({
 		/* station counters */
 		var staCounters = Object.create(null), local = m.clients.filter(function(c) { return !c.ap; });
 		/* a paired access point's stations have no counters here */
-		local.forEach(function(c) { staCounters[c.mac] = { rx: c.rxBytes, tx: c.txBytes }; });
+		/* src: whose counters (stationCounters), so that a station's rate
+		   is never of iwinfo's bytes against the driver's */
+		local.forEach(function(c) { staCounters[c.mac] = { rx: c.rxBytes, tx: c.txBytes, src: c.bytesFrom }; });
 		var sr = model.rates(st.staPrev, staCounters, at);
 		st.staPrev = sr.next;
 		if (Object.keys(sr.rates).length || !local.length) st.staRates = sr.rates;

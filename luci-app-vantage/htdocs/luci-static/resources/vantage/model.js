@@ -1620,6 +1620,10 @@ return baseclass.extend({
 					rx: wifi.phy(rx),
 					tx: wifi.phy(tx),
 					rxBytes: num(rx.bytes), txBytes: num(tx.bytes),
+					/* whose byte counters: 'driver' where the view put
+					   the driver's in for iwinfo's 0 (qcawificfg80211,
+					   luci.vantage stations), else null (iwinfo's) */
+					bytesFrom: s.counters === 'driver' ? 'driver' : null,
 					rxPackets: num(rx.packets), txPackets: num(tx.packets),
 					txRetries: num(tx.retries), txFailed: num(tx.failed),
 					connected: finite(s.connected_time) ? s.connected_time : null,

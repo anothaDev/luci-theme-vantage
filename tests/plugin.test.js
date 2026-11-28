@@ -45,14 +45,15 @@ const NO_UCODE = UCODE ? false : 'no ucode binary (set UCODE=/path/to/ucode, e.g
    (no phy80211, #124) */
 const BRIDGES = [ 'br-lan', 'br-guest' ];
 const WIFI_NET = [ 'phy2g-ap0' ];
-/* Qualcomm qcawificfg80211's interfaces, named as their uci sections */
+/* Qualcomm qcawificfg80211's interfaces, named as their uci sections;
+   cfg80211 drives them too (phy80211) */
 const QCA_NET = [ 'ath0', 'ath1' ];
 const NETDEVS = [ 'eth0', 'ra0' ].concat(BRIDGES, WIFI_NET, QCA_NET);
 function fakeNet(dir, entries) {
 	const net = path.join(dir, 'net'), n = [].concat(entries, 0);
 	fs.mkdirSync(path.join(net, 'eth0'), { recursive: true });
 	fs.mkdirSync(path.join(net, 'ra0'));
-	QCA_NET.forEach(q => fs.mkdirSync(path.join(net, q)));
+	QCA_NET.forEach(q => fs.mkdirSync(path.join(net, q, 'phy80211'), { recursive: true }));
 	WIFI_NET.forEach(w => fs.mkdirSync(path.join(net, w, 'phy80211'), { recursive: true }));
 	BRIDGES.forEach((b, i) => {
 		fs.mkdirSync(path.join(net, b));
@@ -84,7 +85,7 @@ function spawnUcode(cases, source, entries, board) {
 		return spawnSync(UCODE, args, { encoding: 'utf8' });
 	} finally {
 		for (const f of [ file, plugin, boardFile ].concat(BRIDGES.map(b => path.join(dir, 'net', b, 'brforward')))) if (fs.existsSync(f)) fs.unlinkSync(f);
-		for (const d of BRIDGES.map(b => 'net/' + b).concat(WIFI_NET.map(w => 'net/' + w + '/phy80211'), WIFI_NET.map(w => 'net/' + w), QCA_NET.map(q => 'net/' + q), [ 'net/ra0', 'net/eth0', 'net', '' ])) if (fs.existsSync(path.join(dir, d))) fs.rmdirSync(path.join(dir, d));
+		for (const d of BRIDGES.map(b => 'net/' + b).concat(WIFI_NET.map(w => 'net/' + w + '/phy80211'), WIFI_NET.map(w => 'net/' + w), QCA_NET.map(q => 'net/' + q + '/phy80211'), QCA_NET.map(q => 'net/' + q), [ 'net/ra0', 'net/eth0', 'net', '' ])) if (fs.existsSync(path.join(dir, d))) fs.rmdirSync(path.join(dir, d));
 	}
 }
 
@@ -144,10 +145,20 @@ function runShim(cases) {
 			: c.method === 'wired' ? { hosts: shim.wired(c.fdb ?? null) }
 			: c.method === 'routes' ? { routes: shim.routes(c.lookup ?? null) }
 			: c.method === 'survey' ? { results: shim.survey((c.args || {}).device, (c.survey && typeof c.survey === 'object') ? c.survey[(c.args || {}).device] : null, d => WIFI_NET.includes(d)) }
+			: c.method === 'stations' ? { stations: shim.stations((c.args || {}).device, (c.args || {}).macs, c.wireless_uci ?? null, d => NETDEVS.includes(d),
+				d => WIFI_NET.includes(d) || QCA_NET.includes(d), mac => stationReply(c, (c.args || {}).device, mac)) }
 			: c.method === 'set_quiet' ? shim.setQuiet(cursor, c.args || {})
 			: shim.setAlias(cursor, c.args || {});
 		return { status: 0, reply, sections: committed ? sections : orig, reverted };
 	});
+}
+
+/* a station's GET_STATION reply in a case, as the nl80211 double gives
+   it: none ('no stations') or 'never asked' stop the run */
+function stationReply(c, dev, mac) {
+	const r = c.stations === undefined ? 'no stations' : ((c.stations || {})[dev] || {})[mac];
+	if (r === 'no stations' || r === 'never asked') throw new Error(`station ${mac} of ${dev} where none may be asked`);
+	return r === undefined ? null : r;
 }
 
 /* ucode prints null object members; JSON.stringify keeps them too, but
@@ -456,7 +467,53 @@ const VLAN_CASES = [
 		ifaces: [ nlIf('constructor', 3, AP_ADDR, 0), nlIf('v1', 4, AP_ADDR, 0), nlIf('__proto__', 3, '02:00:5e:00:53:b0', 0), nlIf('v2', 4, '02:00:5e:00:53:b0', 0),
 			nlIf('toString', 3, '02:00:5e:00:53:b1', 0), nlIf('v3', 4, '02:00:5e:00:53:b1', 0) ] }
 ];
-const ALL = BEHAVIOUR.concat(NAME_CASES, MAC_CASES, SURVEY_CASES, QCA_CASES, VLAN_CASES);
+/* stations: one station's NL80211_CMD_GET_STATION reply as ucode's nl80211
+   gives it, with the sta_info QSDK 12.5's qcawificfg80211 answers (32-bit
+   byte counters, no rx_bytes64 or tx_bytes64); its station dump answers
+   nothing, so iwinfo's assoclist has 0 bytes for every station */
+const STA = [ 1, 2, 3, 4, 5, 6, 7, 8 ].map(i => '00:00:5e:00:53:0' + i);
+const staReply = (rx, tx, rxp, txp, extra) => ({ ifindex: 9, dev: 'ath0', mac: STA[0], generation: 3, sta_info: Object.assign({
+	inactive_time: 120, rx_bytes: rx, tx_bytes: tx, rx_packets: rxp, tx_packets: txp, tx_retries: 3, tx_failed: 0, rx_drop_misc: 0,
+	signal: -52, signal_avg: -53, chain_signal_avg: [ -54, -56 ], connected_time: 3600, assoc_at_boottime: 4000000000,
+	bss_param: { dtim_period: 2, beacon_interval: 100 }, sta_flags: { authorized: true }, rx_bitrate: { bitrate32: 12010 }, tx_bitrate: { bitrate32: 24020 } }, extra) });
+const stationsOf = (device, macs, replies, extra) => Object.assign({ method: 'stations', args: { device, macs }, wireless_uci: QCA }, replies ? { stations: replies } : {}, extra);
+const MANY_STA = Array.from({ length: 200 }, (_, i) => '02:00:5e:00:' + (i >> 8).toString(16).padStart(2, '0') + ':' + (i & 255).toString(16).padStart(2, '0'));
+const STATION_CASES = [
+	/* 0: a MAC as iwinfo or a browser writes it; a station that left (no reply) is left out */
+	stationsOf('ath0', [ '00:00:5E:00:53:01', '00-00-5e-00-53-02', STA[2] ],
+		{ ath0: { [STA[0]]: staReply(4123456789, 987654321, 3200000, 2900000), [STA[1]]: staReply(0, 66, 0, 1), [STA[2]]: null } }),
+	/* 1: 64-bit byte counters, where a driver has them */
+	stationsOf('ath0', [ STA[0] ], { ath0: { [STA[0]]: staReply(705032704, 1, 2, 3, { rx_bytes64: 5000000000, tx_bytes64: 1 }) } }),
+	/* 2: what is no counter: a fraction, below 0, text, null, past 2^53 - 1, a reply or sta_info of another shape */
+	stationsOf('ath0', STA, { ath0: {
+		[STA[0]]: staReply(1.5, -1, '7', null), [STA[1]]: { sta_info: [ 1, 2 ] }, [STA[2]]: true, [STA[3]]: 'junk', [STA[4]]: [ staReply(1, 1, 1, 1) ],
+		[STA[5]]: staReply(9007199254740992, 9007199254740991, 1, 1), [STA[6]]: { sta_info: { rx_bytes: 10 } }, [STA[7]]: { sta_info: { rx_bytes64: 'x', rx_bytes: 5 } } } }),
+	/* 3: each unicast MAC once; a group address, the broadcast one and what is no MAC are never asked */
+	stationsOf('ath0', [ STA[0], '00:00:5E:00:53:01', '01:00:5e:00:53:01', 'ff:ff:ff:ff:ff:ff', 'junk', 5, null, [ STA[0] ], { mac: STA[0] }, '' ],
+		{ ath0: { [STA[0]]: staReply(1, 2, 3, 4), '01:00:5e:00:53:01': 'never asked', 'ff:ff:ff:ff:ff:ff': 'never asked' } }),
+	/* 4: at most MAX_STATIONS, the first ones */
+	stationsOf('ath0', MANY_STA, { ath0: Object.fromEntries(MANY_STA.map((m, i) => [ m, i < 128 ? staReply(i, i, i, i) : 'never asked' ])) }),
+	/* 5: none to ask */
+	stationsOf('ath0', [], {}),
+	/* 6: ath1 is named by its second section's ifname */
+	stationsOf('ath1', [ STA[0] ], { ath1: { [STA[0]]: staReply(10, 20, 1, 2) } }),
+	/* not asked (the nl80211 double stops the run if it is): an interface
+	   of no qcawificfg80211 radio, no wireless config, a device cfg80211
+	   does not drive, or not an interface name */
+	stationsOf('phy2g-ap0', [ STA[0] ]),
+	stationsOf('ath0', [ STA[0] ], null, { wireless_uci: MTK }),
+	stationsOf('ath0', [ STA[0] ], null, { wireless_uci: null }),
+	stationsOf('ath0', [ STA[0] ], null, { wireless_uci: QCA.map(x => x.type === 'qcawificfg80211' ? Object.assign({}, x, { type: 'mac80211' }) : x) }),
+	stationsOf('ra0', [ STA[0] ]), stationsOf('eth0', [ STA[0] ]), stationsOf('br-lan', [ STA[0] ]), stationsOf('nope0', [ STA[0] ]),
+	stationsOf('..', [ STA[0] ]), stationsOf('.', [ STA[0] ]), stationsOf('../net/ath0', [ STA[0] ]), stationsOf('ath0/', [ STA[0] ]),
+	stationsOf('', [ STA[0] ]), stationsOf('x'.repeat(16), [ STA[0] ]),
+	{ method: 'stations', args: { macs: [ STA[0] ] }, wireless_uci: QCA },
+	{ method: 'stations', args: { device: 'ath0' }, wireless_uci: QCA },
+	/* rpcd's argument check */
+	stationsOf(5, [ STA[0] ]), stationsOf('ath0', STA[0]), stationsOf('ath0', { [STA[0]]: true }),
+	{ method: 'stations', args: { device: 'ath0', macs: [ STA[0] ], extra: 'x' }, wireless_uci: QCA }
+];
+const ALL = BEHAVIOUR.concat(NAME_CASES, MAC_CASES, SURVEY_CASES, QCA_CASES, VLAN_CASES, STATION_CASES);
 
 /* -------------------------------------------------------------- tests */
 
@@ -598,6 +655,32 @@ test('stand-in: survey keeps each channel with a noise value, and asks nothing o
 	const m = load('vantage.model').build({ wifi: { radio0: { up: true, config: { band: '2g' }, interfaces: [ { ifname: 'phy2g-ap0', config: { mode: 'ap' } } ] } },
 		iwinfo: { 'phy2g-ap0': { channel: 6, frequency: 2437, noise: -95 } }, survey: { 'phy2g-ap0': r[0].reply.results } });
 	assert.equal(m.radios[0].noiseRaw, -110, 'the survey\'s noise floor, as the plugin gives it');
+});
+
+test('stand-in: stations asks a qcawificfg80211 interface\'s driver for each station once, never with a dump, and keeps whole counters only', () => {
+	const r = runShim(STATION_CASES);
+	assert.deepEqual(r[0].reply, { stations: {
+		[STA[0]]: { rx_bytes: 4123456789, tx_bytes: 987654321, rx_packets: 3200000, tx_packets: 2900000 },
+		[STA[1]]: { rx_bytes: 0, tx_bytes: 66, rx_packets: 0, tx_packets: 1 }
+	} }, 'by the normalised MAC; a station without a reply left out');
+	assert.deepEqual(r[1].reply.stations[STA[0]], { rx_bytes: 5000000000, tx_bytes: 1, rx_packets: 2, tx_packets: 3 }, 'the 64-bit byte counters over the 32-bit ones');
+	assert.deepEqual(r[2].reply, { stations: {
+		[STA[5]]: { tx_bytes: 9007199254740991, rx_packets: 1, tx_packets: 1 },
+		[STA[6]]: { rx_bytes: 10 },
+		[STA[7]]: { rx_bytes: 5 }
+	} }, 'only integers from 0 to 2^53 - 1; a station with none left out');
+	assert.deepEqual(r[3].reply, { stations: { [STA[0]]: { rx_bytes: 1, tx_bytes: 2, rx_packets: 3, tx_packets: 4 } } });
+	assert.equal(Object.keys(r[4].reply.stations).length, shim.MAX_STATIONS, 'at most MAX_STATIONS');
+	assert.deepEqual(Object.keys(r[4].reply.stations), MANY_STA.slice(0, shim.MAX_STATIONS));
+	assert.deepEqual(r[5].reply, { stations: {} });
+	assert.deepEqual(r[6].reply, { stations: { [STA[0]]: { rx_bytes: 10, tx_bytes: 20, rx_packets: 1, tx_packets: 2 } } });
+	for (const x of r.slice(7, 23)) assert.deepEqual([ x.status, x.reply ], [ 0, { stations: {} } ]);
+	assert.deepEqual(r.slice(23).map(x => x.status), [ 2, 2, 2, 2 ], 'rpcd refuses a number, a string or an object for an array, an unknown argument');
+	for (const x of r) for (const c of Object.values((x.reply || {}).stations || {}))
+		for (const v of Object.values(c)) assert.ok(Number.isSafeInteger(v) && v >= 0, JSON.stringify(c));
+	/* the replay has no nl80211: no stations, and the view keeps iwinfo's counters */
+	assert.deepEqual(shim.call({}, 'stations', { device: 'ath0', macs: [ STA[0] ] }), { result: [ 0, { stations: {} } ] });
+	assert.deepEqual(shim.call({}, 'stations', { device: 'ath0', macs: STA[0] }), { result: [ 2 ] });
 });
 
 test('stand-in: wired keeps the hosts the bridges learned, with port, VLAN and seconds since heard', () => {
@@ -965,7 +1048,7 @@ test('ucode plugin: a name over 1152 bytes is refused before it is decoded', { s
 	assert.deepEqual(runShim(cases).map(x => x.reply), out.map(x => x.reply));
 });
 
-test('ucode plugin: the test doubles stop a copy that writes wireless, reads another config, calls another object or writes over netlink', { skip: NO_UCODE }, () => {
+test('ucode plugin: the test doubles stop a copy that writes wireless, reads another config, calls another object, writes over netlink or asks for a station', { skip: NO_UCODE }, () => {
 	const src = fs.readFileSync(PLUGIN, 'utf8'), at = '\tlet wl = cursor();\n';
 	assert.ok(src.includes(at), 'insertion point');
 	const MUTANTS = {
@@ -976,7 +1059,9 @@ test('ucode plugin: the test doubles stop a copy that writes wireless, reads ano
 		'another ubus call': "connect().call('file', 'read', { path: '/etc/shadow' });",
 		'a netlink write': 'rtnl.request(rtnl.const.RTM_DELNEIGH, 0, { family: rtnl.const.AF_BRIDGE });',
 		'a survey where none was asked for': "nl80211.request(nl80211.const.NL80211_CMD_GET_SURVEY, nl80211.const.NLM_F_DUMP, { dev: 'phy2g-ap0' });",
-		'another nl80211 request': 'nl80211.request(nl80211.const.NL80211_CMD_SET_INTERFACE, 0, { dev: \'phy2g-ap0\', iftype: 2 });'
+		'another nl80211 request': 'nl80211.request(nl80211.const.NL80211_CMD_SET_INTERFACE, 0, { dev: \'phy2g-ap0\', iftype: 2 });',
+		'a station dump': 'nl80211.request(nl80211.const.NL80211_CMD_GET_STATION, nl80211.const.NLM_F_DUMP, { dev: \'ath0\' });',
+		'a station where none was asked for': 'nl80211.request(nl80211.const.NL80211_CMD_GET_STATION, 0, { dev: \'ath0\', mac: \'00:00:5e:00:53:01\' });'
 	};
 	const run = [ BEHAVIOUR[24], BEHAVIOUR[0] ];      /* the config fallback and an alias write */
 	const ok = spawnUcode(run, src);

@@ -31,7 +31,9 @@
  * - the plugin (root/usr/share/rpcd/ucode/luci.vantage) registers exactly
  *   the luci.vantage methods the ACL grants, opens config `vantage`, and
  *   only loads and walks config `wireless` (luci.vantage wireless without
- *   netifd's network.wireless object; same reduced reply, no keys) and
+ *   netifd's network.wireless object; same reduced reply, no keys;
+ *   luci.vantage stations, for whether an interface's radio is a
+ *   qcawificfg80211 one) and
  *   the switch_vlan sections of config `network`, reading their device,
  *   vlan, vid and ports only (luci.vantage wired, behind a switch), and
  *   imports nothing but uci, ubus, fs's lsdir and readfile, which it
@@ -42,7 +44,10 @@
  *   a family, IPv4 and IPv6, of a documentation address (luci.vantage
  *   routes), and nl80211 for two read-only dumps: the channel survey of
  *   an interface (luci.vantage survey) and the list of the wireless
- *   interfaces (luci.vantage wireless, #164); no other file access, no other
+ *   interfaces (luci.vantage wireless, #164), and for one read-only
+ *   station request (GET_STATION without a dump) of the interface and
+ *   station asked about (luci.vantage stations, for the qcawificfg80211
+ *   driver, which answers no station dump); no other file access, no other
  *   netlink request, no process execution, and no module, cursor or
  *   connection passed on under another name; altered copies of the
  *   plugin check that these rules catch each breach;
@@ -226,7 +231,9 @@ const READ_UBUS = {
 	'luci-rpc': [ 'getHostHints' ],
 	/* LuCI's own: swconfig dev <switch> show, the switch name quoted */
 	'luci': [ 'getSwconfigPortState' ],
-	'luci.vantage': [ 'routes', 'survey', 'thermal', 'wired', 'wireless' ],
+	/* stations: a qcawificfg80211 radio's station counters, one
+	   GET_STATION a station (its driver answers no station dump) */
+	'luci.vantage': [ 'routes', 'stations', 'survey', 'thermal', 'wired', 'wireless' ],
 	/* the app's executable plugin: a DSA switch chip's own byte counters,
 	   ethtool -S on each of the device's DSA ports (#156; PORTS_* below) */
 	'luci.vantage.ports': [ 'counters' ],
@@ -486,7 +493,7 @@ test('the plugin registers exactly the granted luci.vantage methods, writes conf
 	for (const g of Object.values(acl)) for (const kind of [ 'read', 'write' ])
 		for (const m of ((g[kind] || {}).ubus || {})[PLUGIN_OBJECT] || []) granted.add(m);
 	assert.deepEqual(methods, [ ...granted ].sort());
-	assert.deepEqual(methods, [ 'routes', 'set_alias', 'set_quiet', 'survey', 'thermal', 'wired', 'wireless' ]);
+	assert.deepEqual(methods, [ 'routes', 'set_alias', 'set_quiet', 'stations', 'survey', 'thermal', 'wired', 'wireless' ]);
 	assert.ok(pairs(acl[READ_GROUP].read.ubus).has(PLUGIN_OBJECT + ' wireless'));
 	assert.ok(pairs(acl[READ_GROUP].read.ubus).has(PLUGIN_OBJECT + ' thermal'));
 	assert.ok(pairs(acl[WRITE_GROUP].write.ubus).has(PLUGIN_OBJECT + ' set_alias'));
@@ -590,15 +597,24 @@ function checkPluginSource(src) {
 	for (const m of rest.matchAll(/\brtnl\b(?:\.const\.(\w+))?/g))
 		assert.ok(CONSTS.includes(m[1]), `"${m[0]}": "rtnl" may appear only as rtnl.const.${CONSTS.join(', ')}${REWORD}`);
 
-	/* nl80211: two requests, each a read-only dump (a GET with
-	   NLM_F_DUMP, never a SET, NEW, DEL or TRIGGER): the list of the
-	   wireless interfaces, asked without a message (#164: which of them
-	   hostapd made for a network's VLANs), and the channel survey of the
-	   one interface asked about; nothing else */
+	/* nl80211: three requests, each a GET (never a SET, NEW, DEL or
+	   TRIGGER: a DEL_STATION would disconnect the station): two
+	   read-only dumps, the list of the wireless interfaces, asked
+	   without a message (#164: which of them hostapd made for a
+	   network's VLANs), and the channel survey of the one interface
+	   asked about; and the counters of one station of that interface,
+	   without a dump; nothing else */
 	const ifaces = 'let res = nl80211.request(nl80211.const.NL80211_CMD_GET_INTERFACE, nl80211.const.NLM_F_DUMP);';
 	const survey = 'let res = nl80211.request(nl80211.const.NL80211_CMD_GET_SURVEY, nl80211.const.NLM_F_DUMP, { dev });';
-	assert.deepEqual([ ...src.matchAll(/^.*\bnl80211\b.*$/gm) ].map(m => m[0].trim()), [ 'import * as nl80211 from \'nl80211\';', ifaces, survey ],
-		`"nl80211" may appear only on its import, the interface dump and the survey dump${REWORD}`);
+	const station = 'let res = nl80211.request(nl80211.const.NL80211_CMD_GET_STATION, 0, { dev, mac });';
+	assert.deepEqual([ ...src.matchAll(/^.*\bnl80211\b.*$/gm) ].map(m => m[0].trim()), [ 'import * as nl80211 from \'nl80211\';', ifaces, survey, station ],
+		`"nl80211" may appear only on its import, the interface dump, the survey dump and the station request${REWORD}`);
+	/* the station asked about: the MAC norm_mac() made of one in the
+	   list, on the interface checked; neither is given another value */
+	const sta = /^function stations\(dev, macs\) \{\n[\s\S]*?\n\}$/m.exec(src);
+	assert.ok(sta && sta[0].includes(station), 'stations() makes the station request');
+	assert.deepEqual([ ...sta[0].matchAll(/^.*\b(mac|dev)\s*=(?!=).*$/gm) ].map(m => m[0].trim()), [ 'let mac = norm_mac(m);' ],
+		`in stations(), "mac" is only norm_mac's answer and "dev" is never assigned${REWORD}`);
 }
 
 test('the plugin source rules catch writes, other configs and calls, and names passed on', () => {
@@ -646,6 +662,11 @@ test('the plugin source rules catch writes, other configs and calls, and names p
 		'survey of another interface': plugin.replace('nl80211.const.NLM_F_DUMP, { dev });', 'nl80211.const.NLM_F_DUMP, { dev: \'phy0-ap0\' });'),
 		'nl80211 by reference': add('let n = nl80211;'),
 		'interface dump made a write': plugin.replace('nl80211.const.NL80211_CMD_GET_INTERFACE, nl80211.const.NLM_F_DUMP);', 'nl80211.const.NL80211_CMD_DEL_INTERFACE, 0);'),
+		'station deleted': plugin.replace('nl80211.const.NL80211_CMD_GET_STATION, 0,', 'nl80211.const.NL80211_CMD_DEL_STATION, 0,'),
+		'station dump': plugin.replace('nl80211.const.NL80211_CMD_GET_STATION, 0, { dev, mac });', 'nl80211.const.NL80211_CMD_GET_STATION, nl80211.const.NLM_F_DUMP, { dev });'),
+		'station of another interface': plugin.replace('nl80211.const.NL80211_CMD_GET_STATION, 0, { dev, mac });', 'nl80211.const.NL80211_CMD_GET_STATION, 0, { dev: \'phy0-ap0\', mac });'),
+		'station MAC not normalised': plugin.replace('let mac = norm_mac(m);', 'let mac = m;'),
+		'station on another interface': plugin.replace('\t\tasked[mac] = true;\n', '\t\tasked[mac] = true;\n\t\tdev = \'phy0-ap0\';\n'),
 		'interface dump with a message': plugin.replace('nl80211.const.NL80211_CMD_GET_INTERFACE, nl80211.const.NLM_F_DUMP);', 'nl80211.const.NL80211_CMD_GET_INTERFACE, nl80211.const.NLM_F_DUMP, { dev: \'phy0-ap0\' });'),
 		'access elsewhere': add('let seen = access(\'/etc/shadow\');'),
 		'access by reference': add('let a = access;')

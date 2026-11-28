@@ -4,12 +4,16 @@
 // without any or a failed one, false for one cut short). 'no survey': a
 // case where none may happen, the default. And the dump of the wireless
 // interfaces from global STUB.ifaces (null: none), asked without a
-// message. Fails closed: any other request stops the run. Constants as
-// the kernel's.
+// message. And one station of one interface, never a dump, from global
+// STUB.stations, keyed by interface and MAC: 'no stations', the default,
+// for a case where none may be asked, and 'never asked' for a station
+// that may not be. Fails closed: any other request stops the run.
+// Constants as the kernel's.
 'use strict';
 
 const C = {
 	NL80211_CMD_GET_INTERFACE: 5,
+	NL80211_CMD_GET_STATION: 17,
 	NL80211_CMD_GET_SURVEY: 50,
 	NLM_F_DUMP: 0x300
 };
@@ -17,6 +21,15 @@ const C = {
 function request(cmd, flags, msg) {
 	if (cmd == C.NL80211_CMD_GET_INTERFACE && flags == C.NLM_F_DUMP && msg == null)
 		return global.STUB.ifaces;
+
+	if (cmd == C.NL80211_CMD_GET_STATION && flags == 0 && type(msg) == 'object' && length(msg) == 2 && type(msg.dev) == 'string' && type(msg.mac) == 'string') {
+		let r = (global.STUB.stations === 'no stations') ? 'no stations' : global.STUB.stations?.[msg.dev]?.[msg.mac];
+
+		if (r === 'no stations' || r === 'never asked')
+			die(sprintf('nl80211 stub: station %s of %s where none may be asked', msg.mac, msg.dev));
+
+		return r;
+	}
 
 	if (cmd != C.NL80211_CMD_GET_SURVEY || flags != C.NLM_F_DUMP || type(msg) != 'object' || length(msg) != 1 || type(msg.dev) != 'string')
 		die(sprintf('nl80211 stub: request %J %J %J', cmd, flags, msg));
