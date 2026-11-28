@@ -25,7 +25,8 @@ LUCI_DESCRIPTION:=Live network dashboard (landing page under admin/dashboard): d
 # key-free wireless status, thermal zones, validated alias writes), which
 # imports the uci, ubus and fs ucode modules; luci-base pulls all four in
 # already, they are listed because the plugin needs them. It also imports
-# rtnl (the bridges' hosts, the default routes) and nl80211: it reads the
+# rtnl (the bridges' hosts, the neighbours on a network without a bridge,
+# the default routes) and nl80211: it reads the
 # radios' channel survey (the noise floor) through nl80211 itself, because
 # rpcd's iwinfo survey crashes rpcd on drivers other than nl80211's (#124).
 # Wi-Fi images already have both, as wifi-scripts needs them.

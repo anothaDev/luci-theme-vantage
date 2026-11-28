@@ -212,6 +212,7 @@ test('wired hosts: the path counts those downstream only; filters, search and so
 
 	assert.equal(self.portRate(hosts[0]).tx, 3000, 'alone on its port: the port\'s traffic is its own');
 	assert.equal(self.portRate(hosts[1]), null, 'a shared port\'s traffic is nobody\'s');
+	assert.equal(self.portRate(Object.assign({}, hosts[0], { mixed: true })), null, 'nor that of a port whose counters hold other networks\' traffic (#178)');
 	assert.deepEqual([ self.sortValue(hosts[0], 'live'), self.sortValue(hosts[1], 'live') ], [ 4000, -1 ]);
 	assert.deepEqual([ self.sortValue(hosts[0], 'link'), self.sortValue(hosts[1], 'link') ], [ 1000, -1 ]);
 	assert.equal(self.sortValue(hosts[1], 'seen'), Infinity, 'a static entry sorts last');
@@ -325,6 +326,16 @@ test('wired reply: hosts kept, a crowded bridge flagged, anything else read as n
 		REPLIES['luci.vantage wired'] = () => Promise.reject(new Error('ubus code 6'));
 		const failed = await self.fetch();
 		assert.deepEqual([ failed.fdb, failed.fdbCrowded ], [ [], false ], 'a failed call');
+		assert.deepEqual(failed.neigh, []);
+		/* the neighbours of the networks without a bridge (#178): kept, and handed to the model */
+		const nb = { mac: '00:00:5e:00:53:61', dev: 'eth0', seen: 4 };
+		REPLIES['luci.vantage wired'] = () => Promise.resolve({ hosts: [ host ], neighbours: [ nb ] });
+		const raw = await self.fetch();
+		assert.deepEqual([ raw.fdb, raw.neigh ], [ [ host ], [ nb ] ]);
+		self.st = {};
+		assert.equal(self.modelInput(raw).neigh, raw.neigh);
+		REPLIES['luci.vantage wired'] = () => Promise.resolve({ hosts: [ host ], neighbours: 'x' });
+		assert.deepEqual((await self.fetch()).neigh, [], 'anything else: none');
 	}
 	finally { global.L = savedL; delete REPLIES['luci.vantage wired']; }
 });
@@ -840,6 +851,31 @@ test('switch ports: LuCI is asked on the side for a switch with hosts behind it,
 /* #83: with the Vantage theme installed but another one selected, the
    dashboard makes way for LuCI's own landing page. The dashboard alone
    (no theme package) works under any theme. */
+test('neighbours: only those the last model took for wired hosts ask for a switch\'s state or a name (#178)', async () => {
+	const calls = [], port = { num: 1, role: 'lan', index: 1 };
+	/* the LAN on eth0.1 without a bridge; the WAN's gateway answers on eth0.2 */
+	REPLIES['luci.vantage wired'] = () => Promise.resolve({ hosts: [],
+		neighbours: [ { mac: '00:00:5e:00:53:21', dev: 'eth0.1', seen: 1 }, { mac: '00:00:5e:00:53:fe', dev: 'eth0.2', seen: 1 } ],
+		switches: { 'eth0.1': { name: 'switch0', vlan: 1, ports: [ port ] }, 'eth0.2': { name: 'switch1', vlan: 2, ports: [ port ] } } });
+	REPLIES['luci getSwconfigPortState'] = name => { calls.push(name); return Promise.resolve({ result: [] }); };
+	const self = Object.create(view), savedL = global.L;
+	global.L = { resolveDefault: (p, d) => Promise.resolve(p).catch(() => d) };
+	const flush = () => new Promise(r => setImmediate(r));
+	try {
+		await self.fetch(); await flush();
+		assert.deepEqual([ calls, [ ...self.knownMacs ] ], [ [], [] ], 'before the first model: nothing asked for them');
+		self.m = { routedDevs: [ 'eth0.1' ] };
+		const raw = await self.fetch(); await flush();
+		assert.deepEqual(calls, [ 'switch0' ], 'the switch the hosts are behind; not the one the gateway answers behind');
+		assert.deepEqual([ ...self.knownMacs ], [ '00:00:5e:00:53:21' ], 'and a name only for a host of its own');
+		assert.equal(raw.neigh.length, 2, 'the model still gets them all: it decides');
+	} finally {
+		global.L = savedL;
+		delete REPLIES['luci.vantage wired'];
+		delete REPLIES['luci getSwconfigPortState'];
+	}
+});
+
 test('another theme: the dashboard steps aside only when the Vantage theme is installed', () => {
 	const DASH = [ 'admin', 'status', 'dashboard' ], OVERVIEW = [ 'admin', 'status', 'overview' ];
 	/* Vantage is the theme in use */
@@ -4283,6 +4319,10 @@ test('offline: what the page still knows of a named device: when it was last lis
 	assert.deepEqual([ Object.keys(self.st.named), m.offline.map(c => c.name) ], [ [ '00:00:5e:00:53:32' ], [ 'attic camera', 'Den speaker', 'NAS' ] ]);
 	/* a bridge with too many entries to list: who is on its ports is not known, nobody is said to be offline */
 	self.markOffline(m = offModel(OFF_LEFT), { fdbCrowded: true }, 125000);
+	assert.deepEqual(m.offline, []);
+	/* the neighbours of a network without a bridge at the plugin's cap (#178): the same */
+	assert.ok(offModel(OFF_LEFT).offline.length > 0);
+	self.markOffline(m = Object.assign(offModel(OFF_LEFT), { neighFull: true }), {}, 126000);
 	assert.deepEqual(m.offline, []);
 	/* both the poll and a rebuild go through it, the poll with its time */
 	const src = fs.readFileSync(path.join(RES, 'view/vantage/overview.js'), 'utf8');

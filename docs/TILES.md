@@ -282,6 +282,14 @@ node -e "const m = require('./tests/luci-stub').load('vantage.model'); console.l
 
 `null` is no answer; an item missing from `items` was left out.
 
+Two traps on the way there (from a provider's field report, #129):
+
+- A plugin rpcd cannot load leaves no log line: rpcd says so on its
+  standard error, which nothing keeps. The object is just missing from
+  `ubus list`. Run the file through ucode on the router to see a syntax
+  error: `ucode /usr/share/rpcd/ucode/vantage.tile.<id>`.
+- ucode's loops take `let`: `for (const k in …)` is a syntax error.
+
 ## What a provider must not do
 
 - **Change anything in `status`.** It is called every few seconds, with

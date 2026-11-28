@@ -34,7 +34,7 @@ port in one click, finding anything by typing — not from their look.
 | Package | Contents | Depends |
 |---|---|---|
 | `luci-theme-vantage` | ucode templates, CSS, icons, `menu-vantage.js` (shell: rail, top bar, palette, tabs, indicators), login page, its rpcd ACL (`/etc/config/vantage_theme` only), that config | `+luci-base` |
-| `luci-app-vantage` | dashboard + inspector views under `admin/dashboard` (landing page), its rpcd ACL (reads + its own config only), its rpcd ucode plugin `luci.vantage` (key-free wireless status, temperatures, the bridges' wired hosts, the radios' channel survey, validated alias writes), its executable rpcd plugin `luci.vantage.ports` (a DSA switch's own port counters, read with `ethtool -S`), `/etc/config/vantage` | `+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-nl80211` (rpcd-mod-iwinfo, ucode-mod-fs, ucode-mod-rtnl and ucode-mod-nl80211 beyond luci-base; Wi-Fi images already have rtnl and nl80211, as wifi-scripts needs them); reverse DNS (`rpcd-mod-rrdns`), mDNS (`umdns`), `ethtool` (a DSA switch's own counters) and hostapd's ubus objects are optional and degrade |
+| `luci-app-vantage` | dashboard + inspector views under `admin/dashboard` (landing page), its rpcd ACL (reads + its own config only), its rpcd ucode plugin `luci.vantage` (key-free wireless status, temperatures, the wired hosts of its bridges and of its networks without one, the radios' channel survey, validated alias writes), its executable rpcd plugin `luci.vantage.ports` (a DSA switch's own port counters, read with `ethtool -S`), `/etc/config/vantage` | `+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-nl80211` (rpcd-mod-iwinfo, ucode-mod-fs, ucode-mod-rtnl and ucode-mod-nl80211 beyond luci-base; Wi-Fi images already have rtnl and nl80211, as wifi-scripts needs them); reverse DNS (`rpcd-mod-rrdns`), mDNS (`umdns`), `ethtool` (a DSA switch's own counters) and hostapd's ubus objects are optional and degrade |
 | `luci-app-vantage-aps` (optional) | the access points a router's dashboard shows, over SSH (section "Other access points"): the Network → Access points page, its rpcd ACL and ucode plugin `luci.vantage.pair` (pairing), the collector service (router) and the report command (access point) | `+luci-app-vantage +rpcd-mod-ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci +ucode-mod-uloop`; Dropbear at run time (server on the access points, `dbclient` on the router), not as a dependency |
 | `luci-app-vantage-traffic` (optional, experimental) | per-device traffic for hosts that share a port of the router, from its connection tracking (section "Per-device traffic"): its rpcd ACL and an executable rpcd plugin, `luci.vantage.traffic`, which rpcd runs as a process of its own | `+luci-app-vantage +rpcd +ucode +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-uci`; `kmod-nf-conntrack` with accounting at run time (a router's default), not as a dependency |
 
@@ -379,7 +379,8 @@ text around it so it looks the same size.
   control of a connected client, which also removes the name. "In
   neither list" is all this device can tell: a wired device drops out
   of its list once the bridge forgets it (about five minutes without
-  traffic), which the details say; and while a bridge holds too many
+  traffic; on a network without a bridge, five minutes after this device
+  last had it confirmed), which the details say; and while a bridge holds too many
   entries to list, nobody is said to be offline. A wired
   host alone on its port gets the port's link speed and traffic as its
   own; hosts sharing a port (a switch or another access point behind it)
@@ -540,7 +541,26 @@ text around it so it looks the same size.
   bridge's port): what that port carries for the access point's other
   networks is bridged on and counted once. The result reads a little high (the kernel counts a few bytes
   less a packet on the VLAN's device), and the counters since boot in
-  the line's details stay the device's. Known limit: with software flow
+  the line's details stay the device's. The main line, where it is one
+  port of a swconfig switch (its VLAN reaches this device as the line's
+  device, tagged or untagged, and has that one port, which is in no
+  other VLAN of the switch: `model.lineChip`), is counted by that
+  port's own counters where the device gives them
+  (`luci.vantage.ports`, below, which reads the port the board file
+  names as WAN): the chip counts the line and nothing else, with or
+  without flow offloading. A port another VLAN uses too (IPTV beside
+  the internet) is not taken: the chip would count both. The line is
+  the chip's from the port's first reading, which gives no rate yet,
+  and never shows another line's or the kernel's meanwhile. A poll that
+  brings no rate of the chip's (no reading, a counter that went back)
+  shows the last one measured there, for 20 s at most (by the browser's
+  clock) and as no new point of the history, then the kernel's again; a
+  poll without the switch map keeps the port, for 20 s since the map
+  last named it. The fast lane leaves such a line to the poll, and an
+  answer of its own that comes in late, or for a device that is no
+  longer the line's, changes nothing.
+  The other lines to the internet stay the kernel's.
+  Known limit, where the chip's counters are not to be had: with software flow
   offloading the kernel does not count on a VLAN's device what an
   offloaded connection brings in on it, only what it sends out there
   (measured on 24.10's kernel, a bridge over the VLAN's device): the
@@ -668,7 +688,12 @@ text around it so it looks the same size.
   for the page, so a device without such a switch starts no process for
   it every poll. Only the first: once it has answered, a later answer of
   any kind (rpcd's objects are gone for a moment while it reloads, at
-  every package install) is that poll's alone. Nothing is shown about traffic the counters miss.
+  every package install) is that poll's alone. For a swconfig switch
+  (#166), six answers running that bring no counter of any port, on a
+  page that has had none, end the asking too: a switch whose reads fail
+  every time, whatever the plugin makes of the reason, starts a program
+  for half a minute and no longer. A page that has had a counter once
+  asks for good, and a DSA switch's answers are not counted. Nothing is shown about traffic the counters miss.
 - **Throughput chart**: one row per line, then each radio, each
   with its own scale. Under "Customize", the viewer picks how download and
   upload share a row: overlaid on one scale (the default), overlaid on a
@@ -943,7 +968,72 @@ text around it so it looks the same size.
   call parse thousands) or one MAC sits on two ports of a bridge (each
   row's time since heard is the dump's own). brforward's byte order is
   the host's, learned from the first dump. The bridge forgets a host
-  after about five minutes without traffic.
+  after about five minutes without traffic. A network without a bridge
+  (`lan` set on `eth0` itself, #178) has no forwarding database: for
+  those `wired` also returns `neighbours`, the hosts in the kernel's
+  neighbour tables (ARP and IPv6 neighbour discovery; one more read-only
+  dump a family, RTM_GETNEIGH for AF_INET and AF_INET6) on a device that
+  is no bridge, no interface cfg80211 drives and no VLAN on either by
+  its name (`br-lan.20`): MAC, device and seconds since the kernel last
+  had the host confirmed, each MAC once a device, and only while that is
+  under 300 s (a bridge forgets a host after as long; the kernel keeps a
+  silent neighbour for hours). Confirmed is the kernel's own word: a
+  reply to its lookup, which it sends about once a minute to a neighbour
+  it is sending to, or progress on a connection of this device's own
+  with the host; an entry that a host's own lookup made starts out twice
+  the base reachable time old (a minute, by default) without any reply.
+  It is not the host's last frame, as a bridge's time is: a host
+  that only sends through this device and gets nothing back leaves the
+  list while it sends, as does one whose traffic all bypasses the kernel
+  (hardware flow offloading) unless it also talks to this device itself
+  (DNS, DHCP); one that only talks to others on its network is never
+  listed; one that left stays for up to five minutes. No addresses (the
+  host hints have them), no entry that was not learned (failed,
+  incomplete, a device without ARP, and permanent: a host with a static
+  ARP binding is never listed, the kernel does not check those), no
+  group address; at
+  most 128 a device and 512 in all, in the dump's order (IPv4 first),
+  and no member at all where there are none. A WAN on an adapter of its
+  own is such a device too, so its gateway is among them: which of them
+  are this device's hosts is the dashboard's to tell. Both dumps are
+  read whole: what the hosts of a network can make the kernel hold is
+  capped (`gc_thresh3`, 1,024 a family unless raised), the permanent
+  and externally learned entries an administrator or a daemon adds are
+  not. The dashboard lists one
+  as a wired host on its device, with the network on that device (the
+  first that qualifies, where it carries two), only where the device
+  carries a network of this device's own: one that is up with a fixed
+  address (`static`), on a device that no line to the internet leaves by
+  (nor a default route of the kernel's main table), that carries no
+  interface, up or down, of another protocol than `static` or `none` (a
+  DHCPv6 client beside the static network counts) nor one with a default
+  route in any table that netifd names, set or switched off, and that is
+  no bridge, no Wi-Fi interface and no VLAN on one, however many devices
+  lie between. What answers anywhere else is upstream or not this
+  device's to list: a WAN (also one that is down, or routed by policy),
+  a modem's own network on the WAN's port, the LAN a device has its
+  address from. Two cases it cannot tell and lists: the port of a static
+  WAN taken down by hand (netifd names no route of an interface that is
+  down), and one beside a default route that a daemon put in a table of
+  its own.
+  A host that any bridge has heard stays that bridge's, a station a
+  station, and a paired access point takes one by the rule for any wired
+  host. One alone among them on its device has the device's link and
+  traffic as its own, as one alone on a bridge's port, though the
+  neighbour table does not say who else is on the wire; but no traffic
+  of its own, and no place among Top talkers, where the adapter carries
+  other devices (the WAN's VLAN on `eth0`): the kernel counts theirs on
+  it too. While the neighbours of one of these devices are at a cap (or
+  512 in all, where there is such a device), nobody is said to be
+  offline; and only hosts on the devices the poll before took for its
+  own, not what answers upstream, have the dashboard ask for a switch's
+  link state or a fresh name. Its switch map says of each
+  port how many of the switch's VLANs the port is in (`vlans`; the VLANs
+  that reach no CPU port counted too, and left out unless every
+  `switch_vlan` section and role was read and counted: one of a switch
+  named another way, without a VLAN or ports, or past a cap is not, and
+  swconfig may still apply it): a port in one VLAN carries that VLAN
+  alone, which the uplink's rate by its switch port needs (#166).
   `routes` returns the default route the kernel takes to the internet,
   for IPv4 and IPv6 (family, device and metric; no gateways): one
   read-only lookup a family (RTM_GETROUTE with RTM_F_FIB_MATCH, as `ip
@@ -1022,9 +1112,37 @@ text around it so it looks the same size.
   lists the device's DSA ports,
   the entries of `/sys/class/net` whose `uevent` says `DEVTYPE=dsa`, by
   a name of letters, digits, `_` and `-` (not first, 15 at most), 32 at
-  most in name order; where there is none, or no `/usr/sbin/ethtool`
-  (not a dependency), it starts nothing and says so (`state` `none`,
-  `no-ethtool`). Otherwise it runs `ethtool -S <port>` for each, none
+  most in name order; where there is none it looks for a swconfig
+  switch (next), and without one of those either, or with DSA ports and
+  no `/usr/sbin/ethtool` (not a dependency), it starts nothing and says
+  so (`state` `none`, `no-ethtool`). On a device without a DSA port
+  (#166) it reads the WAN ports of the switches `/etc/board.json` names
+  (a name by the same rule; the ports of the role `wan`, never a CPU
+  port, by a number from 0 to 63; 32 in all, and one on nearly every
+  router: one program a call, since the dashboard rates nothing by a
+  LAN port there), each with `/sbin/swconfig dev <switch> port <number>
+  get mib` where that program is there, under the same lock, budget and
+  output cap, and answers them under `switches` by the switch's name
+  and the port's number. The kernel hands these counters out over its
+  "switch" netlink family, which ucode has no module for and swconfig
+  speaks (the Realtek drivers' debugfs file is not built into OpenWrt's
+  kernels): hence a program, as for LuCI's own switch page. The board
+  file reaches `json()` only read whole and an object by its ends: the
+  plugin catches nothing, and one that is corrupt within fails the call
+  (the page keeps the kernel's counters). A read swconfig ends with
+  status 246 and without output is `unknown`: the driver's own "not
+  supported" (256 less libnl's code for it), at every call (ar8216.c
+  reads its counters only with a poll interval set, by the board's
+  device tree or `ar8xxx_mib_poll_interval` in the switch's uci
+  section), so the page asks no more and starts nothing further. Any
+  other failure (no answer from the chip in time, no such switch, a
+  driver without a `mib` attribute), and a byte counter the Realtek
+  drivers print `error` for, is `failed`: that call's, and asked again
+  (six such answers running end the asking, above). A port's counters are the pair of
+  names its driver prints (`RxGoodByte`/`TxByte` ar8xxx,
+  `RxOctets`/`TxOctets` b53, `IfInOctets`/`IfOutOctets` and
+  `ifInOctets`/`ifOutOctets` the Realtek drivers), and ar8xxx's "No MIB
+  data" is 0. Otherwise it runs `ethtool -S <port>` for each, none
   after its first second (`time`), reads 32 KiB of each run at most,
   gives each port the time its `ethtool` started (`at`, ms on the
   device's monotonic clock), and keeps a run only when it exits 0 and starts with `NIC
@@ -1779,15 +1897,19 @@ measured on few devices so far.
   Invented locally administered MACs use the 02:00:5E:xx:xx:xx prefix
   (IANA OUI with the U/L bit set; e.g. the replay's synthetic BSSIDs);
   no other MACs pass.
-- The dashboard starts one program, from its executable rpcd plugin
-  `luci.vantage.ports` (#156), in a process of rpcd's: `/usr/sbin/ethtool
-  -S` and the name of one of the device's own DSA ports, which the plugin
-  finds in `/sys/class/net` and holds to letters, digits, `_` and `-`
-  (never first), at most 32 ports, none after its first second and 32
-  KiB of each run read, one call at a time (a lock on an empty file of
-  its own in `/var/run/vantage-ports`, the one thing it writes); nothing
-  the caller sends reaches the command,
-  and without a DSA port or `ethtool` nothing is started. Its read group
+- The dashboard starts one of two programs, from its executable rpcd
+  plugin `luci.vantage.ports` (#156, #166), in a process of rpcd's:
+  `/usr/sbin/ethtool -S` and the name of one of the device's own DSA
+  ports, which the plugin finds in `/sys/class/net` and holds to
+  letters, digits, `_` and `-` (never first); or, on a device without a
+  DSA port, `/sbin/swconfig dev <switch> port <number> get mib`, a read
+  of the WAN port's counters, with a switch's name from `/etc/board.json`
+  held to the same rule and a port's number the plugin prints itself.
+  At most 32 ports, none after its first second and 32 KiB of each run
+  read, one call at a time (a lock on an empty file of its own in
+  `/var/run/vantage-ports`, the one thing it writes); nothing the caller
+  sends reaches a command, and without a DSA port or `ethtool`, and
+  without a swconfig switch or `swconfig`, nothing is started. Its read group
   grants the call and no other group of a Vantage package names it;
   `luci.vantage` starts nothing. `test_acl_policy.js` pins all of it.
 - Apart from that, `luci-app-vantage-aps` (optional) is the only Vantage

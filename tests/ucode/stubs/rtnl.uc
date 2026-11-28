@@ -3,8 +3,10 @@
 // where none may happen), and a route lookup's answer for a family from
 // global STUB.lookup, keyed "2" (AF_INET) and "10" (AF_INET6): a route,
 // false (the kernel's error: no route) or null (not sent); 'no lookup':
-// a case where none may happen. Fails closed: any other request stops
-// the run. Constants as the kernel's.
+// a case where none may happen; and a dump of a family's neighbours
+// (ARP, IPv6 neighbour discovery) from global STUB.neigh, keyed likewise
+// (none given: null, the request failed). Fails closed: any other request
+// stops the run. Constants as the kernel's.
 'use strict';
 
 const C = {
@@ -12,7 +14,8 @@ const C = {
 	RTM_NEWROUTE: 24, RTM_GETROUTE: 26, RTM_F_FIB_MATCH: 0x2000,
 	NLM_F_DUMP: 0x300, AF_INET: 2, AF_INET6: 10, AF_BRIDGE: 7,
 	RT_TABLE_MAIN: 254, RTN_UNICAST: 1,
-	NUD_REACHABLE: 0x02, NUD_STALE: 0x04, NUD_NOARP: 0x40, NUD_PERMANENT: 0x80,
+	NUD_INCOMPLETE: 0x01, NUD_REACHABLE: 0x02, NUD_STALE: 0x04, NUD_DELAY: 0x08, NUD_PROBE: 0x10, NUD_FAILED: 0x20,
+	NUD_NOARP: 0x40, NUD_PERMANENT: 0x80,
 	NTF_SELF: 0x02, NTF_MASTER: 0x04
 };
 
@@ -24,6 +27,9 @@ function request(cmd, flags, msg) {
 
 		return global.STUB.lookup?.[sprintf('%d', msg.family)];
 	}
+
+	if (cmd == C.RTM_GETNEIGH && flags == C.NLM_F_DUMP && type(msg) == 'object' && length(msg) == 1 && (msg.family == C.AF_INET || msg.family == C.AF_INET6))
+		return global.STUB.neigh?.[sprintf('%d', msg.family)];
 
 	if (cmd != C.RTM_GETNEIGH || flags != C.NLM_F_DUMP || type(msg) != 'object' || msg.family != C.AF_BRIDGE || length(msg) != 1)
 		die(sprintf('rtnl stub: request %J %J %J', cmd, flags, msg));

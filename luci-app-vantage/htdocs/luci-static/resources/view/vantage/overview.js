@@ -86,6 +86,17 @@ var COLLECTOR_RETRY_MS = 60 * 1000;
 /* how long a poll waits for a switch chip's own counters (askSwitch):
    the plugin reads no port after its first second */
 var SWITCH_WAIT_MS = 2 * 1000;
+/* answers of a swconfig switch in a row, on a page that has had no
+   counter, that bring none of any port: the page asks no more after
+   them (a switch whose driver gives none, whatever the plugin makes of
+   its reason). A DSA switch's answers are not counted: the first one
+   decides there, as before (#156) */
+var SWITCH_DRY = 6;
+/* how long the line counted by its switch port's chip keeps the last
+   rate measured there while polls bring no new one (another call was
+   reading the chip, a counter went back), and its port while they bring
+   no switch map: three polls and a little, by the browser's clock */
+var CHIP_HOLD_MS = 20 * 1000;
 /* After a slow answer (slowWait) the next call waits ten times as long as
    that one took, SLOW_WAIT_MAX_MS at most. A call measured over
    REQUEST_MAX_MS (LuCI gives a request up after 20 s) was out while the
@@ -141,8 +152,9 @@ var callDev = rpc.declare({ object: 'network.device', method: 'status', params: 
    without keys or RADIUS secrets, and the validated alias write */
 var callWifi = rpc.declare({ object: 'luci.vantage', method: 'wireless', expect: { '': {} } });
 var callThermal = rpc.declare({ object: 'luci.vantage', method: 'thermal', expect: { zones: [] } });
-/* { hosts, crowded, switches }: crowded when a bridge holds too many
-   entries to list; switches, the swconfig switch ports behind a port */
+/* { hosts, crowded, switches, neighbours }: crowded when a bridge holds
+   too many entries to list; switches, the swconfig switch ports behind a
+   port; neighbours, the hosts on a network without a bridge (#178) */
 var callWired = rpc.declare({ object: 'luci.vantage', method: 'wired', expect: { '': {} } });
 /* the route the kernel takes to the internet: which one it kept of two
    with one metric; { routes: null } when it could not be asked */
@@ -1218,7 +1230,11 @@ return view.extend({
 		var self = this;
 		if (this.hwOff || this.hwCall) return Promise.resolve(null);
 		var call = this.hwCall = callSwitchCounters().then(function(v) {
-			return model.switchCounters(v);
+			var c = model.switchCounters(v);
+			if (c && (Object.keys(c.counters).length || Object.keys(c.swports).length)) self.hwGot = true;
+			/* v.switches: the plugin read a swconfig switch (SWITCH_DRY) */
+			else if (c && !self.hwGot && v.switches && (self.hwDry = (self.hwDry || 0) + 1) >= SWITCH_DRY) self.hwOff = true;
+			return c;
 		}, function(e) {
 			if (!self.hwAnswered && WG_ABSENT.test(String(e && e.message))) self.hwOff = true;
 			return null;
@@ -1479,7 +1495,12 @@ return view.extend({
 			   shows from the next one */
 			var switches = (wiredReply.switches && typeof wiredReply.switches === 'object' && !Array.isArray(wiredReply.switches)) ? wiredReply.switches : {};
 			var swState = self.swState || (self.swState = Object.create(null));
-			var hostPorts = (Array.isArray(wiredReply.hosts) ? wiredReply.hosts : []).map(function(h) { return h && h.port; });
+			/* the neighbours, and those the last model took for wired hosts
+			   (mine): only they ask for a switch's state or a name, not
+			   what answers upstream */
+			var neigh = Array.isArray(wiredReply.neighbours) ? wiredReply.neighbours : [], own = (self.m && self.m.routedDevs) || [];
+			var mine = neigh.filter(function(h) { return h && own.indexOf(h.dev) >= 0; });
+			var hostPorts = (Array.isArray(wiredReply.hosts) ? wiredReply.hosts : []).map(function(h) { return h && h.port; }).concat(mine.map(function(h) { return h.dev; }));
 			var due = [], asked = Date.now();
 			Object.keys(switches).forEach(function(dev) {
 				var n = switches[dev] && switches[dev].name;
@@ -1548,7 +1569,7 @@ return view.extend({
 				var known = self.knownMacs || (self.knownMacs = new Set()), fresh = false, first = !self.macsSeen;
 				var note = function(s) { if (s && typeof s.mac === 'string' && !known.has(s.mac)) { known.add(s.mac); fresh = true; } };
 				Object.keys(assoc).forEach(function(ifn) { (Array.isArray(assoc[ifn]) ? assoc[ifn] : []).forEach(note); });
-				(Array.isArray(wiredReply.hosts) ? wiredReply.hosts : []).forEach(note);
+				(Array.isArray(wiredReply.hosts) ? wiredReply.hosts : []).concat(mine).forEach(note);
 				/* bounded: a flood of made-up addresses starts the set over */
 				if (known.size > 4096) self.knownMacs = null;
 				self.macsSeen = true;
@@ -1561,7 +1582,7 @@ return view.extend({
 				var switchState = Object.create(null);
 				Object.keys(swState).forEach(function(n) { switchState[n] = swState[n].ports; });
 				var raw = { info: info, lost: lost, stat: r[1] || '', ifaces: r[2] || [], devs: r[3] || {}, wifi: wifiDevs, hints: r[5] || self.hintsCache || {}, thermal: r[6] || [],
-					fdb: Array.isArray(wiredReply.hosts) ? wiredReply.hosts : [], fdbCrowded: wiredReply.crowded === true, switches: switches, switchState: switchState,
+					fdb: Array.isArray(wiredReply.hosts) ? wiredReply.hosts : [], neigh: neigh, fdbCrowded: wiredReply.crowded === true, wiredOk: switches === wiredReply.switches, switches: switches, switchState: switchState,
 					/* no answer (an older plugin, a lookup not sent, a failed call)
 					   keeps the last one: no tunnel blinking off */
 					routes: r[8] && Array.isArray(r[8].routes) ? (self.kernelRoutes = r[8].routes) : (self.kernelRoutes || null),
@@ -1607,6 +1628,8 @@ return view.extend({
 			portsSeen: false,
 			traffic: null, trafficRates: null, trafficPrev: null, trafficSeen: 0, trafficNew: 0, trafficAt: null,
 			ext: Object.create(null),
+			/* the main line counted by its switch port's chip (ingest): { key, sw, num, dev, rate, since, map } */
+			chip: null,
 			lastOk: 0, lastErr: null, paused: false
 		};
 		this.ui = { sorts: readSorts(), kind: 'wifi', filter: '', chip: 'all', drawer: null, editing: null, hover: null, wgOpen: Object.create(null) };
@@ -1644,7 +1667,7 @@ return view.extend({
 		var st = this.st;
 		return {
 			board: this.board, info: raw.info, ifaces: raw.ifaces, devs: raw.devs, wifi: raw.wifi, iwinfo: raw.iwinfo,
-			assoc: raw.assoc, hapd: raw.hapd, hapdStatus: raw.hapdStatus, survey: raw.survey, hints: raw.hints, fdb: raw.fdb,
+			assoc: raw.assoc, hapd: raw.hapd, hapdStatus: raw.hapdStatus, survey: raw.survey, hints: raw.hints, fdb: raw.fdb, neigh: raw.neigh,
 			switches: raw.switches, switchState: raw.switchState, routes: raw.routes, collector: raw.collector,
 			aliases: this.aliases, rdns: st.rdns, mdns: st.mdns,
 			vendor: st.oui ? function(k) { return k ? st.oui.lookup(k) : null; } : null
@@ -1698,7 +1721,21 @@ return view.extend({
 			if (c) devCounters[n] = { rx: c.rx, tx: c.tx, src: 'switch', at: c.at };
 			else if (s) devCounters[n] = { rx: s.rx_bytes, tx: s.tx_bytes };
 		});
+		/* the main line to the internet, where it is one port of a
+		   swconfig switch that the port has to itself (model.lineChip,
+		   #166), is counted by that port's chip, under the port's own
+		   name among the devices'. It keeps its port while the switch
+		   map is out (no answer says nothing of the port), for
+		   CHIP_HOLD_MS since the map last named it */
+		var sp = raw.hw && raw.hw.swports, up = m.uplink, own = st.chip;
+		var kept = own && up && !up.chip && !raw.wiredOk && own.dev === up.statsDev && now - own.map < CHIP_HOLD_MS ? own : null;
+		var chip = up ? up.chip || kept : null;
+		var read = chip && sp && sp[chip.sw] ? sp[chip.sw][chip.num] || null : null;
+		if (read) devCounters[chip.key] = { rx: read.rx, tx: read.tx, src: 'switch', at: read.at };
 		var dr = model.rates(st.devPrev, devCounters, at);
+		/* a poll without its reading keeps the last one, so that the
+		   next rate is across both polls and not a start over */
+		if (chip && !read && st.devPrev && st.devPrev[chip.key]) dr.next[chip.key] = st.devPrev[chip.key];
 		st.devPrev = dr.next;
 		if (Object.keys(dr.rates).length || !Object.keys(devCounters).length) st.devRates = dr.rates;
 
@@ -1734,12 +1771,28 @@ return view.extend({
 		m.ssids.forEach(function(s) { var v = s.ifname ? sum([ s.ifname ], [ s.id ]) : null; if (v) st.ssidRates[s.id] = v; });
 		/* the uplink: the fast lane's own while it samples this uplink's
 		   device; else (no uplink, a new device, the lane stopped) this poll's */
-		var upFast = fast && !!m.uplink && st.fastDev === m.uplink.statsDev;
-		var upRate = upFast ? st.uplinkRate : model.lineRate(m.uplink, st.devRates);
+		/* by its switch port's chip (st.chip) from the port's first
+		   reading: the kernel's rate of the line's device is not the
+		   line's then (model.lineChip), so neither the fast lane's nor
+		   this poll's is taken. A poll that brings no rate of the chip's
+		   (no reading, the first one, a counter that went back) shows the
+		   last one measured for this port, none before the first, never
+		   another line's, for CHIP_HOLD_MS; then the line is the
+		   kernel's again */
+		var fresh = chip ? dr.rates[chip.key] || null : null, same = !!(own && chip && own.key === chip.key && own.dev === up.statsDev);
+		/* since: when its rate was measured (the port taken, before the first); map: when the switch map last named the port */
+		var held = !fresh && same && now - own.since < CHIP_HOLD_MS, named = kept ? own.map : now;
+		if (fresh) st.chip = { key: chip.key, sw: chip.sw, num: chip.num, dev: up.statsDev, rate: fresh, since: now, map: named };
+		else if (held) st.chip = { key: own.key, sw: own.sw, num: own.num, dev: own.dev, rate: own.rate, since: own.since, map: named };
+		else if (read && !same) st.chip = { key: chip.key, sw: chip.sw, num: chip.num, dev: up.statsDev, rate: null, since: now, map: named };
+		else st.chip = null;
+		var upFast = !st.chip && fast && !!up && st.fastDev === up.statsDev;
+		var upRate = st.chip ? st.chip.rate : upFast ? st.uplinkRate : model.lineRate(up, st.devRates);
 		st.uplinkRate = upRate || null;
 
-		/* throughput history (only for ticks that produced a rate) */
-		if (upRate && !upFast) this.pushNet(lineKey(m.uplink), at, upRate);
+		/* throughput history (only for ticks that produced a rate: one
+		   held over from an earlier poll is no new point) */
+		if (upRate && !upFast && !held) this.pushNet(lineKey(up), at, upRate);
 		/* the other lines to the internet: this poll's (the fast lane
 		   samples the main one only) */
 		this.extraLines(m).forEach(function(x) { var r = model.lineRate(x, st.devRates); if (r) self.pushNet(lineKey(x), at, r); });
@@ -1852,7 +1905,7 @@ return view.extend({
 			});
 			Object.keys(seen).forEach(function(mac) { if (!aliases[mac]) delete seen[mac]; });
 		}
-		if (raw && raw.fdbCrowded) m.offline = [];
+		if ((raw && raw.fdbCrowded) || m.neighFull) m.offline = [];
 		m.offline.forEach(function(c) {
 			var s = seen[c.mac];
 			c.lastSeen = s ? s.at : null;
@@ -1953,7 +2006,10 @@ return view.extend({
 	},
 
 	fastSample: function() {
-		var self = this, st = this.st, up = this.m && this.m.uplink, dev = up && up.statsDev;
+		var self = this, st = this.st, up = this.m && this.m.uplink;
+		/* the line counted by its switch port's chip is the full poll's
+		   (ingest, st.chip): this lane reads the kernel's counters */
+		var dev = (up && !st.chip && up.statsDev) || null;
 		/* the line's device, then the VLANs that come off it (model.lineVlans) */
 		var devs = dev ? [ dev ].concat(up.minus || []) : [];
 		if (document.hidden || !this.el || this.idle()) return Promise.resolve();
@@ -1962,11 +2018,15 @@ return view.extend({
 		}))).then(function(r) {
 			/* rates from the browser's clock, samples on the device's timeline */
 			var now = Date.now(), at = now + (st.skew || 0), changed = false;
+			/* as it is now: a full poll may have given the line to the
+			   chip, or made another device the line, while this lane's
+			   answer was out: its rate is not the line's then */
+			var cur = self.m && self.m.uplink, byChip = !!st.chip, mine = !byChip && !!dev && !!cur && cur.statsDev === dev;
 			/* back after a pause (a hidden tab) or on another device: start
 			   over, so the first reading isn't an average over the gap */
 			if (!self.fastLive() || st.fastDev !== dev) { st.fastStat = null; st.fastPrev = null; }
 			/* no uplink, or another device: no rate until this one has two samples */
-			if (st.fastDev !== (dev || null) && st.uplinkRate) { st.uplinkRate = null; changed = true; }
+			if (!byChip && st.fastDev !== (dev || null) && st.uplinkRate) { st.uplinkRate = null; changed = true; }
 			st.fastDev = dev || null;
 			var stat = model.parseStat(r[0]);
 			if (stat) {
@@ -1983,7 +2043,7 @@ return view.extend({
 			devs.forEach(function(n, i) { var c = r[1 + i] && r[1 + i].statistics; if (c) counters[n] = { rx: c.rx_bytes, tx: c.tx_bytes }; });
 			var dr = model.rates(st.fastPrev, counters, now), rate = model.lineRate(up, dr.rates);
 			st.fastPrev = dr.next;
-			if (rate) { st.uplinkRate = rate; self.pushNet(lineKey(up), at, st.uplinkRate); changed = true; }
+			if (rate && mine) { st.uplinkRate = rate; self.pushNet(lineKey(up), at, st.uplinkRate); changed = true; }
 			/* both answered: the full poll leaves CPU and the uplink to this lane */
 			if (stat && (!dev || s)) st.fastAt = now;
 			if (changed) self.paintFast();
@@ -4569,11 +4629,12 @@ return view.extend({
 		this.el.clients.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
 	},
 
-	/* a wired host's traffic: its port's, when it has the port to itself */
+	/* a wired host's traffic: its port's, when it has the port to itself
+	   (not where the port's counters hold other networks' traffic: mixed) */
 	portRate: function(c) {
 		/* behind a paired access point: its port's, as it reports it */
 		if (c.ap) return c.ap.rate || null;
-		return c.shared ? null : this.st.devRates[c.port] || null;
+		return c.shared || c.mixed ? null : this.st.devRates[c.port] || null;
 	},
 
 	/* what the Clients list shows for a wired host: portRate's, except
@@ -4822,7 +4883,7 @@ return view.extend({
 		   bridge last heard from them instead of radio figures */
 		var cols = off ? [ [ 'name', _('Device') ], [ 'net', _('Last address') ], [ 'seen', _('Last seen') ] ]
 			: wired ? [ [ 'name', _('Device') ], [ 'link', _('Link', 'vantage') ], [ 'net', _('Network') ], [ 'live', _('Live') ],
-			[ 'seen', _('Last heard'), _('The bridge forgets a device after about five minutes without traffic') ] ]
+			[ 'seen', _('Last heard'), _('A device leaves this list about five minutes after it was last heard') ] ]
 			: [ [ 'name', _('Device') ], [ 'signal', _('Signal') ], [ 'ssid', _('Network') ], [ 'rate', _('Link rate') ], [ 'live', _('Live') ], [ 'exp', _('Experience') ], [ 'time', _('Online', 'vantage') ] ];
 		var so = ui.sorts[ui.kind];
 		/* the offline list is by name, always: its headers are labels */
@@ -4900,7 +4961,7 @@ return view.extend({
 				E('p', {}, [ _('The bridges have learned so many addresses that listing them here would strain this device.') ])
 			] : wired ? [
 				icon('router'), E('p', { 'class': 'vt-empty-title' }, [ _('No wired devices heard') ]),
-				E('p', {}, [ _('Devices on the Ethernet ports appear here once they send traffic; the bridge forgets quiet ones after about five minutes.') ])
+				E('p', {}, [ _('Devices on the Ethernet ports appear here once they send traffic; quiet ones leave the list after about five minutes.') ])
 			] : [
 				icon('wifi'), E('p', { 'class': 'vt-empty-title' }, [ _('No clients connected') ]),
 				E('p', {}, [ _('Stations appear here as soon as they associate with one of the SSIDs.') ])

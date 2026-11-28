@@ -13,7 +13,9 @@
                              plugin reads sysfs; none without one
      luci.vantage wired      the hosts of a bridge forwarding database
                              dump shaped as rtnl's: synthetic.js invents
-                             one, wired.js replaces the reply in --wired
+                             one, wired.js replaces the reply in --wired;
+                             no neighbours of a network without a bridge
+                             (neighbours() is the plugin's, for the tests)
      luci.vantage routes     the route lookups' answers, shaped as rtnl's:
                              kernelLookup() makes them from the interface
                              dump the dashboard gets (server.js passes it,
@@ -45,6 +47,8 @@ const MAX_HOSTS = 512;
 const MAX_PER_PORT = 128;
 /* the kernel's numbers, as rtnl.const */
 const NUD_NOARP = 0x40, NUD_PERMANENT = 0x80, NTF_SELF = 0x02;
+const NUD_HEARD = 0x02 | 0x04 | 0x08 | 0x10;   /* reachable, stale, delay, probe */
+const NEIGH_FRESH_S = 300;
 const AF_INET = 2, AF_INET6 = 10, RT_TABLE_MAIN = 254, RTN_UNICAST = 1;
 
 /* rpcd ubus status codes */
@@ -408,6 +412,34 @@ function wired(fdb) {
 	return out;
 }
 
+/* neighbours: [ { mac, dev, seen } ] from the two neighbour dumps as rtnl
+   gives them, { 2: IPv4's, 10: IPv6's } (or nothing), as the plugin's
+   neighbours(): the hosts on a network without a bridge (#178). `plain`
+   says whether a device is no bridge and no interface cfg80211 drives;
+   a VLAN on one by its name (br-lan.20) is left out too. The replay
+   invents none. */
+function neighbours(dumps, plain) {
+	const out = [], at = Object.create(null), per = Object.create(null);
+	const netdev = v => typeof v === 'string' && /^[A-Za-z0-9_.-]{1,15}$/.test(v);
+	for (const fam of [ AF_INET, AF_INET6 ]) {
+		const dump = dumps && typeof dumps === 'object' ? dumps[fam] : null;
+		for (const n of Array.isArray(dump) ? dump : []) {
+			const mac = (n && typeof n === 'object' && !Array.isArray(n)) ? normMac(n.lladdr) : null;
+			const dev = mac && netdev(n.dev) ? n.dev : null;
+			const age = dev && n.cacheinfo && typeof n.cacheinfo === 'object' && !Array.isArray(n.cacheinfo) ? n.cacheinfo.confirmed : null;
+			if (!dev || isMulticast(mac) || !Number.isInteger(n.state) || !(n.state & NUD_HEARD) ||
+			    !Number.isInteger(age) || age < 0 || age >= NEIGH_FRESH_S * 100) continue;
+			const k = dev + '|' + mac, seen = Math.floor(age / 100);
+			if (at[k]) at[k].seen = Math.min(at[k].seen, seen);
+			else if (plain(dev) && plain(dev.split('.')[0]) && out.length < MAX_HOSTS && (per[dev] || 0) < MAX_PER_PORT) {
+				per[dev] = (per[dev] || 0) + 1;
+				out.push(at[k] = { mac, dev, seen });
+			}
+		}
+	}
+	return out;
+}
+
 /* routes: [ { family, dev, metric } ] from the two lookups' answers as
    rtnl gives them, { 2: IPv4's, 10: IPv6's } (a route, false for the
    kernel's error, which for a lookup is no route, null when not sent), as
@@ -494,4 +526,4 @@ function call(store, method, args) {
 	return { result: [ 0, (method === 'set_quiet' ? setQuiet : setAlias)(storeCursor(store), args) ] };
 }
 
-module.exports = { OBJECT, POLICY, MAX_ALIASES, MAX_QUIET, MAX_SURVEY, NAME_MAX, ICONS, normMac, validateName, reduceWireless, wirelessFromConfig, wirelessReply, apVlans, thermal, wired, routes, kernelLookup, survey, setAlias, setQuiet, argsOk, call };
+module.exports = { OBJECT, POLICY, MAX_ALIASES, MAX_QUIET, MAX_SURVEY, NAME_MAX, ICONS, normMac, validateName, reduceWireless, wirelessFromConfig, wirelessReply, apVlans, thermal, wired, neighbours, routes, kernelLookup, survey, setAlias, setQuiet, argsOk, call };

@@ -80,14 +80,31 @@ function setup(o) {
 			'[ -f \'' + dir + '/out/\'"$2" ] || exit 1\ncat \'' + dir + '/out/\'"$2" && printf \'%s\\n\' "$2" >> \'' + dir + '/finished\'\n' +
 			'[ -f \'' + dir + '/code/\'"$2" ] && exit "$(cat \'' + dir + '/code/\'"$2")"\nexit 0\n', { mode: o.ethtool === 'plain' ? 0o644 : 0o755 });
 	}
+	/* a swconfig switch (#166): o.board, the device's board.json (none: no such file); o.mib: { 'switch0.1': what
+	   swconfig prints for that port }; o.mibCode: its exit code; o.swconfig: false for none, 'plain' for not executable.
+	   The fake logs its arguments to swcalls and takes nothing but "dev <switch> port <n> get mib" */
+	const swbin = path.join(dir, 'bin', 'swconfig'), board = path.join(dir, 'board.json');
+	fs.mkdirSync(path.join(dir, 'mib'));
+	fs.mkdirSync(path.join(dir, 'mibcode'));
+	if (o.board !== undefined) fs.writeFileSync(board, typeof o.board === 'string' ? o.board : JSON.stringify(o.board));
+	for (const [ port, text ] of Object.entries(o.mib || {})) fs.writeFileSync(path.join(dir, 'mib', port), text);
+	for (const [ port, code ] of Object.entries(o.mibCode || {})) fs.writeFileSync(path.join(dir, 'mibcode', port), String(code));
+	if (o.swconfig !== false) {
+		fs.writeFileSync(swbin, '#!/bin/sh\nprintf \'%s\\n\' "$*" >> \'' + dir + '/swcalls\'\n' +
+			'[ "$#" -eq 6 ] && [ "$1" = dev ] && [ "$3" = port ] && [ "$5 $6" = "get mib" ] || exit 64\n' +
+			'[ -f \'' + dir + '/mib/\'"$2.$4" ] || exit 1\ncat \'' + dir + '/mib/\'"$2.$4"\n' +
+			'[ -f \'' + dir + '/mibcode/\'"$2.$4" ] && exit "$(cat \'' + dir + '/mibcode/\'"$2.$4")"\nexit 0\n', { mode: o.swconfig === 'plain' ? 0o644 : 0o755 });
+	}
 	let src = fs.readFileSync(PLUGIN, 'utf8');
 	for (const [ from, to ] of [
 		[ /^const NET = .*$/m, 'const NET = ' + JSON.stringify(net) + ';' ],
 		[ /^const ETHTOOL = .*$/m, 'const ETHTOOL = ' + JSON.stringify(bin) + ';' ],
+		[ /^const SWCONFIG = .*$/m, 'const SWCONFIG = ' + JSON.stringify(swbin) + ';' ],
+		[ /^const BOARD = .*$/m, 'const BOARD = ' + JSON.stringify(board) + ';' ],
 		[ /^const DIR = .*$/m, 'const DIR = ' + JSON.stringify(path.join(dir, 'run')) + ';' ],
 		[ /st\.uid === 0/, 'st.uid === ' + (o.uid == null ? process.getuid() : o.uid) ],
 		[ CLOCK_FN, 'let ticks = 0;\nfunction now_ms() {\n\treturn ' + o.step + ' * ticks++;\n}' ]
-	].slice(0, o.step == null ? 4 : 5)) {
+	].slice(0, o.step == null ? 6 : 7)) {
 		const next = src.replace(from, () => to);
 		assert.notEqual(next, src, 'the test can change ' + from);
 		src = next;
@@ -101,7 +118,7 @@ function exec(dir, argv, input) {
 	const r = spawnSync(UCODE, ucodeArgs().concat([ path.join(dir, 'plugin.uc') ], argv), { cwd: dir, encoding: 'utf8', timeout: 30000, input: input == null ? '{ "ubus_rpc_session": "x" }' : input });
 	assert.equal(r.status, 0, r.stderr);
 	const lines = f => fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8').split('\n').filter(Boolean) : [];
-	return { out: r.stdout, calls: lines('calls'), finished: lines('finished') };
+	return { out: r.stdout, calls: lines('calls'), finished: lines('finished'), swcalls: lines('swcalls') };
 }
 /* a call's answer, each port's read time (at: ms on the monotonic clock, every port has one) taken out into ats */
 function counters(o, input) {
@@ -111,7 +128,12 @@ function counters(o, input) {
 		ats[n] = p.at;
 		delete p.at;
 	}
-	return Object.assign(a, { calls: r.calls, finished: r.finished, ats });
+	for (const [ sw, ports ] of Object.entries(a.switches || {})) for (const [ n, p ] of Object.entries(ports)) {
+		assert.ok(Number.isInteger(p.at) && p.at >= 0, sw + ' ' + n + ': its read time');
+		ats[sw + ':' + n] = p.at;
+		delete p.at;
+	}
+	return Object.assign(a, { calls: r.calls, finished: r.finished, swcalls: r.swcalls, ats });
 }
 const lines = (dir, f) => fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8').split('\n').filter(Boolean) : [];
 async function until(what, ok) {
@@ -129,8 +151,8 @@ test('plugin: rpcd\'s list names one method that takes nothing, and starts no pr
 	assert.deepEqual(JSON.parse(r.out), { counters: {} });
 	assert.deepEqual(r.calls, []);
 	/* any other method rpcd could not have registered: nothing printed, nothing run */
-	assert.deepEqual(exec(dir, [ 'call', 'port' ]), { out: '', calls: [], finished: [] });
-	assert.deepEqual(exec(dir, []), { out: '', calls: [], finished: [] });
+	assert.deepEqual(exec(dir, [ 'call', 'port' ]), { out: '', calls: [], finished: [], swcalls: [] });
+	assert.deepEqual(exec(dir, []), { out: '', calls: [], finished: [], swcalls: [] });
 });
 
 test('plugin: mt7530\'s counters, not the four of the CPU\'s path the DSA core puts first; whatever the call carries', { skip: NO_UCODE }, () => {
@@ -138,7 +160,7 @@ test('plugin: mt7530\'s counters, not the four of the CPU\'s path the DSA core p
 		out: { lan1: MT7530(74382564128, 131657591122), lan2: MT7530(0, 0), wan: MT7530(5, 6) } };
 	const r = counters(o);
 	assert.deepEqual(without(r, 'took', 'finished', 'ats'), {
-		v: 1, state: 'ok', more: false, calls: [ '-S lan1', '-S lan2', '-S wan' ],
+		v: 1, state: 'ok', more: false, calls: [ '-S lan1', '-S lan2', '-S wan' ], swcalls: [],
 		ports: { lan1: { rx_bytes: 74382564128, tx_bytes: 131657591122 }, lan2: { rx_bytes: 0, tx_bytes: 0 }, wan: { rx_bytes: 5, tx_bytes: 6 } }
 	});
 	assert.equal(typeof r.took, 'number');
@@ -183,7 +205,7 @@ test('plugin: names it does not know, half a pair, a name twice or a number too 
 test('plugin: ethtool missing or not executable: no program started, and the answer says so', { skip: NO_UCODE }, () => {
 	for (const ethtool of [ false, 'plain' ]) {
 		const r = counters({ ports: { lan1: null, lan2: null }, out: { lan1: MT7530(1, 2) }, ethtool });
-		assert.deepEqual(without(r, 'took', 'ats'), { v: 1, state: 'no-ethtool', more: false, ports: {}, calls: [], finished: [] }, String(ethtool));
+		assert.deepEqual(without(r, 'took', 'ats'), { v: 1, state: 'no-ethtool', more: false, ports: {}, calls: [], finished: [], swcalls: [] }, String(ethtool));
 	}
 });
 
@@ -192,7 +214,7 @@ test('plugin: no DSA port: no program started, whatever else the device has', { 
 		/* a line that only holds the word, and a uevent past what is read */
 		lan9: 'xDEVTYPE=dsa\nDEVTYPE=dsax\n DEVTYPE=dsa\n', lan8: 'INTERFACE=lan8\n' + 'X'.repeat(600) + '\nDEVTYPE=dsa\n' } ]) {
 		const r = counters({ ports, out: { eth0: MT7530(1, 2), lan9: MT7530(1, 2), lan8: MT7530(1, 2) } });
-		assert.deepEqual(without(r, 'took', 'ats'), { v: 1, state: 'none', more: false, ports: {}, calls: [], finished: [] }, Object.keys(ports).join());
+		assert.deepEqual(without(r, 'took', 'ats'), { v: 1, state: 'none', more: false, ports: {}, calls: [], finished: [], swcalls: [] }, Object.keys(ports).join());
 	}
 });
 
@@ -340,13 +362,129 @@ test('plugin: the lock goes with a call rpcd kills, and stays while that call\'s
 
 /* ------------------------------------------------------------- model */
 
+/* ------------------------------------------------- swconfig (#166) */
+
+/* board.json of a router with a swconfig switch: the CPU's port 0 on eth0, WAN on 1, LAN on 2 to 5 */
+const BOARD = { switch: { switch0: { enable: true, reset: true, ports: [ { num: 0, device: 'eth0', need_tag: false, want_untag: false },
+	{ num: 1, role: 'wan' }, { num: 2, role: 'lan', index: 1 }, { num: 3, role: 'lan', index: 2 }, { num: 4, role: 'lan', index: 3 }, { num: 5, role: 'lan', index: 4 } ] } } };
+/* no real board: five WAN ports, for five reads in one call */
+const WAN5 = { switch: { switch0: { ports: [ { num: 0, device: 'eth0' } ].concat([ 1, 2, 3, 4, 5 ].map(num => ({ num, role: 'wan' }))) } } };
+/* what "swconfig dev switch0 port N get mib" prints: ar8xxx as OpenWrt 25.12 has it (the reporter's), with its sizes */
+const AR8 = (rx, tx) => 'MIB counters\nRxGoodByte  : ' + rx + ' (132.9 GiB)\nTxByte      : ' + tx + ' (11.3 GiB)\n';
+
+test('plugin: a swconfig switch\'s WAN port, read with "swconfig dev <switch> port <n> get mib": one program a call; no LAN port, never the CPU\'s', { skip: NO_UCODE }, () => {
+	const mib = { 'switch0.1': AR8('142801579826', '12169709114'), 'switch0.2': AR8(10, 20), 'switch0.3': 'No MIB data\n', 'switch0.4': AR8(1, 2), 'switch0.5': AR8(3, 4), 'switch0.0': AR8(9, 9) };
+	const r = counters({ board: BOARD, mib });
+	assert.deepEqual(without(r, 'took', 'ats', 'finished'), { v: 1, state: 'ok', more: false, ports: {}, calls: [],
+		swcalls: [ 'dev switch0 port 1 get mib' ], switches: { switch0: { 1: { rx_bytes: 142801579826, tx_bytes: 12169709114 } } } });
+	assert.deepEqual(Object.keys(r.ats), [ 'switch0:1' ]);
+	/* a counter the chip has not moved yet */
+	assert.deepEqual(counters({ board: WAN5, mib }).switches.switch0[3], { rx_bytes: 0, tx_bytes: 0 });
+	/* white space around the board file's object is none of its text */
+	assert.deepEqual(counters({ board: '\n ' + JSON.stringify(BOARD) + '\n\n', mib }).swcalls, [ 'dev switch0 port 1 get mib' ]);
+	/* the role as board.json writes it and nothing like it; a CPU port never, whatever its role */
+	const odd = { switch: { switch0: { ports: [ { num: 0, device: 'eth0', role: 'wan' }, { num: 1, role: 'WAN' }, { num: 2, role: [ 'wan' ] }, { num: 3, role: 'wan6' }, { num: 4 }, { num: 5, role: 'wan' } ] } } };
+	assert.deepEqual(counters({ board: odd, mib }).swcalls, [ 'dev switch0 port 5 get mib' ]);
+});
+
+test('plugin: each swconfig driver\'s pair of names; ethtool\'s names alone are none of swconfig\'s', { skip: NO_UCODE }, () => {
+	const mib = (pairs, head) => (head === undefined ? 'Port 1 MIB counters\n' : head) + pairs.map(([ k, v ]) => (k + ' '.repeat(36)).slice(0, Math.max(k.length, 20)) + ': ' + v + '\n').join('');
+	const out = {
+		'switch0.1': AR8(11, 12),
+		/* b53 prints no heading */
+		'switch0.2': mib([ [ 'TxOctets', 22 ], [ 'TxDropPkts', 0 ], [ 'RxOctets', 21 ] ], ''),
+		'switch0.3': mib([ [ 'IfInOctets', 31 ], [ 'EtherStatsOctets', 99 ], [ 'IfOutOctets', 32 ] ]),
+		'switch0.4': mib([ [ 'ifInOctets', 41 ], [ 'ifOutOctets', 42 ] ]),
+		/* mt7530's and the Marvell names are ethtool's (DSA): not known from swconfig */
+		'switch0.5': mib([ [ 'RxBytes', 51 ], [ 'TxBytes', 52 ], [ 'in_good_octets', 53 ], [ 'out_octets', 54 ] ])
+	};
+	const r = counters({ board: WAN5, mib: out });
+	assert.deepEqual(r.switches.switch0, { 1: { rx_bytes: 11, tx_bytes: 12 }, 2: { rx_bytes: 21, tx_bytes: 22 }, 3: { rx_bytes: 31, tx_bytes: 32 },
+		4: { rx_bytes: 41, tx_bytes: 42 }, 5: { error: 'unknown' } });
+});
+
+test('plugin: swconfig failing, printing something else, half a pair, a name twice or far too much: failed or unknown, never part of it', { skip: NO_UCODE }, () => {
+	const out = {
+		'switch0.1': AR8(1, 2),                                         /* exit 3 below */
+		'switch0.2': 'MIB counters\nRxGoodByte  : 5\n',
+		'switch0.3': 'MIB counters\nRxGoodByte  : 5\nTxByte      : 6\nRxGoodByte  : 7\n',
+		'switch0.4': 'MIB counters\nRxGoodByte  : 18446744073709551615\nTxByte      : 6\n',
+		'switch0.5': 'MIB counters\n' + 'RxGoodByte  : 5\nTxByte      : 6\n' + 'x'.repeat(40000) + '\n'
+	};
+	const r = counters({ board: WAN5, mib: out, mibCode: { 'switch0.1': 3 } });
+	assert.deepEqual(r.switches.switch0, { 1: { error: 'failed' }, 2: { error: 'unknown' }, 3: { error: 'unknown' }, 4: { error: 'unknown' }, 5: { error: 'failed' } });
+});
+
+test('plugin: a read the switch driver answers "not supported" (swconfig ends with 246 and prints nothing) is unknown, so the page asks no more; any other failure is that call\'s', { skip: NO_UCODE }, () => {
+	/* ar8216.c with its counters off: -EOPNOTSUPP, which swconfig ends with as 256 less libnl's 10 */
+	const r = counters({ board: BOARD, mib: { 'switch0.1': '' }, mibCode: { 'switch0.1': 246 } });
+	assert.deepEqual([ r.state, r.switches.switch0, r.swcalls ], [ 'ok', { 1: { error: 'unknown' } }, [ 'dev switch0 port 1 get mib' ] ]);
+	assert.equal(model.switchCounters(without(r, 'calls', 'finished', 'swcalls', 'ats')).none, true);
+	/* no answer from the chip in time (255), no such switch (1), the same status after it printed something: asked again at the next poll */
+	for (const [ text, code ] of [ [ '', 255 ], [ '', 1 ], [ '', 247 ], [ 'x\n', 246 ] ]) {
+		const f = counters({ board: BOARD, mib: { 'switch0.1': text }, mibCode: { 'switch0.1': code } });
+		assert.deepEqual(f.switches.switch0[1], { error: 'failed' }, JSON.stringify([ text, code ]));
+		assert.equal(model.switchCounters(without(f, 'calls', 'finished', 'swcalls', 'ats')).none, false);
+	}
+	/* a port the fake has nothing for (it exits 1) */
+	assert.deepEqual(counters({ board: BOARD, mib: {} }).switches.switch0[1], { error: 'failed' });
+	/* the Realtek drivers print "error" for a counter they could not read this time: failed, though the other is there */
+	const rtl = 'Port 1 MIB counters\n' + 'IfInOctets                          : error\n' + 'IfOutOctets                         : 5\n';
+	assert.deepEqual(counters({ board: BOARD, mib: { 'switch0.1': rtl } }).switches.switch0[1], { error: 'failed' });
+	assert.deepEqual(counters({ board: BOARD, mib: { 'switch0.1': rtl.replace('error', '4') } }).switches.switch0[1], { rx_bytes: 4, tx_bytes: 5 });
+	/* another counter's error leaves the two byte counters as read */
+	assert.deepEqual(counters({ board: BOARD, mib: { 'switch0.1': rtl.replace('error', '4') + 'EtherStatsUnderSizeOctets           : error\n' } }).switches.switch0[1], { rx_bytes: 4, tx_bytes: 5 });
+});
+
+/* a board file whose first 65536 bytes, all that is read of it, end at a brace inside its port list */
+const CUT = (() => {
+	const tail = '","switch":{"switch0":{"ports":[{"num":1,"role":"wan"}';
+	return '{"pad":"' + 'x'.repeat(65536 - 8 - tail.length) + tail + ',{"num":0,"device":"eth0"}]}}}';
+})();
+
+test('plugin: no swconfig, no board file, no switch in it, or DSA ports as well: swconfig is never started', { skip: NO_UCODE }, () => {
+	assert.deepEqual([ CUT[65535], JSON.parse(CUT).switch.switch0.ports.length ], [ '}', 2 ]);
+	const none = { v: 1, state: 'none', more: false, ports: {}, calls: [], swcalls: [] };
+	for (const o of [ { board: BOARD, swconfig: false }, { board: BOARD, swconfig: 'plain' }, {}, { board: {} }, { board: { switch: {} } }, { board: 'null' }, { board: { switch: 'x' } },
+		{ board: { switch: { switch0: { ports: [ { num: 0, device: 'eth0' } ] } } } },
+		/* an empty board file, one cut short, one over the bytes read of it: never handed to json(), which would end the call */
+		{ board: '' }, { board: '{"switch": {"switch0": {"ports": [ {"num": 1, "role": "wan"' }, { board: JSON.stringify(Object.assign({ pad: 'x'.repeat(70000) }, BOARD)) }, { board: CUT },
+		/* a switch without a WAN port (the WAN is a device of its own there) */
+		{ board: { switch: { switch0: { ports: [ { num: 0, device: 'eth0' }, { num: 1, role: 'lan', index: 1 }, { num: 2, role: 'lan', index: 2 } ] } } } } ])
+		assert.deepEqual(without(counters(Object.assign({ mib: { 'switch0.1': AR8(1, 2) } }, o)), 'took', 'ats', 'finished'), none, JSON.stringify(o).slice(0, 60));
+	/* a DSA device: its ports by ethtool, and board.json's switch (none there in practice) is not looked at */
+	const dsa = counters({ ports: { lan1: null }, out: { lan1: MT7530(5, 6) }, board: BOARD, mib: { 'switch0.1': AR8(1, 2) } });
+	assert.deepEqual([ dsa.state, dsa.ports, dsa.switches, dsa.calls, dsa.swcalls ], [ 'ok', { lan1: { rx_bytes: 5, tx_bytes: 6 } }, undefined, [ '-S lan1' ], [] ]);
+});
+
+test('plugin: a switch name or a port number in board.json that could be read as an option or a shell word never reaches swconfig', { skip: NO_UCODE }, () => {
+	const role = 'wan';
+	const ports = [ { num: 1, role }, { num: '2', role }, { num: -1, role }, { num: 64, role }, { num: 1.5, role }, { num: null, role }, { role }, null, 'x', { num: 3, device: 'eth1', role }, { num: 4, role } ];
+	const board = { switch: { 'switch0': { ports }, '-x': { ports }, 'sw;reboot': { ports }, 'sw 0': { ports }, '$(id)': { ports }, 'a.b': { ports }, ['x'.repeat(16)]: { ports }, 'sw_1-a': { ports: [ { num: 0, role } ] }, 'bad': { ports: 'x' } } };
+	const r = counters({ board, mib: { 'switch0.1': AR8(1, 2), 'switch0.4': AR8(3, 4), 'sw_1-a.0': AR8(5, 6) } });
+	assert.deepEqual(r.swcalls, [ 'dev sw_1-a port 0 get mib', 'dev switch0 port 1 get mib', 'dev switch0 port 4 get mib' ]);
+	assert.deepEqual(r.switches, { 'sw_1-a': { 0: { rx_bytes: 5, tx_bytes: 6 } }, switch0: { 1: { rx_bytes: 1, tx_bytes: 2 }, 4: { rx_bytes: 3, tx_bytes: 4 } } });
+});
+
+test('plugin: at most 32 switch ports in all, and none after the time budget', { skip: NO_UCODE }, () => {
+	const many = n => ({ ports: Array.from({ length: n }, (_, i) => ({ num: i, role: 'wan' })) });
+	const mib = {};
+	for (const sw of [ 'a', 'b' ]) for (let i = 0; i < 40; i++) mib[sw + '.' + i] = AR8(i, i);
+	const r = counters({ board: { switch: { b: many(20), a: many(20) } }, mib });
+	assert.deepEqual([ r.more, Object.keys(r.switches.a).length, Object.keys(r.switches.b).length, r.swcalls.length ], [ true, 20, 12, 32 ]);
+	/* the copy's clock moves 400 ms a reading: the budget of 1 s is over before the fourth port */
+	const slow = counters({ board: WAN5, mib: { 'switch0.1': AR8(1, 2), 'switch0.2': AR8(1, 2), 'switch0.3': AR8(1, 2), 'switch0.4': AR8(1, 2), 'switch0.5': AR8(1, 2) }, step: 400 });
+	assert.deepEqual(Object.values(slow.switches.switch0).map(p => p.error || 'read'), [ 'read', 'read', 'time', 'time', 'time' ]);
+	assert.equal(slow.swcalls.length, 2);
+});
+
 test('model: switchCounters keeps the counters of well-formed ports and says when there is nothing to ask for', () => {
 	const ok = model.switchCounters({ v: 1, state: 'ok', took: 12, more: false, ports: {
 		lan1: { rx_bytes: 5, tx_bytes: 6, at: 7000 }, lan2: { error: 'unknown', at: 7001 }, lan3: { error: 'failed' }, lan4: { error: 'time' },
 		'bad name': { rx_bytes: 1, tx_bytes: 1, at: 7000 }, lan5: { rx_bytes: -1, tx_bytes: 1, at: 7000 }, lan6: { rx_bytes: '5', tx_bytes: 6, at: 7000 }, lan7: 'x',
 		/* a reading without its time (when the device read it) is none: rated by when it came in, it would be wrong */
 		lan8: { rx_bytes: 5, tx_bytes: 6 }, lan9: { rx_bytes: 5, tx_bytes: 6, at: -1 }, lan10: { rx_bytes: 5, tx_bytes: 6, at: '7000' } } });
-	assert.deepEqual(JSON.parse(JSON.stringify(ok)), { state: 'ok', counters: { lan1: { rx: 5, tx: 6, at: 7000 } }, none: false });
+	assert.deepEqual(JSON.parse(JSON.stringify(ok)), { state: 'ok', counters: { lan1: { rx: 5, tx: 6, at: 7000 } }, swports: {}, none: false });
 	assert.equal(Object.getPrototypeOf(ok.counters), null);
 	/* nothing to get: no DSA port, no ethtool, every port read with names the plugin does not know */
 	assert.equal(model.switchCounters({ v: 1, state: 'none', ports: {} }).none, true);
@@ -362,6 +500,53 @@ test('model: switchCounters keeps the counters of well-formed ports and says whe
 	/* the plugin's own cap */
 	const many = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [ 'p' + i, { rx_bytes: i, tx_bytes: i, at: 7000 } ]));
 	assert.equal(Object.keys(model.switchCounters({ v: 1, state: 'ok', ports: many }).counters).length, 32);
+});
+
+test('model: switchCounters keeps a swconfig switch\'s ports by its name and their numbers (#166)', () => {
+	const good = { rx_bytes: 5, tx_bytes: 6, at: 7000 };
+	const r = model.switchCounters({ v: 1, state: 'ok', took: 5, more: false, ports: {}, switches: {
+		switch0: { 1: good, 2: { error: 'unknown', at: 7001 }, 3: { error: 'time' }, x: good, 100: good, 64: good, '01': { rx_bytes: 9, tx_bytes: 9, at: 7000 }, '-1': good, '1.5': good, 4: { rx_bytes: 1, tx_bytes: 2 }, 5: { rx_bytes: -1, tx_bytes: 2, at: 1 }, 63: good },
+		'bad name': { 1: good }, sw1: 'x', sw2: { 0: good } } });
+	assert.deepEqual(JSON.parse(JSON.stringify(r)), { state: 'ok', counters: {}, swports: { switch0: { 1: { rx: 5, tx: 6, at: 7000 }, 63: { rx: 5, tx: 6, at: 7000 } }, sw2: { 0: { rx: 5, tx: 6, at: 7000 } } }, none: false });
+	assert.equal(Object.getPrototypeOf(r.swports), null);
+	/* every port read with names the plugin does not know: nothing to ask for, as for a DSA switch */
+	assert.equal(model.switchCounters({ v: 1, state: 'ok', ports: {}, switches: { switch0: { 1: { error: 'unknown' }, 2: { error: 'unknown' } } } }).none, true);
+	assert.equal(model.switchCounters({ v: 1, state: 'ok', ports: {}, switches: { switch0: { 1: { error: 'unknown' }, 2: { error: 'failed' } } } }).none, false);
+	/* the plugin's own cap, over all switches */
+	const many = n => Object.fromEntries(Array.from({ length: n }, (_, i) => [ i, good ]));
+	const capped = model.switchCounters({ v: 1, state: 'ok', ports: {}, switches: { a: many(20), b: many(20) } }).swports;
+	assert.equal(Object.keys(capped.a).length + Object.keys(capped.b).length, 32);
+	/* as many switches as the plugin reads ports of: nine with a WAN port each are all kept */
+	const nine = Object.fromEntries(Array.from({ length: 9 }, (_, i) => [ 'sw' + i, { 1: good } ]));
+	assert.equal(Object.keys(model.switchCounters({ v: 1, state: 'ok', ports: {}, switches: nine }).swports).length, 9);
+	/* an answer without switches (a DSA device, an older plugin) has none */
+	assert.deepEqual(JSON.parse(JSON.stringify(model.switchCounters({ v: 1, state: 'ok', ports: {} }).swports)), {});
+});
+
+test('model: lineChip: the one port of a swconfig switch a line is, tagged or untagged, where the port is in no other VLAN; none where its VLAN has no port or several', () => {
+	const switches = { eth0: { name: 'switch0', vlan: 2, ports: [ { num: 1, role: 'wan', index: null, vlans: 1 } ] },
+		'eth0.1': { name: 'switch0', vlan: 1, ports: [ { num: 2, vlans: 1 }, { num: 3, vlans: 1 } ] }, 'eth1.2': { name: 'switch1', vlan: 2, ports: [ { num: 4, vlans: 1 } ] },
+		eth2: { name: 'switch0', vlan: 5, ports: [] }, eth3: { name: 'bad name!', vlan: 5, ports: [ { num: 1, vlans: 1 } ] },
+		/* internet on VLAN 35 and IPTV on VLAN 100 of the same port: the chip counts both there */
+		'eth4.35': { name: 'switch2', vlan: 35, ports: [ { num: 5, vlans: 2 } ] }, 'eth4.100': { name: 'switch2', vlan: 100, ports: [ { num: 5, vlans: 2 } ] },
+		/* a port in a VLAN that reaches no CPU port as well (the plugin counted it), one of an older plugin, one whose VLANs were not all read */
+		'eth5.2': { name: 'switch3', vlan: 2, ports: [ { num: 1, vlans: 2 } ] }, 'eth6.2': { name: 'switch4', vlan: 2, ports: [ { num: 1 } ] }, 'eth7.2': { name: 'switch5', vlan: 2, ports: [ { num: 1, vlans: 0 } ] } };
+	const chip = line => model.lineChip(line, switches);
+	/* untagged on the CPU's device (the reporter's), and tagged */
+	assert.deepEqual(chip({ dev: 'eth0', statsDev: 'eth0' }), { sw: 'switch0', num: 1, key: 'switch0:1' });
+	assert.deepEqual(chip({ dev: 'eth1.2', statsDev: 'eth1.2' }), { sw: 'switch1', num: 4, key: 'switch1:4' });
+	/* a line on top of the port's device (PPPoE): by the device it is counted on */
+	assert.deepEqual(chip({ dev: 'pppoe-wan', statsDev: 'eth0' }), { sw: 'switch0', num: 1, key: 'switch0:1' });
+	for (const line of [ { dev: 'eth0.1', statsDev: 'eth0.1' }, { dev: 'eth2', statsDev: 'eth2' }, { dev: 'eth3', statsDev: 'eth3' }, { dev: 'br-lan', statsDev: 'eth9' }, { dev: 'wan', statsDev: 'wan' }, {}, null,
+		{ dev: 'eth4.35', statsDev: 'eth4.35' }, { dev: 'eth4.100', statsDev: 'eth4.100' }, { dev: 'eth5.2', statsDev: 'eth5.2' }, { dev: 'eth6.2', statsDev: 'eth6.2' }, { dev: 'eth7.2', statsDev: 'eth7.2' } ])
+		assert.equal(chip(line), null, JSON.stringify(line));
+	for (const none of [ null, undefined, {}, 'x', [] ]) assert.equal(model.lineChip({ dev: 'eth0', statsDev: 'eth0' }, none), null);
+});
+
+test('model: lineRate is of the line\'s device less its VLANs, whatever its switch port', () => {
+	const line = { statsDev: 'eth0', minus: [ 'eth0.1' ], chip: { sw: 'switch0', num: 1, key: 'switch0:1' } };
+	const rates = { eth0: { rx: 10, tx: 10 }, 'eth0.1': { rx: 3, tx: 4 }, 'switch0:1': { rx: 1, tx: 2 } };
+	assert.deepEqual(model.lineRate(line, rates), { rx: 7, tx: 6 });
 });
 
 test('model: rates never take a rate across two sources; a key whose source changed starts over', () => {
@@ -448,7 +633,7 @@ const answer = ports => () => Promise.resolve({ v: 1, state: 'ok', took: 9, more
 
 test('view: asked every poll while the first answer had counters, whatever later ones say', () => switchCalls(async c => {
 	c.reply = answer({ lan1: { rx_bytes: 1, tx_bytes: 2 } });
-	assert.deepEqual(JSON.parse(JSON.stringify((await c.ask())[0])), { state: 'ok', counters: { lan1: { rx: 1, tx: 2, at: 7000 } }, none: false });
+	assert.deepEqual(JSON.parse(JSON.stringify((await c.ask())[0])), { state: 'ok', counters: { lan1: { rx: 1, tx: 2, at: 7000 } }, swports: {}, none: false });
 	c.reply = answer({ lan1: { error: 'unknown' } });
 	for (let i = 0; i < 3; i++) assert.equal((await c.ask())[0].none, true);
 	assert.equal(c.asked, 4, 'decided by the first answer only');
@@ -502,6 +687,41 @@ test('view: the first answer that says there is nothing to get, or no object, en
 	await c.ask();
 	await c.ask();
 	assert.equal(c.asked, 2, 'the first answer after it does');
+}));
+
+test('view: six answers of a swconfig switch running without one counter, on a page that has had none, end the asking; a counter once, and no run of them does; a DSA switch\'s are not counted', () => switchCalls(async c => {
+	/* a switch whose reads fail every time (a driver without counters, for one): failed is no "nothing to get" by itself */
+	const dry = () => Promise.resolve({ v: 1, state: 'ok', took: 3, more: false, ports: {}, switches: { switch0: { 1: { error: 'failed', at: 7000 } } } });
+	c.reply = dry;
+	for (let i = 0; i < 6; i++) assert.equal((await c.ask())[0].none, false, 'answer ' + i);
+	for (let i = 0; i < 4; i++) assert.equal((await c.ask())[0], null);
+	assert.equal(c.asked, 6);
+	/* busy and failed calls are no answers: they neither count nor break the run */
+	c.self = Object.create(view);
+	c.asked = 0;
+	for (let i = 0; i < 5; i++) await c.ask();
+	c.reply = () => Promise.resolve({ v: 1, state: 'busy', took: 0, more: false, ports: {} });
+	for (let i = 0; i < 3; i++) await c.ask();
+	c.reply = dry;
+	await c.ask();
+	await c.ask();
+	assert.equal(c.asked, 9, 'five, three busy, the sixth');
+	/* a counter once on this page: asked for good */
+	c.self = Object.create(view);
+	c.asked = 0;
+	c.reply = dry;
+	for (let i = 0; i < 5; i++) await c.ask();
+	c.reply = () => Promise.resolve({ v: 1, state: 'ok', took: 3, more: false, ports: {}, switches: { switch0: { 1: { rx_bytes: 1, tx_bytes: 2, at: 7000 } } } });
+	await c.ask();
+	c.reply = dry;
+	for (let i = 0; i < 10; i++) await c.ask();
+	assert.equal(c.asked, 16);
+	/* a DSA switch whose every read fails: asked every poll, as since #156 (its first answer was no "nothing to get") */
+	c.self = Object.create(view);
+	c.asked = 0;
+	c.reply = () => Promise.resolve({ v: 1, state: 'ok', took: 3, more: false, ports: { lan1: { error: 'failed', at: 7000 }, lan2: { error: 'failed', at: 7001 } } });
+	for (let i = 0; i < 12; i++) assert.equal((await c.ask())[0].none, false);
+	assert.equal(c.asked, 12);
 }));
 
 test('view: busy is no answer this time: the page keeps asking, and the first real answer decides', () => switchCalls(async c => {
@@ -575,6 +795,203 @@ test('view: a port counts by its chip where the poll has its counters, never a l
 	}
 });
 
+/* A router whose WAN is port 1 of a swconfig switch, untagged on eth0, the CPU's device, which carries the LAN's VLAN
+   too: the kernel's counters of eth0 run at 3 and 4 MB/s, the chip's of port 1 at the line's own 2 MB/s down and 0.1 up.
+   raw(t, o): the poll t s after the start; o.hw false: no answer from the counters plugin; o.down/o.up: the chip's bytes
+   so far; o.map false: no answer from luci.vantage wired (no switch map); o.switches, o.dev: another map, another device.
+   pushed: [ second, down rate ] of every point written to the line's history */
+async function swBed(fn) {
+	const savedL = global.L, savedW = global.window, savedD = global.document, savedNow = Date.now;
+	global.L = { env: {}, resolveDefault: (v, d) => Promise.resolve(v).catch(() => d) };
+	/* setTimeout: the lane's early second CPU sample, which a test takes itself */
+	global.window = { sessionStorage: { getItem: () => null, setItem() {} }, localStorage: { getItem: () => null, setItem() {} }, setTimeout: () => 1 };
+	global.document = { hidden: false };
+	const b = { asked: [], pushed: [], clock: 1.8e12, held: null, reads: 0 };
+	Date.now = () => b.clock;
+	/* the kernel's counters of a device the fast lane asks for, at the bed's clock; b.held: answers kept back until released */
+	REPLIES['network.device status'] = name => {
+		b.asked.push(name);
+		const t = (b.clock - 1.8e12) / 1000, reply = { statistics: { rx_bytes: t * 3e6, tx_bytes: t * 4e6 } };
+		return b.held ? new Promise(resolve => b.held.push(() => resolve(reply))) : Promise.resolve(reply);
+	};
+	/* /proc/stat, a quarter busy between two reads */
+	REPLIES['file read'] = () => { const k = b.reads++; return Promise.resolve('cpu  ' + (100 + 25 * k) + ' 0 0 ' + (900 + 75 * k) + ' 0 0 0 0\ncpu0 ' + (100 + 25 * k) + ' 0 0 ' + (900 + 75 * k) + ' 0 0 0 0\n'); };
+	try {
+		const self = b.self = Object.create(view);
+		self.initState({ board: {}, canWrite: false, canRdns: false, mdns: null });
+		self.el = {};
+		self.idle = () => false;
+		self.paintFast = () => {};
+		self.keepCpu = cpu => { b.cpu = cpu.pct; };
+		self.pushNet = (key, at, r) => { b.pushed.push([ Math.round((at - 1.8e12) / 1000), r.rx ]); };
+		const SWITCHES = { eth0: { name: 'switch0', vlan: 2, ports: [ { num: 1, role: 'wan', index: null, vlans: 1 } ] }, 'eth0.1': { name: 'switch0', vlan: 1, ports: [ { num: 2, vlans: 1 }, { num: 3, vlans: 1 } ] } };
+		b.raw = (t, o) => {
+			o = o || {};
+			const dev = o.dev || 'eth0';
+			const wan = { interface: 'wan', up: true, proto: 'dhcp', device: dev, l3_device: dev, metric: 10, route: [ { target: '0.0.0.0', mask: 0, nexthop: '203.0.113.1' } ] };
+			return { at: 1.8e12 + t * 1000, info: { localtime: 1.8e9 + t }, stat: '', ifaces: [ wan ], wifi: null, hints: {}, thermal: [], fdb: [], assoc: {}, hapd: {}, hapdStatus: {}, iwinfo: {},
+				wiredOk: o.map !== false, switches: o.map === false ? {} : o.switches || SWITCHES, switchState: {},
+				devs: { [dev]: { type: 'ethernet', carrier: true, speed: '1000F', statistics: { rx_bytes: t * 3e6, tx_bytes: t * 4e6 } } },
+				hw: o.hw === false ? null : { state: 'ok', none: false, counters: Object.create(null),
+					swports: { switch0: { 1: { rx: 1e12 + (o.down != null ? o.down : t * 2e6), tx: 5e11 + (o.up != null ? o.up : t * 1e5), at: 9e6 + t * 1000 } } } } };
+		};
+		b.poll = (t, o) => { b.clock = 1.8e12 + t * 1000; b.self.ingest(b.raw(t, o)); };
+		b.line = () => JSON.parse(JSON.stringify(b.self.st.uplinkRate));
+		b.port = () => b.self.st.chip && b.self.st.chip.key;
+		await fn(b);
+	} finally {
+		global.L = savedL;
+		global.window = savedW;
+		global.document = savedD;
+		Date.now = savedNow;
+		delete REPLIES['network.device status'];
+		delete REPLIES['file read'];
+	}
+}
+const CHIP = { rx: 16e6, tx: 8e5 }, KERNEL = { rx: 24e6, tx: 32e6 };
+
+test('view: the main line that is one port of a swconfig switch is counted by that port\'s chip (#166); a reading that stays out is bridged for 20 s, and the fast lane keeps off it', () => swBed(async b => {
+	const self = b.self;
+	b.poll(0);
+	/* from the port's first reading: no rate yet, and never the kernel's of eth0 */
+	assert.deepEqual([ self.m.uplink.chip, b.port(), b.line() ], [ { sw: 'switch0', num: 1, key: 'switch0:1' }, 'switch0:1', null ]);
+	b.poll(5);
+	assert.deepEqual(b.line(), CHIP);
+	/* the fast lane reads the kernel's counters: it leaves this line alone, and what the poll found stays */
+	await self.fastSample();
+	assert.deepEqual([ b.asked, b.line(), self.st.fastDev ], [ [], CHIP, null ]);
+	/* and goes on sampling the CPU: its own sample is not started over at every tick */
+	await self.fastSample();
+	assert.deepEqual([ b.asked, b.line(), Math.round(b.cpu) ], [ [], CHIP, 25 ]);
+	/* the chip's counters stayed out (another call was reading): the last rate stays, not the kernel's */
+	b.poll(10, { hw: false });
+	assert.deepEqual([ b.line(), b.port() ], [ CHIP, 'switch0:1' ]);
+	/* and the next reading is rated across both polls (3 MB/s between 5 s and 15 s), not started over */
+	b.poll(15, { down: 4e7, up: 2.5e6 });
+	const MID = { rx: 24e6, tx: 16e5 };
+	assert.deepEqual(b.line(), MID);
+	/* out for less than 20 s: its last rate; then the kernel's again, and the fast lane has the device back */
+	for (const t of [ 20, 25, 30 ]) { b.poll(t, { hw: false }); assert.deepEqual([ b.line(), b.port() ], [ MID, 'switch0:1' ], 'at ' + t); }
+	b.poll(35, { hw: false });
+	assert.deepEqual([ b.line(), b.port() ], [ KERNEL, null ]);
+	await self.fastSample();
+	assert.deepEqual(b.asked, [ 'eth0' ]);
+	/* back: by the chip again at once, rated across the whole gap from its last reading */
+	b.poll(40, { down: 9e7, up: 5e6 });
+	assert.deepEqual([ b.line(), b.port() ], [ CHIP, 'switch0:1' ]);
+	b.poll(45, { down: 1e8, up: 5.5e6 });
+	assert.deepEqual(b.line(), CHIP);
+	/* the chip's counters went back (the switch was reset): the last rate for that poll, then the new ones' */
+	b.poll(50, { down: 1000, up: 500 });
+	assert.deepEqual([ b.line(), b.port() ], [ CHIP, 'switch0:1' ]);
+	b.poll(55, { down: 1000 + 1e7, up: 500 + 5e5 });
+	assert.deepEqual(b.line(), CHIP);
+	/* the history got a point for every rate measured, none for one held over; the kernel's one while it was the kernel's */
+	assert.deepEqual(b.pushed, [ [ 5, 16e6 ], [ 15, 24e6 ], [ 35, 24e6 ], [ 40, 16e6 ], [ 45, 16e6 ], [ 55, 16e6 ] ]);
+}));
+
+test('view: the chip\'s last rate is held by time, however often the page polls (#166)', () => swBed(async b => {
+	b.poll(0);
+	b.poll(5);
+	/* a poll every 2 s without a reading: its rate until 20 s after it was measured, then the kernel's */
+	for (const t of [ 7, 9, 11, 13, 15, 17, 19, 21, 23 ]) { b.poll(t, { hw: false }); assert.deepEqual([ b.line(), b.port() ], [ CHIP, 'switch0:1' ], 'at ' + t); }
+	b.poll(25, { hw: false });
+	assert.equal(b.port(), null);
+}));
+
+test('view: the line never shows another line\'s rate: a new main line on the switch port starts with none (#166)', () => swBed(async b => {
+	/* the main line on a device of its own, counted by the kernel */
+	b.poll(0, { dev: 'eth5' });
+	b.poll(5, { dev: 'eth5' });
+	assert.deepEqual([ b.line(), b.port() ], [ KERNEL, null ]);
+	/* it moves to the switch port: the port's first reading is no rate, and not what eth5 showed */
+	b.poll(10);
+	assert.deepEqual([ b.line(), b.port() ], [ null, 'switch0:1' ]);
+	b.poll(15);
+	assert.deepEqual(b.line(), CHIP);
+	assert.deepEqual(b.pushed, [ [ 5, 24e6 ], [ 15, 16e6 ] ]);
+	/* the same port reaches this device as another device now, and has no reading this poll: not the rate it had as eth0 */
+	b.poll(20, { dev: 'eth9', hw: false, switches: { eth9: { name: 'switch0', vlan: 2, ports: [ { num: 1, role: 'wan', index: null, vlans: 1 } ] } } });
+	assert.deepEqual([ b.self.m.uplink.chip.key, b.line(), b.port() ], [ 'switch0:1', null, null ]);
+}));
+
+test('view: the line keeps its switch port while the switch map is out for a poll, and gives it up when the map says otherwise (#166)', () => swBed(async b => {
+	b.poll(0);
+	b.poll(5);
+	/* luci.vantage wired gave no answer: no map, but the counters came, at another rate (6 MB/s down): that poll's rate */
+	b.poll(10, { map: false, down: 4e7 });
+	assert.deepEqual([ b.self.m.uplink.chip, b.line(), b.port() ], [ null, { rx: 48e6, tx: 8e5 }, 'switch0:1' ]);
+	b.poll(15, { down: 5e7 });
+	assert.deepEqual(b.line(), CHIP);
+	/* the map came and has another VLAN on the port now: the kernel's at once */
+	b.poll(20, { switches: { eth0: { name: 'switch0', vlan: 2, ports: [ { num: 1, role: 'wan', index: null, vlans: 2 } ] } } });
+	assert.deepEqual([ b.line(), b.port() ], [ KERNEL, null ]);
+	/* no map for a long time, the counters coming all the while: the port for 20 s since the map last named it, no longer */
+	b.poll(25);
+	b.poll(30);
+	for (const t of [ 35, 40, 45 ]) { b.poll(t, { map: false }); assert.deepEqual([ b.line(), b.port() ], [ CHIP, 'switch0:1' ], 'at ' + t); }
+	b.poll(50, { map: false });
+	assert.deepEqual([ b.line(), b.port() ], [ KERNEL, null ]);
+}));
+
+test('view: a fast-lane answer for a device that is no longer the main line\'s is not its rate', () => swBed(async b => {
+	const self = b.self;
+	b.poll(0, { dev: 'eth5' });
+	b.poll(5, { dev: 'eth5' });
+	await self.fastSample();
+	b.clock += 2000;
+	await self.fastSample();
+	assert.deepEqual([ b.asked, b.line() ], [ [ 'eth5', 'eth5' ], KERNEL ]);
+	/* the next sample stays out while a full poll makes eth6 the line */
+	b.clock += 2000;
+	b.held = [];
+	const out = self.fastSample();
+	self.ingest(b.raw(10, { dev: 'eth6' }));
+	assert.equal(b.line(), null);
+	const n = b.pushed.length;
+	b.held.forEach(f => f());
+	b.held = null;
+	await out;
+	assert.deepEqual([ b.line(), b.pushed.length ], [ null, n ]);
+}));
+
+test('view: a fast-lane answer that comes in after the full poll gave the line to the chip leaves the chip\'s rate (#166)', () => swBed(async b => {
+	const self = b.self;
+	b.poll(0);
+	b.poll(5);
+	/* the chip's counters stay out until its rate is no longer held: the kernel's, and the fast lane samples eth0 */
+	for (const t of [ 10, 15, 20, 25 ]) b.poll(t, { hw: false });
+	assert.deepEqual([ b.line(), b.port() ], [ KERNEL, null ]);
+	await self.fastSample();
+	b.clock += 2000;
+	await self.fastSample();
+	assert.deepEqual([ b.asked, b.line() ], [ [ 'eth0', 'eth0' ], KERNEL ], 'the lane\'s own rate of eth0');
+	/* its next sample is asked for, and stays out while a full poll brings the chip's counters back */
+	b.clock += 2000;
+	b.held = [];
+	const out = self.fastSample();
+	self.ingest(b.raw(30));
+	assert.deepEqual([ b.line(), b.port() ], [ CHIP, 'switch0:1' ]);
+	const n = b.pushed.length;
+	b.held.forEach(f => f());
+	b.held = null;
+	await out;
+	assert.deepEqual([ b.line(), b.port(), b.pushed.length ], [ CHIP, 'switch0:1', n ], 'the kernel\'s late rate is not the line\'s');
+}));
+
+test('view: a line whose VLAN has several switch ports, a port shared with another VLAN, or one the plugin does not read, stays on the kernel\'s counters', () => swBed(async b => {
+	/* the WAN's VLAN on ports 1 and 5; on port 1 that another VLAN has too; on port 4 alone, where the plugin has the board's WAN port 1 and no other */
+	for (const [ ports, chip ] of [ [ [ { num: 1, vlans: 1 }, { num: 5, vlans: 1 } ], null ], [ [ { num: 1, vlans: 2 } ], null ], [ [ { num: 4, vlans: 1 } ], { sw: 'switch0', num: 4, key: 'switch0:4' } ] ]) {
+		const self = b.self = Object.create(view);
+		self.initState({ board: {}, canWrite: false, canRdns: false, mdns: null });
+		self.pushNet = () => {};
+		const switches = { eth0: { name: 'switch0', vlan: 2, ports } };
+		b.poll(0, { switches });
+		b.poll(5, { switches });
+		assert.deepEqual([ self.m.uplink.chip, b.port(), b.line() ], [ chip, null, KERNEL ], JSON.stringify(ports));
+	}
+}));
+
 test('view: a chip\'s counters are rated by when the device read them, however late each answer came in', () => {
 	const savedL = global.L, savedW = global.window;
 	global.L = { env: {} };
@@ -628,7 +1045,7 @@ test('view: the call is a request of its own, in every poll\'s fetch, and what i
 	try {
 		const self = Object.create(view);
 		const raw = await self.fetch();
-		assert.deepEqual([ asked, JSON.parse(JSON.stringify(raw.hw)) ], [ 1, { state: 'ok', counters: { lan1: { rx: 1, tx: 2, at: 7000 } }, none: false } ]);
+		assert.deepEqual([ asked, JSON.parse(JSON.stringify(raw.hw)) ], [ 1, { state: 'ok', counters: { lan1: { rx: 1, tx: 2, at: 7000 } }, swports: {}, none: false } ]);
 		await self.fetch();
 		assert.equal(asked, 2, 'every poll');
 	} finally {

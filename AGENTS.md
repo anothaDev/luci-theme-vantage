@@ -86,12 +86,15 @@ add-ons to it) plus offline tooling. No npm, no
    Adding a call means changing the view, the ACL JSON and the allowlist in
    `security-tests/test_acl_policy.js` together, and saying why in the
    commit message. Point out any ACL change to the human.
-   The dashboard starts one program: its executable rpcd plugin
-   `luci.vantage.ports` runs `/usr/sbin/ethtool -S` with the name of one
-   of the device's own DSA ports and nothing else (#156), one call at a
+   The dashboard starts one of two programs, both to read a switch
+   chip's counters: its executable rpcd plugin `luci.vantage.ports` runs
+   `/usr/sbin/ethtool -S` with the name of one of the device's own DSA
+   ports (#156) or, on a device without one, `/sbin/swconfig dev
+   <switch> port <number> get mib` for the WAN port of a switch
+   `/etc/board.json` names (#166), and nothing else, one call at a
    time, through `popen`, which hands that line to `/bin/sh -c`; the
    ports, the name rule (no character the shell reads), the caps and
-   that command line are pinned in
+   both command lines are pinned in
    `test_acl_policy.js`, and `luci.vantage` and every other file of the
    dashboard and the theme start nothing (but their two uci-defaults
    scripts, which the package manager runs at install; the dashboard's

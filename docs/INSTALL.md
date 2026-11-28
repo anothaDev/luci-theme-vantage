@@ -1255,11 +1255,13 @@ Then reload the page. To remove Vantage entirely, see
   `/proc/stat`, the kernel's route to the internet and the link state of a
   swconfig switch's ports. It cannot
   run commands; for that link state LuCI's own method runs `swconfig dev
-  <switch> show`, read-only. One program it starts itself, for a DSA
+  <switch> show`, read-only. One program it starts itself, for a
   switch's own port counters: `/usr/sbin/ethtool -S <port>`, where
   `ethtool` is installed, for each of the device's own DSA ports by its
-  kernel name, in a process of rpcd's own (the plugin
-  `luci.vantage.ports`, which takes nothing from the caller). Its only write permission, in a
+  kernel name, or on a device with a swconfig switch `/sbin/swconfig dev
+  <switch> port <number> get mib` for its WAN port, in a process of
+  rpcd's own (the plugin `luci.vantage.ports`, which takes nothing from
+  the caller). Its only write permission, in a
   separate group (`luci-app-vantage-names`), is the plugin methods
   `luci.vantage set_alias` and `set_quiet`, which check each name and
   station on the device and write nothing but `/etc/config/vantage` (at

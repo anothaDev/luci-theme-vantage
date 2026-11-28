@@ -214,9 +214,10 @@ Vantage is built to read your router, not change it. The full rules are in
 the [spec](docs/SPEC.md#6-security-requirements).
 
 - **The dashboard only reads.** Its permissions cover read methods. The
-  one program they can start is `ethtool -S` for the device's own DSA
-  switch ports, where `ethtool` is installed, with nothing from the
-  browser on its command line. Its only writes are device names and a
+  one program they can start reads a switch's own port counters:
+  `ethtool -S` for the device's own DSA switch ports, where `ethtool` is
+  installed, or `swconfig … get mib` for an older switch's WAN port, with
+  nothing from the browser on its command line. Its only writes are device names and a
   device's "Don't warn about its signal" mark, both stored in
   `/etc/config/vantage`, and an empty lock file in RAM while it reads
   those counters.
