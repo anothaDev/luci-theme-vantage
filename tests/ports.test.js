@@ -689,7 +689,7 @@ test('view: the first answer that says there is nothing to get, or no object, en
 	assert.equal(c.asked, 2, 'the first answer after it does');
 }));
 
-test('view: six answers running without one counter, from the page\'s first, end the asking; a counter once, and no run of them does', () => switchCalls(async c => {
+test('view: six answers of a swconfig switch running without one counter, on a page that has had none, end the asking; a counter once, and no run of them does; a DSA switch\'s are not counted', () => switchCalls(async c => {
 	/* a switch whose reads fail every time (a driver without counters, for one): failed is no "nothing to get" by itself */
 	const dry = () => Promise.resolve({ v: 1, state: 'ok', took: 3, more: false, ports: {}, switches: { switch0: { 1: { error: 'failed', at: 7000 } } } });
 	c.reply = dry;
@@ -716,6 +716,12 @@ test('view: six answers running without one counter, from the page\'s first, end
 	c.reply = dry;
 	for (let i = 0; i < 10; i++) await c.ask();
 	assert.equal(c.asked, 16);
+	/* a DSA switch whose every read fails: asked every poll, as since #156 (its first answer was no "nothing to get") */
+	c.self = Object.create(view);
+	c.asked = 0;
+	c.reply = () => Promise.resolve({ v: 1, state: 'ok', took: 3, more: false, ports: { lan1: { error: 'failed', at: 7000 }, lan2: { error: 'failed', at: 7001 } } });
+	for (let i = 0; i < 12; i++) assert.equal((await c.ask())[0].none, false);
+	assert.equal(c.asked, 12);
 }));
 
 test('view: busy is no answer this time: the page keeps asking, and the first real answer decides', () => switchCalls(async c => {

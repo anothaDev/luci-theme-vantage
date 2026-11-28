@@ -687,11 +687,12 @@ text around it so it looks the same size.
   for the page, so a device without such a switch starts no process for
   it every poll. Only the first: once it has answered, a later answer of
   any kind (rpcd's objects are gone for a moment while it reloads, at
-  every package install) is that poll's alone. Six answers running that
-  bring no counter of any port, on a page that has had none, end the
-  asking too (#166): a switch whose reads fail every time, whatever the
-  plugin makes of the reason, starts a program for half a minute and no
-  longer. A page that has had a counter once asks for good. Nothing is shown about traffic the counters miss.
+  every package install) is that poll's alone. For a swconfig switch
+  (#166), six answers running that bring no counter of any port, on a
+  page that has had none, end the asking too: a switch whose reads fail
+  every time, whatever the plugin makes of the reason, starts a program
+  for half a minute and no longer. A page that has had a counter once
+  asks for good, and a DSA switch's answers are not counted. Nothing is shown about traffic the counters miss.
 - **Throughput chart**: one row per line, then each radio, each
   with its own scale. Under "Customize", the viewer picks how download and
   upload share a row: overlaid on one scale (the default), overlaid on a

@@ -86,9 +86,11 @@ var COLLECTOR_RETRY_MS = 60 * 1000;
 /* how long a poll waits for a switch chip's own counters (askSwitch):
    the plugin reads no port after its first second */
 var SWITCH_WAIT_MS = 2 * 1000;
-/* answers in a row, from the page's first, that bring no counter of any
-   port: the page asks no more after them (a switch whose driver gives
-   none, whatever the plugin makes of its reason) */
+/* answers of a swconfig switch in a row, on a page that has had no
+   counter, that bring none of any port: the page asks no more after
+   them (a switch whose driver gives none, whatever the plugin makes of
+   its reason). A DSA switch's answers are not counted: the first one
+   decides there, as before (#156) */
 var SWITCH_DRY = 6;
 /* how long the line counted by its switch port's chip keeps the last
    rate measured there while polls bring no new one (another call was
@@ -1227,7 +1229,11 @@ return view.extend({
 		var self = this;
 		if (this.hwOff || this.hwCall) return Promise.resolve(null);
 		var call = this.hwCall = callSwitchCounters().then(function(v) {
-			return model.switchCounters(v);
+			var c = model.switchCounters(v);
+			if (c && (Object.keys(c.counters).length || Object.keys(c.swports).length)) self.hwGot = true;
+			/* v.switches: the plugin read a swconfig switch (SWITCH_DRY) */
+			else if (c && !self.hwGot && v.switches && (self.hwDry = (self.hwDry || 0) + 1) >= SWITCH_DRY) self.hwOff = true;
+			return c;
 		}, function(e) {
 			if (!self.hwAnswered && WG_ABSENT.test(String(e && e.message))) self.hwOff = true;
 			return null;
@@ -1237,9 +1243,6 @@ return view.extend({
 				self.hwAnswered = true;
 				if (c.none) self.hwOff = true;
 			}
-			/* never a counter on this page, in SWITCH_DRY answers running */
-			if (c && (self.hwGot || Object.keys(c.counters).length || Object.keys(c.swports).length)) self.hwGot = true;
-			else if (c && (self.hwDry = (self.hwDry || 0) + 1) >= SWITCH_DRY) self.hwOff = true;
 			return c;
 		});
 		return new Promise(function(resolve) {
