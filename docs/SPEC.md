@@ -34,7 +34,7 @@ port in one click, finding anything by typing — not from their look.
 | Package | Contents | Depends |
 |---|---|---|
 | `luci-theme-vantage` | ucode templates, CSS, icons, `menu-vantage.js` (shell: rail, top bar, palette, tabs, indicators), login page, its rpcd ACL (`/etc/config/vantage_theme` only), that config | `+luci-base` |
-| `luci-app-vantage` | dashboard + inspector views under `admin/dashboard` (landing page), its rpcd ACL (reads + its own config only), its rpcd ucode plugin `luci.vantage` (key-free wireless status, temperatures, the bridges' wired hosts, the radios' channel survey, validated alias writes), its executable rpcd plugin `luci.vantage.ports` (a DSA switch's own port counters, read with `ethtool -S`), `/etc/config/vantage` | `+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-nl80211` (rpcd-mod-iwinfo, ucode-mod-fs, ucode-mod-rtnl and ucode-mod-nl80211 beyond luci-base; Wi-Fi images already have rtnl and nl80211, as wifi-scripts needs them); reverse DNS (`rpcd-mod-rrdns`), mDNS (`umdns`), `ethtool` (a DSA switch's own counters) and hostapd's ubus objects are optional and degrade |
+| `luci-app-vantage` | dashboard + inspector views under `admin/dashboard` (landing page), its rpcd ACL (reads + its own config only), its rpcd ucode plugin `luci.vantage` (key-free wireless status, temperatures, the wired hosts of its bridges and of its networks without one, the radios' channel survey, validated alias writes), its executable rpcd plugin `luci.vantage.ports` (a DSA switch's own port counters, read with `ethtool -S`), `/etc/config/vantage` | `+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-nl80211` (rpcd-mod-iwinfo, ucode-mod-fs, ucode-mod-rtnl and ucode-mod-nl80211 beyond luci-base; Wi-Fi images already have rtnl and nl80211, as wifi-scripts needs them); reverse DNS (`rpcd-mod-rrdns`), mDNS (`umdns`), `ethtool` (a DSA switch's own counters) and hostapd's ubus objects are optional and degrade |
 | `luci-app-vantage-aps` (optional) | the access points a router's dashboard shows, over SSH (section "Other access points"): the Network → Access points page, its rpcd ACL and ucode plugin `luci.vantage.pair` (pairing), the collector service (router) and the report command (access point) | `+luci-app-vantage +rpcd-mod-ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci +ucode-mod-uloop`; Dropbear at run time (server on the access points, `dbclient` on the router), not as a dependency |
 | `luci-app-vantage-traffic` (optional, experimental) | per-device traffic for hosts that share a port of the router, from its connection tracking (section "Per-device traffic"): its rpcd ACL and an executable rpcd plugin, `luci.vantage.traffic`, which rpcd runs as a process of its own | `+luci-app-vantage +rpcd +ucode +ucode-mod-fs +ucode-mod-rtnl +ucode-mod-uci`; `kmod-nf-conntrack` with accounting at run time (a router's default), not as a dependency |
 
@@ -379,7 +379,8 @@ text around it so it looks the same size.
   control of a connected client, which also removes the name. "In
   neither list" is all this device can tell: a wired device drops out
   of its list once the bridge forgets it (about five minutes without
-  traffic), which the details say; and while a bridge holds too many
+  traffic; on a network without a bridge, five minutes after this device
+  last had it confirmed), which the details say; and while a bridge holds too many
   entries to list, nobody is said to be offline. A wired
   host alone on its port gets the port's link speed and traffic as its
   own; hosts sharing a port (a switch or another access point behind it)
@@ -967,7 +968,66 @@ text around it so it looks the same size.
   call parse thousands) or one MAC sits on two ports of a bridge (each
   row's time since heard is the dump's own). brforward's byte order is
   the host's, learned from the first dump. The bridge forgets a host
-  after about five minutes without traffic. Its switch map says of each
+  after about five minutes without traffic. A network without a bridge
+  (`lan` set on `eth0` itself, #178) has no forwarding database: for
+  those `wired` also returns `neighbours`, the hosts in the kernel's
+  neighbour tables (ARP and IPv6 neighbour discovery; one more read-only
+  dump a family, RTM_GETNEIGH for AF_INET and AF_INET6) on a device that
+  is no bridge, no interface cfg80211 drives and no VLAN on either by
+  its name (`br-lan.20`): MAC, device and seconds since the kernel last
+  had the host confirmed, each MAC once a device, and only while that is
+  under 300 s (a bridge forgets a host after as long; the kernel keeps a
+  silent neighbour for hours). Confirmed is the kernel's own word: a
+  reply to its lookup, which it sends about once a minute to a neighbour
+  it is sending to, or progress on a connection of this device's own
+  with the host; an entry that a host's own lookup made starts out twice
+  the base reachable time old (a minute, by default) without any reply.
+  It is not the host's last frame, as a bridge's time is: a host
+  that only sends through this device and gets nothing back leaves the
+  list while it sends, as does one whose traffic all bypasses the kernel
+  (hardware flow offloading) unless it also talks to this device itself
+  (DNS, DHCP); one that only talks to others on its network is never
+  listed; one that left stays for up to five minutes. No addresses (the
+  host hints have them), no entry that was not learned (failed,
+  incomplete, a device without ARP, and permanent: a host with a static
+  ARP binding is never listed, the kernel does not check those), no
+  group address; at
+  most 128 a device and 512 in all, in the dump's order (IPv4 first),
+  and no member at all where there are none. A WAN on an adapter of its
+  own is such a device too, so its gateway is among them: which of them
+  are this device's hosts is the dashboard's to tell. Both dumps are
+  read whole: what the hosts of a network can make the kernel hold is
+  capped (`gc_thresh3`, 1,024 a family unless raised), the permanent
+  and externally learned entries an administrator or a daemon adds are
+  not. The dashboard lists one
+  as a wired host on its device, with the network on that device (the
+  first that qualifies, where it carries two), only where the device
+  carries a network of this device's own: one that is up with a fixed
+  address (`static`), on a device that no line to the internet leaves by
+  (nor a default route of the kernel's main table), that carries no
+  interface, up or down, of another protocol than `static` or `none` (a
+  DHCPv6 client beside the static network counts) nor one with a default
+  route in any table that netifd names, set or switched off, and that is
+  no bridge, no Wi-Fi interface and no VLAN on one, however many devices
+  lie between. What answers anywhere else is upstream or not this
+  device's to list: a WAN (also one that is down, or routed by policy),
+  a modem's own network on the WAN's port, the LAN a device has its
+  address from. Two cases it cannot tell and lists: the port of a static
+  WAN taken down by hand (netifd names no route of an interface that is
+  down), and one beside a default route that a daemon put in a table of
+  its own.
+  A host that any bridge has heard stays that bridge's, a station a
+  station, and a paired access point takes one by the rule for any wired
+  host. One alone among them on its device has the device's link and
+  traffic as its own, as one alone on a bridge's port, though the
+  neighbour table does not say who else is on the wire; but no traffic
+  of its own, and no place among Top talkers, where the adapter carries
+  other devices (the WAN's VLAN on `eth0`): the kernel counts theirs on
+  it too. While the neighbours of one of these devices are at a cap (or
+  512 in all, where there is such a device), nobody is said to be
+  offline; and only hosts on the devices the poll before took for its
+  own, not what answers upstream, have the dashboard ask for a switch's
+  link state or a fresh name. Its switch map says of each
   port how many of the switch's VLANs the port is in (`vlans`; the VLANs
   that reach no CPU port counted too, and left out unless every
   `switch_vlan` section and role was read and counted: one of a switch

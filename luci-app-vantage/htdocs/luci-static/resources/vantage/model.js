@@ -1283,6 +1283,7 @@ return baseclass.extend({
 	          assoc: { ifname: [ station ] }, hapd: { ifname: { clients } },
 	          hapdStatus: { ifname: status }, hints, aliases, rdns, mdns,
 	          fdb: [ luci.vantage wired host ] (-> wiredHosts),
+	          neigh: [ luci.vantage wired neighbour ] (-> wiredHosts too),
 	          routes: [ luci.vantage routes route ] or null,
 	          collector: vantage.collector report or null,
 	          vendor: fn(mac) -> name|null } */
@@ -1560,6 +1561,64 @@ return baseclass.extend({
 			return mac ? linePort(mac, l3) : null;
 		}, kernel).slice(0, MAX_LINES))) : [];
 		uplinks.forEach(function(u) { u.minus = self.lineVlans(u, devs, raw.ifaces); u.chip = self.lineChip(u, raw.switches); });
+		/* hosts on a network without a bridge (#178: `lan` set on eth0
+		   itself): the neighbours the kernel had confirmed on its device
+		   (luci.vantage wired's `neighbours`), wired hosts on that device,
+		   heard when they were last confirmed. Only on the device of a
+		   network of this device's own (ownNets): one that is up with a
+		   fixed address (static), on a device that
+		   - no line to the internet leaves by (the network the uplink
+		     falls back to while every line is down is no line), nor a
+		     default route of the kernel's;
+		   - carries no interface, up or down, of another protocol than
+		     static or none (a PPPoE session that is down, a DHCP client:
+		     a modem's own network on the WAN's port is upstream), nor one
+		     with a default route in any table, set or waiting;
+		   - is no bridge, no Wi-Fi interface and no VLAN on one, however
+		     many devices lie between (br-lan.20: the bridge's table has
+		     those hosts).
+		   What answers anywhere else is upstream of this device or not
+		   its to list. And only a host that no bridge has heard, on any of
+		   its ports, and that is no station. ownNets[device]: that
+		   network, as lans has them below (the first that qualifies, not
+		   one that is down) */
+		var outDevs = Object.create(null), ownNets = Object.create(null), bridged = Object.create(null);
+		function out(n) { if (typeof n === 'string') outDevs[n] = true; }
+		uplinks.forEach(function(u) { if (u.defaultRoute !== false) [ u.port, u.dev, u.l3dev, u.statsDev ].forEach(out); });
+		arr(raw.routes).forEach(function(r) { out(r && r.dev); });
+		arr(raw.ifaces).forEach(function(i) {
+			var routes = i ? arr(i.route).concat(arr(obj(i.inactive).route)) : [];
+			if (i && ((i.proto !== 'static' && i.proto !== 'none') || routes.some(function(r) { return r && +r.mask === 0; }))) [ i.device, i.l3_device ].forEach(out);
+		});
+		/* a bridge or a Wi-Fi interface, or on one: by the parents netifd
+		   names, else by the name (eth0.3 is on eth0); eight steps at most */
+		function layered(n) {
+			for (var i = 0; typeof n === 'string' && i < 8; i++) {
+				var d = obj(devs[n]);
+				if (d.devtype === 'bridge' || d.type === 'bridge' || self.isWireless(n, devs[n], wlNames)) return true;
+				n = typeof d.parent === 'string' ? d.parent : under(n) !== n ? under(n) : null;
+			}
+			return false;
+		}
+		upIfaces(raw.ifaces).forEach(function(i) {
+			var d = i.l3_device || i.device;
+			if (i.proto === 'static' && typeof d === 'string' && !outDevs[d] && !ownNets[d] && !layered(d))
+				ownNets[d] = { name: String(i.interface), ipv4: arr(i['ipv4-address']).map(function(a) { return a && a.address ? a.address + '/' + a.mask : null; }).filter(Boolean) };
+		});
+		arr(raw.fdb).forEach(function(h) { var m = h && typeof h.bridge === 'string' ? names.normMac(h.mac) : null; if (m) bridged[m] = true; });
+		arr(raw.neigh).forEach(function(h) {
+			var mac = h && names.normMac(h.mac), dev = h && h.dev, prev = mac && fdb[mac];
+			if (!mac || staMacs[mac] || bridged[mac] || typeof dev !== 'string' || !ownNets[dev] || !finite(h.seen) || h.seen < 0) return;
+			if (prev && !(prev.seen > h.seen)) return;
+			if (!prev) wiredMacs.push(mac);
+			fdb[mac] = { port: dev, bridge: null, vlan: null, seen: h.seen, routed: true };
+		});
+		/* the list may be cut where luci.vantage wired's caps are reached
+		   (128 a device, 512 in all): then nobody is said to be offline */
+		var perNeigh = Object.create(null), neighFull = Object.keys(ownNets).length > 0 && arr(raw.neigh).length >= 512;
+		arr(raw.neigh).forEach(function(h) {
+			if (h && typeof h.dev === 'string' && ownNets[h.dev] && (perNeigh[h.dev] = (perNeigh[h.dev] || 0) + 1) >= 128) neighFull = true;
+		});
 		/* the network on each bridge (or bridge VLAN: br-lan.10), and its
 		   IPv4 subnets for the hosts' addresses */
 		var lans = Object.create(null);
@@ -1568,7 +1627,8 @@ return baseclass.extend({
 			if (typeof d === 'string' && i.interface && !lans[d])
 				lans[d] = { name: String(i.interface), ipv4: arr(i['ipv4-address']).map(function(a) { return a && a.address ? a.address + '/' + a.mask : null; }).filter(Boolean) };
 		});
-		function lanOf(h) { return h.bridge ? (h.vlan != null && lans[h.bridge + '.' + h.vlan]) || lans[h.bridge] || null : null; }
+		/* of a host on a network without a bridge: the network that made its device one */
+		function lanOf(h) { return h.bridge ? (h.vlan != null && lans[h.bridge + '.' + h.vlan]) || lans[h.bridge] || null : h.routed ? ownNets[h.port] || null : null; }
 		function wiredSubnets(mac) { var l = lanOf(fdb[mac]); return l && l.ipv4.length ? l.ipv4 : subnets; }
 		wiredMacs.forEach(function(mac) { everyone.push({ mac: mac, ips: self.hintAddrs(hintOf(mac), wiredSubnets(mac)) }); });
 		/* The entries the paired access points' reports add (below) are
@@ -1682,6 +1742,14 @@ return baseclass.extend({
 		   address the host hints give it (above). */
 		var perPort = Object.create(null);
 		wiredMacs.forEach(function(mac) { var p = fdb[mac].port; perPort[p] = (perPort[p] || 0) + 1; });
+		/* the devices that others are on (eth0 under eth0.20): the kernel
+		   counts those others' traffic on them too */
+		var carrier = Object.create(null);
+		Object.keys(devs).forEach(function(n) {
+			var p = obj(devs[n]).parent, u = under(n);
+			if (typeof p === 'string') carrier[p] = true;
+			if (u !== n) carrier[u] = true;
+		});
 		var wired = wiredMacs.map(function(mac) {
 			var h = fdb[mac], d = devs[h.port], hint = hintOf(mac), ips = self.hintAddrs(hint, wiredSubnets(mac));
 			/* behind a switch VLAN the port's own link is the CPU's: the
@@ -1707,6 +1775,10 @@ return baseclass.extend({
 				ips: ips,
 				port: h.port,
 				bridge: h.bridge,
+				/* a neighbour on an adapter that carries other devices (the WAN's
+				   VLAN on eth0, #178): the port's traffic is not its own, though
+				   it is alone there */
+				mixed: !!h.routed && !!carrier[h.port],
 				network: lanOf(h) ? lanOf(h).name : null,
 				vlan: h.vlan,
 				seen: h.seen,
@@ -2023,6 +2095,10 @@ return baseclass.extend({
 			ssids: ssids,
 			clients: clients,
 			wiredHosts: wired,
+			/* the devices whose neighbours are wired hosts (networks
+			   without a bridge, #178), and whether their list may be cut */
+			routedDevs: Object.keys(ownNets),
+			neighFull: neighFull,
 			/* the named devices in neither list */
 			offline: offline,
 			/* its Ethernet ports (ports): the Ports tile's */

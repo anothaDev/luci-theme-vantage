@@ -152,8 +152,9 @@ var callDev = rpc.declare({ object: 'network.device', method: 'status', params: 
    without keys or RADIUS secrets, and the validated alias write */
 var callWifi = rpc.declare({ object: 'luci.vantage', method: 'wireless', expect: { '': {} } });
 var callThermal = rpc.declare({ object: 'luci.vantage', method: 'thermal', expect: { zones: [] } });
-/* { hosts, crowded, switches }: crowded when a bridge holds too many
-   entries to list; switches, the swconfig switch ports behind a port */
+/* { hosts, crowded, switches, neighbours }: crowded when a bridge holds
+   too many entries to list; switches, the swconfig switch ports behind a
+   port; neighbours, the hosts on a network without a bridge (#178) */
 var callWired = rpc.declare({ object: 'luci.vantage', method: 'wired', expect: { '': {} } });
 /* the route the kernel takes to the internet: which one it kept of two
    with one metric; { routes: null } when it could not be asked */
@@ -1494,7 +1495,12 @@ return view.extend({
 			   shows from the next one */
 			var switches = (wiredReply.switches && typeof wiredReply.switches === 'object' && !Array.isArray(wiredReply.switches)) ? wiredReply.switches : {};
 			var swState = self.swState || (self.swState = Object.create(null));
-			var hostPorts = (Array.isArray(wiredReply.hosts) ? wiredReply.hosts : []).map(function(h) { return h && h.port; });
+			/* the neighbours, and those the last model took for wired hosts
+			   (mine): only they ask for a switch's state or a name, not
+			   what answers upstream */
+			var neigh = Array.isArray(wiredReply.neighbours) ? wiredReply.neighbours : [], own = (self.m && self.m.routedDevs) || [];
+			var mine = neigh.filter(function(h) { return h && own.indexOf(h.dev) >= 0; });
+			var hostPorts = (Array.isArray(wiredReply.hosts) ? wiredReply.hosts : []).map(function(h) { return h && h.port; }).concat(mine.map(function(h) { return h.dev; }));
 			var due = [], asked = Date.now();
 			Object.keys(switches).forEach(function(dev) {
 				var n = switches[dev] && switches[dev].name;
@@ -1563,7 +1569,7 @@ return view.extend({
 				var known = self.knownMacs || (self.knownMacs = new Set()), fresh = false, first = !self.macsSeen;
 				var note = function(s) { if (s && typeof s.mac === 'string' && !known.has(s.mac)) { known.add(s.mac); fresh = true; } };
 				Object.keys(assoc).forEach(function(ifn) { (Array.isArray(assoc[ifn]) ? assoc[ifn] : []).forEach(note); });
-				(Array.isArray(wiredReply.hosts) ? wiredReply.hosts : []).forEach(note);
+				(Array.isArray(wiredReply.hosts) ? wiredReply.hosts : []).concat(mine).forEach(note);
 				/* bounded: a flood of made-up addresses starts the set over */
 				if (known.size > 4096) self.knownMacs = null;
 				self.macsSeen = true;
@@ -1576,7 +1582,7 @@ return view.extend({
 				var switchState = Object.create(null);
 				Object.keys(swState).forEach(function(n) { switchState[n] = swState[n].ports; });
 				var raw = { info: info, lost: lost, stat: r[1] || '', ifaces: r[2] || [], devs: r[3] || {}, wifi: wifiDevs, hints: r[5] || self.hintsCache || {}, thermal: r[6] || [],
-					fdb: Array.isArray(wiredReply.hosts) ? wiredReply.hosts : [], fdbCrowded: wiredReply.crowded === true, wiredOk: switches === wiredReply.switches, switches: switches, switchState: switchState,
+					fdb: Array.isArray(wiredReply.hosts) ? wiredReply.hosts : [], neigh: neigh, fdbCrowded: wiredReply.crowded === true, wiredOk: switches === wiredReply.switches, switches: switches, switchState: switchState,
 					/* no answer (an older plugin, a lookup not sent, a failed call)
 					   keeps the last one: no tunnel blinking off */
 					routes: r[8] && Array.isArray(r[8].routes) ? (self.kernelRoutes = r[8].routes) : (self.kernelRoutes || null),
@@ -1661,7 +1667,7 @@ return view.extend({
 		var st = this.st;
 		return {
 			board: this.board, info: raw.info, ifaces: raw.ifaces, devs: raw.devs, wifi: raw.wifi, iwinfo: raw.iwinfo,
-			assoc: raw.assoc, hapd: raw.hapd, hapdStatus: raw.hapdStatus, survey: raw.survey, hints: raw.hints, fdb: raw.fdb,
+			assoc: raw.assoc, hapd: raw.hapd, hapdStatus: raw.hapdStatus, survey: raw.survey, hints: raw.hints, fdb: raw.fdb, neigh: raw.neigh,
 			switches: raw.switches, switchState: raw.switchState, routes: raw.routes, collector: raw.collector,
 			aliases: this.aliases, rdns: st.rdns, mdns: st.mdns,
 			vendor: st.oui ? function(k) { return k ? st.oui.lookup(k) : null; } : null
@@ -1899,7 +1905,7 @@ return view.extend({
 			});
 			Object.keys(seen).forEach(function(mac) { if (!aliases[mac]) delete seen[mac]; });
 		}
-		if (raw && raw.fdbCrowded) m.offline = [];
+		if ((raw && raw.fdbCrowded) || m.neighFull) m.offline = [];
 		m.offline.forEach(function(c) {
 			var s = seen[c.mac];
 			c.lastSeen = s ? s.at : null;
@@ -4623,11 +4629,12 @@ return view.extend({
 		this.el.clients.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
 	},
 
-	/* a wired host's traffic: its port's, when it has the port to itself */
+	/* a wired host's traffic: its port's, when it has the port to itself
+	   (not where the port's counters hold other networks' traffic: mixed) */
 	portRate: function(c) {
 		/* behind a paired access point: its port's, as it reports it */
 		if (c.ap) return c.ap.rate || null;
-		return c.shared ? null : this.st.devRates[c.port] || null;
+		return c.shared || c.mixed ? null : this.st.devRates[c.port] || null;
 	},
 
 	/* what the Clients list shows for a wired host: portRate's, except
@@ -4876,7 +4883,7 @@ return view.extend({
 		   bridge last heard from them instead of radio figures */
 		var cols = off ? [ [ 'name', _('Device') ], [ 'net', _('Last address') ], [ 'seen', _('Last seen') ] ]
 			: wired ? [ [ 'name', _('Device') ], [ 'link', _('Link', 'vantage') ], [ 'net', _('Network') ], [ 'live', _('Live') ],
-			[ 'seen', _('Last heard'), _('The bridge forgets a device after about five minutes without traffic') ] ]
+			[ 'seen', _('Last heard'), _('A device leaves this list about five minutes after it was last heard') ] ]
 			: [ [ 'name', _('Device') ], [ 'signal', _('Signal') ], [ 'ssid', _('Network') ], [ 'rate', _('Link rate') ], [ 'live', _('Live') ], [ 'exp', _('Experience') ], [ 'time', _('Online', 'vantage') ] ];
 		var so = ui.sorts[ui.kind];
 		/* the offline list is by name, always: its headers are labels */
@@ -4954,7 +4961,7 @@ return view.extend({
 				E('p', {}, [ _('The bridges have learned so many addresses that listing them here would strain this device.') ])
 			] : wired ? [
 				icon('router'), E('p', { 'class': 'vt-empty-title' }, [ _('No wired devices heard') ]),
-				E('p', {}, [ _('Devices on the Ethernet ports appear here once they send traffic; the bridge forgets quiet ones after about five minutes.') ])
+				E('p', {}, [ _('Devices on the Ethernet ports appear here once they send traffic; quiet ones leave the list after about five minutes.') ])
 			] : [
 				icon('wifi'), E('p', { 'class': 'vt-empty-title' }, [ _('No clients connected') ]),
 				E('p', {}, [ _('Stations appear here as soon as they associate with one of the SSIDs.') ])

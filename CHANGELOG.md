@@ -25,6 +25,18 @@ packages are listed at
   switch gives them only with its counter polling on: some boards start
   that way, on others it is `option ar8xxx_mib_poll_interval '500'` in
   the switch's section of `/etc/config/network`.
+- **Dashboard: wired devices on a router whose networks have no bridge**
+  (#178, [@Omoinemie](https://github.com/Omoinemie)). The wired list came
+  only from what the bridges had learned, so a router with `lan` set
+  directly on an adapter (`eth0`, common on x86 boxes) listed nobody. On
+  such a network the dashboard now lists the devices from the kernel's
+  neighbour table (ARP, IPv6 neighbour discovery) that the router
+  confirmed within the last five minutes, with their port, network, name
+  and addresses. Only on a network the router has a fixed address on
+  (protocol `static`), on a port that carries no line to the internet; a
+  router with every network on a bridge shows what it did. The time
+  shown for such a device is the router's last check of it, about once a
+  minute while it sends to it, not the device's last frame.
 
 ## 1.2.2 - 2026-11-27
 

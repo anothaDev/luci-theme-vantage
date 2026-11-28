@@ -34,7 +34,15 @@
 //              device, the ports' roles) and the switch_vlan sections of
 //              /etc/config/network (device, vlan, vid and ports, nothing
 //              else), or board.json's roles for a switch those give no
-//              VLAN. Read group luci-app-vantage.
+//              VLAN. And the hosts on a network without a bridge (#178:
+//              `lan` set on eth0 itself has no forwarding database):
+//              the kernel's neighbours (ARP, IPv6 neighbour discovery)
+//              on a device that is no bridge, no Wi-Fi interface and no
+//              VLAN on one, which the kernel had confirmed within
+//              NEIGH_FRESH_S (neighbours: MAC, device and seconds since;
+//              no addresses), from one read-only netlink dump a family;
+//              at most 128 a device and 512 in all. Read group
+//              luci-app-vantage.
 //   routes     the route the kernel takes to the internet, IPv4 and IPv6:
 //              a read-only lookup of each family (as `ip route get
 //              fibmatch`) of a documentation address no network uses, so
@@ -105,6 +113,7 @@ const FDB_LIMIT = 4096;           // forwarding entries, all bridges together, b
 const FDB_ENTRY = 16;             // sizeof(struct __fdb_entry), brforward's record
 const FDB_DUMP_S = 30;            // the netlink dump at least this often (VLANs, static entries)
 const FDB_PARSE = 512;            // brforward records read one by one, all bridges; above: the dump each call
+const NEIGH_FRESH_S = 300;        // a neighbour confirmed longer ago is not listed (a bridge forgets a host after as long)
 const NETWORK = 'network';        // read only, by switches(): switch_vlan sections
 const BOARD = '/etc/board.json';
 const BOARD_MAX = 65536;          // bytes read of it
@@ -795,6 +804,64 @@ function wired() {
 	return out;
 }
 
+// whether a device is neither a bridge (those have brforward) nor an
+// interface cfg80211 drives
+function plain_dev(d) {
+	return !access(NET + '/' + d + '/brforward') && !access(NET + '/' + d + '/phy80211');
+}
+
+// [ { mac, dev, seen } ]: the hosts on a network without a bridge, as
+// the kernel's neighbour tables have them (#178). Of a device that is no
+// bridge, no interface cfg80211 drives (its stations are listed as such)
+// and no VLAN on either by its name (br-lan.20: the bridge's table has
+// those hosts; a bridge's port has no neighbours, the bridge takes its
+// frames): each MAC once, with the seconds since the kernel last had it
+// confirmed (cacheinfo's confirmed, in 1/100 s: a reply to the kernel's
+// own lookup, which it sends about once a minute to a neighbour it is
+// sending to, or progress on a connection of its own with it; an entry
+// a host's own lookup made starts out twice the base reachable time
+// old, a minute by default), the least of its addresses' entries. Only while that is under
+// NEIGH_FRESH_S, as long as a bridge keeps a silent host: the kernel
+// keeps a silent neighbour for hours. Left out: entries without an
+// address that was learned (failed, incomplete, permanent, a device
+// without ARP) and group addresses. One read-only dump a family: what
+// the hosts of a network can make the kernel hold is capped
+// (gc_thresh3, 1024 a family unless raised); permanent and externally
+// learned entries, which only an administrator or a daemon adds, are
+// not. At most MAX_PER_PORT a device
+// and MAX_HOSTS in all, in the dump's order, IPv4 first.
+function neighbours() {
+	let heard = rtnl.const.NUD_REACHABLE | rtnl.const.NUD_STALE | rtnl.const.NUD_DELAY | rtnl.const.NUD_PROBE;
+	let out = [], at = {}, per = {}, plain = {};
+
+	for (let family in [ rtnl.const.AF_INET, rtnl.const.AF_INET6 ]) {
+		let dump = rtnl.request(rtnl.const.RTM_GETNEIGH, rtnl.const.NLM_F_DUMP, { family });
+
+		for (let n in ((type(dump) == 'array') ? dump : [])) {
+			let mac = (type(n) == 'object') ? norm_mac(n.lladdr) : null, dev = mac ? netdev(n.dev) : null;
+			let age = n?.cacheinfo?.confirmed;
+
+			if (!dev || is_multicast(mac) || type(n.state) != 'int' || !(n.state & heard) ||
+			    type(age) != 'int' || age < 0 || age >= NEIGH_FRESH_S * 100)
+				continue;
+
+			if (plain[dev] == null)
+				plain[dev] = plain_dev(dev) && plain_dev(split(dev, '.')[0]);
+
+			let k = dev + '|' + mac, seen = int(age / 100);
+
+			if (at[k])
+				at[k].seen = min(at[k].seen, seen);
+			else if (plain[dev] && length(out) < MAX_HOSTS && (per[dev] ?? 0) < MAX_PER_PORT) {
+				per[dev] = (per[dev] ?? 0) + 1;
+				push(out, at[k] = { mac, dev, seen });
+			}
+		}
+	}
+
+	return out;
+}
+
 // [ { family, dev, metric } ] for the families whose lookup answers with
 // a unicast default route in the main table (no dst), IPv4 then IPv6; dev
 // null over several next hops (multipath, no single oif). null when a
@@ -1017,11 +1084,14 @@ const methods = {
 
 	wired: {
 		call: function() {
-			let hosts = wired(), sw = switches();
+			let hosts = wired(), sw = switches(), nb = neighbours();
 			let reply = (hosts == null) ? { hosts: [], crowded: true } : { hosts };
 
 			if (length(sw))
 				reply.switches = sw;
+
+			if (length(nb))
+				reply.neighbours = nb;
 
 			return reply;
 		}

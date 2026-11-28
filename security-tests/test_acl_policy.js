@@ -37,10 +37,12 @@
  *   imports nothing but uci, ubus, fs's lsdir and readfile, which it
  *   calls on paths under /sys/class/thermal (luci.vantage thermal), on
  *   the bridges' brforward and on /etc/board.json only, fs's access, on
- *   an interface's phy80211 link only, rtnl for one read-only dump of the
- *   bridge forwarding database (luci.vantage wired) and one route lookup
- *   a family, IPv4 and IPv6, of a documentation address (luci.vantage
- *   routes), and nl80211 for two read-only dumps: the channel survey of
+ *   an interface's phy80211 link and on whether a device has a brforward
+ *   (is a bridge) only, each at its own place, rtnl for one read-only dump of the bridge
+ *   forwarding database and one of each family's neighbours, IPv4 and
+ *   IPv6 (luci.vantage wired; the second for the hosts on a network
+ *   without a bridge, #178) and one route lookup a family, IPv4 and
+ *   IPv6, of a documentation address (luci.vantage routes), and nl80211 for two read-only dumps: the channel survey of
  *   an interface (luci.vantage survey) and the list of the wireless
  *   interfaces (luci.vantage wireless, #164); no other file access, no other
  *   netlink request, no process execution, and no module, cursor or
@@ -517,18 +519,29 @@ function checkPluginSource(src) {
 	assert.doesNotMatch(src, /(^|[^.\w])call\s*\(/m, 'the call() builtin is banned in the plugin');
 	/* fs: only the thermal zones under /sys/class/thermal, the
 	   bridges' forwarding counts (brforward) under /sys/class/net, the
-	   board description, and whether an interface has a phy80211 link
-	   (access) */
+	   board description, and whether a device has a phy80211 link or a
+	   brforward of its own (access: a Wi-Fi interface, a bridge) */
 	assert.match(src, /^const THERMAL = '\/sys\/class\/thermal';$/m);
 	assert.match(src, /^const NET = '\/sys\/class\/net';$/m);
 	assert.match(src, /^const BOARD = '\/etc\/board\.json';$/m);
 	const fsCalls = [ ...src.matchAll(/\b(lsdir|readfile|access)\(([^,)]*)/g) ].map(m => m[1] + '(' + m[2]);
 	assert.ok(fsCalls.length >= 6, 'found the fs calls');
-	for (const c of fsCalls) assert.match(c, /^(lsdir\(THERMAL$|readfile\(THERMAL \+ '\/' \+ n \+ '\/(temp|type)'|lsdir\(NET$|readfile\(NET \+ '\/' \+ n \+ '\/brforward'|readfile\(BOARD|access\(NET \+ '\/' \+ dev \+ '\/phy80211')$/, c);
-	assert.equal([ ...src.matchAll(/\baccess\b/g) ].length, 2, `"access" may appear only on its import and the phy80211 check${REWORD}`);
+	for (const c of fsCalls) assert.match(c, /^(lsdir\(THERMAL$|readfile\(THERMAL \+ '\/' \+ n \+ '\/(temp|type)'|lsdir\(NET$|readfile\(NET \+ '\/' \+ n \+ '\/brforward'|readfile\(BOARD|access\(NET \+ '\/' \+ dev \+ '\/phy80211'|access\(NET \+ '\/' \+ d \+ '\/(brforward|phy80211)')$/, c);
+	/* each check at its own place: the survey's, of the interface asked about, and the neighbours' two in
+	   plain_dev(), which only neighbours() calls, on a device's name and the name before its first dot */
+	assert.deepEqual([ ...src.matchAll(/^.*\baccess\b.*$/gm) ].map(m => m[0].trim()), [
+		'import { access, lsdir, readfile } from \'fs\';',
+		"return !access(NET + '/' + d + '/brforward') && !access(NET + '/' + d + '/phy80211');",
+		"if (!netdev(dev) || dev == '.' || dev == '..' || !access(NET + '/' + dev + '/phy80211'))"
+	], `"access" may appear only on its import, in plain_dev() and on the survey's check${REWORD}`);
+	assert.deepEqual([ ...src.matchAll(/^.*\bplain_dev\b.*$/gm) ].map(m => m[0].trim()), [
+		'function plain_dev(d) {',
+		"plain[dev] = plain_dev(dev) && plain_dev(split(dev, '.')[0]);"
+	], `"plain_dev" may appear only on its definition and its one call${REWORD}`);
+	assert.ok(src.includes("\nfunction plain_dev(d) {\n\treturn !access(NET + '/' + d + '/brforward') && !access(NET + '/' + d + '/phy80211');\n}\n"), 'plain_dev() is its one line, whole');
 	/* each path constant only in its definition and those calls, so no
 	   `let BOARD = ...` can shadow one; board.json read up to BOARD_MAX */
-	for (const [ name, uses ] of [ [ 'THERMAL', 4 ], [ 'NET', 4 ], [ 'BOARD', 2 ] ])
+	for (const [ name, uses ] of [ [ 'THERMAL', 4 ], [ 'NET', 6 ], [ 'BOARD', 2 ] ])
 		assert.equal([ ...src.matchAll(new RegExp('\\b' + name + '\\b', 'g')) ].length, uses, `${name}: its definition and its ${uses - 1} fs calls${REWORD}`);
 	assert.match(src, /^const BOARD_MAX = 65536; /m);
 	assert.match(src, /\breadfile\(BOARD, BOARD_MAX\)/, 'board.json read with its bound');
@@ -566,13 +579,20 @@ function checkPluginSource(src) {
 		`"connect" may appear only on its import and the network.wireless status call${REWORD}`);
 	assert.equal([ ...src.matchAll(/\.\s*call\b/g) ].length, 1, 'one .call');
 
-	/* rtnl: two requests, the read-only dump of the bridge forwarding
-	   database and a route lookup (RTM_GETROUTE without a dump: the one
-	   route the kernel takes, never a write, as `ip route get`) of the two
-	   documentation addresses only; otherwise only constants are read */
+	/* rtnl: three requests, the read-only dump of the bridge forwarding
+	   database, the read-only dump of a family's neighbours, IPv4 and
+	   IPv6 (#178), and a route lookup (RTM_GETROUTE without a dump: the
+	   one route the kernel takes, never a write, as `ip route get`) of the
+	   two documentation addresses only; otherwise only constants are read */
 	const dump = 'let fdb = rtnl.request(rtnl.const.RTM_GETNEIGH, rtnl.const.NLM_F_DUMP, { family: rtnl.const.AF_BRIDGE });';
 	const lookup = 'let r = rtnl.request(rtnl.const.RTM_GETROUTE, 0, { family: q.family, dst: q.dst, flags: rtnl.const.RTM_F_FIB_MATCH });';
-	assert.deepEqual([ ...src.matchAll(/^.*\brtnl\.request\b.*$/gm) ].map(m => m[0].trim()), [ dump, lookup ], `"rtnl.request" may appear only as the dump and the lookup${REWORD}`);
+	const neigh = 'let dump = rtnl.request(rtnl.const.RTM_GETNEIGH, rtnl.const.NLM_F_DUMP, { family });';
+	assert.deepEqual([ ...src.matchAll(/^.*\brtnl\.request\b.*$/gm) ].map(m => m[0].trim()), [ dump, neigh, lookup ], `"rtnl.request" may appear only as the two dumps and the lookup${REWORD}`);
+	/* the neighbour dumps' family: the two of its loop, read by the request alone */
+	const nbs = /^function neighbours\(\) \{\n[\s\S]*?\n\}$/m.exec(src);
+	assert.ok(nbs, 'neighbours()');
+	assert.deepEqual([ ...nbs[0].matchAll(/^.*\bfamily\b.*$/gm) ].map(m => m[0].trim()), [ 'for (let family in [ rtnl.const.AF_INET, rtnl.const.AF_INET6 ]) {', neigh ],
+		`"family" may appear in neighbours() only on its loop and its dump${REWORD}`);
 	/* the lookup's family and address: the two literals, read, never assigned */
 	assert.deepEqual([ ...src.matchAll(/^.*\bq\b.*$/gm) ].map(m => m[0].trim()), [
 		'for (let q in [ { family: rtnl.const.AF_INET, dst: PROBE4 }, { family: rtnl.const.AF_INET6, dst: PROBE6 } ]) {',
@@ -585,8 +605,8 @@ function checkPluginSource(src) {
 		'const PROBE6 = \'2001:db8::1\';',
 		'for (let q in [ { family: rtnl.const.AF_INET, dst: PROBE4 }, { family: rtnl.const.AF_INET6, dst: PROBE6 } ]) {'
 	], `the looked-up addresses are the two documentation constants${REWORD}`);
-	const rest = src.replace(/^import \* as rtnl from 'rtnl';$/m, '').replace(dump, '').replace(lookup, '');
-	const CONSTS = [ 'NUD_PERMANENT', 'NUD_NOARP', 'NTF_SELF', 'AF_INET', 'AF_INET6', 'RT_TABLE_MAIN', 'RTN_UNICAST' ];
+	const rest = src.replace(/^import \* as rtnl from 'rtnl';$/m, '').replace(dump, '').replace(neigh, '').replace(lookup, '');
+	const CONSTS = [ 'NUD_PERMANENT', 'NUD_NOARP', 'NUD_REACHABLE', 'NUD_STALE', 'NUD_DELAY', 'NUD_PROBE', 'NTF_SELF', 'AF_INET', 'AF_INET6', 'RT_TABLE_MAIN', 'RTN_UNICAST' ];
 	for (const m of rest.matchAll(/\brtnl\b(?:\.const\.(\w+))?/g))
 		assert.ok(CONSTS.includes(m[1]), `"${m[0]}": "rtnl" may appear only as rtnl.const.${CONSTS.join(', ')}${REWORD}`);
 
@@ -633,6 +653,15 @@ test('the plugin source rules catch writes, other configs and calls, and names p
 		'builtin by name': add('global[\'sys\' + \'tem\'](\'reboot\');'),
 		'netlink write': plugin.replace('rtnl.const.RTM_GETNEIGH, rtnl.const.NLM_F_DUMP', 'rtnl.const.RTM_DELNEIGH, rtnl.const.NLM_F_DUMP'),
 		'second netlink request': add('rtnl.request(rtnl.const.RTM_NEWNEIGH, 0, {});'),
+		'neighbour dump made a write': plugin.replace('rtnl.const.RTM_GETNEIGH, rtnl.const.NLM_F_DUMP, { family });', 'rtnl.const.RTM_DELNEIGH, 0, { family });'),
+		'neighbour dump with another message': plugin.replace('rtnl.const.NLM_F_DUMP, { family });', 'rtnl.const.NLM_F_DUMP, { family, dev: \'eth0\' });'),
+		'another family\'s neighbours': plugin.replace('for (let family in [ rtnl.const.AF_INET, rtnl.const.AF_INET6 ]) {', 'for (let family in [ rtnl.const.AF_INET, 0 ]) {'),
+		'neighbour family reassigned': plugin.replace('\t\tlet dump = rtnl.request(', '\t\tfamily = 0;\n\t\tlet dump = rtnl.request('),
+		'another file of a device checked': plugin.replace("!access(NET + '/' + d + '/brforward')", "!access(NET + '/' + d + '/address')"),
+		'a file of another place checked': plugin.replace("!access(NET + '/' + d + '/brforward')", "!access('/etc/' + d)"),
+		'the survey asks a bridge, not a Wi-Fi interface': plugin.replace("dev == '..' || !access(NET + '/' + dev + '/phy80211'))", "dev == '..' || !access(NET + '/' + dev + '/brforward'))"),
+		'the device check called on another name': plugin.replace("plain_dev(split(dev, '.')[0]);", "plain_dev('../../etc');"),
+		'the device check\'s name changed inside it': plugin.replace("function plain_dev(d) {\n", "function plain_dev(d) {\n\td = '../../etc';\n"),
 		'route write': plugin.replace('rtnl.const.RTM_GETROUTE, 0,', 'rtnl.const.RTM_NEWROUTE, 0,'),
 		'route dump': plugin.replace('rtnl.const.RTM_GETROUTE, 0,', 'rtnl.const.RTM_GETROUTE, rtnl.const.NLM_F_DUMP,'),
 		'another address looked up': plugin.replace('dst: PROBE4 }', 'dst: \'192.0.2.1\' }'),

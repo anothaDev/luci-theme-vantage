@@ -114,12 +114,26 @@ function brforward(list, opts) {
 	return out;
 }
 
+/* one case through the real plugin with `entries` records on br-lan: its reply */
+function spawnUcodeReply(c, entries) {
+	const r = spawnUcode([ c ], null, entries);
+	assert.equal(r.status, 0, r.stderr);
+	return JSON.parse(r.stdout)[0].reply;
+}
+
 /* run cases through the real plugin: [ { status, reply, sections } ];
    a wired case's bridges hold what its dump has */
 function runUcode(cases) {
 	const r = spawnUcode(cases.map(c => c.method === 'wired' && (Array.isArray(c.fdb) || c.fdb === null) && !c.brforward ? Object.assign({ brforward: brforward(c.fdb) }, c) : c));
 	assert.equal(r.status, 0, r.stderr);
 	return JSON.parse(r.stdout);
+}
+
+/* the stand-in's wired reply: the neighbours only where it has some, on
+   the fake /sys/class/net's plain devices */
+function wiredShim(c) {
+	const nbs = shim.neighbours(c.neigh ?? null, d => !BRIDGES.includes(d) && !WIFI_NET.includes(d));
+	return Object.assign({ hosts: shim.wired(c.fdb ?? null) }, nbs.length ? { neighbours: nbs } : {});
 }
 
 /* the same cases through the stand-in, with a cursor that behaves like
@@ -141,7 +155,7 @@ function runShim(cases) {
 		if (!shim.argsOk(c.method, c.args)) return { status: 2, reply: null, sections: orig, reverted };
 		const reply = c.method === 'wireless'
 			? shim.wirelessReply((c.ubus || {})['network.wireless status'] ?? null, c.wireless_uci ?? null, d => NETDEVS.includes(d), c.ifaces ?? null)
-			: c.method === 'wired' ? { hosts: shim.wired(c.fdb ?? null) }
+			: c.method === 'wired' ? wiredShim(c)
 			: c.method === 'routes' ? { routes: shim.routes(c.lookup ?? null) }
 			: c.method === 'survey' ? { results: shim.survey((c.args || {}).device, (c.survey && typeof c.survey === 'object') ? c.survey[(c.args || {}).device] : null, d => WIFI_NET.includes(d)) }
 			: c.method === 'set_quiet' ? shim.setQuiet(cursor, c.args || {})
@@ -309,6 +323,59 @@ const FDB_MANY = Array.from({ length: 600 }, (_, i) => fdb('02:00:5e:00:' + (i >
 const FDB_UPLINK = Array.from({ length: 700 }, (_, i) => fdb('02:00:5e:00:' + (i >> 8).toString(16).padStart(2, '0') + ':' + (i & 255).toString(16).padStart(2, '0'), 'eth0'))
 	.concat([ fdb('00:00:5e:00:53:31', 'lan1'), fdb('00:00:5e:00:53:32', 'lan2') ]);
 
+/* the kernel's neighbours as ucode's rtnl dumps a family (RTM_GETNEIGH,
+   AF_INET or AF_INET6), keyed by family as the test double wants them:
+   on a device that is no bridge, no Wi-Fi interface and no VLAN on one,
+   the hosts confirmed within 300 s are kept, each once a device */
+const nb = (lladdr, dev, confirmed, extra) => Object.assign({ family: 2, dev, state: 0x02, flags: 0, type: 1, dst: '192.0.2.9', lladdr,
+	cacheinfo: { confirmed, used: 0, updated: 0, refcnt: 0 }, probes: 0 }, extra);
+const nb6 = (lladdr, dev, confirmed, extra) => nb(lladdr, dev, confirmed, Object.assign({ family: 10, dst: '2001:db8::9' }, extra));
+const NEIGH = {
+	2: [
+		nb('00:00:5e:00:53:41', 'eth0', 1234),
+		nb('00:00:5E:00:53:42', 'eth0', 29999, { state: 0x04 }),               /* stale, answered 299 s ago */
+		nb('00:00:5e:00:53:43', 'eth0', 30000, { state: 0x04 }),               /* 300 s: too long ago */
+		nb('00:00:5e:00:53:44', 'eth2', 0, { state: 0x08 }),                   /* a device the fake sysfs has not: plain */
+		nb('00:00:5e:00:53:45', 'br-lan', 100),                                /* a bridge's: its forwarding table has them */
+		nb('00:00:5e:00:53:46', 'br-guest', 100),
+		nb('00:00:5e:00:53:52', 'br-lan.20', 100),                             /* a VLAN on a bridge: the bridge's table has them too */
+		nb('00:00:5e:00:53:53', 'phy2g-ap0.3', 100),                           /* a VLAN on a Wi-Fi interface */
+		nb('00:00:5e:00:53:54', 'eth0.3', 100),                                /* a VLAN on an adapter: a network without a bridge */
+		nb('00:00:5e:00:53:47', 'phy2g-ap0', 100),                             /* a station */
+		nb('00:00:5e:00:53:48', 'eth0', 100, { state: 0x80 }),                 /* permanent */
+		nb('00:00:5e:00:53:49', 'eth0', 100, { state: 0x40 }),                 /* a device without ARP */
+		nb('00:00:5e:00:53:4a', 'eth0', 100, { state: 0x20 }),                 /* failed */
+		nb('00:00:5e:00:53:4b', 'eth0', 100, { state: 0 }),
+		nb('01:00:5e:90:10:02', 'eth0', 100),                                  /* a group address */
+		nb('00:00:5e:00:53:4c', 'eth0; reboot', 100),
+		nb('00:00:5e:00:53:4d', 'eth0', -1),
+		nb('00:00:5e:00:53:4e', 'eth0', 1.5),
+		nb('00:00:5e:00:53:4f', 'eth0', 100, { cacheinfo: null }),
+		nb('00:00:5e:00:53:50', 'eth0', 100, { cacheinfo: [ 100 ] }),
+		nb('00:00:5e:00:53:51', 'eth0', 100, { state: '2' }),
+		nb('not a mac', 'eth0', 100),
+		'junk', null, [ 'eth0' ]
+	],
+	10: [
+		nb6('00:00:5e:00:53:41', 'eth0', 299),                                 /* its IPv6 address, confirmed later: one host */
+		nb6('00:00:5e:00:53:42', 'eth0', 40000, { state: 0x04 }),              /* an old entry of a host confirmed since */
+		nb6('00:00:5e:00:53:43', 'eth2', 500, { state: 0x10 }),                /* a MAC on another device: a row of its own */
+		nb6('00:00:5e:00:53:41', 'eth2', 700),                                 /* also beside its row on eth0 */
+		nb6('00:00:5e:00:53:55', 'eth0', 100, { dst: '2001:db8::55' }),                /* a host with IPv6 alone */
+		nb6('01:00:5e:90:10:03', 'eth0', 100, { state: 0x40, dst: 'ff02::1' })
+	]
+};
+const mac6 = i => '02:00:5e:00:' + (i >> 8).toString(16).padStart(2, '0') + ':' + (i & 255).toString(16).padStart(2, '0');
+const NEIGH_CASES = [
+	{ method: 'wired', fdb: FDB, neigh: NEIGH },
+	{ method: 'wired', fdb: null, neigh: NEIGH },
+	/* a dump that failed, one that is no list: no neighbours, the bridges' hosts as ever */
+	{ method: 'wired', fdb: FDB, neigh: { 2: null, 10: 'junk' } },
+	/* 128 a device and 512 in all; a host already listed still takes its later answer */
+	{ method: 'wired', fdb: null, neigh: { 2: Array.from({ length: 200 }, (_, i) => nb(mac6(i), 'eth0', 5000)), 10: [ nb6(mac6(0), 'eth0', 100), nb6(mac6(199), 'eth0', 100) ] } },
+	{ method: 'wired', fdb: null, neigh: { 2: Array.from({ length: 640 }, (_, i) => nb(mac6(i), 'eth' + (i % 5), 5000)), 10: [] } }
+];
+
 const BEHAVIOUR = [
 	/* add, one section per MAC, icon handling */
 	{ method: 'set_alias', args: { mac: '00-00-5E-00-53-21', name: '  TV  ', icon: 'tv' } },
@@ -456,7 +523,7 @@ const VLAN_CASES = [
 		ifaces: [ nlIf('constructor', 3, AP_ADDR, 0), nlIf('v1', 4, AP_ADDR, 0), nlIf('__proto__', 3, '02:00:5e:00:53:b0', 0), nlIf('v2', 4, '02:00:5e:00:53:b0', 0),
 			nlIf('toString', 3, '02:00:5e:00:53:b1', 0), nlIf('v3', 4, '02:00:5e:00:53:b1', 0) ] }
 ];
-const ALL = BEHAVIOUR.concat(NAME_CASES, MAC_CASES, SURVEY_CASES, QCA_CASES, VLAN_CASES);
+const ALL = BEHAVIOUR.concat(NAME_CASES, MAC_CASES, SURVEY_CASES, QCA_CASES, VLAN_CASES, NEIGH_CASES);
 
 /* -------------------------------------------------------------- tests */
 
@@ -617,6 +684,27 @@ test('stand-in: wired keeps the hosts the bridges learned, with port, VLAN and s
 	assert.equal(up.reply.hosts.filter(h => h.port === 'eth0').length, 128);
 });
 
+test('stand-in: wired lists the neighbours that answered on a device without a bridge (#178)', () => {
+	const [ r, alone, none, perDev, inAll ] = runShim(NEIGH_CASES).map(x => x.reply);
+	assert.deepEqual(r.neighbours, [
+		{ mac: '00:00:5e:00:53:41', dev: 'eth0', seen: 2 },
+		{ mac: '00:00:5e:00:53:42', dev: 'eth0', seen: 299 },
+		{ mac: '00:00:5e:00:53:44', dev: 'eth2', seen: 0 },
+		{ mac: '00:00:5e:00:53:54', dev: 'eth0.3', seen: 1 },
+		{ mac: '00:00:5e:00:53:43', dev: 'eth2', seen: 5 },
+		{ mac: '00:00:5e:00:53:41', dev: 'eth2', seen: 7 },
+		{ mac: '00:00:5e:00:53:55', dev: 'eth0', seen: 1 }
+	], 'no bridge, Wi-Fi interface or VLAN on one; each MAC once a device, by its latest confirmation');
+	assert.equal(r.hosts.length, 5, 'beside the bridges\' hosts, which stay as they were');
+	assert.deepEqual(alone, { hosts: [], neighbours: r.neighbours });
+	assert.deepEqual(none, { hosts: r.hosts }, 'none: no member at all');
+	assert.equal(perDev.neighbours.length, 128, 'at most 128 on one device');
+	assert.equal(perDev.neighbours[0].seen, 1, 'a later answer of a host already listed');
+	assert.ok(!perDev.neighbours.some(h => h.mac === mac6(199)), 'not of one over the cap');
+	assert.equal(inAll.neighbours.length, 512, 'at most 512 in all');
+	assert.deepEqual(shim.neighbours(null, () => true), []);
+});
+
 test('stand-in: routes keeps the lookups\' default routes in the main table, device and metric only', () => {
 	const R = k => shim.routes(LOOKUPS[k]);
 	assert.deepEqual(R('both'), [ { family: 4, dev: 'eth0', metric: 0 }, { family: 6, dev: 'eth0', metric: 1024 } ]);
@@ -653,6 +741,8 @@ test('ucode plugin: crowded bridges are counted, not dumped', { skip: NO_UCODE }
 	assert.equal(run(4095, FDB).hosts.length, 5, 'one below: dumped as usual');
 	assert.equal(run([ 2000, 2095 ], FDB).hosts.length, 5);
 	assert.equal(run(0, FDB).hosts.length, 5);
+	assert.deepEqual(spawnUcodeReply({ method: 'wired', fdb: 'no dump', neigh: NEIGH }, 4096), { hosts: [], crowded: true, neighbours: wiredShim({ neigh: NEIGH }).neighbours },
+		'the neighbours of the networks without a bridge all the same');
 	const dumped = spawnUcode([ { method: 'wired', fdb: 'no dump' } ], null, 0);
 	assert.notEqual(dumped.status, 0, 'the double does catch a dump');
 	assert.match(dumped.stderr, /rtnl stub: a dump where none may happen/);

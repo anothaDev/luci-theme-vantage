@@ -988,6 +988,202 @@ test('build: a wired host on a bridge VLAN gets that VLAN\'s network and address
 	assert.deepEqual([ m.wiredHosts[0].network, m.wiredHosts[0].ips ], [ 'lan', [ '192.0.2.41' ] ]);
 });
 
+/* #178: a router whose networks sit on the adapters themselves (lan on
+   eth0, lan1 on eth2, PPPoE on eth1): no bridge, so no forwarding
+   database; luci.vantage wired gives the kernel's neighbours instead */
+function bridgeless(extra) {
+	return Object.assign({
+		ifaces: [
+			{ interface: 'lan', up: true, proto: 'static', l3_device: 'eth0', device: 'eth0', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] },
+			{ interface: 'lan1', up: true, proto: 'static', l3_device: 'eth2', device: 'eth2', 'ipv4-address': [ { address: '198.51.100.1', mask: 24 } ], route: [] },
+			{ interface: 'wan', up: true, proto: 'pppoe', l3_device: 'pppoe-wan', device: 'eth1', 'ipv4-address': [ { address: '203.0.113.2', mask: 32 } ],
+				route: [ { target: '0.0.0.0', mask: 0, nexthop: '203.0.113.1' } ] }
+		],
+		devs: {
+			eth0: { devtype: 'ethernet', 'link-supported': [ '1000baseT-F' ], speed: '1000F', carrier: true, macaddr: '00:00:5e:00:53:f0' },
+			eth1: { devtype: 'ethernet', 'link-supported': [ '1000baseT-F' ], speed: '1000F', carrier: true, macaddr: '00:00:5e:00:53:f1' },
+			eth2: { devtype: 'ethernet', 'link-supported': [ '2500baseT-F' ], speed: '2500F', carrier: true, macaddr: '00:00:5e:00:53:f2' },
+			'pppoe-wan': { devtype: 'ppp' }
+		},
+		hints: {
+			'00:00:5E:00:53:61': { name: 'desk', ipaddrs: [ '192.0.2.61', '203.0.113.61' ] },
+			'00:00:5E:00:53:63': { name: 'nas', ipaddrs: [ '198.51.100.63' ] }
+		},
+		neigh: [
+			{ mac: '00:00:5e:00:53:61', dev: 'eth0', seen: 4 },
+			{ mac: '00:00:5E:00:53:62', dev: 'eth0', seen: 120 },
+			{ mac: '00:00:5e:00:53:63', dev: 'eth2', seen: 0 },
+			{ mac: '00:00:5e:00:53:63', dev: 'eth0', seen: 9 },                 /* heard on two devices: where it answered last */
+			{ mac: '00:00:5e:00:53:64', dev: 'eth1', seen: 1 },                 /* under the PPPoE session: upstream */
+			{ mac: '00:00:5e:00:53:65', dev: 'pppoe-wan', seen: 1 },
+			{ mac: '00:00:5e:00:53:66', dev: 'eth0' }, { mac: '00:00:5e:00:53:67', dev: 'eth0', seen: -1 }, { mac: '00:00:5e:00:53:68', dev: 7, seen: 1 },
+			{ mac: 'junk', dev: 'eth0', seen: 1 }, null, 'eth0'
+		]
+	}, extra);
+}
+const rows = m => m.wiredHosts.map(h => [ h.mac, h.port, h.bridge, h.network, h.seen, h.peers, h.shared, h.gateway ]);
+
+test('build: hosts on a network without a bridge are the neighbours that answered on its device (#178)', () => {
+	const m = model.build(bridgeless());
+	assert.deepEqual([ m.uplink.iface, m.uplink.l3dev, m.uplink.statsDev ], [ 'wan', 'pppoe-wan', 'eth1' ]);
+	assert.deepEqual(rows(m), [
+		[ '00:00:5e:00:53:61', 'eth0', null, 'lan', 4, 2, true, false ],
+		[ '00:00:5e:00:53:62', 'eth0', null, 'lan', 120, 2, true, false ],
+		[ '00:00:5e:00:53:63', 'eth2', null, 'lan1', 0, 1, false, false ]
+	], 'each once, on the device it answered on last; none on a device the line to the internet leaves by');
+	assert.deepEqual(m.wiredHosts.map(h => [ h.name, h.ips, h.speed && h.speed.mbps, h.vlan ]), [
+		[ 'desk', [ '192.0.2.61' ], 1000, null ], [ 'Unknown device 53:62', [], 1000, null ], [ 'nas', [ '198.51.100.63' ], 2500, null ]
+	], 'named and addressed by the host hints, in its own network\'s subnets; the device\'s link');
+	assert.deepEqual(m.ports.map(p => [ p.id, p.hosts, p.lines ]), [ [ 'eth0', 2, [] ], [ 'eth1', 0, [ 'wan' ] ], [ 'eth2', 1, [] ] ], 'counted on their ports');
+	assert.equal(m.clients.length, 0);
+});
+
+test('build: a neighbour is no wired host where a bridge has it, where it is a station, or on a Wi-Fi interface (#178)', () => {
+	/* the Wi-Fi network has no bridge either: a network of its own on the interface */
+	const guest = { interface: 'guest', up: true, proto: 'static', l3_device: 'phy0-ap0', device: 'phy0-ap0', 'ipv4-address': [ { address: '192.0.2.129', mask: 25 } ], route: [] };
+	const m = model.build(bridgeless({
+		ifaces: bridgeless().ifaces.concat([ guest ]),
+		devs: Object.assign({}, bridgeless().devs, { 'br-iot': { devtype: 'bridge', 'bridge-members': [ 'eth3' ] }, eth3: { devtype: 'ethernet', speed: '100F', carrier: true }, 'phy0-ap0': { devtype: 'wlan' } }),
+		wifi: { radio0: { up: true, config: { band: '5g', channel: '36', htmode: 'HE80' }, interfaces: [ { ifname: 'phy0-ap0', config: { ssid: 'Guest', mode: 'ap' } } ] } },
+		assoc: { 'phy0-ap0': [ { mac: '00:00:5E:00:53:71', signal: -50 } ] },
+		fdb: [ { mac: '00:00:5e:00:53:61', port: 'eth3', bridge: 'br-iot', seen: 200 }, { mac: '00:00:5e:00:53:74', port: 'phy0-ap0', bridge: 'br-iot', seen: 1 } ],
+		neigh: [
+			{ mac: '00:00:5e:00:53:61', dev: 'eth0', seen: 1 },                 /* the bridge's, though it answered here later */
+			{ mac: '00:00:5e:00:53:74', dev: 'eth0', seen: 30 },                /* a bridge heard it on a Wi-Fi port: no wired host either */
+			{ mac: '00:00:5e:00:53:71', dev: 'eth0', seen: 1 },                 /* a station */
+			{ mac: '00:00:5e:00:53:72', dev: 'phy0-ap0', seen: 1 },             /* on the Wi-Fi interface: a station that just left, no wired host */
+			{ mac: '00:00:5e:00:53:73', dev: 'eth0', seen: 30 }, { mac: '00:00:5e:00:53:73', dev: 'eth0', seen: 2 }
+		]
+	}));
+	assert.deepEqual(rows(m), [
+		[ '00:00:5e:00:53:61', 'eth3', 'br-iot', null, 200, 1, false, false ],
+		[ '00:00:5e:00:53:73', 'eth0', null, 'lan', 2, 1, false, false ]
+	]);
+	assert.deepEqual(m.clients.map(c => c.mac), [ '00:00:5e:00:53:71' ]);
+});
+
+test('build: neighbours change nothing where every network is on a bridge, and the uplink\'s own are upstream (#178)', () => {
+	const base = router(null), gw = '00:00:5e:00:53:fe';
+	base.ifaces[0].proto = 'static';
+	base.ifaces[1].proto = 'dhcp';
+	const plain = JSON.stringify(model.build(base));
+	assert.equal(JSON.stringify(model.build(Object.assign({}, base, { neigh: [] }))), plain);
+	/* the WAN's gateway and its neighbours answer on the WAN: none a wired host; nor one on the bridge that its table has not */
+	assert.equal(JSON.stringify(model.build(Object.assign({}, base, { neigh: [ { mac: gw, dev: 'wan', seen: 1 }, { mac: '00:00:5e:00:53:81', dev: 'wan', seen: 1 },
+		{ mac: '00:00:5e:00:53:82', dev: 'br-lan', seen: 1 } ] }))), plain);
+	/* a device whose one network is its way out (a wired box in somebody's LAN): what answers there is upstream too */
+	const leaf = { ifaces: [ { interface: 'lan', up: true, proto: 'dhcp', l3_device: 'eth0', device: 'eth0', 'ipv4-address': [ { address: '192.0.2.50', mask: 24 } ],
+		route: [ { target: '0.0.0.0', mask: 0, nexthop: '192.0.2.1' } ] } ], devs: { eth0: { devtype: 'ethernet', speed: '1000F', carrier: true } },
+		neigh: [ { mac: '00:00:5e:00:53:01', dev: 'eth0', seen: 1 }, { mac: '00:00:5e:00:53:02', dev: 'eth0', seen: 1 } ] };
+	assert.deepEqual(model.build(leaf).wiredHosts, []);
+});
+
+test('build: a neighbour on a VLAN of a bridge is the bridge\'s to list (#178)', () => {
+	/* VLAN filtering: the networks are on br-lan.20 and on a VLAN device named another way (netifd names its parent) */
+	const m = model.build({
+		ifaces: [
+			{ interface: 'lan', up: true, proto: 'static', l3_device: 'br-lan.20', device: 'br-lan.20', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] },
+			{ interface: 'iot', up: true, proto: 'static', l3_device: 'vlan30', device: 'vlan30', 'ipv4-address': [ { address: '198.51.100.1', mask: 24 } ], route: [] },
+			/* a bridge whose own name has a dot */
+			{ interface: 'cam', up: true, proto: 'static', l3_device: 'br.5', device: 'br.5', 'ipv4-address': [ { address: '198.51.100.129', mask: 25 } ], route: [] },
+			/* a VLAN in a VLAN on the bridge, both named another way */
+			{ interface: 'deep', up: true, proto: 'static', l3_device: 'inner', device: 'inner', 'ipv4-address': [ { address: '203.0.113.129', mask: 25 } ], route: [] },
+			{ interface: 'wan', up: true, proto: 'dhcp', l3_device: 'eth1', device: 'eth1', 'ipv4-address': [ { address: '203.0.113.2', mask: 24 } ], route: [ { target: '0.0.0.0', mask: 0, nexthop: '203.0.113.1' } ] }
+		],
+		devs: { 'br-lan': { devtype: 'bridge', 'bridge-members': [ 'lan1' ] }, 'br.5': { devtype: 'bridge', 'bridge-members': [] }, vlan30: { devtype: 'vlan', parent: 'br-lan' },
+			inner: { devtype: 'vlan', parent: 'outer' }, outer: { devtype: 'vlan', parent: 'br-lan' }, lan1: { devtype: 'ethernet', speed: '1000F', carrier: true }, eth1: { devtype: 'ethernet', carrier: true } },
+		/* the bridge's table is empty (crowded, cut, or forgotten a moment earlier) */
+		neigh: [ { mac: '00:00:5e:00:53:61', dev: 'br-lan.20', seen: 1 }, { mac: '00:00:5e:00:53:62', dev: 'vlan30', seen: 1 }, { mac: '00:00:5e:00:53:63', dev: 'br.5', seen: 1 },
+			{ mac: '00:00:5e:00:53:64', dev: 'inner', seen: 1 } ]
+	});
+	assert.deepEqual([ m.wiredHosts, m.routedDevs ], [ [], [] ]);
+});
+
+test('build: what answers on a WAN\'s port is upstream, whatever else is set on it (#178)', () => {
+	const modem = { interface: 'modem', up: true, proto: 'static', l3_device: 'eth1', device: 'eth1', 'ipv4-address': [ { address: '192.0.2.129', mask: 25 } ], route: [] };
+	const onEth1 = (wan, extra) => { const r = bridgeless(extra); r.ifaces[2] = wan; r.ifaces.push(modem); return rows(model.build(r)).filter(x => x[1] === 'eth1').length; };
+	const def = { target: '0.0.0.0', mask: 0, nexthop: '203.0.113.1' }, addr = [ { address: '203.0.113.2', mask: 24 } ];
+	assert.equal(onEth1(bridgeless().ifaces[2]), 0, 'the modem\'s own network under a PPPoE session');
+	assert.equal(onEth1({ interface: 'wan', up: false, proto: 'pppoe', device: 'eth1' }), 0, 'the session down: the port is the WAN\'s still');
+	assert.equal(onEth1({ interface: 'wan', up: true, proto: 'static', l3_device: 'eth1', device: 'eth1', 'ipv4-address': addr, route: [], inactive: { route: [ def ] } }), 0,
+		'a default route that is set but switched off (netifd lists it as inactive)');
+	/* a limit, pinned: netifd names no route of an interface that is down, so a static WAN taken down by hand tells nothing */
+	assert.equal(onEth1({ interface: 'wan', up: false, proto: 'static', device: 'eth1' }), 1);
+	assert.equal(onEth1({ interface: 'wan', up: true, proto: 'static', l3_device: 'eth1', device: 'eth1', 'ipv4-address': addr, route: [ Object.assign({ table: 100 }, def) ] }), 0,
+		'a default in another table on the interface beside it');
+	assert.equal(onEth1({ interface: 'wan', up: true, proto: 'none', l3_device: 'eth1', device: 'eth1' }, { routes: [ { family: 4, dev: 'eth1', metric: 0 } ] }), 0,
+		'a default route netifd does not list (a routing daemon\'s): the kernel\'s');
+	assert.equal(onEth1({ interface: 'wan', up: true, proto: 'none', l3_device: 'eth1', device: 'eth1' }), 1, 'nothing of the kind: a network of this device\'s own');
+});
+
+test('build: the devices whose neighbours count, and whether their list may be cut (#178)', () => {
+	const m = model.build(bridgeless());
+	assert.deepEqual([ m.routedDevs.slice().sort(), m.neighFull ], [ [ 'eth0', 'eth2' ], false ]);
+	const many = (n, dev) => Array.from({ length: n }, (_, i) => ({ mac: '02:00:5e:00:' + (i >> 8).toString(16).padStart(2, '0') + ':' + (i & 255).toString(16).padStart(2, '0'), dev, seen: 1 }));
+	const full = neigh => model.build(bridgeless({ neigh })).neighFull;
+	assert.equal(full(many(127, 'eth0')), false);
+	assert.equal(full(many(128, 'eth0')), true, 'the plugin\'s cap a device: more may be there');
+	assert.equal(full(many(128, 'eth1')), false, 'on a device that is not its own: none of its hosts is missing');
+	assert.equal(full(many(127, 'eth1').concat(many(127, 'pppoe-wan'), many(127, 'eth9'), many(127, 'eth8'), many(4, 'eth0'))), true, 'the cap in all, filled by others');
+	assert.equal(model.build(router(null)).neighFull, false);
+	assert.equal(model.build(router(null, { neigh: many(512, 'wan') })).neighFull, false, 'no network of that kind here: nothing of its own can be missing');
+});
+
+test('build: a neighbour\'s network is the one that made its device a network of this device\'s own (#178)', () => {
+	/* an interface that is down, left in the configuration, comes first on the same device */
+	const r = bridgeless();
+	r.ifaces.unshift({ interface: 'old', up: false, proto: 'static', device: 'eth0' });
+	assert.deepEqual(model.build(r).wiredHosts.map(h => [ h.mac, h.network, h.ips ]).slice(0, 2), [
+		[ '00:00:5e:00:53:61', 'lan', [ '192.0.2.61' ] ], [ '00:00:5e:00:53:62', 'lan', [] ] ]);
+});
+
+test('build: a neighbour alone on an adapter that carries other devices has no traffic of its own (#178)', () => {
+	/* the LAN untagged on eth0, the WAN on its VLAN 20: the kernel counts the WAN's traffic on eth0 too */
+	const stick = {
+		ifaces: [
+			{ interface: 'lan', up: true, proto: 'static', l3_device: 'eth0', device: 'eth0', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] },
+			{ interface: 'wan', up: true, proto: 'dhcp', l3_device: 'eth0.20', device: 'eth0.20', 'ipv4-address': [ { address: '203.0.113.2', mask: 24 } ], route: [ { target: '0.0.0.0', mask: 0, nexthop: '203.0.113.1' } ] }
+		],
+		devs: { eth0: { devtype: 'ethernet', 'link-supported': [ '1000baseT-F' ], speed: '1000F', carrier: true }, 'eth0.20': { devtype: 'vlan', parent: 'eth0' } },
+		neigh: [ { mac: '00:00:5e:00:53:61', dev: 'eth0', seen: 1 } ]
+	};
+	assert.deepEqual(model.build(stick).wiredHosts.map(h => [ h.port, h.shared, h.mixed ]), [ [ 'eth0', false, true ] ]);
+	/* the VLAN known by its name alone, or by the parent netifd names for one called another way */
+	const named = (dev, d) => { const r = JSON.parse(JSON.stringify(stick)); r.ifaces[1].l3_device = r.ifaces[1].device = dev; r.devs = { eth0: stick.devs.eth0, [dev]: d }; return model.build(r).wiredHosts.map(h => h.mixed); };
+	assert.deepEqual([ named('eth0.20', { devtype: 'vlan' }), named('wanvlan', { devtype: 'vlan', parent: 'eth0' }) ], [ [ true ], [ true ] ]);
+	assert.deepEqual(model.build(bridgeless()).wiredHosts.map(h => h.mixed), [ false, false, false ], 'an adapter with nothing on it: as a port to itself');
+	/* a bridge's port is as it was, whatever is on it */
+	const br = model.build({ ifaces: [ { interface: 'lan', up: true, proto: 'static', l3_device: 'br-lan', device: 'br-lan', route: [] } ],
+		devs: { 'br-lan': { devtype: 'bridge', 'bridge-members': [ 'eth0' ] }, eth0: { devtype: 'ethernet', carrier: true }, 'eth0.20': { devtype: 'vlan', parent: 'eth0' } },
+		fdb: [ { mac: '00:00:5e:00:53:61', port: 'eth0', bridge: 'br-lan', seen: 1 } ] });
+	assert.deepEqual(br.wiredHosts.map(h => [ h.port, h.mixed ]), [ [ 'eth0', false ] ]);
+});
+
+test('build: with every line down, the network the uplink falls back to keeps its hosts (#178)', () => {
+	const down = bridgeless();
+	down.ifaces[2] = { interface: 'wan', up: false, proto: 'pppoe', device: 'eth1' };
+	const m = model.build(down);
+	assert.deepEqual([ m.uplink.iface, m.uplink.defaultRoute ], [ 'lan', false ], 'no line: the first network that is up stands in');
+	assert.deepEqual(rows(m).map(r => [ r[0], r[1], r[3] ]), [
+		[ '00:00:5e:00:53:61', 'eth0', 'lan' ], [ '00:00:5e:00:53:62', 'eth0', 'lan' ], [ '00:00:5e:00:53:63', 'eth2', 'lan1' ]
+	], 'its hosts; what still answers on the dead line\'s port is upstream as before');
+});
+
+test('build: neighbours are listed only on a network this device has a fixed address on (#178)', () => {
+	const on = (iface, extra) => { const r = bridgeless(extra); r.ifaces[1] = Object.assign(r.ifaces[1], iface); return rows(model.build(r)).filter(x => x[1] === 'eth2').length; };
+	assert.equal(on({}), 1, 'static, up, no default route');
+	assert.equal(on({ proto: 'dhcp' }), 0, 'a network it has its address from: its neighbours are that network\'s, not its hosts');
+	assert.equal(on({ proto: 'none' }), 0, 'unmanaged');
+	assert.equal(on({ up: false }), 0, 'down');
+	assert.equal(on({ route: [ { target: '0.0.0.0', mask: 0, nexthop: '198.51.100.254', table: 100 } ] }), 0, 'a line routed by policy (a default in another table) is a line still');
+	assert.equal(on({ route: [ { target: '::', mask: 0, nexthop: 'fe80::1' } ] }), 0, 'an IPv6 line');
+	assert.equal(on({ route: [ { target: '203.0.113.0', mask: 24, nexthop: '198.51.100.254' } ] }), 1, 'a route to one subnet makes no line');
+	/* a second network on the device a line leaves by: upstream */
+	const shared = bridgeless();
+	shared.ifaces.push({ interface: 'modem', up: true, proto: 'static', l3_device: 'eth1', device: 'eth1', 'ipv4-address': [ { address: '192.0.2.129', mask: 25 } ], route: [] });
+	assert.deepEqual(rows(model.build(shared)).map(x => x[1]), [ 'eth0', 'eth0', 'eth2' ]);
+});
+
 test('build: an access point on a bridge with several ports takes the uplink where the gateway was learned', () => {
 	const ifaces = [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.10', mask: 24 } ],
 		route: [ { target: '0.0.0.0', mask: 0, nexthop: '192.0.2.1' } ] } ];
